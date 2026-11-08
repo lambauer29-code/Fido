@@ -222,6 +222,186 @@ function cancelLetter(c, me) {
   return lines.filter((l, i) => !(l === undefined || (l === "" && lines[i - 1] === ""))).join("\n").trim();
 }
 
+/* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Fristen"], accounts: ["🏦", "Konten"], contracts: ["📑", "Verträge"], settings: ["⚙️", "Einstellungen"] };
+const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
+const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
+const DEFAULT_NAV = {
+  tabs: [
+    { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: false },
+    { key: "accounts", side: true, phone: true }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }
+  ],
+  groups: [
+    { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
+    { id: "g-giro", title: "Girokonten", kinds: ["bank", "card", "wallet"], ids: [] },
+    { id: "g-save", title: "Sparkonten", kinds: ["savings"], ids: [] },
+    { id: "g-depot", title: "Depots", kinds: ["broker"], ids: [] }
+  ],
+  accOpen: true, docsOpen: false
+};
+function loadNav() {
+  const n = ls.get("nav", null);
+  if (!n) return DEFAULT_NAV;
+  const keys = n.tabs.map((t) => t.key);
+  return { ...DEFAULT_NAV, ...n, tabs: [...n.tabs, ...DEFAULT_NAV.tabs.filter((t) => !keys.includes(t.key))] };
+}
+const tabLabel = (nav, key) => nav.tabs.find((t) => t.key === key)?.label?.trim() || TAB_DEFS[key][1];
+
+// Gruppen aus der Konfiguration + Konten, die noch keiner Gruppe zugeordnet sind (nach Art einsortiert)
+function resolveGroups(nav, accounts) {
+  const byId = Object.fromEntries(accounts.map((a) => [a.id, a]));
+  const placed = new Set();
+  const groups = nav.groups.map((g) => ({ ...g, accounts: (g.ids || []).filter((id) => byId[id] && !placed.has(id) && placed.add(id)).map((id) => byId[id]) }));
+  const rest = [];
+  for (const a of accounts) {
+    if (placed.has(a.id)) continue;
+    const g = groups.find((x) => (x.kinds || []).includes(a.kind || "bank"));
+    if (g) g.accounts.push(a); else rest.push(a);
+  }
+  if (rest.length) groups.push({ id: "g-rest", title: "Weitere Konten", accounts: rest, auto: true });
+  return groups;
+}
+// Zählt eine Buchung zum Kontostand? (nur was nach dem Erfassen des Startbestands passiert ist)
+const afterOpening = (t, acc) => !acc.openingDate || t.date > acc.openingDate ||
+  (t.date === acc.openingDate && (!acc.openingAt || (t.createdAt || t.importedAt || "") > acc.openingAt));
+function accountBalance(acc, txs) {
+  if (acc.kind === "cash") return cashBalance(acc, txs);
+  if (acc.opening == null || acc.opening === "") return null;
+  return acc.opening + txs.filter((t) => t.accountId === acc.id && afterOpening(t, acc)).reduce((s, t) => s + t.amount, 0);
+}
+
+const AREAS = { finanzen: ["💶", "Finanzen"], vertraege: ["📑", "Verträge"], sonstiges: ["🗂️", "Sonstiges"] };
+function docArea(d) {
+  if (d.area) return d.area;
+  if (d.contract || d.docType === "Vertrag" || d.docType === "Polizze") return "vertraege";
+  if (d.amount?.total && d.direction && d.direction !== "keine") return "finanzen";
+  return "sonstiges";
+}
+const inAnalysis = (d) => docArea(d) !== "sonstiges";
+
+function AccountTree({ groups, txs, selected, onSelect, onToggleGroup, variant = "" }) {
+  const shown = groups.filter((g) => g.accounts.length);
+  if (!shown.length) return null;
+  return (
+    <div className={"acctree " + variant}>
+      {shown.map((g, gi) => (
+        <div key={g.id} className="accgroup">
+          {gi > 0 && <div className="accdiv" />}
+          {g.title?.trim() && (
+            <button className="acctitle" onClick={() => onToggleGroup(g.id)} aria-expanded={!g.collapsed}>
+              <span className={"chev" + (g.collapsed ? "" : " open")}>›</span><span className="grow">{g.title}</span>
+              {g.collapsed && <small>{g.accounts.length}</small>}
+            </button>
+          )}
+          {!g.collapsed && g.accounts.map((a) => {
+            const bal = accountBalance(a, txs);
+            return (
+              <button key={a.id} className={"accitem" + (selected === a.id ? " on" : "")} onClick={() => onSelect(selected === a.id ? "" : a.id)}>
+                <span className="ki">{kindIcon(a.kind)}</span><span className="an">{a.name}</span>
+                {bal != null && <span className={"ab" + (bal < 0 ? " red" : "")}>{fmtMoney(bal)}</span>}
+              </button>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- Einstellungen: Seitenleiste & Kontengruppen ---------- */
+function NavSettings({ nav, setNav, accounts, setAccounts, txs, deleteAccount, notify }) {
+  const [edit, setEdit] = useState(null);
+  const resolved = resolveGroups(nav, accounts);
+  const saveGroups = (gs) => setNav({ ...nav, groups: gs.filter((g) => !g.auto).map(({ accounts: _a, ...g }) => g) });
+  // aktuelle Sortierung festschreiben, damit Verschieben stabil ist
+  const explicit = () => resolved.map((g) => ({ ...g, ids: g.accounts.map((a) => a.id) }));
+
+  const moveTab = (i, d) => { const t = [...nav.tabs], j = i + d; if (j < 0 || j >= t.length) return; [t[i], t[j]] = [t[j], t[i]]; setNav({ ...nav, tabs: t }); };
+  const patchTab = (i, p) => setNav({ ...nav, tabs: nav.tabs.map((t, k) => (k === i ? { ...t, ...p } : t)) });
+  const moveGroup = (gi, d) => { const g = explicit().filter((x) => !x.auto), j = gi + d; if (j < 0 || j >= g.length) return; [g[gi], g[j]] = [g[j], g[gi]]; saveGroups(g); };
+  const patchGroup = (gi, p) => saveGroups(explicit().map((g, k) => (k === gi ? { ...g, ...p } : g)));
+  const delGroup = (gi) => { const g = explicit(); if (g[gi].accounts.length && !confirm("Gruppe löschen? Die Konten werden automatisch neu einsortiert.")) return; saveGroups(g.filter((_, k) => k !== gi)); };
+  const addGroup = () => saveGroups([...explicit(), { id: "g-" + uid(), title: "Neue Gruppe", kinds: [], ids: [] }]);
+  const moveAcc = (gi, ai, d) => { const g = explicit(), ids = [...g[gi].ids], j = ai + d; if (j < 0 || j >= ids.length) return; [ids[ai], ids[j]] = [ids[j], ids[ai]]; g[gi].ids = ids; saveGroups(g); };
+  const moveAccTo = (accId, gid) => {
+    const g = explicit().map((x) => ({ ...x, ids: x.ids.filter((id) => id !== accId) }));
+    const t = g.find((x) => x.id === gid); if (t) t.ids.push(accId);
+    saveGroups(g);
+  };
+  const realGroups = resolved.filter((g) => !g.auto);
+
+  return (
+    <>
+      <fieldset className="span2">
+        <legend>Seitenleiste – Reiter</legend>
+        <p className="muted small">Reihenfolge, Name und Sichtbarkeit. „Leiste“ = Seitenleiste auf Tablet & Mac, „Handy“ = untere Leiste am Phone (am besten max. 5).</p>
+        {nav.tabs.map((t, i) => (
+          <div key={t.key} className="navcfg">
+            <span className="ki">{TAB_DEFS[t.key][0]}</span>
+            <input value={t.label || ""} placeholder={TAB_DEFS[t.key][1]} onChange={(e) => patchTab(i, { label: e.target.value })} />
+            <label className="mini"><input type="checkbox" checked={t.side} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { side: e.target.checked })} />Leiste</label>
+            <label className="mini"><input type="checkbox" checked={t.phone} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { phone: e.target.checked })} />Handy</label>
+            <button className="iconbtn" disabled={i === 0} onClick={() => moveTab(i, -1)} aria-label="nach oben">↑</button>
+            <button className="iconbtn" disabled={i === nav.tabs.length - 1} onClick={() => moveTab(i, 1)} aria-label="nach unten">↓</button>
+          </div>
+        ))}
+        <p className="muted small">Handy-Leiste: {nav.tabs.filter((t) => t.phone).length} Reiter{nav.tabs.filter((t) => t.phone).length > 5 ? " – mehr als 5 werden am Phone eng" : ""}</p>
+      </fieldset>
+
+      <fieldset className="span2">
+        <legend>Konten & Gruppen</legend>
+        <p className="muted small">Gruppen erscheinen unter „{tabLabel(nav, "accounts")}“ mit Überschrift und Trennlinie und lassen sich dort ein- und ausklappen. Leere Überschrift = nur Trennlinie.</p>
+        {resolved.map((g, gi) => (
+          <div key={g.id} className="grpcfg">
+            <div className="grphead">
+              {g.auto ? <b className="grow">{g.title} <small className="muted">(automatisch)</small></b>
+                : <input className="grow" value={g.title || ""} placeholder="Ohne Überschrift (nur Trennlinie)" onChange={(e) => patchGroup(gi, { title: e.target.value })} />}
+              {!g.auto && <>
+                <button className="iconbtn" disabled={gi === 0} onClick={() => moveGroup(gi, -1)}>↑</button>
+                <button className="iconbtn" disabled={gi === realGroups.length - 1} onClick={() => moveGroup(gi, 1)}>↓</button>
+                <button className="iconbtn" onClick={() => delGroup(gi)} aria-label="Gruppe löschen">✕</button>
+              </>}
+            </div>
+            {!g.accounts.length && <p className="muted small" style={{ margin: "6px 0 0 4px" }}>Noch keine Konten – über „verschieben“ hierher holen.</p>}
+            {g.accounts.map((a, ai) => {
+              const bal = accountBalance(a, txs);
+              return (
+                <div key={a.id} className="acccfg">
+                  <span className="ki">{kindIcon(a.kind)}</span>
+                  <button className="link grow left" onClick={() => setEdit(a)}>{a.name}{bal != null && <small className="muted"> · {fmtMoney(bal)}</small>}</button>
+                  {!g.auto && <>
+                    <button className="iconbtn" disabled={ai === 0} onClick={() => moveAcc(gi, ai, -1)}>↑</button>
+                    <button className="iconbtn" disabled={ai === g.accounts.length - 1} onClick={() => moveAcc(gi, ai, 1)}>↓</button>
+                  </>}
+                  <select className="movesel" value="" onChange={(e) => e.target.value && moveAccTo(a.id, e.target.value)} aria-label="In Gruppe verschieben">
+                    <option value="">verschieben …</option>
+                    {realGroups.filter((x) => x.id !== g.id).map((x) => <option key={x.id} value={x.id}>→ {x.title || "(ohne Überschrift)"}</option>)}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        <div className="actions">
+          <button className="btn" onClick={addGroup}>＋ Gruppe / Überschrift</button>
+          <button className="btn" onClick={() => setEdit("new")}>＋ Konto anlegen</button>
+          <button className="link" onClick={() => confirm("Seitenleiste auf Standard zurücksetzen?") && setNav(DEFAULT_NAV)}>Zurücksetzen</button>
+        </div>
+      </fieldset>
+
+      {edit && (
+        <AccountSheet init={edit === "new" ? null : edit} hasAtmAccount={accounts.some((a) => a.atm && a.id !== edit?.id)} txs={txs}
+          onClose={() => setEdit(null)}
+          onDelete={edit !== "new" ? () => { if (confirm(`Konto „${edit.name}“ samt Umsätzen löschen?`)) { deleteAccount(edit.id); setEdit(null); } } : null}
+          onSave={(a) => {
+            setAccounts((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
+            setEdit(null); notify(edit === "new" ? `Konto „${a.name}“ angelegt` : "Konto gespeichert");
+          }} />
+      )}
+    </>
+  );
+}
+
 /* ============================================================ */
 
 export default function App() {
@@ -240,6 +420,9 @@ export default function App() {
   const accountsRef = useRef(accounts);
   const setAccounts = (v) => setAccountsState((prev) => { const n = typeof v === "function" ? v(prev) : v; accountsRef.current = n; return n; });
   const [scanOpen, setScanOpen] = useState(false);
+  const [nav, setNav] = useState(loadNav);
+  const [selAcc, setSelAcc] = useState("");
+  const [docAreaSel, setDocAreaSel] = useState(() => ls.get("docArea", "alle"));
   const [manualTx, setManualTx] = useState(null);
   const [fabOpen, setFabOpen] = useState(false);
   const [rules, setRules] = useState(() => ls.get("rules", []));
@@ -274,6 +457,8 @@ export default function App() {
   useEffect(() => ls.set("accounts", accounts), [accounts]);
   useEffect(() => ls.set("rules", rules), [rules]);
   useEffect(() => ls.set("subs", subs), [subs]);
+  useEffect(() => ls.set("nav", nav), [nav]);
+  useEffect(() => ls.set("docArea", docAreaSel), [docAreaSel]);
   useEffect(() => { db.allTx().then(setTxs); }, []);
 
   const notify = (m) => { setToast(m); setTimeout(() => setToast(""), 3000); };
@@ -375,6 +560,7 @@ export default function App() {
         fullText: j.full_text || "",
         amount: j.amount && j.amount.total != null ? { ...j.amount, currency: j.amount.currency || "EUR" } : null,
         direction: j.direction || "keine",
+        area: ["finanzen", "vertraege", "sonstiges"].includes(j.area) ? j.area : undefined,
         taxRelevant: !!j.tax_relevant,
         payment: j.payment?.iban ? j.payment : null,
         contract: c?.provider ? {
@@ -417,13 +603,15 @@ export default function App() {
   }
 
   const openDoc = docs.find((d) => d.id === openId);
-  const TABS = [["home", "🏠", "Übersicht"], ["docs", "📄", "Dokumente"], ["accounts", "🏦", "Konten"], ["contracts", "📑", "Verträge"], ["settings", "⚙️", "Mehr"]];
+  const groups = resolveGroups(nav, accounts);
+  const toggleGroup = (id) => setNav((n) => ({ ...n, groups: n.groups.map((g) => (g.id === id ? { ...g, collapsed: !g.collapsed } : g)) }));
+  const areaCounts = Object.fromEntries(Object.keys(AREAS).map((k) => [k, active.filter((d) => docArea(d) === k).length]));
 
   return (
     <div className={"app tab-" + tab}>
       <style>{CSS}</style>
       <header className="top">
-        <h1>{{ home: "Übersicht", docs: "Dokumente", deadlines: "Fristen", accounts: "Konten", contracts: "Verträge", settings: "Einstellungen" }[tab]}</h1>
+        <h1>{tabLabel(nav, tab)}</h1>
         <div className="addbtn">
           <button className="btn" onClick={() => setManualTx({})}>💶 Barausgabe</button>
           <button className="btn" onClick={() => setScanOpen(true)}>📷 Scannen</button>
@@ -435,12 +623,13 @@ export default function App() {
         {tab === "home" && <Home docs={active} txs={txs} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={accounts.some((a) => a.kind === "cash")} />}
         {tab === "accounts" && <Accounts txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
-          recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx} />}
-        {tab === "docs" && <DocList docs={active} categories={categories} onOpen={setOpenId} />}
+          recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
+          acc={selAcc} setAcc={setSelAcc} groups={groups} toggleGroup={toggleGroup} />}
+        {tab === "docs" && <DocList docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} />}
         {tab === "settings" && (
-          <Settings txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
+          <Settings nav={nav} setNav={setNav} deleteAccount={deleteAccount} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
             docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} notify={notify} />
         )}
@@ -462,13 +651,38 @@ export default function App() {
         onSave={async (t) => { await addManualTx(t); setManualTx(null); notify("Buchung gespeichert"); }} />}
 
       <nav className="bottom">
-        <div className="brand"><span>📂</span><b>Dokumente</b></div>
-        {[...TABS.slice(0, 2), ["deadlines", "⏰", "Fristen", "desk"], ...TABS.slice(2)].map(([k, i, l, only]) => (
-          <button key={k} className={(tab === k ? "on" : "") + (only ? " desk-only" : "")} onClick={() => setTab(k)} aria-label={l}>
-            <span>{i}</span>{l}
-            {k === "home" && <Badge docs={active} />}
-          </button>
-        ))}
+        <div className="brand"><img src="/icon.svg" alt="" /><div><b>Fido</b><small>Finanzen & Dokumente</small></div></div>
+        {nav.tabs.filter((t) => t.side || t.phone).map((t) => {
+          const sub = (t.key === "accounts" && accounts.length) || t.key === "docs";
+          const open = t.key === "accounts" ? nav.accOpen : nav.docsOpen;
+          const flag = t.key === "accounts" ? "accOpen" : "docsOpen";
+          return (
+            <React.Fragment key={t.key}>
+              <button className={(tab === t.key ? "on" : "") + (t.phone ? "" : " ph-hide") + (t.side ? "" : " side-hide")}
+                onClick={() => { setTab(t.key); if (t.key === "accounts") setSelAcc(""); if (t.key === "docs") setDocAreaSel("alle"); }} aria-label={tabLabel(nav, t.key)}>
+                <span>{TAB_DEFS[t.key][0]}</span>{tabLabel(nav, t.key)}
+                {t.key === "home" && <Badge docs={active} />}
+                {sub && <i className={"subtog side-only" + (open ? " open" : "")} role="button" aria-label="ein-/ausklappen"
+                  onClick={(e) => { e.stopPropagation(); setNav((n) => ({ ...n, [flag]: !n[flag] })); }}>›</i>}
+              </button>
+              {t.key === "accounts" && t.side && nav.accOpen && (
+                <div className="subnav side-only">
+                  <AccountTree groups={groups} txs={txs} selected={tab === "accounts" ? selAcc : ""} onToggleGroup={toggleGroup}
+                    onSelect={(id) => { setSelAcc(id); setTab("accounts"); }} />
+                </div>
+              )}
+              {t.key === "docs" && t.side && nav.docsOpen && (
+                <div className="subnav side-only">
+                  {Object.entries(AREAS).map(([k, [i, l]]) => (
+                    <button key={k} className={"accitem" + (tab === "docs" && docAreaSel === k ? " on" : "")} onClick={() => { setDocAreaSel(k); setTab("docs"); }}>
+                      <span className="ki">{i}</span><span className="an">{l}</span><span className="ab muted">{areaCounts[k]}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </React.Fragment>
+          );
+        })}
       </nav>
 
       {openDoc && (
@@ -509,7 +723,7 @@ function Donut({ parts, total }) {
 }
 function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash }) {
   const thisMonth = todayISO().slice(0, 7);
-  const money = docs.filter((d) => d.amount?.total && isEUR(d));
+  const money = docs.filter((d) => d.amount?.total && isEUR(d) && inAnalysis(d));
   // Monate mit importierten Kontoumsätzen werden aus den Umsätzen berechnet, sonst aus den Dokumenten
   const bankTx = txs.filter((t) => t.kind !== "broker" && t.category !== "Umbuchung" && !(hasCash && t.category === "Bargeld") && (t.currency || "EUR") === "EUR");
   const txMonths = new Set(bankTx.map((t) => t.date.slice(0, 7)));
@@ -540,7 +754,7 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash }) {
 
   const contracts = activeContracts(docs);
   const fix = contracts.reduce((s, c) => s + monthlyCost(c.contract), 0) + (fixExtra || 0);
-  const openInv = docs.filter((d) => d.direction === "ausgabe" && !d.paid && d.amount?.total &&
+  const openInv = docs.filter((d) => inAnalysis(d) && d.direction === "ausgabe" && !d.paid && d.amount?.total &&
     (d.payment?.iban || (d.deadlines || []).some((x) => !x.done && /zahl|fällig/i.test(x.label))));
   const upcoming = docs.flatMap((doc) => (doc.deadlines || []).filter((x) => !x.done).map((dl) => [dl, doc]))
     .sort((a, b) => a[0].date.localeCompare(b[0].date)).slice(0, 4);
@@ -632,7 +846,7 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash }) {
 }
 
 /* ---------- Dokumente (Docutain-Look) ---------- */
-function DocList({ docs, categories, onOpen }) {
+function DocList({ docs, categories, onOpen, area = "alle", setArea }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [tag, setTag] = useState("");
@@ -649,12 +863,12 @@ function DocList({ docs, categories, onOpen }) {
   const list = useMemo(() => {
     const terms = norm(q).split(/\s+/).filter(Boolean);
     return docs
-      .filter((d) => (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) &&
+      .filter((d) => (area === "alle" || docArea(d) === area) && (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) &&
         (!taxOnly || d.taxRelevant) && (!unpaid || (d.direction === "ausgabe" && d.amount?.total && !d.paid)))
       .filter((d) => { if (!terms.length) return true; const h = haystack(d); return terms.every((t) => h.includes(t)); })
       .sort((a, b) => sort === "amount" ? (b.amount?.total || 0) - (a.amount?.total || 0)
         : (b.documentDate || b.createdAt).localeCompare(a.documentDate || a.createdAt));
-  }, [docs, q, cat, tag, year, sort, taxOnly, unpaid]);
+  }, [docs, q, cat, tag, year, sort, taxOnly, unpaid, area]);
 
   const counts = useMemo(() => Object.fromEntries(categories.map((c) => [c, docs.filter((d) => d.category === c).length])), [docs, categories]);
   const amt = (d) => d.amount?.total != null && (
@@ -669,6 +883,12 @@ function DocList({ docs, categories, onOpen }) {
         <button className="iconbtn" onClick={() => setView(view === "list" ? "grid" : "list")} aria-label="Ansicht">{view === "list" ? "▦" : "☰"}</button>
       </div>
 
+      <div className="seg areaseg">
+        {[["alle", "Alle", docs.length], ...Object.entries(AREAS).map(([k, [i, l]]) => [k, `${i} ${l}`, docs.filter((d) => docArea(d) === k).length])].map(([k, l, n]) => (
+          <button key={k} className={area === k ? "on" : ""} onClick={() => setArea(k)}>{l} <small>{n}</small></button>
+        ))}
+      </div>
+      {area === "sonstiges" && <p className="muted small" style={{ margin: "4px 2px 8px" }}>Dokumente in „Sonstiges“ zählen nicht in Übersicht, Budgets und Auswertungen.</p>}
       <div className="folders">
         <button className={!cat ? "folder on" : "folder"} onClick={() => setCat("")}><span>🗂️</span><b>Alle</b><small>{docs.length}</small></button>
         {categories.filter((c) => counts[c]).map((c) => (
@@ -866,7 +1086,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [] }) {
         <div className="sheet" onClick={() => setLetterFor(null)}>
           <div className="panel" onClick={(e) => e.stopPropagation()}>
             <div className="panelhead"><button className="link" onClick={() => setLetterFor(null)}>‹ Zurück</button><b>Kündigung</b><span /></div>
-            {!me.name && <p className="warn small">Tipp: Name und Adresse unter „Mehr“ eintragen, dann ist das Schreiben komplett.</p>}
+            {!me.name && <p className="warn small">Tipp: Name und Adresse unter „Einstellungen“ eintragen, dann ist das Schreiben komplett.</p>}
             <pre className="fulltext letter">{letter}</pre>
             <div className="actions">
               <button className="btn primary" onClick={() => copy(letter, notify)}>Kopieren</button>
@@ -886,10 +1106,9 @@ const shortD = (iso) => (iso ? new Date(iso + "T12:00").toLocaleDateString("de-A
 const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json,.xlsx,.xlsm,.xls,.pdf,image/*";
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
-function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx }) {
+function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc, setAcc, groups, toggleGroup }) {
   const [newAcc, setNewAcc] = useState(false);
   const cashAccs = accounts.filter((a) => a.kind === "cash");
-  const [acc, setAcc] = useState("");
   const [q, setQ] = useState("");
   const [month, setMonth] = useState("");
   const [imp, setImp] = useState(null);
@@ -918,8 +1137,8 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
     catch (e) { notify("Datei nicht lesbar: " + e.message); }
   }
 
-  const groups = [];
-  for (const t of list.slice(0, limit)) { const g = groups[groups.length - 1]; if (g && g.date === t.date) g.items.push(t); else groups.push({ date: t.date, items: [t] }); }
+  const dayGroups = [];
+  for (const t of list.slice(0, limit)) { const g = dayGroups[dayGroups.length - 1]; if (g && g.date === t.date) g.items.push(t); else dayGroups.push({ date: t.date, items: [t] }); }
 
   return (
     <div className="split">
@@ -996,9 +1215,13 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
       </aside>
       <div className="maincol">
       {!!accounts.length && (
+        <div className="tile mobile-only accphone">
+          <AccountTree groups={groups} txs={txs} selected={acc} onSelect={setAcc} onToggleGroup={toggleGroup} variant="card" />
+        </div>
+      )}
+      {!!accounts.length && (
         <div className="chips">
-          <button className={!acc ? "chip on" : "chip"} onClick={() => setAcc("")}>Alle Konten</button>
-          {accounts.map((a) => <button key={a.id} className={acc === a.id ? "chip on" : "chip"} onClick={() => setAcc(acc === a.id ? "" : a.id)}>{a.kind === "broker" ? "📈" : a.kind === "cash" ? "💶" : "🏦"} {a.name}</button>)}
+          <button className={!acc ? "chip on" : "chip"} onClick={() => setAcc("")}>{acc ? "✕ " + accName(acc) : "Alle Konten"}</button>
           <select className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
         </div>
       )}
@@ -1009,7 +1232,7 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
 
       {!!txs.length && <div className="searchbar"><span>🔍</span><input type="search" placeholder="Umsätze durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>}
 
-      {groups.map((g) => (
+      {dayGroups.map((g) => (
         <section key={g.date}>
           <h3>{new Date(g.date + "T12:00").toLocaleDateString("de-AT", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}</h3>
           <div className="dlist">
@@ -1030,7 +1253,7 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
       {acc && <button className="link red" style={{ marginTop: 16 }} onClick={() => confirm(`Konto „${accName(acc)}“ samt Umsätzen löschen?`) && (deleteAccount(acc), setAcc(""))}>Konto löschen</button>}
 
       </div>
-      {newAcc && <AccountSheet hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
+      {newAcc && <AccountSheet txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
       {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
       {txOpen && <TxSheet deleteTx={deleteTx} t={txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
     </div>
@@ -1369,39 +1592,49 @@ function CropEditor({ src, url, corners, onChange }) {
 /* ---------- Bargeld & manuelle Buchungen ---------- */
 function cashBalance(acc, txs) {
   // Mit Startbestand zählt nur, was ab dessen Datum passiert ist
-  const own = txs.filter((t) => t.accountId === acc.id && (!acc.openingDate || t.date >= acc.openingDate)).reduce((s, t) => s + t.amount, 0);
-  const atm = acc.atm ? txs.filter((t) => t.accountId !== acc.id && t.category === "Bargeld" && t.amount < 0 && (!acc.openingDate || t.date >= acc.openingDate)).reduce((s, t) => s - t.amount, 0) : 0;
+  const own = txs.filter((t) => t.accountId === acc.id && afterOpening(t, acc)).reduce((s, t) => s + t.amount, 0);
+  const atm = acc.atm ? txs.filter((t) => t.accountId !== acc.id && t.category === "Bargeld" && t.amount < 0 && afterOpening(t, acc)).reduce((s, t) => s - t.amount, 0) : 0;
   return (acc.opening || 0) + own + atm;
 }
 
-function AccountSheet({ onSave, onClose, hasAtmAccount }) {
+function AccountSheet({ init, onSave, onClose, onDelete, hasAtmAccount, txs = [] }) {
   useEsc(onClose);
-  const [kind, setKind] = useState("cash");
-  const [name, setName] = useState("Geldbörse");
-  const [opening, setOpening] = useState("");
-  const [atm, setAtm] = useState(!hasAtmAccount);
+  const [kind, setKind] = useState(init?.kind || "cash");
+  const [name, setName] = useState(init?.name ?? "Geldbörse");
+  const cur = init ? accountBalance(init, txs) : null;
+  const [opening, setOpening] = useState(cur != null ? String(cur.toFixed(2)).replace(".", ",") : "");
+  const [atm, setAtm] = useState(init ? !!init.atm : !hasAtmAccount);
+  const [iban, setIban] = useState(init?.iban || "");
+  const defaultName = (k) => (k === "cash" ? "Geldbörse" : k === "savings" ? "Sparbuch" : k === "card" ? "Kreditkarte" : k === "wallet" ? "PayPal" : "");
+  function save() {
+    const val = opening === "" ? null : Number(String(opening).replace(/\./g, "").replace(",", "."));
+    const changed = !init || (cur == null ? val != null : val == null || Math.abs(val - cur) > 0.004);
+    const base = { ...(init || { id: uid() }), kind, name: name.trim(), iban: iban.replace(/\s/g, "").toUpperCase() };
+    if (kind === "cash") base.atm = atm;
+    if (changed) Object.assign(base, val == null ? { opening: kind === "cash" ? 0 : null, openingDate: "", openingAt: "" } : { opening: val, openingDate: todayISO(), openingAt: new Date().toISOString() });
+    onSave(base);
+  }
   return (
     <div className="sheet" onClick={onClose}>
       <div className="panel small-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="panelhead"><button className="link" onClick={onClose}>Abbrechen</button><b>Neues Konto</b>
-          <button className="btn primary" disabled={!name.trim()} onClick={() => onSave({ id: uid(), kind, name: name.trim(), iban: "",
-            ...(kind === "cash" ? { opening: Number(String(opening).replace(",", ".")) || 0, openingDate: todayISO(), atm } : {}) })}>Anlegen</button></div>
+        <div className="panelhead"><button className="link" onClick={onClose}>Abbrechen</button><b>{init ? "Konto bearbeiten" : "Neues Konto"}</b>
+          <button className="btn primary" disabled={!name.trim()} onClick={save}>{init ? "Speichern" : "Anlegen"}</button></div>
         <fieldset>
           <legend>Art</legend>
-          <div className="seg">
-            {[["cash", "💶 Bargeld"], ["bank", "🏦 Bankkonto"], ["broker", "📈 Depot"]].map(([k, l]) => (
-              <button key={k} className={kind === k ? "on" : ""} onClick={() => { setKind(k); if (name === "Geldbörse" || !name) setName(k === "cash" ? "Geldbörse" : ""); }}>{l}</button>
+          <div className="kindgrid">
+            {Object.entries(KIND_DEFS).map(([k, [i, l]]) => (
+              <button key={k} className={kind === k ? "on" : ""} onClick={() => { if (!init && (!name || name === defaultName(kind))) setName(defaultName(k)); setKind(k); }}><span>{i}</span>{l}</button>
             ))}
           </div>
-          <label>Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "cash" ? "Geldbörse" : "z. B. BAWAG Giro"} /></label>
-          {kind === "cash" && (
-            <>
-              <label>Aktueller Bargeldbestand<input inputMode="decimal" placeholder="z. B. 120,00" value={opening} onChange={(e) => setOpening(e.target.value)} /></label>
-              <label className="check"><input type="checkbox" checked={atm} onChange={(e) => setAtm(e.target.checked)} /> Bankomat-Behebungen aus importierten Konten automatisch als Einzahlung zählen</label>
-            </>
-          )}
-          {kind !== "cash" && <p className="muted small">Umsätze kommen per Import dazu oder du buchst sie von Hand.</p>}
+          <label>Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. BAWAG Giro, Sparbuch Raika" /></label>
+          {kind !== "cash" && <label>IBAN (optional)<input value={iban} onChange={(e) => setIban(e.target.value)} placeholder="AT.." /></label>}
+          <label>{kind === "cash" ? "Bargeldbestand jetzt" : "Kontostand jetzt (optional)"}
+            <input inputMode="decimal" placeholder={kind === "cash" ? "z. B. 120,00" : "leer = kein Kontostand anzeigen"} value={opening} onChange={(e) => setOpening(e.target.value)} />
+          </label>
+          <p className="muted small">Ab jetzt wird der Stand mit jeder neuen Buchung fortgeschrieben.</p>
+          {kind === "cash" && <label className="check"><input type="checkbox" checked={atm} onChange={(e) => setAtm(e.target.checked)} /> Bankomat-Behebungen aus importierten Konten automatisch als Einzahlung zählen</label>}
         </fieldset>
+        {onDelete && <button className="btn danger" style={{ marginTop: 14 }} onClick={onDelete}>🗑 Konto löschen</button>}
       </div>
     </div>
   );
@@ -1496,6 +1729,9 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
         {url && (doc.mimeType.startsWith("image/")
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
           : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b>PDF-Dokument</b><small className="muted block">{doc.fileName}</small><button className="btn" style={{ marginTop: 8 }} onClick={() => window.open(url)}>Öffnen</button></div></div>)}
+        <div className="seg areaseg" style={{ margin: "6px 0 10px" }}>
+          {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={docArea(d) === k ? "on" : ""} onClick={() => set({ area: k })}>{i} {l}</button>)}
+        </div>
         <div className="labels" style={{ marginBottom: 4 }}><Label c={d.category} />{d.taxRelevant && <span className="label tax">Steuer</span>}{d.contract && <span className="label">Vertrag</span>}</div>
 
         {doc.status === "error" && <div className="err">Analyse fehlgeschlagen: {doc.error}</div>}
@@ -1609,7 +1845,7 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
 }
 
 /* ---------- Einstellungen, Budgets, Papierkorb, Backup ---------- */
-function Settings({ txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+function Settings({ nav, setNav, deleteAccount, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [catText, setCatText] = useState(categories.join("\n"));
   const [usage, setUsage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1650,6 +1886,8 @@ function Settings({ txs, setTxs, accounts, setAccounts, rules, setRules, setTab,
         <span className="caticon" style={{ width: 40, height: 40, background: "#e5484d22", fontSize: 18 }}>⏰</span>
         <div className="grow"><b>Fristen</b><small className="muted block">Zahlungen, Kündigungen, Termine</small></div><span className="muted">›</span>
       </div>
+
+      <NavSettings nav={nav} setNav={setNav} accounts={accounts} setAccounts={setAccounts} txs={txs} deleteAccount={deleteAccount} notify={notify} />
 
       <fieldset>
         <legend>Budgets pro Monat</legend>
@@ -1804,8 +2042,8 @@ select.chip{padding:6px 10px;font-size:13px;-webkit-appearance:none;appearance:n
 .filters{display:flex;gap:8px;align-items:center;margin:4px 0 8px}
 .fab{position:fixed;right:20px;bottom:calc(env(safe-area-inset-bottom) + 80px);width:58px;height:58px;border-radius:50%;border:0;background:var(--acc);color:#fff;font-size:30px;box-shadow:0 8px 22px #0b63f659;z-index:5}
 nav.bottom{position:fixed;left:0;right:0;bottom:0;display:flex;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:4}
-nav.bottom button{flex:1;background:none;border:0;color:var(--mut);font:inherit;font-size:10.5px;padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
-nav.bottom button span{font-size:20px;filter:grayscale(1);opacity:.7}nav.bottom button.on{color:var(--acc);font-weight:600}nav.bottom button.on span{filter:none;opacity:1}
+nav.bottom>button{flex:1;background:none;border:0;color:var(--mut);font:inherit;font-size:10.5px;padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
+nav.bottom>button span{font-size:20px;filter:grayscale(1);opacity:.7}nav.bottom>button.on{color:var(--acc);font-weight:600}nav.bottom>button.on span{filter:none;opacity:1}
 .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--red);color:#fff;border-radius:999px;font-size:10px;padding:1px 6px}
 .btn{display:inline-block;text-decoration:none;background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:12px;padding:9px 14px;font:inherit;font-size:14px}
 .btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}.btn.danger{color:var(--red)}.btn:disabled{opacity:.4}
@@ -1846,7 +2084,7 @@ section h3{font-size:12px;color:var(--mut);margin:18px 4px 8px;text-transform:up
 .addbtn,.brand,.desk-only{display:none!important}
 .app{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
 nav.bottom{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
-nav.bottom button{min-height:52px;cursor:pointer}
+nav.bottom>button{min-height:52px;cursor:pointer}
 button,select,a,input[type=checkbox]{touch-action:manipulation}
 button,.ditem,.gcard,.folder,.frow.click,.chip{cursor:pointer}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px}
@@ -1858,13 +2096,13 @@ img{max-width:100%}
   .gcard,.folder,.importbtn,.tile.alert,.btn,.chip{transition:transform .15s,box-shadow .15s,border-color .15s,filter .15s}
   .gcard:hover,.folder:hover,.importbtn:hover,.tile.alert:hover{transform:translateY(-1px);box-shadow:0 2px 4px #0f1b2d14,0 12px 28px #0f1b2d1f}
   .btn:hover{filter:brightness(1.06)}.chip:hover{border-color:var(--acc)}
-  nav.bottom button:hover{color:var(--txt)}
+  nav.bottom>button:hover{color:var(--txt)}
 }
 /* Kleine Phones (iPhone SE, kleine Android) */
 @media (max-width:359px){
   .top h1{font-size:25px}.hero{padding:16px 14px 12px}.hero-v{font-size:28px}
   .hero-row,.stats{flex-wrap:wrap}.hero-row>div,.stats>div{flex:1 1 40%}
-  nav.bottom button{font-size:9.5px}.folder{width:84px}
+  nav.bottom>button{font-size:9.5px}.folder{width:84px}
   .donutwrap{flex-direction:column;align-items:stretch}.donut{align-self:center}
   .grid{gap:8px}.gthumb{height:118px}.grid2{grid-template-columns:1fr}
   .dlrow{grid-template-columns:auto 1fr auto}.dlrow input[type=date]{grid-column:1/-1}
@@ -1873,7 +2111,6 @@ img{max-width:100%}
 @media (min-width:700px){
   .app{max-width:1100px}
   .top h1{font-size:32px}
-  .desk-only{display:flex!important}
   .dash{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
   .dash>.hero,.dash>.tile.alert,.dash>.empty,.dash>p{grid-column:1/-1}
   .dash .tile,.dash .hero{margin:0}
@@ -1890,35 +2127,55 @@ img{max-width:100%}
   .preview{max-height:460px}
 }
 /* Mac / Desktop-Browser: Seitenleiste */
-@media (min-width:1024px){
-  .app{max-width:none;margin:0;padding:24px 40px 48px calc(248px + 40px)}
+/* Seitenleiste ab Tablet (iPad hoch: 768–1023 schmal, ab 1024 breit) */
+@media (min-width:768px){
+  :root{--side:224px}
+  .app{max-width:none;margin:0;padding:22px 28px 48px calc(var(--side) + 28px)}
   main,.top{max-width:1240px}
-  nav.bottom{top:0;bottom:0;right:auto;width:248px;flex-direction:column;align-items:stretch;gap:2px;padding:22px 12px;border-top:0;border-right:1px solid var(--line);background:var(--card)}
-  .brand{display:flex!important;align-items:center;gap:10px;padding:4px 14px 24px;font-size:18px}.brand span{font-size:24px}
-  nav.bottom button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;font-size:15px;padding:10px 14px;border-radius:12px;min-height:44px}
-  nav.bottom button span{font-size:19px}
-  nav.bottom button.on{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+  nav.bottom{top:0;bottom:0;right:auto;width:var(--side);flex-direction:column;align-items:stretch;gap:2px;padding:18px 10px 24px;border-top:0;border-right:1px solid var(--line);background:var(--card);overflow-y:auto}
+  .brand{display:flex!important;align-items:center;gap:10px;padding:2px 10px 20px}
+  .brand img{width:38px;height:38px;border-radius:10px;box-shadow:0 2px 8px #0b63f633}
+  .brand b{display:block;font-size:19px;letter-spacing:-.01em}.brand small{display:block;color:var(--mut);font-size:11px;margin-top:-1px}
+  nav.bottom>button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;font-size:15px;padding:9px 12px;border-radius:12px;min-height:42px}
+  nav.bottom>button span{font-size:19px}
+  nav.bottom>button.on{background:color-mix(in srgb,var(--acc) 12%,transparent)}
   .badge{position:static;margin-left:auto}
-  .addbtn{display:inline-block!important}.fab{display:none}
-  .top h1{margin:4px 0 22px}
+  .subtog{margin-left:auto;font-style:normal;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;color:var(--mut);transition:transform .15s;font-size:16px}
+  .badge+.subtog{margin-left:4px}
+  .subtog.open{transform:rotate(90deg)}.subtog:hover{background:var(--card2);color:var(--txt)}
+  .subnav{display:block;margin:0 0 6px 14px;padding-left:8px;border-left:2px solid var(--line)}
+  .side-hide{display:none!important}
+  .mobile-only{display:none!important}
+  .addbtn{display:flex!important}.fab{display:none}
+  .top h1{margin:4px 0 20px}
+  .split{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+  .split>.side{order:2;position:sticky;top:22px}.split>.maincol{order:1}
+  .side .hero-v{font-size:30px}
+  .toast{bottom:32px;left:calc(50% + var(--side) / 2)}
+}
+@media (min-width:768px) and (max-width:1023px){
+  .dash{grid-template-columns:1fr}
+  .split{grid-template-columns:1fr}.split>.side{order:0;position:static}
+  .addbtn .btn:not(.primary){display:none}
+}
+@media (min-width:1024px){
+  :root{--side:252px}
+  .app{padding:24px 40px 48px calc(var(--side) + 40px)}
+  .split{grid-template-columns:minmax(0,1fr) 360px;gap:22px}
   .dash{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
   .tab-contracts .dash{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .split{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:start}
-  .split>.side{order:2;position:sticky;top:24px}.split>.maincol{order:1}
-  .side .hero-v{font-size:32px}
   .tab-docs .folders{flex-wrap:wrap;overflow:visible}
   .tab-docs .dlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr))}
   .tab-docs .ditem+.ditem{border-top:0}.tab-docs .ditem{border-bottom:1px solid var(--line)}
   .sheet{justify-content:flex-end;align-items:stretch;padding:0;background:#0f1b2d40}
   .panel{max-width:580px;max-height:none;height:100dvh;border-radius:0;box-shadow:-24px 0 60px #0003;animation:slidein .2s ease-out;padding:0 24px 32px}
-  .toast{bottom:32px;left:calc(50% + 124px)}
   .settings{max-width:1100px}
 }
 @media (min-width:1600px){ .dash{grid-template-columns:repeat(4,minmax(0,1fr))} .dash>.hero{grid-column:1/3}.dash>.tile.alert{grid-column:3/5;align-self:stretch} }
 /* Phone quer */
 @media (max-height:500px) and (orientation:landscape){
   .top h1{font-size:24px;margin:6px 2px 10px}.hero{padding:12px 16px}.hero-v{font-size:26px;margin-bottom:8px}
-  nav.bottom button{min-height:44px;padding:4px 0}nav.bottom button span{font-size:17px}
+  nav.bottom>button{min-height:44px;padding:4px 0}nav.bottom>button span{font-size:17px}
   .fab{width:50px;height:50px;font-size:26px;bottom:calc(env(safe-area-inset-bottom) + 62px)}
   .dash{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}.dash>.hero,.dash>.tile.alert{grid-column:1/-1}.dash .tile{margin:0}
   .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}.split>.side{position:sticky;top:8px}
@@ -1952,5 +2209,35 @@ img{max-width:100%}
 @keyframes spin{to{transform:rotate(360deg)}}
 .bigamount{font-size:34px;font-weight:700;text-align:center;border:0;background:none;margin:14px 0 4px;padding:8px}
 @media (min-width:700px){.small-panel{max-width:520px}.fabmenu{bottom:calc(env(safe-area-inset-bottom) + 148px)}}
-@media (min-width:1024px){.addbtn{display:flex!important}}
+
+/* Fido: Seitenleiste-Unterpunkte, Kontengruppen, Bereiche */
+.side-only{display:none}
+@media (max-width:767px){.ph-hide{display:none!important}}
+@media (min-width:768px){.subnav.side-only{display:block}.subtog.side-only{display:inline-flex}}
+.acctree{display:flex;flex-direction:column}
+.accdiv{height:1px;background:var(--line);margin:6px 8px}
+.acctitle{display:flex;align-items:center;gap:6px;width:100%;background:none;border:0;color:var(--mut);font:inherit;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:8px 8px 4px;text-align:left;cursor:pointer}
+.acctitle small{font-weight:600;background:var(--card2);border-radius:999px;padding:0 6px}
+.chev{display:inline-block;transition:transform .15s;font-size:13px;width:10px}.chev.open{transform:rotate(90deg)}
+.accitem{display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;color:var(--txt);font:inherit;font-size:13.5px;padding:7px 8px;border-radius:10px;text-align:left;cursor:pointer;min-height:34px}
+.accitem:hover{background:var(--card2)}.accitem.on{background:color-mix(in srgb,var(--acc) 12%,transparent);color:var(--acc);font-weight:600}
+.accitem .ki{font-size:15px;width:20px;text-align:center}.accitem .an{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.accitem .ab{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.acctree.card .accitem{font-size:15px;padding:10px 6px;min-height:44px}.acctree.card .acctitle{font-size:12px;padding:10px 6px 4px}
+.acctree.card .accitem .ab{font-size:14px;font-weight:600}
+.accphone{padding:6px 10px}
+.areaseg{margin-bottom:10px;overflow-x:auto}.areaseg button{white-space:nowrap}.areaseg small{opacity:.6;margin-left:2px}
+.kindgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}
+.kindgrid button{display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--card2);border:1.5px solid transparent;border-radius:12px;padding:10px 4px;font:inherit;font-size:12px;color:var(--txt);cursor:pointer}
+.kindgrid button span{font-size:22px}.kindgrid button.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--card))}
+.navcfg{display:grid;grid-template-columns:28px minmax(0,1fr) auto auto 40px 40px;gap:6px;align-items:center;margin-top:8px}
+.navcfg input:not([type=checkbox]){padding:8px 10px}.navcfg .ki{font-size:18px;text-align:center}
+.mini{display:flex;align-items:center;gap:4px;margin:0;font-size:12px;color:var(--mut)}.mini input{width:auto;margin:0}
+.grpcfg{background:var(--card2);border-radius:14px;padding:10px;margin-top:10px}
+.grphead{display:flex;gap:6px;align-items:center}.grphead input{padding:8px 10px;font-weight:600}
+.acccfg{display:flex;gap:6px;align-items:center;margin-top:6px;background:var(--card);border-radius:10px;padding:4px 6px}
+.acccfg .ki{font-size:17px;width:24px;text-align:center}.link.left{text-align:left;color:var(--txt)}
+.movesel{width:auto;max-width:130px;padding:6px 8px;font-size:13px}
+.settings>.span2{grid-column:1/-1}
+@media (max-width:420px){.navcfg{grid-template-columns:24px minmax(0,1fr) 36px 36px}.navcfg .mini{grid-row:2;grid-column:2/span 1}.navcfg .mini+.mini{grid-column:3/span 2}.movesel{max-width:100px}}
 `;

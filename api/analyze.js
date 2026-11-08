@@ -47,6 +47,10 @@ const tool = (categories) => ({
         type: "string", enum: ["ausgabe", "einnahme", "keine"],
         description: "ausgabe = ich muss zahlen / habe bezahlt (Rechnung, Kassabon); einnahme = Geld kommt zu mir (Lohnzettel, Gutschrift, Steuerrückzahlung); keine = reine Info (Kontoauszug, Vertrag ohne Rechnung)"
       },
+      area: {
+        type: "string", enum: ["finanzen", "vertraege", "sonstiges"],
+        description: "finanzen = Rechnung, Kassabon, Beleg, Lohnzettel, Kontoauszug, alles mit Geldfluss für die Ausgaben-/Einnahmen-Analyse; vertraege = Vertrag, Polizze, AGB, Vertragsänderung, Kündigung; sonstiges = alles ohne Bezug zur Finanzanalyse (Zeugnis, Ausweis, Arztbrief, Bedienungsanleitung, private Briefe, Behördeninfo ohne Betrag)"
+      },
       tax_relevant: { type: "boolean", description: "Relevant für die österreichische Arbeitnehmerveranlagung/Steuer (Lohnzettel L16, Werbungskosten, Sonderausgaben, außergewöhnliche Belastungen, Spenden, Kirchenbeitrag, Handwerkerbonus, Bescheide vom Finanzamt …)" },
       payment: {
         type: ["object", "null"],
@@ -75,7 +79,7 @@ const tool = (categories) => ({
       },
       full_text: { type: "string", description: "Der vollständige lesbare Text des Dokuments (für die Volltextsuche), max. ca. 8000 Zeichen" }
     },
-    required: ["title", "category", "doc_type", "tags", "summary", "deadlines", "direction", "tax_relevant", "full_text"]
+    required: ["title", "category", "doc_type", "tags", "summary", "deadlines", "direction", "area", "tax_relevant", "full_text"]
   }
 });
 
