@@ -375,6 +375,7 @@ const ls = {
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
 
+const BACKUP_SKIP = /^(appToken|pending|openSettingsSec|win:|scanFilter)/;
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -4075,7 +4076,10 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
     try {
       const out = [];
       for (const d of docs) { const b = await db.getFile(d.id); out.push({ doc: d, file: b ? await blobToBase64(b) : null }); }
-      download(new Blob([JSON.stringify({ version: 4, exported: new Date().toISOString(), categories, nav, budgets, accounts, rules, txs, items: out })], { type: "application/json" }),
+      // alle App-Einstellungen und Firmendaten (Rechnungen, Kunden, Artikel, Verträge, Design …) – ohne Zugangscode und Zwischenstände
+      const store = {};
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!BACKUP_SKIP.test(k)) store[k] = localStorage.getItem(k); }
+      download(new Blob([JSON.stringify({ version: 5, exported: new Date().toISOString(), categories, nav, budgets, accounts, rules, txs, store, items: out })], { type: "application/json" }),
         `dokumente-backup-${todayISO()}.json`);
     } finally { setBusy(false); }
   }
@@ -4091,6 +4095,11 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
       if (j.rules) setRules(j.rules);
       if (j.txs) { await db.putTxs(j.txs); setTxs(await db.allTx()); }
       setDocs(await db.allDocs());
+      if (j.store) {
+        for (const [k, v] of Object.entries(j.store)) if (!BACKUP_SKIP.test(k)) try { localStorage.setItem(k, v); } catch {}
+        notify(`${n} Dokumente + Einstellungen, Rechnungen, Kunden importiert – App wird neu geladen`);
+        setTimeout(() => location.reload(), 1200); return;
+      }
       notify(`${n} Dokumente importiert`);
     } catch (e) { notify("Import fehlgeschlagen: " + e.message); }
     finally { setBusy(false); }
@@ -4181,9 +4190,9 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
         </ul>
       </SetSec></>,
     "backup": <><SetSec id="backup" title="Backup">
-        <p className="muted small">Die Dokumente liegen nur in diesem Browser auf diesem Gerät. Regelmäßig sichern (z. B. in iCloud Drive) – darüber auch auf ein anderes Gerät übertragen.</p>
+        <p className="muted small">Das Backup enthält Dokumente, Umsätze, Konten sowie Rechnungen, Kunden, Artikel, Verträge, Firmendaten und alle Einstellungen. Die Daten liegen nur in diesem Browser auf diesem Gerät. Regelmäßig sichern (z. B. in iCloud Drive) – darüber auch auf ein anderes Gerät übertragen.</p>
         <div className="actions">
-          <button className="btn" disabled={busy || (!docs.length && !txs.length)} onClick={exportBackup}>⬇︎ Backup exportieren</button>
+          <button className="btn" disabled={busy} onClick={exportBackup}>⬇︎ Backup exportieren</button>
           <button className="btn" disabled={busy} onClick={() => importRef.current.click()}>⬆︎ Backup importieren</button>
         </div>
         <input ref={importRef} type="file" accept="application/json" hidden onChange={(e) => { e.target.files[0] && importBackup(e.target.files[0]); e.target.value = ""; }} />
@@ -4768,8 +4777,16 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
               <label>Bezahlt am<input type="date" value={inv.paidAt || todayISO()} onChange={(e) => setPay({ paidAt: e.target.value })} /></label>
               <label>Zahlungsart<select value={inv.payMethod || "Überweisung"} onChange={(e) => setPay({ payMethod: e.target.value })}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select></label>
             </div>}
+            {paid && !locked && accounts.length > 0 && (
+              <label>Auf Konto buchen<select value={inv.prePaidAccount ?? (ls.get("payAccount", "") || accounts.find((x) => x.kind === "bank")?.id || "")} onChange={(e) => {
+                const a = accounts.find((x) => x.id === e.target.value);
+                set({ prePaidAccount: e.target.value, ...(a?.kind === "cash" ? { payMethod: "Bar" } : inv.payMethod === "Bar" ? { payMethod: "Überweisung" } : {}) });
+              }}>
+                <option value="">– ohne Buchung –</option>
+                {accounts.filter((a) => a.kind !== "broker").map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}
+              </select></label>)}
             {locked && paid && inv.paidAccount && <small className="block" style={{ marginBottom: 4 }}>🔗 Gebucht auf „{accounts.find((a) => a.id === inv.paidAccount)?.name || "Konto"}“{inv.paidAmount ? " · " + fmtMoney(inv.paidAmount) : ""}</small>}
-            <small className="muted">{locked ? (paid ? "Wird sofort gespeichert." : "„Bezahlt“ öffnet das Buchen des Zahlungseingangs.") : paid ? "Die Rechnung wird beim Ausstellen gleich als bezahlt geführt – auf dem PDF steht „Betrag dankend erhalten“ statt Zahlungsaufforderung." : "Zahlungsaufforderung mit Frist und QR-Code wird gedruckt."}</small>
+            <small className="muted">{locked ? (paid ? "Wird sofort gespeichert." : "„Bezahlt“ öffnet das Buchen des Zahlungseingangs.") : paid ? "Beim Ausstellen wird die Rechnung als bezahlt geführt und – falls ein Konto gewählt ist – der Zahlungseingang dort als Einnahme gebucht. Auf dem PDF steht „Betrag dankend erhalten“." : "Zahlungsaufforderung mit Frist und QR-Code wird gedruckt."}</small>
           </fieldset>
         );
       })()}
@@ -4917,7 +4934,19 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
       notify?.(`Wiederkehrend: nächster Entwurf am ${fmtDate(t.next)}`);
     }
   };
-  const finalize = (inv) => setList((l) => {
+  const finalize = (inv) => {
+    const accId = inv.prePaid ? (inv.prePaidAccount ?? (ls.get("payAccount", "") || book?.accounts.find((x) => x.kind === "bank")?.id || "")) : "";
+    finalizeList(inv);
+    if (accId && book && inv.kind === "rechnung" && book.accounts.some((a) => a.id === accId)) {
+      setTimeout(async () => {
+        const cur = ls.get("invoices", []).find((x) => x.id === inv.id) || inv;
+        ls.set("payAccount", accId);
+        const txId = await book.create({ inv: cur, accountId: accId, date: cur.paidAt || cur.date, amount: invTotal(cur), method: cur.payMethod });
+        patch(inv.id, { paidTx: txId, paidTxCreated: true, paidAccount: accId, paidAmount: invTotal(cur) });
+      }, 50);
+    }
+  };
+  const finalizeList = (inv) => setList((l) => {
     const number = nextInvNumber(l, inv.kind, co, inv.date);
     notify?.(`${inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${number} ausgestellt`);
     return l.map((x) => (x.id === inv.id ? { ...x, number, status: x.prePaid && x.kind === "rechnung" ? "bezahlt" : "offen", paidAt: x.prePaid ? x.paidAt || x.date : x.paidAt, issuedAt: new Date().toISOString() } : x));
@@ -5370,7 +5399,7 @@ function ContactsPage({ setTab, req = 0 }) {
         <span className="grow" />
         <small className="muted">{list.length} Kontakt{list.length === 1 ? "" : "e"}</small>
       </div>
-      {!("contacts" in navigator && "select" in (navigator.contacts || {})) && <p className="muted small hint">📱 <b>iPhone:</b> Kontakte-App → Kontakt öffnen → „Kontakt teilen“ → „In Dateien sichern“ (mehrere: in der Liste mit zwei Fingern markieren → teilen). Dann hier „Aus Handy-Kontakten“ und die .vcf-Datei wählen. <b>Mac:</b> Kontakte → Ablage → Exportieren → vCard. <b>Android/Chrome:</b> Kontakte werden direkt ausgewählt.</p>}
+      {!("contacts" in navigator && "select" in (navigator.contacts || {})) && <p className="muted small hint">📱 <b>iPhone – direkt aus dem Adressbuch:</b> Einstellungen → Apps → Safari → Erweitert → Feature Flags → „Contact Picker API“ einschalten, dann FinDocu neu öffnen. Danach öffnet „Aus Handy-Kontakten“ die Kontaktauswahl des iPhones. <b>Ohne diese Einstellung:</b> Kontakte-App → Kontakte markieren → Teilen → „In Dateien sichern“ und die .vcf-Datei hier wählen. <b>Mac:</b> Kontakte → Ablage → Exportieren → vCard. <b>Android/Chrome:</b> funktioniert direkt.</p>}
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Name, E-Mail, Telefon, Ort suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <div className="chips invfilter">
         <button className={"chip" + (type === "alle" ? " on" : "")} onClick={() => setType("alle")}>Alle <small>({list.length})</small></button>
@@ -6794,4 +6823,8 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
 .paycands{display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:260px;overflow:auto}
 .paycands .frow{gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:8px 10px}.paycands .frow.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .paycands input{width:auto;margin:0}
+
+/* v0.25.1: Einklapp-Pfeil nie in der Handy-Leiste */
+nav.bottom>button.sidetoggle{display:none}
+@media (min-width:768px){nav.bottom>button.sidetoggle.side-only{display:flex}}
 `;

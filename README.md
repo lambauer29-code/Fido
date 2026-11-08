@@ -2,6 +2,16 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.25.2
+
+- Rechnung schreiben: Bei „Zahlung: Bezahlt“ gibt es jetzt **„Auf Konto buchen“** (Bankkonto, Bargeld … oder ohne Buchung). Beim Ausstellen wird der Zahlungseingang dort als Einnahme gebucht und mit der Rechnung verknüpft. Vorausgewählt: zuletzt benutztes Konto bzw. erstes Bankkonto; Bargeld setzt die Zahlungsart auf „Bar“.
+
+## v0.25.1
+
+- **Fix Backup**: Das Backup enthielt nur Dokumente, Umsätze, Konten, Budgets und Regeln – Rechnungen, Kunden, Artikel, Verträge, Firmendaten, Design, Mahnwesen und Einstellungen fehlten. Jetzt ist alles enthalten (ohne Zugangscode); beim Import wird die App danach neu geladen. Export auch ohne Dokumente möglich.
+- **Fix Handy**: In der unteren Leiste erschien der Einklapp-Pfeil der Seitenleiste als zusätzlicher Reiter.
+- Kunden: Anleitung für den direkten Kontakt-Import am iPhone (Safari-Feature-Flag „Contact Picker API“).
+
 ## v0.25.0
 
 - **Rechnungen mit Konten verknüpft – Zahlungseingang verbuchen**: „Als bezahlt markieren“ (Rechnungen, Mahnungen, „Bezahlt“ im Rechnungsfenster) öffnet „Zahlungseingang“:
