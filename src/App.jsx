@@ -2799,6 +2799,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
   const [vid, setVid] = useLsState("fbVid", "");
   const v = vehicles.find((x) => x.id === vid) || vehicles[0];
   const [view, setView] = useState("verlauf");
+  const [viewCfg, setViewCfg] = useLsState("fbViews", { order: [], hidden: [] });
   const [edit, setEdit] = useState(null), [vEdit, setVEdit] = useState(null), [remEdit, setRemEdit] = useState(null);
   const upd = (p) => setFb((o) => ({ ...FB_EMPTY, ...o, ...p(o) }));
   // Ablagefeld: Belege ablegen → KI liest aus → Eintrag (Tanken/Laden/Ausgabe) wird angelegt und mit passender Kontobuchung verknüpft
@@ -2925,7 +2926,9 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
       {prevId === x.id && docOf(x) && <div className="txprev"><DocPreview d={docOf(x)} onOpen={() => onOpen(docOf(x).id)} /></div>}
       </div>);
   };
-  const VIEWS = [["verlauf", "Verlauf"], ["fuel", "Tanken"], ["trip", "Fahrten"], ["expense", "Ausgaben"], ["rem", `Erinnerungen${dueN ? ` (${dueN})` : ""}`], ["bericht", "Berichte"]];
+  const VIEWS_ALL = [["verlauf", "Verlauf"], ["fuel", "Tanken"], ["trip", "Fahrten"], ["expense", "Ausgaben"], ["rem", `Erinnerungen${dueN ? ` (${dueN})` : ""}`], ["bericht", "Berichte"]];
+  const VIEWS = VIEWS_ALL;
+  if (viewCfg.hidden.includes(view) && VIEWS_ALL.some(([k]) => !viewCfg.hidden.includes(k))) setTimeout(() => setView(([...viewCfg.order, ...VIEWS_ALL.map(([k]) => k)].find((k) => !viewCfg.hidden.includes(k)))), 0);
   return (
     <div className="fbpage">
       <div className="chips anaaccs">
@@ -2966,10 +2969,10 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
           <button onClick={() => setRemEdit({ vid: v.id })}><span>⏰</span>Erinnerung</button>
         </div>
       </section>
-      {dueN > 0 && view !== "rem" && (
+      {dueN > 0 && (
         <div className="tile alert click" onClick={() => setView("rem")}><span style={{ fontSize: 24 }}>⏰</span><div className="grow"><b>{dueN} Erinnerung{dueN > 1 ? "en" : ""} fällig</b><small>{myRem.filter((r) => remState(r).cls).map((r) => r.title).join(", ")}</small></div></div>
       )}
-      <div className="seg fbseg">{VIEWS.map(([k, l]) => <button key={k} className={view === k ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div>
+      <ChipBar seg storeKey="fbViews" cfg={viewCfg} setCfg={setViewCfg} className="fbseg" items={VIEWS.map(([k, l]) => ({ k, label: l, el: <button className={view === k ? "on" : ""} onClick={() => setView(k)}>{l}</button> }))} />
       {["verlauf", "fuel", "trip", "expense"].includes(view) && (
         <section className="tile">
           {view === "trip" && trips.length > 0 && <div className="tilehead"><b>Fahrten {year}</b><button className="link" onClick={exportCsv}>⬇︎ CSV fürs Finanzamt</button></div>}
@@ -4138,7 +4141,7 @@ function ImportBar({ title, sub, done, total }) {
   );
 }
 /* Filter-/Chipleiste: Einträge seitlich verschiebbar und ein-/ausblendbar (gespeichert unter storeKey) */
-function ChipBar({ storeKey, items, lead = null, className = "", cfg: extCfg, setCfg: extSet }) {
+function ChipBar({ storeKey, items, lead = null, className = "", cfg: extCfg, setCfg: extSet, seg = false }) {
   const [ownCfg, ownSet] = useLsState(storeKey, { order: [], hidden: [] });
   const cfg = extCfg || ownCfg, setCfg = extSet || ownSet;
   const [edit, setEdit] = useState(false), [dragK, setDragK] = useState(null);
@@ -4160,7 +4163,7 @@ function ChipBar({ storeKey, items, lead = null, className = "", cfg: extCfg, se
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   };
   return (
-    <div className={"chips chipbar " + className + (edit ? " chipedit" : "")}>
+    <div className={(seg ? "seg segbar " : "chips chipbar ") + className + (edit ? " chipedit" : "")}>
       {!edit && lead}
       {order.map((k) => edit
         ? <span key={k} data-chipk={k} className={"chipcfg" + (hidden.has(k) ? " off" : "") + (dragK === k ? " drag" : "")} onPointerDown={(e) => !e.target.closest("button") && startDrag(e, k)}>
@@ -4168,7 +4171,7 @@ function ChipBar({ storeKey, items, lead = null, className = "", cfg: extCfg, se
             <button className="chipeye" title={hidden.has(k) ? "Einblenden" : "Ausblenden"} onClick={() => setCfg((c) => ({ ...c, hidden: hidden.has(k) ? c.hidden.filter((x) => x !== k) : [...c.hidden, k] }))}>{hidden.has(k) ? <IcoEyeOff /> : <IcoEye />}</button>
           </span>
         : !hidden.has(k) && <React.Fragment key={k}>{defs[k].el}</React.Fragment>)}
-      <button className={"chip chipset" + (edit ? " on" : "")} title="Leiste anordnen und ein-/ausblenden" onClick={() => setEdit(!edit)}>{edit ? "✓ Fertig" : "⇄"}</button>
+      <button className={(seg ? "segset" : "chip chipset") + (edit ? " on" : "")} title="Leiste anordnen und ein-/ausblenden" onClick={() => setEdit(!edit)}>{edit ? "✓ Fertig" : "⇄"}</button>
       {edit && <small className="muted chiphint">Am Griff ⠿ ziehen zum Sortieren · Auge zum Ein-/Ausblenden</small>}
     </div>
   );
@@ -9491,4 +9494,9 @@ html,body{min-height:100%}
 
 .chips:not(.chipbar)>.expmenu{margin-left:14px}.chips>.fbdropchip+.expmenu{margin-left:0}
 .invbar>.expmenu{margin-left:8px}
+
+.seg.segbar{flex-wrap:wrap;gap:4px;align-items:stretch}.seg.segbar>button{flex:1 1 auto}
+.seg.segbar>.segset{flex:0 0 auto;background:none;border:0;color:var(--mut);font:inherit;font-size:14px;padding:6px 12px;border-radius:12px;cursor:pointer}
+.seg.segbar>.segset.on{background:var(--card2);color:var(--acc);font-weight:600}
+.seg.segbar.chipedit{padding:8px;gap:8px}.seg.segbar.chipedit>.chipcfg{flex:0 0 auto}.seg.segbar>.chiphint{width:100%;padding:2px 6px}
 `;

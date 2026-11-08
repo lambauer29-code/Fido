@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.53.1
+- Fahrtenbuch: Hinweis „Erinnerungen fällig“ bleibt auch im Bereich Erinnerungen stehen – die Leiste springt beim Umschalten nicht mehr nach oben.
+
+## v0.53.0
+- Fahrtenbuch: Leiste Verlauf/Tanken/Fahrten/Ausgaben/Erinnerungen/Berichte anpassbar – über ⇄ am Ende: am Griff ⠿ verschieben, mit dem Auge aus- und einblenden. Ist der gerade offene Bereich ausgeblendet, springt die Ansicht auf den ersten sichtbaren.
+
 ## v0.52.3
 - Export-Knopf in Artikel, Firmenauswertung, Konten und Vermögen wie im Fahrtenbuch: mittig beschriftet, gleiche Höhe, mit Abstand zu den Filter-Knöpfen davor.
 
