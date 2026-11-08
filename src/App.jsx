@@ -183,7 +183,8 @@ const db = {
 /* ---------- Helfer ---------- */
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 const todayISO = () => new Date().toLocaleDateString("sv-SE");
-const fmtDate = (iso) => (iso ? new Date(iso + "T12:00:00").toLocaleDateString("de-AT") : "–");
+// einheitlich TT.MM.JJJJ (mit führender Null)
+const fmtDate = (iso) => (iso ? new Date(iso.slice(0, 10) + "T12:00:00").toLocaleDateString("de-AT", { day: "2-digit", month: "2-digit", year: "numeric" }) : "–");
 let HIDE_AMOUNTS = false; // Einstellungen → Datenschutz
 const fmtMoney = (v, cur = "EUR") => HIDE_AMOUNTS && v != null && !isNaN(v) ? "€ •••" :
   v == null || isNaN(v) ? "" : new Intl.NumberFormat("de-AT", { style: "currency", currency: cur || "EUR" }).format(v);
@@ -317,7 +318,7 @@ function haystack(d) {
 /* ---------- Kündigungsschreiben ---------- */
 function cancelLetter(c, me) {
   const lines = [
-    me.name, me.address, "", c.provider || "", "", `${me.city ? me.city + ", " : ""}am ${new Date().toLocaleDateString("de-AT")}`, "",
+    me.name, me.address, "", c.provider || "", "", `${me.city ? me.city + ", " : ""}am ${fmtDate(todayISO())}`, "",
     `Betreff: Kündigung ${c.name || "meines Vertrags"}${c.customerNumber ? ` – Kunden-/Vertragsnummer ${c.customerNumber}` : ""}`, "",
     "Sehr geehrte Damen und Herren,", "",
     `hiermit kündige ich den oben genannten Vertrag fristgerecht zum nächstmöglichen Zeitpunkt${c.endDate ? `, laut meinen Unterlagen zum ${fmtDate(c.endDate)}` : ""}.`,
@@ -4111,4 +4112,5 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .txfoldrow .r{text-align:right;font-variant-numeric:tabular-nums}
 @container (max-width:700px){.txfold{padding-left:14px}.txfoldrow{grid-template-columns:74px minmax(0,1fr) 90px}.txfoldrow>span:nth-child(3){display:none}}
 .cmeta{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.txfoldrow>span:first-child,.subrow>span:nth-child(7),.txrow>span:first-child{font-variant-numeric:tabular-nums}
 `;

@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.15.3
+- Datum überall einheitlich als TT.MM.JJJJ (z. B. 05.11.2026), Spalten mit gleich breiten Ziffern.
+
 ## v0.15.2
 - Verträge: Buchungen je Abo/Vertrag ausklappbar (Pfeil bzw. Name antippen) – mit Summe gesamt und pro Jahr, Konto, Verwendungszweck und Beleg-Hinweis. Vertragsdokumente: „Buchungen (n) ▾“.
 
