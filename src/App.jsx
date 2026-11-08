@@ -1956,7 +1956,9 @@ function AppMain() {
             {docBusy && <ImportBar {...docBusy} />}{accBusy && <ImportBar {...accBusy} />}
             {uniLast && <p className="small muted unilast">{uniLast}</p>}
           </>}
-          cashForm={<CashForm compact accounts={accounts} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory} />}
+          cashForm={<ExpenseForm accounts={visAccounts} txs={txs} docs={active} categories={TX_CATS(categories)} onSave={saveExpense} onScan={scanFor} addCategory={addCategory} notify={notify}
+            onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
+            suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")} />}
           editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => startScan(), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
         {tab === "accounts" && <Accounts busy={accBusy} setBusy={setAccBusy} addCategory={addCategory} linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
@@ -3937,8 +3939,8 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
     </section>) : null;
 
   const w_barerfassung = cashForm ? (
-    <section className="tile">
-      <div className="tilehead"><b>Barausgabe erfassen</b></div>
+    <section className="tile expwidget">
+      <div className="tilehead"><b>Ausgabe erfassen</b><small>alle Konten</small></div>
       {cashForm}
     </section>) : null;
   const w_ablage = uniDrop ? <section className="tile uniwidget"><div className="tilehead"><b>Universal-Ablage</b><small>wird automatisch einsortiert</small></div>{uniDrop}</section> : null;
@@ -9612,4 +9614,13 @@ html,body{min-height:100%}
 .invrow.prevopen{background:color-mix(in srgb,var(--acc) 8%,transparent)}
 .cactions .chip{display:inline-flex!important;align-items:center;gap:6px;line-height:1.2;vertical-align:middle;height:auto!important}
 .dprevbar .btn{white-space:nowrap}@media (max-width:600px){.invprev{padding:0 6px 10px}}
+/* Ausgabe-Widget in der Übersicht: kompakt bei schmaler Kachel */
+.expform{container-type:inline-size}
+@container (max-width:460px){
+ .expform .expscan{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+ .expform .expbig{display:flex!important;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:10px 6px!important;min-height:0!important;gap:4px}
+ .expform .expbig small{display:none}.expform .expbig b{font-size:13px;line-height:1.15}.expform .expico{font-size:22px}
+ .expform .grid2{grid-template-columns:minmax(0,1fr)!important}
+ .expform .bigamount{font-size:26px!important}
+}
 `;

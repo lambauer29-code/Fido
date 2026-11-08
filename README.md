@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.56.1
+- Übersicht: Das Widget „Barausgabe erfassen“ wurde durch das vollständige Formular „Ausgabe erfassen“ aus dem Reiter Ausgabe ersetzt. Es bietet Beleg scannen (KI), Registrierkassen-QR, Foto/PDF, Ausgabe/Einnahme, Firma, Betrag, Datum, alle Konten, Kategorie, Positionen und Notiz und verknüpft den Beleg. In schmalen Kacheln wird es automatisch kompakt dargestellt.
+
 ## v0.56.0
 - **Rechnungen & Mahnungen wie Dokumente:** Ein Klick auf den Namen öffnet die Rechnung als Vorschau direkt unter der Zeile, mit Drucken und „Original öffnen“. Ein zweiter Klick schließt sie wieder. Im Mahnverlauf zeigt die Vorschau das jeweilige Mahnschreiben. Ein Klick auf die übrige Zeile funktioniert wie bisher: bearbeiten, Mahnung erstellen oder PDF öffnen.
 - Kunden: E-Mail- und Telefon-Chips sind jetzt genauso vertikal zentriert wie „Rechnung“ und „vCard“.
