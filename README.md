@@ -2,6 +2,21 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.50.0 – Exporte
+Neuer Knopf „⬇︎ Export“ in vielen Reitern (Excel = echte .xlsx-Datei, CSV mit Semikolon für Excel, PDF zum Drucken):
+- **Konten**: Umsätze der gewählten Konten/Monate als Excel (inkl. Blatt Kategorien), CSV oder PDF (je Konto mit Summen).
+- **Vermögen**: Vermögensaufstellung zum Stichtag als PDF (Konten, Vermögenswerte, Schulden, Verlauf), Excel, CSV.
+- **Firmenauswertung**: Steuerberater-Paket (ZIP: Einnahmen-Ausgaben-Rechnung als Excel + PDF, Rechnungsausgangsbuch, offene Posten, alle Rechnungs-PDFs und Firmenbelege), EAR einzeln, Rechnungsausgangsbuch, offene Posten.
+- **Rechnungen**: Rechnungsausgangsbuch (Excel/CSV), offene Posten (PDF/CSV), alle Rechnungen eines Jahres als PDF-ZIP.
+- **Mahnungen**: offene Posten (PDF/CSV), Mahnverlauf (CSV).
+- **Kunden**: vCard (.vcf), Excel, CSV – jeweils für den aktuellen Filter.
+- **Artikel**: Preisliste als PDF (nach Gruppen), Excel mit Umsatz, CSV.
+- **Fahrtenbuch**: Fahrtenbuch je Jahr als PDF (Monatssummen, Kilometergeld), Excel (Fahrten, Tanken & Kosten), Tank- & Kostenliste CSV.
+- **Verträge**: Vertragsübersicht PDF/Excel/CSV, Kündigungstermine als Kalenderdatei (.ics) mit Erinnerung.
+- **Ausgabe**: Einkäufe mit allen Positionen als Excel (Positionen, Einkäufe, Warengruppen) oder CSV.
+- **Dokumente**: gefilterte oder ausgewählte Dokumente als ZIP (Originaldateien nach Kategorie-Ordnern + Übersicht.csv), Liste als CSV.
+- Neue Abhängigkeit: `fflate` (ZIP/Excel).
+
 ## v0.49.2
 - Filterleisten: Felder 3 px niedriger (46 → 43 px).
 

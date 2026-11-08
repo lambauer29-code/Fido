@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrinkPdf } from "./scan.js";
 import { parseReceiptQR, pastOrToday } from "./receipt.js";
+import { saveBlob, downloadCsv, downloadXlsx, tablePdf, zipBlob, vcardText, csvBlob, xlsxBlob } from "./exports.js";
 import { latestBalance, parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS } from "./importers.js";
 
 /* ============================================================
@@ -2335,7 +2336,16 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
         <ExpenseForm accounts={accounts} txs={txs} docs={docs} categories={categories} onSave={onSave} onScan={onScan} onUpload={onUpload} addCategory={addCategory} suggestCat={suggestCat} notify={notify} />
       </section>
       <section className="tile">
-        <div className="tilehead"><b>Erfasste Ausgaben</b><small>{monthLabel(month)}: {fmtMoney(monthOut)}</small></div>
+        <div className="tilehead"><b>Erfasste Ausgaben</b><small>{monthLabel(month)}: {fmtMoney(monthOut)}</small>
+          {(() => { const all = txs.filter((t) => t.manual).sort((a, b) => a.date.localeCompare(b.date)); const accN = (id) => accounts.find((a) => a.id === id)?.name || "";
+            const pos = all.flatMap((t) => (t.items || []).map((i) => [t.date, t.counterparty || "", accN(t.accountId), i.name, i.qty, i.qty ? r2e(i.total / i.qty) : "", r2e(i.total), i.category || ""]));
+            const bons = all.map((t) => [t.date, t.counterparty || "", accN(t.accountId), t.category || "", (t.items || []).length, -t.amount, t.receiptQr?.receiptNo || "", t.docId ? "ja" : ""]);
+            const PH = ["Datum", "Geschäft", "Konto", "Artikel", "Menge", "Einzelpreis €", "Gesamt €", "Warengruppe"], BH = ["Datum", "Geschäft", "Konto", "Kategorie", "Positionen", "Betrag €", "Beleg-Nr.", "Beleg"];
+            return <ExportMenu items={[{ head: `${all.length} Ausgaben · ${pos.length} Positionen` },
+              { label: "📊 Excel (.xlsx)", sub: "Blätter: Positionen, Einkäufe, Warengruppen", run: () => { const g = {}; pos.forEach((p) => { const o = g[p[7] || "Sonstiges"] || (g[p[7] || "Sonstiges"] = [0, 0]); o[0] += p[6]; o[1]++; });
+                downloadXlsx(`einkaeufe-${isoToday()}.xlsx`, [{ name: "Positionen", head: PH, rows: pos }, { name: "Einkäufe", head: BH, rows: bons }, { name: "Warengruppen", head: ["Warengruppe", "Summe €", "Positionen"], rows: Object.entries(g).sort((a, b) => b[1][0] - a[1][0]).map(([k, [v, n]]) => [k, r2e(v), n]) }]); } },
+              { label: "📄 Positionen CSV", run: () => downloadCsv(`einkauf-positionen-${isoToday()}.csv`, PH, pos) },
+              { label: "📄 Einkäufe CSV", run: () => downloadCsv(`einkaeufe-${isoToday()}.csv`, BH, bons) }]} />; })()}</div>
         {cash.map((a) => (
           <div key={a.id} className="frow click" onClick={() => openAccount(a.id)}>
             <span className="caticon" style={{ width: 40, height: 40, background: "#16a34a22", fontSize: 20 }}><AccIcon a={a} className="acci" force /></span>
@@ -2420,7 +2430,14 @@ function BizReport({ docs, setTab }) {
   return (
     <div className="anapage">
       <div className="anahead">
-        <div className="chips anaaccs">{[...years, "alle"].map((y) => <button key={y} className={"chip" + (year === y ? " on" : "")} onClick={() => setYear(y)}>{y === "alle" ? "Gesamt" : y}</button>)}</div>
+        <div className="chips anaaccs">{[...years, "alle"].map((y) => <button key={y} className={"chip" + (year === y ? " on" : "")} onClick={() => setYear(y)}>{y === "alle" ? "Gesamt" : y}</button>)}
+          <ExportMenu label="⬇︎ Export" items={[
+            { head: `Zeitraum: ${year === "alle" ? "gesamt" : year}` },
+            { label: "📦 Steuerberater-Paket (ZIP)", sub: "EAR als Excel + PDF, Rechnungsausgangsbuch, offene Posten, alle Rechnungen und Belege", run: async () => saveBlob(await steuerberaterZip(year, list, docs, fb, { ...CO_DEFAULT, ...ls.get("company", {}) }), `Steuerberater-${year === "alle" ? "gesamt" : year}.zip`) },
+            { label: "📊 Einnahmen-Ausgaben-Rechnung Excel", run: () => downloadXlsx(`EAR-${year}.xlsx`, earSheets(year, earData(year, list, docs, fb))) },
+            { label: "🖨 Einnahmen-Ausgaben-Rechnung PDF", run: async () => saveBlob(await earPdf(year, earData(year, list, docs, fb), ls.get("company", {}).name), `EAR-${year}.pdf`) },
+            { label: "📒 Rechnungsausgangsbuch Excel", run: () => downloadXlsx(`Rechnungsausgangsbuch-${year}.xlsx`, [{ name: "Rechnungen", head: INV_HEAD, rows: list.filter((x) => x.kind === "rechnung" && x.number && inY(x.date)).map(invRow) }]) },
+            { label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) }]} /></div>
       </div>
       <div className="anakpis">
         <div className="tile kpi"><small className="muted">Fakturiert</small><div className="kpiv">{fmtMoney(billed)}</div><small className="muted">{yInv.length} Rechnungen</small></div>
@@ -2915,6 +2932,10 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
         {vehicles.map((x) => <button key={x.id} className={"chip" + (x.id === v.id ? " on" : "")} onClick={() => setVid(x.id)} onDoubleClick={() => setVEdit(x)}><VehIcon v={x} /> {x.name}</button>)}
         <button className="chip fbaddveh" title="Fahrzeug hinzufügen" aria-label="Fahrzeug hinzufügen" onClick={() => setVEdit({})}>＋</button>
         <button className={"chip" + (showDrop ? " on" : "")} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>
+        <ExportMenu items={[{ head: `${v.name}${v.plate ? " · " + v.plate : ""}` },
+          ...[year, String(+year - 1)].map((y) => ({ label: `🖨 Fahrtenbuch ${y} (PDF)`, sub: "alle Fahrten mit km-Ständen, Zweck und Kilometergeld", run: async () => saveBlob(await fbPdf(v, st.e, y, kmRate), `Fahrtenbuch-${fileSafe(v.name)}-${y}.pdf`) })),
+          { label: "📊 Excel: Fahrten, Tanken, Kosten", run: () => downloadXlsx(`Fahrtenbuch-${fileSafe(v.name)}.xlsx`, fbSheets(v, st.e, kmRate)) },
+          { label: "📄 Tank- & Kostenliste CSV", run: () => { const sh = fbSheets(v, st.e, kmRate)[1]; downloadCsv(`Tank-Kosten-${fileSafe(v.name)}.csv`, sh.head, sh.rows); } }]} />
       </div>
       {showDrop && <DropField onFiles={dropFiles} onHide={() => setShowDrop(false)} busy={!!dropBusy || waitN > 0} title="Tank-, Lade- oder Werkstattbelege hierher ziehen" what={`PDF & Fotos · werden für „${v.name}“ eingetragen`} />}
       {dropBusy ? <ImportBar {...dropBusy} /> : waitN > 0 && <ImportBar title={`KI liest ${waitN} Beleg${waitN === 1 ? "" : "e"} aus …`} sub="Einträge werden danach automatisch angelegt" done={0} total={waitN} n={waitN} />}
@@ -3047,6 +3068,112 @@ function PwInput({ show, setShow, ...rest }) {
       <button type="button" className="pweye" tabIndex={-1} title={vis ? "Passwort verbergen" : "Passwort anzeigen"} aria-label={vis ? "Passwort verbergen" : "Passwort anzeigen"} onClick={toggle}>{vis ? <IcoEyeOff /> : <IcoEye />}</button>
     </span>
   );
+}
+
+/* ---------- Export-Menü (Chip mit Auswahl) ---------- */
+function ExportMenu({ items, label = "⬇︎ Export", className = "chip", title = "Exportieren" }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <details className="more expmenu" onClick={(e) => e.stopPropagation()}>
+      <summary className={className + (busy ? " on" : "")} title={title}>{busy ? "Exportiert …" : label}</summary>
+      <div className="moremenu">
+        {items.filter(Boolean).map((it, i) => it.head ? <small key={i} className="muted exphead">{it.head}</small> : (
+          <button key={i} disabled={busy || it.disabled} onClick={async (e) => {
+            e.currentTarget.closest("details").open = false; setBusy(true);
+            try { await it.run(); } catch (err) { alert("Export fehlgeschlagen: " + (err.message || err)); } finally { setBusy(false); }
+          }}>{it.label}{it.sub && <small className="muted block">{it.sub}</small>}</button>))}
+      </div>
+    </details>
+  );
+}
+const isoToday = () => new Date().toLocaleDateString("sv-SE");
+const fileSafe = (s) => String(s || "").replace(/[^\wäöüÄÖÜß.-]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 60);
+const sumBy = (l, f) => l.reduce((s, x) => s + (Number(f(x)) || 0), 0);
+const docFileName = (d) => { const ext = (d.fileName || "").match(/\.[a-z0-9]{2,5}$/i)?.[0] || (d.mimeType === "application/pdf" ? ".pdf" : d.mimeType === "image/png" ? ".png" : ".jpg");
+  return `${d.documentDate || (d.createdAt || "").slice(0, 10)} ${fileSafe(d.title || d.fileName).replace(/_/g, " ")}${ext}`; };
+async function docsZip(list, extra = []) {
+  const files = [];
+  for (const d of list) { const b = await db.getFile(d.id); if (b) files.push({ name: (d.__folder ? d.__folder + "/" : "") + docFileName(d), data: b }); }
+  return zipBlob([...files, ...extra]);
+}
+
+/* ---------- Firmen-Exporte ---------- */
+const r2e = (v) => Math.round((Number(v) || 0) * 100) / 100;
+const INV_HEAD = ["Nummer", "Art", "Datum", "Kunde", "Kundennr.", "Betrag netto €", "Mahngebühren €", "Gesamt €", "Status", "Fällig am", "Bezahlt am", "Mahnstufe"];
+const invRow = (x) => [x.number || "Entwurf", x.kind === "angebot" ? "Angebot" : "Rechnung", x.date || "", x.customer?.name || "", x.customer?.number || "", r2e(invTotal({ ...x, fee: 0 })), r2e(x.fee), r2e(invTotal(x)),
+  STATE_UI[invState(x)]?.[0] || invState(x), x.kind === "angebot" ? "" : invDueEff(x), x.paidAt || "", (x.reminders || []).length ? remindName(x.reminders.length - 1) : ""];
+const openList = (list) => list.filter((x) => x.kind === "rechnung" && ["offen", "überfällig"].includes(invState(x))).sort((a, b) => (invDueEff(a) || "").localeCompare(invDueEff(b) || ""));
+const OP_HEAD = ["Nummer", "Datum", "Kunde", "Fällig am", "Tage überfällig", "Mahnstufe", "Offen €"];
+const opRow = (x) => { const d = -daysUntil(invDueEff(x)); return [x.number, x.date, x.customer?.name || "", invDueEff(x), d > 0 ? d : 0, (x.reminders || []).length ? remindName(x.reminders.length - 1) : "–", r2e(invTotal(x))]; };
+async function openItemsPdf(list) {
+  const l = openList(list), over = l.filter((x) => invState(x) === "überfällig");
+  return tablePdf({ title: "Offene Posten", subtitle: `Stand ${fmtDate(isoToday())}`, landscape: true,
+    kpis: [["Offen gesamt", fmtMoney(sumBy(l, invTotal))], ["davon überfällig", fmtMoney(sumBy(over, invTotal))], ["Rechnungen", String(l.length)], ["gemahnt", String(l.filter((x) => (x.reminders || []).length).length)]],
+    columns: [{ label: "Nummer", w: 1.4 }, { label: "Datum", w: 1 }, { label: "Kunde", w: 3.2 }, { label: "Fällig am", w: 1 }, { label: "Tage überf.", w: 0.9, align: "right" }, { label: "Mahnstufe", w: 1.7 }, { label: "Offen €", w: 1.2, align: "right" }],
+    rows: l.map(opRow), totals: ["Summe", "", `${l.length} Rechnungen`, "", "", "", r2e(sumBy(l, invTotal))] });
+}
+function earData(year, list, docs, fb) {
+  const inY = (d) => year === "alle" || (d || "").startsWith(year);
+  const inc = list.filter((x) => x.kind === "rechnung" && invState(x) === "bezahlt" && inY(x.paidAt || x.date)).sort((a, b) => (a.paidAt || a.date).localeCompare(b.paidAt || b.date));
+  const exp = docs.filter((d) => d.scope === "firma" && d.direction === "ausgabe" && d.amount?.total && inY(d.documentDate || d.createdAt)).sort((a, b) => (a.documentDate || "").localeCompare(b.documentDate || ""));
+  const veh = Object.fromEntries((fb.vehicles || []).map((v) => [v.id, v]));
+  const trips = (fb.entries || []).filter((e) => e.type === "trip" && e.purpose === "business" && inY(e.date)).sort((a, b) => a.date.localeCompare(b.date));
+  const rate = +(fb.settings?.kmRate ?? 0.5);
+  const km = sumBy(trips, (e) => Math.max(0, e.endKm - e.startKm)), kmEur = r2e(Math.min(km, 30000) * rate);
+  const tInc = r2e(sumBy(inc, invTotal)), tExp = r2e(sumBy(exp, (d) => Math.abs(d.amount.total)));
+  return { inc, exp, trips, veh, rate, km, kmEur, tInc, tExp, profit: r2e(tInc - tExp - kmEur) };
+}
+function earSheets(year, E) {
+  return [{ name: "Zusammenfassung", head: ["Position", "Betrag €"], rows: [[`Betriebseinnahmen ${year}`, E.tInc], ["Betriebsausgaben (Belege)", -E.tExp], [`Kilometergeld (${E.km} km × ${String(E.rate).replace(".", ",")} €)`, -E.kmEur], ["Gewinn (vor Steuern & SV)", E.profit]] },
+    { name: "Einnahmen", head: ["Bezahlt am", "Rechnungsnr.", "Rechnungsdatum", "Kunde", "Betrag €"], rows: E.inc.map((x) => [x.paidAt || x.date, x.number, x.date, x.customer?.name || "", r2e(invTotal(x))]) },
+    { name: "Ausgaben", head: ["Datum", "Lieferant", "Bezeichnung", "Kategorie", "Betrag €", "Beleg-Datei"], rows: E.exp.map((d) => [d.documentDate || "", d.merchant || d.sender || "", d.title || "", d.category || "", r2e(Math.abs(d.amount.total)), "Belege/" + docFileName(d)]) },
+    { name: "Kilometergeld", head: ["Datum", "Fahrzeug", "Kennzeichen", "Von", "Nach", "Zweck", "km", "€"], rows: E.trips.map((e) => [e.date, E.veh[e.vid]?.name || "", E.veh[e.vid]?.plate || "", e.from || "", e.to || "", e.note || "", e.endKm - e.startKm, r2e((e.endKm - e.startKm) * E.rate)]) }];
+}
+async function earPdf(year, E, coName) {
+  return tablePdf({ title: `Einnahmen-Ausgaben-Rechnung ${year === "alle" ? "gesamt" : year}`, subtitle: `${coName || "Firma"} · vereinfachte Aufstellung aus FinDocu`,
+    kpis: [["Einnahmen", fmtMoney(E.tInc)], ["Ausgaben", fmtMoney(E.tExp)], ["Kilometergeld", fmtMoney(E.kmEur)], ["Gewinn", fmtMoney(E.profit)]],
+    columns: [{ label: "Datum", w: 1 }, { label: "Beleg / Nummer", w: 1.6 }, { label: "Partner", w: 2.6 }, { label: "Bezeichnung", w: 3.2 }, { label: "Betrag €", w: 1.2, align: "right" }],
+    sections: [{ heading: "Betriebseinnahmen", rows: E.inc.map((x) => [x.paidAt || x.date, x.number, x.customer?.name || "", "Rechnung vom " + fmtDate(x.date), r2e(invTotal(x))]), totals: ["", "", "", "Summe Einnahmen", E.tInc], empty: "keine" },
+      { heading: "Betriebsausgaben", rows: E.exp.map((d) => [d.documentDate || "", d.docType || "Beleg", d.merchant || d.sender || "", d.title || "", r2e(Math.abs(d.amount.total))]), totals: ["", "", "", "Summe Ausgaben", E.tExp], empty: "keine Dokumente mit Markierung „Firma“" },
+      { heading: "Kilometergeld", rows: [[ "", `${E.trips.length} Fahrten`, `${E.km.toLocaleString("de-AT")} km`, `× ${String(E.rate).replace(".", ",")} €/km (max. 30.000 km)`, E.kmEur]] },
+      { heading: "Ergebnis", rows: [], totals: ["", "", "", "Gewinn (vor Steuern & SV)", E.profit] }],
+    note: "Vereinfachte Übersicht aus den in FinDocu erfassten Daten – keine Steuerberatung.\nAusgaben zählen, wenn das Dokument als „Firma“ markiert ist; Einnahmen nach Zahlungseingang (Zufluss)." });
+}
+async function steuerberaterZip(year, list, docs, fb, co) {
+  const E = earData(year, list, docs, fb), files = [], tag = year === "alle" ? "gesamt" : year;
+  files.push({ name: `EAR-${tag}.xlsx`, data: xlsxBlob(earSheets(year, E)) });
+  files.push({ name: `EAR-${tag}.pdf`, data: await earPdf(year, E, co.name) });
+  const inY = (d) => year === "alle" || (d || "").startsWith(year);
+  const yearInv = list.filter((x) => x.kind === "rechnung" && x.number && invState(x) !== "entwurf" && inY(x.date));
+  files.push({ name: `Rechnungsausgangsbuch-${tag}.csv`, data: csvBlob(INV_HEAD, yearInv.map(invRow)) });
+  files.push({ name: `Offene-Posten-${isoToday()}.pdf`, data: await openItemsPdf(list) });
+  for (const x of yearInv) files.push({ name: "Rechnungen/" + invFileName(x), data: await buildInvoicePdf(x, co) });
+  for (const d of E.exp) { const b = await db.getFile(d.id); if (b) files.push({ name: "Belege/" + docFileName(d), data: b }); }
+  return zipBlob(files);
+}
+
+/* ---------- Fahrtenbuch-Exporte ---------- */
+const FB_PURPOSE = { business: "geschäftlich", private: "privat", commute: "Arbeitsweg" };
+function fbSheets(v, e, rate) {
+  const trips = e.filter((x) => x.type === "trip").sort((a, b) => a.date.localeCompare(b.date) || a.startKm - b.startKm);
+  const costs = e.filter((x) => x.type !== "trip").sort((a, b) => a.date.localeCompare(b.date));
+  return [{ name: "Fahrten", head: ["Datum", "Uhrzeit", "Von", "Nach", "Zweck", "Art", "km-Stand Beginn", "km-Stand Ende", "km", "Kilometergeld €"],
+      rows: trips.map((x) => [x.date, x.time || "", x.from || "", x.to || "", x.note || "", FB_PURPOSE[x.purpose] || "", x.startKm, x.endKm, x.endKm - x.startKm, x.purpose === "business" ? r2e((x.endKm - x.startKm) * rate) : ""]) },
+    { name: "Tanken & Kosten", head: ["Datum", "Art", "Kraftstoff / Kategorie", "km-Stand", "Menge", "Einheit", "Preis/Einheit €", "Betrag €", "Tankstelle / Anbieter", "Notiz"],
+      rows: costs.map((x) => [x.date, x.type === "fuel" ? (isElec(x.fuel) ? "Laden" : "Tanken") : "Ausgabe", x.type === "fuel" ? x.fuel || "" : x.cat || "", x.km || "", x.type === "fuel" ? x.liters : "", x.type === "fuel" ? unitOf(x.fuel) : "", x.price ?? "", r2e(x.total), x.station || "", x.note || ""]) }];
+}
+async function fbPdf(v, e, year, rate) {
+  const trips = e.filter((x) => x.type === "trip" && x.date.startsWith(year)).sort((a, b) => a.date.localeCompare(b.date) || a.startKm - b.startKm);
+  const km = (l) => sumBy(l, (x) => Math.max(0, x.endKm - x.startKm));
+  const biz = trips.filter((x) => x.purpose === "business"), kmBiz = km(biz);
+  const byM = {}; trips.forEach((x) => (byM[x.date.slice(0, 7)] = byM[x.date.slice(0, 7)] || []).push(x));
+  return tablePdf({ title: `Fahrtenbuch ${year} – ${v.name}`, subtitle: [v.model, v.plate && "Kennzeichen " + v.plate, v.fuel].filter(Boolean).join(" · "), landscape: true,
+    kpis: [["Gefahren", km(trips).toLocaleString("de-AT") + " km"], ["geschäftlich", kmBiz.toLocaleString("de-AT") + " km"], ["privat / Arbeitsweg", (km(trips) - kmBiz).toLocaleString("de-AT") + " km"], ["Kilometergeld", fmtMoney(Math.min(kmBiz, 30000) * rate)]],
+    columns: [{ label: "Datum", w: 1 }, { label: "Von", w: 1.8 }, { label: "Nach", w: 2.2 }, { label: "Zweck", w: 2.8 }, { label: "Art", w: 1.1 }, { label: "km Beginn", w: 1, align: "right" }, { label: "km Ende", w: 1, align: "right" }, { label: "km", w: 0.7, align: "right" }, { label: "€", w: 0.9, align: "right" }],
+    sections: Object.entries(byM).map(([m, l]) => ({ heading: new Date(m + "-15").toLocaleDateString("de-AT", { month: "long", year: "numeric" }),
+      rows: l.map((x) => [x.date, x.from || "", x.to || "", x.note || "", FB_PURPOSE[x.purpose] || "", x.startKm, x.endKm, x.endKm - x.startKm, x.purpose === "business" ? r2e((x.endKm - x.startKm) * rate) : ""]),
+      totals: ["", "", "", "Monatssumme", "", "", "", km(l), r2e(km(l.filter((x) => x.purpose === "business")) * rate)] })),
+    note: `Kilometergeld ${String(rate).replace(".", ",")} €/km für geschäftliche Fahrten, höchstens 30.000 km pro Jahr.\nHinweis: Die Einträge sind in FinDocu nachträglich änderbar.` });
 }
 /* ---------- Alle Daten löschen (Backup-Bereich) ---------- */
 const WIPE_WORD = "ALLES LÖSCHEN";
@@ -3301,6 +3428,28 @@ function LineChart({ points, h = 180 }) {
   );
 }
 
+function WealthExport({ accs, assets, points, assetVal }) {
+  const accRows = accs.slice().sort((a, b) => b.now - a.now).map((x) => [x.a.name, KIND_DEFS[x.a.kind || "bank"]?.[1] || "Konto", x.a.iban || "", Math.round(x.now * 100) / 100]);
+  const pos = assets.filter((x) => assetVal(x) >= 0), neg = assets.filter((x) => assetVal(x) < 0);
+  const aRows = (l) => l.map((x) => [x.name, ASSET_KINDS[x.kind]?.[1] || "", "seit " + fmtDate(x.since), Math.round(assetVal(x) * 100) / 100]);
+  const tAcc = sumBy(accs, (x) => x.now), tPos = sumBy(pos, assetVal), tNeg = sumBy(neg, assetVal), net = tAcc + tPos + tNeg;
+  const head = ["Bezeichnung", "Art", "Info", "Wert €"];
+  return <ExportMenu items={[
+    { head: `Stichtag ${fmtDate(isoToday())} · Nettovermögen ${fmtMoney(net)}` },
+    { label: "🖨 Vermögensaufstellung PDF", sub: "Konten, Vermögenswerte, Schulden, Verlauf", run: async () => saveBlob(await tablePdf({
+      title: "Vermögensaufstellung", subtitle: `Stichtag ${fmtDate(isoToday())}`,
+      kpis: [["Konten", fmtMoney(tAcc)], ["Vermögenswerte", fmtMoney(tPos)], ["Schulden", fmtMoney(tNeg)], ["Nettovermögen", fmtMoney(net)]],
+      columns: [{ label: "Bezeichnung", w: 3.2 }, { label: "Art", w: 1.8 }, { label: "Info", w: 2.6 }, { label: "Wert €", w: 1.5, align: "right" }],
+      sections: [{ heading: "Konten", rows: accRows, totals: ["Summe Konten", "", "", Math.round(tAcc * 100) / 100] },
+        { heading: "Weitere Vermögenswerte", rows: aRows(pos), totals: ["Summe Vermögenswerte", "", "", Math.round(tPos * 100) / 100], empty: "keine erfasst" },
+        { heading: "Schulden", rows: aRows(neg), totals: ["Summe Schulden", "", "", Math.round(tNeg * 100) / 100], empty: "keine erfasst" },
+        { heading: "Verlauf (Monatsende)", rows: points.slice().reverse().map((p) => [monthLabel(p.m), "", "", Math.round(p.v * 100) / 100]) },
+        { heading: "Nettovermögen", rows: [], totals: ["Nettovermögen", "", "", Math.round(net * 100) / 100] }],
+      note: "Kontostände laut FinDocu (letzter Stand + erfasste Buchungen). Depots: nur Ein-/Auszahlungen, ohne aktuellen Kurswert." }), `vermoegensaufstellung-${isoToday()}.pdf`) },
+    { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`vermoegen-${isoToday()}.xlsx`, [{ name: "Aufstellung", head, rows: [...accRows, ...aRows(pos), ...aRows(neg), ["Nettovermögen", "", "", Math.round(net * 100) / 100]] },
+      { name: "Verlauf", head: ["Monat", "Vermögen €"], rows: points.map((p) => [p.m, Math.round(p.v * 100) / 100]) }]) },
+    { label: "📄 CSV", run: () => downloadCsv(`vermoegen-${isoToday()}.csv`, head, [...accRows, ...aRows(pos), ...aRows(neg), ["Nettovermögen", "", "", Math.round(net * 100) / 100]]) }]} />;
+}
 function Wealth({ txs, accounts, openAccount }) {
   const thisMonth = todayISO().slice(0, 7);
   const [range, setRange] = useLsState("wealthRange", 12);
@@ -3337,11 +3486,12 @@ function Wealth({ txs, accounts, openAccount }) {
     setAssets((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a])); setEdit(null); };
   return (
     <div className="wealthpage">
-      {(allAccs.length > 1 || assets.length > 0) && (
+      {(allAccs.length > 0 || assets.length > 0) && (
         <div className="chips anaaccs">
           <button className={"chip" + (!wValid.length ? " on" : "")} onClick={() => setWSel([])}>Alle Konten</button>
           {allAccs.map(({ a }) => <button key={a.id} className={"chip" + (wValid.includes(a.id) ? " on" : "")} onClick={() => setWSel(wValid.includes(a.id) ? wValid.filter((x) => x !== a.id) : [...wValid, a.id])}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</button>)}
           {assets.length > 0 && <button className={"chip" + (wAssets ? " on" : "")} onClick={() => setWAssets(!wAssets)}>💎 Weitere Werte</button>}
+          <WealthExport accs={accs} assets={wAssets ? assets : []} points={points} assetVal={assetVal} />
         </div>
       )}
       <section className="tile wealthhero">
@@ -3993,7 +4143,14 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         { k: "tags", label: "Tags", el: <select className={"chip" + (tag ? " on" : "")} value={tag} onChange={(e) => setTag(e.target.value)}><option value="">Alle Tags</option>{tags.map((t) => <option key={t}>{t}</option>)}</select> },
         { k: "sort", label: "Sortierung", el: <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></select> },
         { k: "pick", label: "☑︎ Auswählen", el: <button className={pick ? "chip on" : "chip"} disabled={!list.length} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑︎ Auswählen"}</button> },
-        { k: "csv", label: "⬇︎ CSV", el: <button className="chip" disabled={!list.length} onClick={() => exportCsv(list, `dokumente${year ? "-" + year : ""}${month ? "-" + month : ""}${taxOnly ? "-steuer" : ""}.csv`)}>⬇︎ CSV</button> },
+        { k: "csv", label: "⬇︎ Export", el: <ExportMenu items={[{ head: pick?.size ? `${pick.size} ausgewählt` : `${list.length} Dokumente (aktueller Filter)` },
+          { label: "🗂 Dateien als ZIP", sub: pick?.size ? "nur die ausgewählten Dokumente" : "alle Dokumente im aktuellen Filter, nach Kategorie sortiert", disabled: !list.length, run: async () => {
+            const l = (pick?.size ? list.filter((d) => pick.has(d.id)) : list).map((d) => ({ ...d, __folder: fileSafe(d.category || "Sonstiges").replace(/_/g, " ") }));
+            const tag = [year, month, taxOnly && "steuer", cat && fileSafe(cat)].filter(Boolean).join("-") || "alle";
+            const head = ["Datei", "Datum", "Titel", "Absender", "Kategorie", "Betrag €", "Steuerrelevant"];
+            saveBlob(await docsZip(l, [{ name: "Übersicht.csv", data: csvBlob(head, l.map((d) => [d.__folder + "/" + docFileName(d), d.documentDate || "", d.title || "", d.sender || "", d.category || "", d.amount?.total ?? "", d.taxRelevant ? "ja" : ""])) }]), `dokumente-${tag}.zip`);
+          } },
+          { label: "📄 Liste als CSV", disabled: !list.length, run: () => exportCsv(list, `dokumente${year ? "-" + year : ""}${month ? "-" + month : ""}${taxOnly ? "-steuer" : ""}.csv`) }]} /> },
         { k: "scopebar", label: "👤 Leiste Privat / Firma", el: null },
         { k: "areabar", label: "🗂️ Leiste Bereiche", el: null },
         onFiles && { k: "drop", label: "📥 Ablagefeld", el: <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button> },
@@ -4682,6 +4839,25 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
           {!allSel && <button className="chip" onClick={() => setSel([])}>✕ Alle anzeigen</button>}
           {selA && !peek && <button className="chip" onClick={() => setEditAcc(selA)}>✎ Konto bearbeiten</button>}
           <select className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
+          {(() => {
+            const scopeName = allSel ? "alle-konten" : sel.length === 1 ? fileSafe(accName(sel[0])) : `${sel.length}-konten`;
+            const fn = (ext) => `umsaetze-${scopeName}-${month || "gesamt"}.${ext}`;
+            const head = ["Datum", "Konto", "Gegenpartei", "Verwendungszweck", "Kategorie", "Betrag", "Währung", "Beleg", "Positionen"];
+            const rows = () => list.map((t) => [t.date, accName(t.accountId), t.counterparty || "", t.purpose || t.security || "", t.category || "", t.amount, t.currency || "EUR", t.docId ? "ja" : "", (t.items || []).map((i) => `${i.qty}× ${i.name} ${String(i.total).replace(".", ",")}`).join(" | ")]);
+            return <ExportMenu items={[
+              { head: `${list.length} Umsätze · ${allSel ? "alle Konten" : sel.length === 1 ? accName(sel[0]) : sel.length + " Konten"} · ${month ? monthLabel(month) : "alle Monate"}` },
+              { label: "📊 Excel (.xlsx)", disabled: !list.length, run: () => downloadXlsx(fn("xlsx"), [{ name: "Umsätze", head, rows: rows() }, { name: "Kategorien", head: ["Kategorie", "Einnahmen", "Ausgaben", "Anzahl"],
+                rows: Object.entries(list.reduce((m, t) => { const k = t.category || "Sonstiges"; const o = m[k] || (m[k] = [0, 0, 0]); if (t.amount > 0) o[0] += t.amount; else o[1] += -t.amount; o[2]++; return m; }, {})).sort((a, b) => b[1][1] - a[1][1]).map(([k, [i, o, n]]) => [k, Math.round(i * 100) / 100, Math.round(o * 100) / 100, n]) }]) },
+              { label: "📄 CSV", disabled: !list.length, run: () => downloadCsv(fn("csv"), head, rows()) },
+              { label: "🖨 PDF", sub: "Kontoauszug-Liste je Konto mit Summen", disabled: !list.length, run: async () => {
+                const byAcc = {}; list.forEach((t) => (byAcc[t.accountId] = byAcc[t.accountId] || []).push(t));
+                saveBlob(await tablePdf({ title: "Umsätze", subtitle: `${allSel ? "Alle Konten" : Object.keys(byAcc).map(accName).join(", ")} · ${month ? monthLabel(month) : "gesamter Zeitraum"}`,
+                  kpis: [["Einnahmen", fmtMoney(inc)], ["Ausgaben", fmtMoney(out)], ["Saldo", fmtMoney(inc - out)], ["Buchungen", String(list.length)]],
+                  columns: [{ label: "Datum", w: 1.1 }, { label: "Gegenpartei", w: 3 }, { label: "Verwendungszweck", w: 3.6 }, { label: "Kategorie", w: 2 }, { label: "Betrag €", w: 1.4, align: "right" }],
+                  sections: Object.entries(byAcc).map(([id, l]) => ({ heading: accName(id), rows: l.map((t) => [t.date, t.counterparty || "", t.purpose || t.security || "", t.category || "", t.amount]), totals: ["", "Summe", `${l.length} Buchungen`, "", Math.round(sumBy(l, (t) => t.amount) * 100) / 100] })),
+                  note: "Umbuchungen zwischen eigenen Konten und Bankomat-Behebungen sind in Einnahmen/Ausgaben nicht enthalten." }), fn("pdf"));
+              } }]} />;
+          })()}
         </div>
       )}
       {showDrop ? <DropField onFiles={dropFiles} onHide={() => setShowDrop(false)} busy={!!busy} title="Kontoauszüge oder Ordner hierher ziehen" what="CSV, PDF, CAMT, MT940, Excel …"
@@ -6777,6 +6953,13 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
         <button className="btn" onClick={() => (setTab ? setTab("artikel") : setMdOpen(true))}>📦 Artikel</button>
         <button className="btn" onClick={() => setTab?.("mahnungen")}>📮 Mahnungen</button>
         <button className="btn" onClick={() => setCoOpen(true)}>🏢 Firmendaten</button>
+        <ExportMenu className="btn" items={[
+          { head: `${inv.length} Rechnungen · ${list.length - inv.length} Angebote` },
+          { label: "📒 Rechnungsausgangsbuch Excel", sub: "alle Rechnungen und Angebote mit Status", run: () => downloadXlsx(`Rechnungsausgangsbuch-${isoToday()}.xlsx`, [{ name: "Rechnungen", head: INV_HEAD, rows: list.filter((x) => x.kind === "rechnung").map(invRow) }, { name: "Angebote", head: INV_HEAD, rows: list.filter((x) => x.kind === "angebot").map(invRow) }]) },
+          { label: "📄 Rechnungsausgangsbuch CSV", run: () => downloadCsv(`Rechnungsausgangsbuch-${isoToday()}.csv`, INV_HEAD, list.filter((x) => x.kind === "rechnung").map(invRow)) },
+          { label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) },
+          { label: "📮 Offene Posten CSV", run: () => downloadCsv(`Offene-Posten-${isoToday()}.csv`, OP_HEAD, openList(list).map(opRow)) },
+          { label: `🗂 Rechnungen ${year} als PDF (ZIP)`, run: async () => { const l = list.filter((x) => x.kind === "rechnung" && x.number && invState(x) !== "entwurf" && (x.date || "").startsWith(year)); const files = []; for (const x of l) files.push({ name: invFileName(x), data: await buildInvoicePdf(x, co) }); saveBlob(await zipBlob(files), `Rechnungen-${year}.zip`); } }]} />
       </div>
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Nummer, Kunde, Leistung suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <div className="chips invfilter">{FILTERS.map(([k, l]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({cnt(k)})</small></button>)}</div>
@@ -6994,6 +7177,20 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
         {!!docCands.length && <button className="btn" onClick={() => setImp(!imp)}>📄 Aus Dokumenten übernehmen ({docCands.length})</button>}
         {onFiles && <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>}
         <span className="grow" />
+        {(() => {
+          const rows = shown.map(({ c, d }) => [c.name || "", c.provider || "", c.cat || "", c.scope === "firma" ? "Firma" : "privat", r2e(c.amount), c.interval || "monatlich", r2e(monthly(c)), c.customerNo || "", c.start || "", d.end || "", d.cancelBy || "", c.cancelledAt ? "gekündigt" : c.inactive ? "inaktiv" : "aktiv"]);
+          const head = ["Vertrag", "Anbieter", "Kategorie", "Bereich", "Betrag €", "Intervall", "pro Monat €", "Kundennr.", "Beginn", "Ende", "Kündigen bis", "Status"];
+          const ics = () => { const ev = shown.filter(({ c, d }) => !c.cancelledAt && d.cancelBy).map(({ c, d }) => icsEvent({ id: "ct-" + c.id, date: d.cancelBy, label: "Kündigung bis" }, { title: `${c.name} (${c.provider || ""})`, summary: `Letzter Tag zum Kündigen. Vertragsende ${d.end ? fmtDate(d.end) : "–"}. Kundennr. ${c.customerNo || "–"}` }));
+            saveBlob(new Blob([["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinDocu//DE", ...ev, "END:VCALENDAR"].join("\r\n")], { type: "text/calendar" }), "kuendigungstermine.ics"); };
+          return <ExportMenu className="btn" items={[{ head: `${shown.length} Verträge (aktueller Filter)` },
+            { label: "🖨 Vertragsübersicht PDF", run: async () => saveBlob(await tablePdf({ title: "Vertragsübersicht", subtitle: `Stand ${fmtDate(isoToday())}`, landscape: true,
+              kpis: [["Verträge", String(shown.length)], ["pro Monat", fmtMoney(sumBy(shown.filter(({ c }) => !c.cancelledAt && !c.inactive), ({ c }) => monthly(c)))], ["pro Jahr", fmtMoney(12 * sumBy(shown.filter(({ c }) => !c.cancelledAt && !c.inactive), ({ c }) => monthly(c)))], ["Kündigung in 60 Tagen", String(soon.length)]],
+              columns: [{ label: "Vertrag", w: 2.4 }, { label: "Anbieter", w: 2 }, { label: "Kategorie", w: 1.4 }, { label: "Betrag", w: 1.1, align: "right" }, { label: "Intervall", w: 1.2 }, { label: "pro Monat", w: 1.1, align: "right" }, { label: "Beginn", w: 1 }, { label: "Ende", w: 1 }, { label: "Kündigen bis", w: 1.1 }, { label: "Status", w: 0.9 }],
+              rows: rows.map((r) => [r[0], r[1], r[2], r[4], r[5], r[6], r[8], r[9], r[10], r[11]]) }), `vertraege-${isoToday()}.pdf`) },
+            { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`vertraege-${isoToday()}.xlsx`, [{ name: "Verträge", head, rows }]) },
+            { label: "📄 CSV", run: () => downloadCsv(`vertraege-${isoToday()}.csv`, head, rows) },
+            { label: "📅 Kündigungstermine (.ics)", sub: "in den Kalender, mit Erinnerung 2 Tage vorher", run: ics }]} />;
+        })()}
         <label className="check mini"><input type="checkbox" checked={showOld} onChange={(e) => setShowOld(e.target.checked)} /> Gekündigte anzeigen</label>
       </div>
       {onFiles && showDrop && <DropField onFiles={dropCt} onHide={() => setShowDrop(false)} busy={!!docBusy} title="Verträge oder Ordner hierher ziehen" what="PDF & Fotos · Vertrag wird automatisch angelegt" />}
@@ -7223,6 +7420,10 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         { k: "drop", label: "📥 Ablagefeld", el: <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button> },
         { k: "alle", label: "Alle", el: <button className={"chip" + (type === "alle" ? " on" : "")} onClick={() => setType("alle")}>Alle <small>({list.length})</small></button> },
         ...types.map((t) => ({ k: "t:" + t.id, label: <><TypeGlyph t={t} /> {t.name}</>, el: <button className={"chip" + (type === t.name ? " on" : "")} style={type === t.name ? undefined : { color: t.color }} onClick={() => setType(t.name)}><TypeGlyph t={t} /> {t.name} <small>({list.filter((c) => (c.type || "Kunde") === t.name).length})</small></button> })),
+        { k: "export", label: "⬇︎ Export", el: <ExportMenu items={[{ head: `${shown.length} Kontakte (aktueller Filter)` },
+          { label: "📇 vCard (.vcf)", sub: "für Handy, Outlook, iCloud", run: () => saveBlob(new Blob([vcardText(shown)], { type: "text/vcard" }), `kontakte-${isoToday()}.vcf`) },
+          { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`kontakte-${isoToday()}.xlsx`, [{ name: "Kontakte", head: ["Nr.", "Art", "Name", "Ansprechperson", "Anschrift", "E-Mail", "Telefon", "Mobil", "Web", "UID", "Notiz"], rows: shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.web || "", c.uid || "", c.note || ""]) }]) },
+          { label: "📄 CSV", run: () => downloadCsv(`kontakte-${isoToday()}.csv`, ["Nr.", "Art", "Name", "Ansprechperson", "Anschrift", "E-Mail", "Telefon", "Mobil", "Web", "UID"], shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.web || "", c.uid || ""])) }]} /> },
         setTab && { k: "set", label: "⚙︎ Arten bearbeiten", el: <button className="chip" title="Kontaktarten bearbeiten" onClick={() => { ls.set("openSettingsSec", "kontaktarten"); setTab("settings"); }}>⚙︎</button> },
       ]} />
       {showDrop ? <DropField onFiles={dropVcf} onHide={() => setShowDrop(false)} busy={!!busy} title="Kontaktdateien (.vcf) oder Ordner hierher ziehen" what="vCard (.vcf)"
@@ -7499,6 +7700,14 @@ function ArticlesPage({ setTab }) {
         <button className="btn primary" onClick={() => setEdit({ id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: grp !== "alle" && grp !== "ohne" ? grp : "" })}>＋ Artikel</button>
         <button className="btn" onClick={() => setScan(true)}>📷 Artikel scannen</button>
         <span className="grow" />
+        <ExportMenu items={[{ head: `${shown.length} Artikel (aktueller Filter)` },
+          { label: "🖨 Preisliste PDF", run: async () => { const by = {}; shown.filter(({ a }) => !a.inactive).forEach(({ a }) => (by[a.group || "Ohne Gruppe"] = by[a.group || "Ohne Gruppe"] || []).push(a));
+            const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
+            saveBlob(await tablePdf({ title: "Preisliste", subtitle: `${co.name || ""} · gültig ab ${fmtDate(isoToday())}${co.uid ? "" : " · Kleinunternehmer, Preise ohne USt"}`,
+              columns: [{ label: "Art.-Nr.", w: 1.2 }, { label: "Bezeichnung", w: 5 }, { label: "Einheit", w: 1 }, { label: "Preis €", w: 1.3, align: "right" }],
+              sections: Object.entries(by).map(([g, l]) => ({ heading: g, rows: l.map((a) => [a.number || "", a.text || "", a.unit || "", r2e(a.price)]) })) }), `preisliste-${isoToday()}.pdf`); } },
+          { label: "📊 Excel (.xlsx)", sub: "mit Umsatz und Anzahl aus Rechnungen", run: () => downloadXlsx(`artikel-${isoToday()}.xlsx`, [{ name: "Artikel", head: ["Art.-Nr.", "Bezeichnung", "Gruppe", "Einheit", "Preis €", "EAN", "Aktiv", "Rechnungspositionen", "Umsatz €", "Notiz"], rows: shown.map(({ a, u }) => [a.number || "", a.text || "", a.group || "", a.unit || "", r2e(a.price), a.ean || "", a.inactive ? "nein" : "ja", u.n, r2e(u.sum), a.note || ""]) }]) },
+          { label: "📄 CSV", run: () => downloadCsv(`artikel-${isoToday()}.csv`, ["Art.-Nr.", "Bezeichnung", "Gruppe", "Einheit", "Preis €", "EAN", "Aktiv"], shown.map(({ a }) => [a.number || "", a.text || "", a.group || "", a.unit || "", r2e(a.price), a.ean || "", a.inactive ? "nein" : "ja"])) }]} />
         <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">Name</option><option value="preis">Preis</option><option value="umsatz">Umsatz</option></select>
         {setTab && <button className="chip" title="Einstellungen" onClick={() => { ls.set("openSettingsSec", "artikel"); setTab("settings"); }}>⚙︎</button>}
       </div>
@@ -7562,6 +7771,9 @@ function DunningPage({ setTab, book }) {
             </div>
           </details>); })()}
         <span className="grow" />
+        <ExportMenu className="btn" items={[{ label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) },
+          { label: "📄 Offene Posten CSV", run: () => downloadCsv(`Offene-Posten-${isoToday()}.csv`, OP_HEAD, openList(list).map(opRow)) },
+          { label: "📒 Mahnverlauf CSV", run: () => downloadCsv(`Mahnverlauf-${isoToday()}.csv`, ["Datum", "Stufe", "Rechnung", "Kunde", "Frist", "Gebühr €", "Rechnungsbetrag €"], history.map(({ x, r }) => [r.date, remindName(r.level), x.number, x.customer?.name || "", r.due, r2e(r.fee), r2e(invTotal({ ...x, fee: 0 }))])) }]} />
         {setTab && <button className="btn" onClick={() => setTab("invoices")}>🧾 Rechnungen</button>}
         {setTab && <button className="btn" title="Mahnwesen einstellen" onClick={() => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); }}>⚙︎</button>}
       </div>
@@ -9133,4 +9345,10 @@ html,body{min-height:100%}
 .chips.chipbar.chipedit>.chipcfg{flex:0 0 auto}
 
 .chips.chipbar>.chip,.chips.chipbar>select.chip,.chips.chipbar>.chipcfg{height:43px!important;min-height:43px!important}
+
+.expmenu{position:relative;display:inline-flex}.expmenu>summary{list-style:none;cursor:pointer}.expmenu>summary::-webkit-details-marker{display:none}
+.expmenu .moremenu{min-width:250px;top:calc(100% + 6px);right:auto;left:0;z-index:60}
+.expmenu .moremenu button small{font-size:11.5px;margin-top:1px}.expmenu .exphead{padding:6px 10px 4px;font-size:11.5px}
+.chips.chipbar>.expmenu{flex:1 1 auto}.chips.chipbar>.expmenu>summary{width:100%;height:43px;justify-content:center;display:flex;align-items:center}
+@media (max-width:600px){.expmenu .moremenu{position:fixed;left:12px;right:12px;top:auto;bottom:calc(env(safe-area-inset-bottom) + 96px);min-width:0}}
 `;
