@@ -3888,8 +3888,9 @@ function ImportBar({ title, sub, done, total }) {
   );
 }
 /* Filter-/Chipleiste: Einträge seitlich verschiebbar und ein-/ausblendbar (gespeichert unter storeKey) */
-function ChipBar({ storeKey, items, lead = null, className = "" }) {
-  const [cfg, setCfg] = useLsState(storeKey, { order: [], hidden: [] });
+function ChipBar({ storeKey, items, lead = null, className = "", cfg: extCfg, setCfg: extSet }) {
+  const [ownCfg, ownSet] = useLsState(storeKey, { order: [], hidden: [] });
+  const cfg = extCfg || ownCfg, setCfg = extSet || ownSet;
   const [edit, setEdit] = useState(false), [dragK, setDragK] = useState(null);
   const defs = Object.fromEntries(items.filter(Boolean).map((x) => [x.k, x]));
   const order = [...cfg.order.filter((k) => defs[k]), ...Object.keys(defs).filter((k) => !cfg.order.includes(k))];
@@ -3909,7 +3910,7 @@ function ChipBar({ storeKey, items, lead = null, className = "" }) {
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   };
   return (
-    <div className={"chips " + className + (edit ? " chipedit" : "")}>
+    <div className={"chips chipbar " + className + (edit ? " chipedit" : "")}>
       {!edit && lead}
       {order.map((k) => edit
         ? <span key={k} data-chipk={k} className={"chipcfg" + (hidden.has(k) ? " off" : "") + (dragK === k ? " drag" : "")} onPointerDown={(e) => !e.target.closest("button") && startDrag(e, k)}>
@@ -3918,13 +3919,14 @@ function ChipBar({ storeKey, items, lead = null, className = "" }) {
           </span>
         : !hidden.has(k) && <React.Fragment key={k}>{defs[k].el}</React.Fragment>)}
       <button className={"chip chipset" + (edit ? " on" : "")} title="Leiste anordnen und ein-/ausblenden" onClick={() => setEdit(!edit)}>{edit ? "✓ Fertig" : "⇄"}</button>
-      {edit && <small className="muted chiphint">Am Griff ⠿ seitlich ziehen · Auge zum Ein-/Ausblenden</small>}
+      {edit && <small className="muted chiphint">Am Griff ⠿ ziehen zum Sortieren · Auge zum Ein-/Ausblenden</small>}
     </div>
   );
 }
 
 function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, onFiles, docBusy }) {
   const [showDrop, setShowDrop] = useLsState("docDrop", true);
+  const [chipCfg, setChipCfg] = useLsState("docChips", { order: [], hidden: [] });
   const [q, setQ] = useState("");
   const [prevId, setPrevId] = useState(null);
   const [winPrev, setWinPrev] = useState(null);
@@ -3966,23 +3968,23 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         <button className="iconbtn" onClick={() => setView(view === "list" ? "grid" : "list")} aria-label="Ansicht">{view === "list" ? "▦" : "☰"}</button>
       </div>
 
-      <div className="seg scopeseg" role="group" aria-label="Privat oder Firma">
+      {!chipCfg.hidden.includes("scopebar") && <div className="seg scopeseg" role="group" aria-label="Privat oder Firma">
         {[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => (
           <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small className="cnt">({k === "alle" ? docs.length : docs.filter((d) => docScope(d) === k).length})</small></button>
         ))}
-      </div>
-      <div className="seg areaseg">
+      </div>}
+      {!chipCfg.hidden.includes("areabar") && <div className="seg areaseg">
         {[["alle", "Alle", docs.length], ...Object.entries(AREAS).map(([k, [i, l]]) => [k, `${i} ${l}`, docs.filter((d) => docArea(d) === k).length])].map(([k, l, n]) => (
           <button key={k} className={area === k ? "on" : ""} onClick={() => setArea(k)}>{l} <small className="cnt">({n})</small></button>
         ))}
-      </div>
+      </div>}
       {area === "sonstiges" && <p className="muted small" style={{ margin: "4px 2px 8px" }}>Dokumente in „Sonstiges“ zählen nicht in Übersicht, Budgets und Auswertungen.</p>}
       {!!docs.length && (
         <div className="tile mobile-only accphone">
           <DocTree docGroups={docGroups} docs={docs} selected={cat} onSelect={setCat} onToggleGroup={toggleDocGroup} variant="card" />
         </div>
       )}
-      <ChipBar storeKey="docChips" lead={cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>} items={[
+      <ChipBar storeKey="docChips" cfg={chipCfg} setCfg={setChipCfg} lead={cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>} items={[
         deadlineTab && { k: "frist", label: "⏰ " + deadlineTab.label, el: <button className="chip" onClick={deadlineTab.open}>⏰ {deadlineTab.label}</button> },
         { k: "steuer", label: "🧾 Steuerrelevant", el: <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button> },
         { k: "unbezahlt", label: "💶 Unbezahlt", el: <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button> },
@@ -3992,6 +3994,8 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         { k: "sort", label: "Sortierung", el: <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></select> },
         { k: "pick", label: "☑︎ Auswählen", el: <button className={pick ? "chip on" : "chip"} disabled={!list.length} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑︎ Auswählen"}</button> },
         { k: "csv", label: "⬇︎ CSV", el: <button className="chip" disabled={!list.length} onClick={() => exportCsv(list, `dokumente${year ? "-" + year : ""}${month ? "-" + month : ""}${taxOnly ? "-steuer" : ""}.csv`)}>⬇︎ CSV</button> },
+        { k: "scopebar", label: "👤 Leiste Privat / Firma", el: null },
+        { k: "areabar", label: "🗂️ Leiste Bereiche", el: null },
         onFiles && { k: "drop", label: "📥 Ablagefeld", el: <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button> },
       ]} />
       {onFiles && showDrop && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} />}
@@ -9121,4 +9125,10 @@ html,body{min-height:100%}
 @supports (height:100lvh){.app{min-height:100lvh}}
 
 .winguard>:first-child{flex:1 0 100%}.winguard .grow{display:none}.winguard .btn{flex:1 1 0;white-space:nowrap;justify-content:center}
+
+/* Filterleisten: an die Breite anpassen statt seitlich abschneiden */
+.chips.chipbar{flex-wrap:wrap!important;overflow:visible!important;row-gap:8px}
+.chips.chipbar>.chip,.chips.chipbar>select.chip{flex:1 1 auto;justify-content:center;text-align:center;min-width:0}
+.chips.chipbar>.chipset{flex:0 0 auto}
+.chips.chipbar.chipedit>.chipcfg{flex:0 0 auto}
 `;

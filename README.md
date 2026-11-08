@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.49.1
+- Dokumente: Filterleiste (Umtauschfrist, Steuerrelevant, Unbezahlt, Monat, Jahr, Tags, Sortierung, Auswählen, CSV, Ablagefeld) passt sich der Breite an und bricht um statt abgeschnitten zu werden. Über ⇄ lassen sich alle Einträge sortieren und ein-/ausblenden – jetzt auch die Leisten „Privat / Firma“ und „Bereiche“.
+
 ## v0.49.0
 - Fahrtenbuch: Ablagefeld wie bei Konten (ein-/ausblendbar). Tank-, Lade- und Werkstattbelege (PDF/Fotos, auch Ordner) ablegen → KI liest aus → Eintrag Tanken/Laden/Ausgabe wird für das gewählte Fahrzeug angelegt, Beleg angehängt und – wenn vorhanden – mit der passenden Kontobuchung (Betrag + Datum ±4 Tage) verknüpft.
 - Fenster „Ungespeicherte Änderungen“: Text oben, die drei Knöpfe gleich breit in einer Zeile.
