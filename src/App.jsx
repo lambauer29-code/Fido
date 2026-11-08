@@ -2784,6 +2784,49 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
   const [view, setView] = useState("verlauf");
   const [edit, setEdit] = useState(null), [vEdit, setVEdit] = useState(null), [remEdit, setRemEdit] = useState(null);
   const upd = (p) => setFb((o) => ({ ...FB_EMPTY, ...o, ...p(o) }));
+  // Ablagefeld: Belege ablegen → KI liest aus → Eintrag (Tanken/Laden/Ausgabe) wird angelegt und mit passender Kontobuchung verknüpft
+  const [showDrop, setShowDrop] = useLsState("fbDrop", true);
+  const [wait, setWait] = useLsState("fbWait", []);
+  const [dropBusy, setDropBusy] = useState(null);
+  const dropFiles = async (files) => {
+    const vId = (vehicles.find((x) => x.id === vid) || vehicles[0])?.id; if (!vId) return notify("Bitte zuerst ein Fahrzeug anlegen");
+    for (const [i, f] of files.entries()) {
+      setDropBusy({ title: `Beleg ${i + 1} von ${files.length} wird hochgeladen …`, sub: f.name, done: i, total: files.length, n: files.length - i });
+      const id = await onUpload(f, {}); if (id) setWait((l) => [...l, { docId: id, vid: vId }]);
+    }
+    setDropBusy(null);
+  };
+  useEffect(() => {
+    if (!wait.length) return;
+    const fin = wait.map((w) => ({ w, d: docs.find((x) => x.id === w.docId) })).filter(({ d }) => !d || d.status !== "processing");
+    if (!fin.length) return;
+    const add = [], used = new Set((fb.entries || []).map((e) => e.txId).filter(Boolean)), links = [];
+    for (const { w, d } of fin) {
+      if (!d || d.status === "error" || !d.amount?.total) { if (d) notify(`„${d.fileName || d.title}“: kein Betrag erkannt – bitte manuell erfassen`); continue; }
+      const text = norm(`${d.title} ${d.merchant || ""} ${d.sender || ""} ${d.fullText || ""} ${(d.lineItems || []).map((i) => i.name).join(" ")}`);
+      const elec = /kwh|ladestation|laden|smatrics|ionity|wallbox|charging/.test(text);
+      const isFuel = elec || /super|diesel|benzin|tankstelle|treibstoff|kraftstoff|liter|\bomv\b|\bbp\b|shell|eni|avanti|turmöl|jet\b/.test(text);
+      const it = (d.lineItems || []).find((i) => i.qty > 2 && i.unitPrice > 0.15 && i.unitPrice < 4);
+      const date = pastOrToday(d.purchaseDate || d.documentDate, todayISO()), total = Math.abs(d.amount.total);
+      const cat = [["Service", /service|inspektion|ölwechsel|wartung/], ["Reparatur", /reparatur|werkstatt|ersatzteil/], ["Reifen", /reifen|felge|räder/], ["Versicherung", /versicherung|polizze|prämie/],
+        ["Motorbezogene Steuer", /motorbezogene|kfz-steuer/], ["Pickerl (§57a)", /pickerl|57a|begutachtung/], ["Vignette & Maut", /vignette|maut|asfinag/], ["Parken", /park/], ["Autowäsche", /wäsche|waschstraße|waschanlage/], ["Strafe", /strafe|organmandat|anonymverfügung/]]
+        .find(([, re]) => re.test(text))?.[0] || "Sonstiges";
+      const e = { id: uid(), vid: w.vid, date, total, docId: d.id, station: d.merchant || d.sender || "",
+        ...(isFuel ? { type: "fuel", fuel: elec ? "Strom (kWh)" : /diesel/.test(text) ? "Diesel" : "Super 95", liters: it ? it.qty : 0, price: it?.unitPrice ?? null, full: true } : { type: "expense", cat }) };
+      const t = txs.filter((x) => x.amount < 0 && !used.has(x.id) && Math.abs(-x.amount - total) < 0.01 && Math.abs(new Date(x.date) - new Date(date)) <= 4 * 864e5)
+        .sort((a, b) => Math.abs(new Date(a.date) - new Date(date)) - Math.abs(new Date(b.date) - new Date(date)))[0];
+      if (t) { e.txId = t.id; used.add(t.id); links.push([t.id, d.id]); }
+      add.push(e);
+    }
+    const done = new Set(fin.map(({ w }) => w.docId));
+    setWait((l) => l.filter((w) => !done.has(w.docId)));
+    if (add.length) {
+      upd((o) => ({ entries: [...(o.entries || []), ...add] }));
+      links.forEach(([a, b]) => onLink(a, b));
+      notify(`${add.length} Beleg${add.length === 1 ? "" : "e"} ins Fahrtenbuch übernommen${links.length ? ` · ${links.length} mit Kontobuchung verknüpft` : ""}${add.some((e) => e.type === "fuel" && !e.liters) ? " – bei Tankbelegen ohne Literangabe bitte Liter ergänzen" : ""}`);
+    }
+  }, [docs, wait.length]);
+  const waitN = wait.length;
   if (!vehicles.length) return (
     <div className="fbpage">
       <section className="tile fbempty">
@@ -2871,7 +2914,10 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
       <div className="chips anaaccs">
         {vehicles.map((x) => <button key={x.id} className={"chip" + (x.id === v.id ? " on" : "")} onClick={() => setVid(x.id)} onDoubleClick={() => setVEdit(x)}><VehIcon v={x} /> {x.name}</button>)}
         <button className="chip fbaddveh" title="Fahrzeug hinzufügen" aria-label="Fahrzeug hinzufügen" onClick={() => setVEdit({})}>＋</button>
+        <button className={"chip" + (showDrop ? " on" : "")} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>
       </div>
+      {showDrop && <DropField onFiles={dropFiles} onHide={() => setShowDrop(false)} busy={!!dropBusy || waitN > 0} title="Tank-, Lade- oder Werkstattbelege hierher ziehen" what={`PDF & Fotos · werden für „${v.name}“ eingetragen`} />}
+      {dropBusy ? <ImportBar {...dropBusy} /> : waitN > 0 && <ImportBar title={`KI liest ${waitN} Beleg${waitN === 1 ? "" : "e"} aus …`} sub="Einträge werden danach automatisch angelegt" done={0} total={waitN} n={waitN} />}
       <section className="tile fbcar">
         <div className="fbcarhead">
           <span className="fbcaric"><VehIcon v={v} /></span>
@@ -9073,4 +9119,6 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 html,body{min-height:100%}
 .app{min-height:100vh}
 @supports (height:100lvh){.app{min-height:100lvh}}
+
+.winguard>:first-child{flex:1 0 100%}.winguard .grow{display:none}.winguard .btn{flex:1 1 0;white-space:nowrap;justify-content:center}
 `;

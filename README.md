@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.49.0
+- Fahrtenbuch: Ablagefeld wie bei Konten (ein-/ausblendbar). Tank-, Lade- und Werkstattbelege (PDF/Fotos, auch Ordner) ablegen → KI liest aus → Eintrag Tanken/Laden/Ausgabe wird für das gewählte Fahrzeug angelegt, Beleg angehängt und – wenn vorhanden – mit der passenden Kontobuchung (Betrag + Datum ±4 Tage) verknüpft.
+- Fenster „Ungespeicherte Änderungen“: Text oben, die drei Knöpfe gleich breit in einer Zeile.
+
 ## v0.48.2
 - iPhone (iOS 26, Web-App vom Home-Bildschirm): untere Leiste saß auf kurzen Seiten (z. B. Fahrtenbuch, Artikel) zu hoch. Die Seite ist jetzt immer mindestens bildschirmhoch, damit die Leiste überall gleich weit unten sitzt.
 
