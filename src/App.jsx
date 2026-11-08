@@ -2987,6 +2987,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
         <div className="tile alert click" onClick={() => setView("rem")}><span style={{ fontSize: 24 }}>⏰</span><div className="grow"><b>{dueN} Erinnerung{dueN > 1 ? "en" : ""} fällig</b><small>{myRem.filter((r) => remState(r).cls).map((r) => r.title).join(", ")}</small></div></div>
       )}
       <ChipBar seg storeKey="fbViews" cfg={viewCfg} setCfg={setViewCfg} className="fbseg" items={VIEWS.map(([k, l]) => ({ k, label: l, el: <button className={view === k ? "on" : ""} onClick={() => setView(k)}>{l}</button> }))} />
+      <FitScroll>
       {["verlauf", "fuel", "trip", "expense"].includes(view) && (
         <section className="tile">
           {view === "trip" && trips.length > 0 && <div className="tilehead"><b>Fahrten {year}</b><button className="link" onClick={exportCsv}>⬇︎ CSV fürs Finanzamt</button></div>}
@@ -3031,6 +3032,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
           </section>
         </div>
       </>)}
+      </FitScroll>
       {edit && <FbEntryWin init={edit} vehicles={vehicles} accounts={accounts} txs={txs} docs={docs} onScan={onScan} onUpload={onUpload} onOpen={onOpen} lastKm={st.odo} fuelPrice={lastFuel?.price} onClose={() => setEdit(null)} onSave={(x) => { if (x.type === "trip") ls.set("fbPurpose", x.purpose); saveEntry(x); }}
         onDelete={(id) => { upd((o) => ({ entries: o.entries.filter((y) => y.id !== id) })); setEdit(null); }} />}
       {vEdit && <VehicleWin init={Object.fromEntries(Object.entries(vEdit).map(([k, val]) => [k, ["tank", "battery", "acKw", "dcKw"].includes(k) && val != null ? String(val).replace(".", ",") : val]))} onClose={() => setVEdit(null)} onSave={(nv) => { upd((o) => ({ vehicles: o.vehicles.some((y) => y.id === nv.id) ? o.vehicles.map((y) => (y.id === nv.id ? nv : y)) : [...o.vehicles, nv] })); setVid(nv.id); setVEdit(null); }}
@@ -4329,6 +4331,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
       ]} />
       {onFiles && showDrop && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} />}
       {docBusy && <ImportBar {...docBusy} />}
+      <FitScroll>
       <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>
 
       {!docs.length && (
@@ -4388,6 +4391,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
           ))}
         </div>
       )}
+      </FitScroll>
       {pick && (
         <div className="pickbar">
           <b>{pick.size} ausgewählt</b>
@@ -4781,6 +4785,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
         </div>
       </div>
 
+      <FitScroll>
       {!list.length ? (
         <div className="tile hintrow">
           <span className="caticon" style={{ width: 40, height: 40, background: "#8b5cf622", fontSize: 18 }}>📑</span>
@@ -4851,6 +4856,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
         </section>
       )}
       {!!ended.length && <p className="muted small" style={{ marginTop: 16 }}>{ended.length} beendete Verträge (im Dokument unter „Vertrag / Abo“ abgewählt)</p>}
+      </FitScroll>
 
       {letterFor && (
         <Win id="letter" onClose={() => setLetterFor(null)} dirty={false}>
@@ -6325,6 +6331,12 @@ function nextInvNumber(list, kind, co, date) {
   const max = list.filter((x) => (x.number || "").startsWith(pre)).reduce((m, x) => Math.max(m, parseInt(x.number.slice(pre.length), 10) || 0), 0);
   return pre + String(max + 1).padStart(3, "0");
 }
+/* Bereich unterhalb eines festen Kopfes: scrollt für sich, wenn genug Platz ist (sonst normal) */
+function FitScroll({ children, className = "" }) {
+  const ref = useRef(null);
+  const h = useFitHeight(ref);
+  return <div ref={ref} className={"fitscroll" + (h ? " fit" : "") + (className ? " " + className : "")} style={h ? { maxHeight: h } : undefined}>{children}</div>;
+}
 function useFitHeight(ref, min = 200) {
   const [h, setH] = useState(null);
   useEffect(() => {
@@ -6333,9 +6345,10 @@ function useFitHeight(ref, min = 200) {
       const el = ref.current; if (!el) return setH(null);
       const top = el.getBoundingClientRect().top + window.scrollY;
       const bar = [...document.querySelectorAll("nav.bottom")].find((b) => b.offsetParent && b.getBoundingClientRect().top < innerHeight - 1);
-      const bottom = bar ? innerHeight - bar.getBoundingClientRect().top + 8 : 0;
-      const avail = Math.floor(innerHeight - top - bottom - 20);
-      setH((o) => { const n = avail >= min ? avail : null; return o === n ? o : n; });
+      const app = document.querySelector(".app"), appPad = app ? parseFloat(getComputedStyle(app).paddingBottom) || 0 : 0;
+      const bottom = Math.max(bar ? innerHeight - bar.getBoundingClientRect().top + 8 : 0, appPad + 4);
+      const avail = Math.floor(innerHeight - top - bottom - 8);
+      setH((o) => { const n = avail >= min && innerWidth >= 700 ? avail : null; return o === n ? o : n; });
     }); };
     calc();
     addEventListener("resize", calc);
@@ -7162,6 +7175,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Nummer, Kunde, Leistung suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <div className="chips invfilter">{FILTERS.map(([k, l]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({cnt(k)})</small></button>)}</div>
 
+      <FitScroll>
       {filter === "wiederkehrend" ? (
         <section className="tile">
           {!templates.length && <p className="muted small">Noch keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „Wiederkehrend“ anhaken – FinDocu legt dann zum Termin automatisch einen Entwurf an, den du nur noch prüfst und ausstellst.</p>}
@@ -7215,6 +7229,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           })}
         </section>
       )}
+      </FitScroll>
       {edit && <InvoiceEditor book={book} accounts={book?.accounts || []} txs={book?.txs || []} onPayWin={book ? (x) => { setEdit(null); setPayFor2(x); } : null} onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
       {coOpen && <CompanyWin co={co} setCo={setCo} onClose={() => setCoOpen(false)} />}
       {mdOpen && <MasterDataWin articles={articles} setArticles={setArticles} onClose={() => setMdOpen(false)} />}
@@ -7404,6 +7419,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
       </div>
       {onFiles && showDrop && <DropField onFiles={dropCt} onHide={() => setShowDrop(false)} busy={!!docBusy} title="Verträge oder Ordner hierher ziehen" what="PDF & Fotos · Vertrag wird automatisch angelegt" />}
       {docBusy && waitIds.length > 0 && <ImportBar {...docBusy} />}
+      <FitScroll>
       {imp && <section className="tile">
         <div className="tilehead"><b>Von Claude erkannte Verträge in deinen Dokumenten</b></div>
         {docCands.map((d) => <div key={d.id} className="frow"><Thumb d={d} /><div className="grow"><b>{d.contract.provider}</b><small className="muted block">{d.title} · {d.contract.amount ? fmtMoney(d.contract.amount) + " " + (d.contract.interval || "") : ""}</small></div>
@@ -7434,6 +7450,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
           {open && cdocs.map((x) => <DocPreview key={x.id} d={x} onOpen={() => onOpen(x.id)} />)}
           </div>); })}
       </section>
+      </FitScroll>
       {edit && <ContractEditor c={edit} docs={docs} me={me} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
     </div>
   );
@@ -7639,6 +7656,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         accept=".vcf,text/vcard,text/x-vcard" isOk={(f) => /\.vcf$/i.test(f.name) || /vcard/i.test(f.type)} emptyMsg="Keine .vcf-Kontaktdateien gefunden." />
         : null}
       {busy && <ImportBar {...busy} />}
+      <FitScroll>
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📱 Aus Handy-Kontakten“ übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
         {shown.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
@@ -7657,6 +7675,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
             {!!inv.length && <div className="right"><b>{fmtMoney(inv.reduce((s, i) => s + invTotal(i), 0))}</b><small className={"block " + (open.length ? "warnc" : "muted")}>{inv.length} Rechnung{inv.length === 1 ? "" : "en"}{open.length ? ` · ${open.length} offen` : ""}</small></div>}
           </div>); })}
       </section>
+      </FitScroll>
       {picked && <ContactImportWin items={picked} existing={list} onClose={() => setPicked(null)} onImport={(sel) => {
         let n = list.reduce((m, c) => Math.max(m, parseInt(String(c.number || "").replace(/\D/g, ""), 10) || 0), 0);
         setList((l) => [...l, ...sel.map((c) => { const { on, ...rest } = c; return { id: uid(), type: "Kunde", number: "K-" + String(++n).padStart(3, "0"), ...rest }; })]);
@@ -7925,6 +7944,7 @@ function ArticlesPage({ setTab }) {
         {[["alle", "Alle", list.length], ...groups.map((g) => [g, g, list.filter((a) => a.group === g).length]), ["ohne", "Ohne Gruppe", list.filter((a) => !a.group).length]]
           .filter(([k, , n]) => k === "alle" || n || C.groups.includes(k)).map(([k, l, n]) => <button key={k} className={"chip" + (grp === k ? " on" : "")} onClick={() => setGrp(k)}>{l} <small>({n})</small></button>)}
       </div>
+      <FitScroll>
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Artikel. Mit „＋ Artikel“ anlegen oder beim Schreiben einer Rechnung mit ☆ merken – beim Tippen der Bezeichnung werden sie vorgeschlagen."}</p>}
         {shown.map(({ a, u }) => (
@@ -7936,6 +7956,7 @@ function ArticlesPage({ setTab }) {
           </div>
         ))}
       </section>
+      </FitScroll>
       {scan && <CodeScanWin title="Artikel scannen" onClose={() => setScan(false)} onResult={(code, fmt) => {
         setScan(false);
         const hit = list.find((a) => a.ean && a.ean === code);
@@ -7986,6 +8007,7 @@ function DunningPage({ setTab, book }) {
         {setTab && <button className="btn" onClick={() => setTab("invoices")}>🧾 Rechnungen</button>}
         {setTab && <button className="btn" title="Mahnwesen einstellen" onClick={() => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); }}>⚙︎</button>}
       </div>
+      <FitScroll>
       <section className="tile invlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b></div>
         {!over.length && <p className="muted small" style={{ padding: "0 14px" }}>Keine überfälligen Rechnungen 🎉</p>}
@@ -8027,6 +8049,7 @@ function DunningPage({ setTab, book }) {
           {prevInv === x.id + ":" + i && <InvPreview x={x} co={co} make={() => pdfOf(x, i)} name={invFileName(x, r)} />}
           </React.Fragment>); })}
       </section>
+      </FitScroll>
       {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
       {payX && <PayWin inv={payX} book={book} onClose={() => setPayX(null)} onDone={(p) => patch(payX.id, p)} />}
     </div>
@@ -9666,4 +9689,9 @@ html,body{min-height:100%}
  .txhead,.txrow,.txtable.withacc .txhead,.txtable.withacc .txrow{grid-template-columns:96px minmax(0,1fr) 100px!important}
  .txhead>span:last-child,.txrow>.txacts{display:none}
 }
+.fitscroll{display:flex;flex-direction:column;gap:inherit;min-width:0}
+.fitscroll.fit{overflow-y:auto;overscroll-behavior:contain;margin:0 -6px;padding:0 6px 6px}
+.fitscroll>*{flex-shrink:0}
+.fbseg{position:sticky;top:env(safe-area-inset-top);z-index:6;box-shadow:0 6px 14px -8px #0008}
+@media (min-width:700px){.fbseg{top:calc(env(safe-area-inset-top) + 84px);box-shadow:0 -40px 0 4px var(--bg),0 -84px 0 4px var(--bg),0 6px 14px -8px #0008}}
 `;

@@ -2,6 +2,18 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.57.0
+- **Fester Kopfbereich in weiteren Reitern** (am Desktop und Tablet ab 700 px Breite). Der obere Teil bleibt stehen, nur die Liste darunter scrollt:
+  - Dokumente (alle Kategorien wie Ausgangsrechnung, Versicherung, Verträge): unterhalb des Ablagefelds
+  - Fixkosten & Abos: unterhalb der Kopfkachel
+  - Rechnungen: unterhalb der Filterleiste (Alle, Entwürfe …)
+  - Mahnungen: unterhalb von „＋ Mahnung“
+  - Kunden: unterhalb des Ablagefelds
+  - Artikel: unterhalb der Gruppenleiste
+  - Verträge: unterhalb des Ablagefelds
+- **Fahrtenbuch:** Der Kopf mit Fahrzeugkarte ist höher als der Bildschirm. Deshalb bleibt dort die Leiste „Verlauf · Tanken · Fahrten · … · Berichte“ beim Scrollen oben haften, auch am Handy.
+- Reicht der Platz nicht oder bei Handy-Breite, scrollt die Seite wie bisher normal.
+
 ## v0.56.2
 - **Konten: fester Kopfbereich.** Kontostand, Leiste, Suche und die Spaltenüberschrift (Datum, Empfänger, Kategorie, Betrag) bleiben stehen, nur die Umsatzliste scrollt. Das gilt für alle Konten und Auswahlen. Weitere Buchungen werden beim Scrollen automatisch nachgeladen. Reicht der Platz nicht (z. B. „Alle Konten“ mit Kontokarten oder am Handy), scrollt die Seite normal, die Spaltenüberschrift bleibt dabei oben haften.
 - In schmalen Tabellen, etwa mit Seitenspalte, wird die Kategorie-Spalte ausgeblendet, statt den Empfänger auf null zusammenzudrücken.
