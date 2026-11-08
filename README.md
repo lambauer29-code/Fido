@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.55.1
+- Umtauschfrist (Kalender und Liste): Ein Klick auf eine Frist öffnet jetzt direkt die verknüpfte Rechnung bzw. den Beleg als Vorschau, mit Drucken und „Original öffnen“. Bearbeiten geht über ✎ im Fenster. Vertragsfristen öffnen weiterhin den Vertrag.
+
 ## v0.55.0
 - **Widget-Raster wie in der Übersicht** jetzt auch in Analyse, Vermögen und Firmenauswertung. Am Desktop lassen sich die Kacheln frei platzieren und an der Ecke ◢ in Breite und Höhe ziehen. Dazu kommen Abstand-Regler, „Nach oben rücken“, Leerfelder und die Liste „Weitere Widgets“ zum Ein- und Ausblenden. Technisch nutzen alle Reiter dieselbe Raster-Komponente (`DashGrid`). Die Anordnung aus v0.54.0 wird übernommen (Schlüssel `anaGrid`, `wealthGrid`, `bizGrid`).
 - **Depot-Positionen** stehen nicht mehr rechts im Reiter Konten, sondern als eigenes Widget im Reiter Vermögen. Sie richten sich nach der Kontenauswahl dort.

@@ -4400,7 +4400,10 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
 }
 
 /* ---------- Fristen ---------- */
-function Deadlines({ docs, onOpen, saveDoc, calSync, setCalSync, token, notify }) {
+function Deadlines({ docs, onOpen: onEdit, saveDoc, calSync, setCalSync, token, notify }) {
+  // Klick auf eine Frist: verknüpfte Rechnung/Datei direkt anzeigen (Bearbeiten über ✎ im Fenster)
+  const [prev, setPrev] = useState(null);
+  const onOpen = (id) => { const d = docs.find((x) => x.id === id); if (d && !d.isContract && d.mimeType) setPrev(d); else onEdit(id); };
   const [showDone, setShowDone] = useState(false);
   const [mode, setMode] = useState(() => ls.get("deadlineView", "cal"));
   useEffect(() => ls.set("deadlineView", mode), [mode]);
@@ -4434,6 +4437,14 @@ function Deadlines({ docs, onOpen, saveDoc, calSync, setCalSync, token, notify }
         <button className="btn" onClick={() => downloadIcs(allItems.filter(([dl]) => !dl.done), "fristen.ics")} disabled={!allItems.length} title="Einmalig als .ics herunterladen">⬇︎ .ics</button>
         {mode === "list" && <label className="check"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Erledigte zeigen</label>}
       </div>
+      {prev && (
+        <Win id="docprev" onClose={() => setPrev(null)} dirty={false} className="docprevwin">
+          <div className="panelhead"><b className="clamp">{prev.title}</b>
+            <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = prev.id; setPrev(null); onEdit(id); }}><IcoEdit /></button>
+            <XBtn /></div>
+          <DocPreview d={prev} onOpen={() => onEdit(prev.id)} />
+        </Win>
+      )}
       {syncOpen && <CalSyncSheet sync={calSync} setSync={setCalSync} items={allItems.filter(([dl]) => !dl.done)} token={token} notify={notify} onClose={() => setSyncOpen(false)} />}
       {mode === "cal" && <MonthCalendar items={allItems} docs={docs} onOpen={onOpen} saveDoc={saveDoc} />}
       {mode === "list" && !items.length && <div className="empty"><p>Keine offenen Fristen 🎉</p></div>}
