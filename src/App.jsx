@@ -1794,7 +1794,7 @@ export default function App() {
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
           acc={selAcc} setAcc={setSelAcc} sel={effSel} allSel={allSel} setSel={setSelAccs} accActions={accActions} hiddenAccs={hiddenAccs} visAccounts={visAccounts} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
-        {tab === "docs" && <DocList trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
+        {tab === "docs" && <DocList onFiles={onFiles} trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup}
           deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
@@ -2445,7 +2445,24 @@ function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore,
 }
 
 /* ---------- Dokumente (Docutain-Look) ---------- */
-function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab }) {
+function DocDrop({ onFiles, onHide }) {
+  const [over, setOver] = useState(false);
+  const ref = useRef(null);
+  const take = (fl) => { const f = [...(fl || [])].filter((x) => /^image\/|pdf$/i.test(x.type) || /\.(pdf|jpe?g|png|heic|heif|webp)$/i.test(x.name)); if (f.length) onFiles(f); };
+  return (
+    <div className={"docdrop" + (over ? " over" : "")} role="button" tabIndex={0} onClick={() => ref.current?.click()}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setOver(true); }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false); }}
+      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setOver(false); take(e.dataTransfer.files); }}>
+      <span className="ddico">📥</span>
+      <span className="grow"><b>{over ? "Loslassen zum Hochladen" : "Dateien hierher ziehen"}</b><small className="muted block">oder klicken · PDF &amp; Fotos, mehrere möglich</small></span>
+      <button className="iconbtn ddx" title="Ablagefeld ausblenden" aria-label="Ablagefeld ausblenden" onClick={(e) => { e.stopPropagation(); onHide(); }}>✕</button>
+      <input ref={ref} type="file" accept="application/pdf,image/*" multiple hidden onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
+    </div>
+  );
+}
+
+function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, onFiles }) {
+  const [showDrop, setShowDrop] = useLsState("docDrop", true);
   const [q, setQ] = useState("");
   const [prevId, setPrevId] = useState(null);
   const [winPrev, setWinPrev] = useState(null);
@@ -2513,7 +2530,9 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></select>
         <button className={pick ? "chip on" : "chip"} disabled={!list.length} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑︎ Auswählen"}</button>
         <button className="chip" disabled={!list.length} onClick={() => exportCsv(list, `dokumente${year ? "-" + year : ""}${taxOnly ? "-steuer" : ""}.csv`)}>⬇︎ CSV</button>
+        {onFiles && <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>}
       </div>
+      {onFiles && showDrop && <DocDrop onFiles={onFiles} onHide={() => setShowDrop(false)} />}
       <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>
 
       {!docs.length && (
@@ -7021,4 +7040,11 @@ nav.bottom>button.sidetoggle{display:none}
 .doctree .accgroup>.accitem{padding-left:26px}
 .doctree .subgrp>.accitem{padding-left:22px}
 .acctree.doctree .subgrp{margin-left:22px}
+
+.docdrop{display:flex;align-items:center;gap:12px;width:25%;min-width:280px;margin:16px 0 18px;padding:14px 12px 14px 16px;border:2px dashed var(--line);border-radius:14px;background:var(--card);cursor:pointer;transition:border-color .15s,background .15s;box-sizing:border-box}
+.docdrop:hover,.docdrop.over{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--card))}
+.docdrop .ddico{font-size:26px;flex:none}
+.docdrop b{font-size:14px}.docdrop small{font-size:12px}
+.docdrop .ddx{flex:none;width:30px;height:30px;min-width:30px;min-height:30px;font-size:13px;color:var(--mut)}
+@media (max-width:700px){.docdrop{width:100%;min-width:0}}
 `;

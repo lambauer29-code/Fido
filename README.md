@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.29.0
+- Dokumente: Ablagefeld zum Hineinziehen mehrerer Dateien (PDF & Fotos) unter den Filtern, ca. ¼ Breite; antippen öffnet die Dateiauswahl
+- Ein-/ausblendbar über ✕ im Feld bzw. den Filter-Chip „📥 Ablagefeld“ (wird gemerkt)
+
 ## v0.28.1
 - Dokument-Kategorien unter den Gruppen-Überschriften eingerückt (Seitenleiste und Dokumente), Untergruppen zusätzlich
 
