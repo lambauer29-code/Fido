@@ -1533,6 +1533,7 @@ export default function App() {
     accounts, txs,
     belegOf: (invId) => docs.find((d) => d.invoiceId === invId && !d.deletedAt),
     openDoc: (id) => setOpenId(id),
+    viewBeleg: async (d) => { const b = await db.getFile(d.id); if (b) openPdf(b, d.fileName || "Rechnung.pdf"); else notify("Datei nicht gefunden"); },
     attach: (invId, txId) => attachInvoiceBeleg(invId, txId).then(() => notify("Beleg angehängt")),
     async create({ inv, accountId, date, amount, method }) {
       const tx = await addManualTx({ accountId, date, amount, counterparty: inv.customer?.name || "Kunde", purpose: `${inv.number}${method ? " · " + method : ""}`, category: "Einnahmen", invoiceId: inv.id, bookingText: "Rechnung" });
@@ -4306,6 +4307,7 @@ if (typeof document !== "undefined" && !window.__moreCloser) { window.__moreClos
 function invState(inv) {
   if (inv.kind === "angebot") return inv.status === "entwurf" ? "entwurf" : inv.status || "offen";
   if (inv.status === "entwurf" || inv.status === "storniert" || inv.status === "bezahlt") return inv.status;
+  if (inv.overdue) return "überfällig";
   return daysUntil(invDueEff(inv)) < 0 ? "überfällig" : "offen";
 }
 const STATE_UI = {
@@ -4836,7 +4838,9 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
             {locked && paid && !inv.paidTx && onPayWin && accounts.length > 0 && <button className="btn" style={{ margin: "4px 0 8px" }} onClick={() => onPayWin(inv)}>🔗 Kontobuchung nachträglich zuordnen</button>}
             {locked && paid && inv.paidAccount && <small className="block" style={{ marginBottom: 4 }}>🔗 Gebucht auf „{accounts.find((a) => a.id === inv.paidAccount)?.name || "Konto"}“{inv.paidAmount ? " · " + fmtMoney(inv.paidAmount) : ""}</small>}
             {locked && paid && inv.paidTx && book && (() => { const bd = book.belegOf?.(inv.id); return bd
-              ? <button className="belegchip" onClick={() => book.openDoc(bd.id)} title="Beleg öffnen">{bd.thumb ? <img src={bd.thumb} alt="" /> : <span>📄</span>}<span className="grow"><b>📎 Beleg angehängt</b><small className="muted block">{bd.fileName || bd.title}</small></span><span className="muted">›</span></button>
+              ? <div className="belegchip" role="button" tabIndex={0} onClick={() => book.viewBeleg(bd)} title="Rechnung (PDF) ansehen">{bd.thumb ? <img src={bd.thumb} alt="" /> : <span>📄</span>}<span className="grow"><b>📎 Beleg angehängt</b><small className="muted block">{bd.fileName || bd.title}</small></span>
+                  <button className="btn sm" onClick={(e) => { e.stopPropagation(); book.viewBeleg(bd); }}>Ansehen</button>
+                  <button className="btn sm" onClick={(e) => { e.stopPropagation(); book.openDoc(bd.id); }} title="In Dokumente öffnen">Dokument</button></div>
               : <button className="btn" style={{ margin: "4px 0 8px" }} onClick={() => book.attach(inv.id, inv.paidTx)}>📎 Rechnung als Beleg an die Buchung hängen</button>; })()}
             <small className="muted">{locked ? (paid ? "Wird sofort gespeichert." : "„Bezahlt“ öffnet das Buchen des Zahlungseingangs.") : paid ? "Beim Ausstellen wird die Rechnung als bezahlt geführt und – falls ein Konto gewählt ist – der Zahlungseingang dort als Einnahme gebucht. Auf dem PDF steht „Betrag dankend erhalten“." : "Zahlungsaufforderung mit Frist und QR-Code wird gedruckt."}</small>
           </fieldset>
@@ -4985,7 +4989,8 @@ function StatusMenu({ x, s, book, onPay, onUnpay, onPatch }) {
       <summary className={"stpill " + cls} title="Status ändern">{label} <span className="stcaret">▾</span></summary>
       <div className="moremenu" onClick={(e) => { if (e.target.closest("button")) e.currentTarget.closest("details").open = false; }}>
         <button className={s === "bezahlt" ? "cur" : ""} onClick={() => s !== "bezahlt" && onPay(x)}>Bezahlt</button>
-        <button className={["offen", "überfällig"].includes(s) ? "cur" : ""} onClick={() => s === "bezahlt" ? onUnpay(x) : s === "storniert" ? onPatch(x.id, { status: "offen" }) : null}>Offen{s === "überfällig" ? " (überfällig)" : ""}</button>
+        <button className={s === "offen" ? "cur" : ""} onClick={async () => { if (s === "bezahlt") await onUnpay(x); onPatch(x.id, { status: "offen", overdue: false }); }}>Offen</button>
+        <button className={s === "überfällig" ? "cur" : ""} onClick={async () => { if (s === "bezahlt") await onUnpay(x); onPatch(x.id, { status: "offen", overdue: true }); }}>Überfällig</button>
         {s === "bezahlt" && !x.paidTx && book?.accounts?.length > 0 && <button onClick={() => onPay(x)}>🔗 Buchung zuordnen</button>}
         {s !== "storniert" ? <button className="red" onClick={() => confirm(`Rechnung ${x.number} stornieren? Sie bleibt im Verlauf, zählt aber nicht mehr zum Umsatz.`) && onPatch(x.id, { status: "storniert" })}>Stornieren</button>
           : <button className="cur">Storniert</button>}

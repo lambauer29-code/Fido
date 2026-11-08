@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.27.4
+- Status-Menü: neue Option „Überfällig“ (setzt eine Rechnung manuell auf überfällig, unabhängig vom Fälligkeitsdatum); „Offen“ hebt das wieder auf
+- Beleg-Kachel in der Rechnung: Klick bzw. „Ansehen“ öffnet direkt das Rechnungs-PDF, „Dokument“ öffnet den Eintrag in Dokumente
+
 ## v0.27.3
 - Rechnung (bezahlt, mit Buchung): angehängter Beleg wird im Bereich „Zahlung“ angezeigt und öffnet das Dokument
 - Fehlt der Beleg (z. B. bei älteren Buchungen): Button „Rechnung als Beleg an die Buchung hängen“
