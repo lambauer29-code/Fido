@@ -2,6 +2,16 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.16.7
+
+- Kacheln: Symbole zentriert, Druckersymbol in der Schwebeleiste.
+- Klick auf eine Kachel öffnet die Vorschau in einem eigenen Fenster (mit ✎ zum Bearbeiten), nicht mehr direkt das Bearbeiten-Fenster.
+
+## v0.16.6
+
+- Dokumente als Kacheln: Schwebeleiste wie in der Vorschau (Seitenzahl + „Original öffnen“) oben rechts auf dem Vorschaubild – am Computer beim Darüberfahren, auf iPhone/iPad immer sichtbar.
+- Bearbeiten/Drucken/Löschen-Symbole stehen jetzt in der obersten Reihe der Kachel, darunter der Titel.
+
 ## v0.16.5
 
 - Seitenleiste: Klick auf **Dokumente** bzw. **Konten** klappt alle Untergruppen auf einmal auf; ein weiterer Klick (wenn schon alles offen ist) klappt alle zu. Beim Wechsel aus einem anderen Bereich wird immer aufgeklappt.

@@ -155,6 +155,34 @@ function DocPreview({ d, onOpen }) {
   );
 }
 
+/* Schwebeleiste auf der Kachel (Seitenzahl + Original öffnen) */
+const pageCountCache = new Map();
+function CardBar({ d }) {
+  const [n, setN] = useState(() => (d.mimeType === "application/pdf" ? pageCountCache.get(d.id) || d.pageCount || 0 : 1));
+  const load = async () => {
+    if (n) return;
+    try {
+      const b = await db.getFile(d.id); if (!b) return;
+      if (b.type !== "application/pdf") { setN(1); return; }
+      const pdf = await (await loadPdfjs()).getDocument({ data: await b.arrayBuffer() }).promise;
+      pageCountCache.set(d.id, pdf.numPages); setN(pdf.numPages); pdf.destroy();
+    } catch {}
+  };
+  const ref = useRef(null);
+  useEffect(() => {
+    if (n || !ref.current) return;
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); load(); } });
+    io.observe(ref.current); return () => io.disconnect();
+  }, [d.id]);
+  return (
+    <div ref={ref} className="dprevbar float gbar" onClick={(e) => e.stopPropagation()}>
+      {n > 0 && <small style={{ paddingLeft: 6 }}>{n === 1 ? "1 Seite" : `${n} Seiten`}</small>}
+      <button className="btn sm" onClick={() => printDoc(d)} title="Drucken" aria-label="Drucken"><IcoPrint /></button>
+      <button className="btn sm orig" onClick={() => openOriginal(d)}>Original öffnen</button>
+    </div>
+  );
+}
+
 const Thumb = ({ d, className = "thumb" }) => (
   <div className={className}>{d.thumb ? <img src={d.thumb} alt="" /> : <span>{d.mimeType === "application/pdf" ? "PDF" : "🖼"}</span>}</div>
 );
@@ -1869,6 +1897,7 @@ function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore,
 function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup }) {
   const [q, setQ] = useState("");
   const [prevId, setPrevId] = useState(null);
+  const [winPrev, setWinPrev] = useState(null);
   const [tag, setTag] = useState("");
   const [year, setYear] = useState("");
   const [sort, setSort] = useState("date");
@@ -1937,17 +1966,29 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
           <p>Noch keine Dokumente.<br />Tippe auf <b>＋</b>, um ein PDF oder Foto hinzuzufügen – Claude sortiert, verschlagwortet und liest Beträge, Fristen &amp; Verträge aus.</p></div>
       )}
 
+      {winPrev && (
+        <Win id="docprev" onClose={() => setWinPrev(null)} dirty={false} className="docprevwin">
+          <div className="panelhead"><b className="clamp">{winPrev.title}</b>
+            <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = winPrev.id; setWinPrev(null); onOpen(id); }}><IcoEdit /></button>
+            <XBtn /></div>
+          <DocPreview d={winPrev} onOpen={() => onOpen(winPrev.id)} />
+        </Win>
+      )}
+
       {view === "grid" ? (
         <div className="grid">
           {list.map((d) => (
-            <div key={d.id} className="gcard" onClick={() => onOpen(d.id)}>
-              <Thumb d={d} className="gthumb" />
+            <div key={d.id} className="gcard" onClick={() => setWinPrev(d)}>
+              <div className="gthumbwrap">
+                <Thumb d={d} className="gthumb" />
+                <CardBar d={d} />
+              </div>
               <div className="gbody">
+                <DocActions d={d} prevOpen={false} onPreview={() => openOriginal(d)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
                 <b className="clamp">{d.title}</b>
                 <small className="muted">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
                 <div className="row1"><Label c={d.category} />{amt(d)}</div>
                 {status(d)}
-                <DocActions d={d} prevOpen={false} onPreview={() => openOriginal(d)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
               </div>
             </div>
           ))}
@@ -4428,4 +4469,15 @@ nav .acctree .accitem .ki.custom{display:inline-flex;width:18px;justify-content:
 .libwrap:hover .libdel{display:inline-flex!important}
 @media (hover:none){.libdel{display:inline-flex!important}}
 .libadd{display:flex;gap:6px;margin-top:6px;max-width:420px}.libadd input{padding:6px 10px;font-size:14px}.libadd .btn{margin:0;white-space:nowrap}
+
+/* v0.16.6: Kachel-Ansicht – Schwebeleiste auf dem Vorschaubild, Symbole über dem Titel */
+.gthumbwrap{position:relative;container-type:inline-size}
+.dprevbar.float.gbar{position:absolute;top:8px;right:8px;margin:0;opacity:0;transform:translateY(-4px);transition:opacity .15s,transform .15s;pointer-events:none}
+.gcard:hover .gbar,.gcard:focus-within .gbar{opacity:1;transform:none;pointer-events:auto}
+@media (hover:none){.dprevbar.float.gbar{opacity:1;transform:none;pointer-events:auto}}
+.gbar .btn{white-space:nowrap}.gbar{max-width:calc(100% - 16px);gap:4px;padding:4px}
+@container (max-width:250px){.gbar small{display:none}}
+@container (max-width:170px){.gbar .orig{display:none}}
+.gbody>.dactions{align-self:center;margin:-4px 0 0}
+.docprevwin .dprev{padding:0}.docprevwin .dpages{max-height:calc(100vh - 180px)}.docprevwin .panelhead{gap:6px}.docprevwin .panelhead b{flex:1;min-width:0}
 `;
