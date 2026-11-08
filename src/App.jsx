@@ -3264,6 +3264,16 @@ function Analysis({ txs, accounts, hasCash }) {
   const [cRange, setCRange] = useLsState("anaCustom", { from: thisMonth.slice(0, 4) + "-01-01", to: todayISO() });
   const cFrom = cRange.from <= cRange.to ? cRange.from : cRange.to, cTo = cRange.from <= cRange.to ? cRange.to : cRange.from;
   const custom = mode === "custom";
+  const [cOpen, setCOpen] = useState(false);
+  const cBtn = useRef(null), cPanel = useRef(null);
+  const [cLeft, setCLeft] = useState(0);
+  useEffect(() => {
+    if (!cOpen) return;
+    const place = () => { const b = cBtn.current, pnl = cPanel.current; if (!b || !pnl) return;
+      const wrap = pnl.offsetParent?.getBoundingClientRect(), br = b.getBoundingClientRect(), w = pnl.offsetWidth; if (!wrap) return;
+      let left = br.left + br.width / 2 - w / 2; left = Math.max(12, Math.min(left, innerWidth - w - 12)); setCLeft(Math.round(left - wrap.left)); };
+    place(); addEventListener("resize", place); return () => removeEventListener("resize", place);
+  }, [cOpen]);
   const dayShift = (d, n) => { const x = new Date(d + "T12:00:00"); x.setDate(x.getDate() + n); return x.toLocaleDateString("sv-SE"); };
   const cDays = Math.round((new Date(cTo + "T12:00:00") - new Date(cFrom + "T12:00:00")) / 864e5) + 1;
   const [from, to] = custom ? [cFrom.slice(0, 7), cTo.slice(0, 7)] : mode === "year" ? [year + "-01", year + "-12"] : mode === "12m" ? [addMon(cur, -11), cur] : [cur, cur];
@@ -3333,16 +3343,20 @@ function Analysis({ txs, accounts, hasCash }) {
   return (
     <div className="anapage">
       <div className="anahead">
-        <div className="seg sm">{[["month", "Monat"], ["year", "Jahr"], ["12m", "12 Monate"], ["custom", "Eigener Zeitraum"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => setMode(k)}>{l}</button>)}</div>
-        {custom ? (
-          <div className="anaper anacustom">
+        <div className="anasegwrap">
+        <div className="seg sm">{[["month", "Monat"], ["year", "Jahr"], ["12m", "12 Monate"], ["custom", "Eigener Zeitraum"]].map(([k, l]) => <button key={k} ref={k === "custom" ? cBtn : undefined} className={mode === k ? "on" : ""} aria-expanded={k === "custom" ? custom && cOpen : undefined}
+          onClick={() => { if (k === "custom") { if (custom) setCOpen(!cOpen); else { setMode("custom"); setCOpen(true); } } else { setMode(k); setCOpen(false); } }}>{l}{k === "custom" && <span className="anacaret" aria-hidden="true">{custom && cOpen ? "▴" : "▾"}</span>}</button>)}</div>
+        {custom && cOpen && (
+          <div className="anacustom" ref={cPanel} style={{ left: cLeft }} role="dialog" aria-label="Eigener Zeitraum">
             <label>von<input type="date" value={cRange.from} max={todayISO()} onChange={(e) => e.target.value && setCRange({ ...cRange, from: e.target.value })} /></label>
             <label>bis<input type="date" value={cRange.to} max={todayISO()} onChange={(e) => e.target.value && setCRange({ ...cRange, to: e.target.value })} /></label>
             <div className="chips anapresets">{[["Dieses Jahr", thisMonth.slice(0, 4) + "-01-01", todayISO()], ["Letzte 30 Tage", dayShift(todayISO(), -29), todayISO()], ["Letzte 90 Tage", dayShift(todayISO(), -89), todayISO()],
               ["Letztes Jahr", (+thisMonth.slice(0, 4) - 1) + "-01-01", (+thisMonth.slice(0, 4) - 1) + "-12-31"]].map(([l, f, t]) => <button key={l} className={"chip" + (cRange.from === f && cRange.to === t ? " on" : "")} onClick={() => setCRange({ from: f, to: t })}>{l}</button>)}</div>
             <small className="muted">{cDays} Tage · Vergleich mit den {cDays} Tagen davor</small>
           </div>
-        ) : <div className="anaper"><button className="iconbtn" aria-label="Zurück" onClick={() => step(-1)}>‹</button><b>{periodLabel}</b><button className="iconbtn" aria-label="Weiter" disabled={cur >= thisMonth} onClick={() => step(1)}>›</button></div>}
+        )}
+        </div>
+        {custom ? <div className="anaper"><button className="link anarange" onClick={() => setCOpen(!cOpen)}><b>{periodLabel}</b></button></div> : <div className="anaper"><button className="iconbtn" aria-label="Zurück" onClick={() => step(-1)}>‹</button><b>{periodLabel}</b><button className="iconbtn" aria-label="Weiter" disabled={cur >= thisMonth} onClick={() => step(1)}>›</button></div>}
       </div>
       {accounts.length > 1 && (
         <div className="chips anaaccs">
@@ -9367,10 +9381,14 @@ html,body{min-height:100%}
 .chips.chipbar>.expmenu{flex:1 1 auto}.chips.chipbar>.expmenu>summary{width:100%;height:43px;justify-content:center;display:flex;align-items:center}
 @media (max-width:600px){.expmenu .moremenu{position:fixed;left:12px;right:12px;top:auto;bottom:calc(env(safe-area-inset-bottom) + 96px);min-width:0}}
 
-.anacustom{flex-wrap:wrap;gap:8px 10px;margin-left:auto;justify-content:flex-end;align-items:flex-end}
-.anacustom label{margin:0;font-size:12px;display:flex;flex-direction:column;gap:3px}.anacustom input{margin:0;padding:7px 10px;min-width:150px}
-.anacustom .anapresets{width:100%;justify-content:flex-end;gap:6px}.anacustom .anapresets .chip{padding:5px 11px;font-size:12.5px}
-.anacustom>small{width:100%;text-align:right}
-@media (max-width:620px){.anacustom{margin-left:0;justify-content:flex-start;width:100%}.anacustom label{flex:1 1 40%}.anacustom input{min-width:0;width:100%}.anacustom .anapresets{justify-content:flex-start}.anacustom>small{text-align:left}}
+.anasegwrap{position:relative}
+.anacustom{position:absolute;left:0;top:calc(100% + 8px);z-index:50;width:min(380px,calc(100vw - 32px));display:flex;flex-wrap:wrap;gap:10px;padding:14px;border-radius:18px;
+  background:var(--card);border:1px solid var(--line);box-shadow:0 16px 40px #0007;animation:menuin .15s ease-out}
+.anacustom label{margin:0;font-size:12px;display:flex;flex-direction:column;gap:4px;flex:1 1 40%}.anacustom input{margin:0;padding:8px 10px;width:100%;min-width:0}
+.anacustom .anapresets{width:100%;justify-content:flex-start;gap:6px}.anacustom .anapresets .chip{padding:5px 11px;font-size:12.5px}
+.anacustom>small{width:100%}
+.anacaret{margin-left:5px;font-size:10px;opacity:.8}
+.anarange{padding:0;color:var(--txt)}.anarange b{white-space:nowrap}
+
 .anacustom .anapresets{display:flex;flex-wrap:wrap!important;overflow:visible!important}
 `;

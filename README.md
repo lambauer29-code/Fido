@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.51.2
+- Analyse: Fenster „Eigener Zeitraum“ zentriert unter dem Knopf (am Handy innerhalb des Bildschirms gehalten).
+
+## v0.51.1
+- Analyse: „Eigener Zeitraum“ öffnet ein schwebendes Fenster links unterhalb des Knopfs; erneutes Klicken schließt es. Der gewählte Zeitraum steht rechts und öffnet das Fenster ebenfalls.
+
 ## v0.51.0
 - Analyse: neuer Zeitraum „Eigener Zeitraum“ mit Von/Bis-Datum (tagesgenau) und Schnellwahl (Dieses Jahr, Letzte 30 Tage, Letzte 90 Tage, Letztes Jahr). Der Vergleich läuft gegen gleich viele Tage direkt davor; der Verlauf zeigt die Monate des Zeitraums (max. 36).
 
