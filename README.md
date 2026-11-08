@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.24.0
+
+- **Artikelscan**: Strichcode (EAN/UPC, Code128 …) oder QR-Code mit der Kamera scannen (auch per Foto oder Eintippen).
+  - Reiter Artikel: „📷 Artikel scannen“ – bekannter Code öffnet den Artikel, neuer Code legt ihn an und sucht die Daten automatisch.
+  - Artikel-Fenster: Feld „EAN / Strichcode“ mit 📷 Scannen und 🔎 Daten suchen; leere Felder (Bezeichnung, Preis, Einheit, Notiz mit Marke/Herstellernr./Quelle) werden ausgefüllt.
+  - Rechnung/Angebot: „📷 Artikel scannen“ fügt die Position hinzu (bekannter Artikel → mit Preis; erneut scannen erhöht die Menge).
+- Neue Serverfunktion `api/product.js`: sucht zuerst in Open Food/Products/Beauty Facts, dann per Claude-Websuche (Name, Marke, Herstellernummer, üblicher Preis, Quelle). Die Websuche muss im Anthropic-Konto erlaubt sein (Console › Settings › Privacy/Web search); sie kostet zusätzlich pro Suche.
+- Neue Abhängigkeit: `@zxing/browser` (Code-Erkennung, wird erst beim Scannen geladen).
+
 ## v0.23.0
 
 - Einstellungen › **Rechnungsdesign**: Designmodule mit Live-Vorschau – Vorlagen Klassisch/Modern/Minimal/Elegant, Akzentfarbe (auch eigene), Schrift (Helvetica/Times/Courier), Logo links/Mitte/rechts und Größe, Schrift- und Titelgröße, Tabelle Linien/Streifen/Schlicht, farbiges Kopfband, hervorgehobene Summe, Spalten/QR/Fußzeile/Absenderzeile/Artikelnr. ein-/ausblendbar, eigene Titel („Rechnung“/„Angebot“), Zusatzzeile. Gilt für Rechnungen, Angebote und Mahnungen.

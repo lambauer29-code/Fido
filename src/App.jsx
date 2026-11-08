@@ -4503,6 +4503,19 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
   const [fields] = useLsState("invoiceFields", []);
   const invFields = fields.filter((f) => f.scope === "rechnung"), posFields = fields.filter((f) => f.scope === "position");
   const setEx = (p) => setInv((x) => ({ ...x, extra: { ...(x.extra || {}), ...p } }));
+  const [scanPos, setScanPos] = useState(false), [scanMsg, setScanMsg] = useState("");
+  const addPos = (it) => setInv((x) => { const items = x.items.filter((i) => i.text || i.price); const same = items.findIndex((i) => it.artNo && i.artNo === it.artNo || it.ean && i.ean === it.ean);
+    if (same >= 0) return { ...x, items: items.map((i, k) => (k === same ? { ...i, qty: (Number(i.qty) || 0) + 1 } : i)) };
+    return { ...x, items: [...items, it] }; });
+  const onScanPos = async (code, fmt) => {
+    setScanPos(false);
+    const a = articles.find((x) => x.ean && x.ean === code);
+    if (a) { addPos({ text: a.text, qty: 1, unit: a.unit, price: a.price, artNo: a.number || "", ean: code, ...(a.extra ? { extra: { ...a.extra } } : {}) }); setScanMsg(`✓ ${a.text} hinzugefügt`); return; }
+    setScanMsg(`🔎 Suche ${code} …`);
+    try { const d = await lookupProduct(code, fmt); addPos({ text: d.found ? d.name : `Artikel ${code}`, qty: 1, unit: d.unit || "Stk", price: d.price_eur ?? "", ean: code });
+      setScanMsg(d.found ? `✓ ${d.name} hinzugefügt – Preis prüfen; mit ☆ als Artikel merken` : `Keine Daten zu ${code} – Bezeichnung und Preis bitte ergänzen`);
+    } catch (e) { addPos({ text: `Artikel ${code}`, qty: 1, unit: "Stk", price: "", ean: code }); setScanMsg("Suche nicht möglich: " + e.message); }
+  };
   const setItEx = (i, p) => setInv((x) => ({ ...x, items: x.items.map((it, k) => (k === i ? { ...it, extra: { ...(it.extra || {}), ...p } } : it)) }));
   const [saveCust, setSaveCust] = useState(!customers.some((c) => c.name === init.customer?.name));
   const locked = init.status !== "entwurf";
@@ -4570,14 +4583,18 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
             <input className="iprice" inputMode="decimal" value={it.price} placeholder="Preis €" onChange={(e) => setIt(i, { price: e.target.value.replace(",", ".") })} aria-label="Einzelpreis" />
             <b className="isum">{fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
             <span className="iact">
-              {it.text && !articles.some((a) => a.text === it.text) && <button type="button" className="iconbtn" title="Als Artikel merken" onClick={() => { const C = artCfg(); const no = C.autoNo ? C.prefix + String(articles.reduce((m, a) => Math.max(m, String(a.number || "").startsWith(C.prefix) ? parseInt(a.number.slice(C.prefix.length), 10) || 0 : 0), 0) + 1).padStart(3, "0") : ""; setArticles((l) => [...l, { id: uid(), text: it.text, unit: it.unit, price: it.price, extra: it.extra, number: no }]); setIt(i, { artNo: no }); }}>☆</button>}
+              {it.text && !articles.some((a) => a.text === it.text) && <button type="button" className="iconbtn" title="Als Artikel merken" onClick={() => { const C = artCfg(); const no = C.autoNo ? C.prefix + String(articles.reduce((m, a) => Math.max(m, String(a.number || "").startsWith(C.prefix) ? parseInt(a.number.slice(C.prefix.length), 10) || 0 : 0), 0) + 1).padStart(3, "0") : ""; setArticles((l) => [...l, { id: uid(), text: it.text, unit: it.unit, price: it.price, extra: it.extra, number: no, ean: it.ean || "" }]); setIt(i, { artNo: no }); }}>☆</button>}
               <button type="button" className="iconbtn" title="Position löschen" onClick={() => set({ items: inv.items.filter((_, k) => k !== i) })}>✕</button>
             </span>
           </div>
           {!!posFields.length && <div className="itemextra">{posFields.map((f) => <input key={f.id} value={it.extra?.[f.id] || ""} placeholder={f.label} aria-label={f.label} onChange={(e) => setItEx(i, { [f.id]: e.target.value })} />)}</div>}
           </div>
         ))}
-        <button type="button" className="btn sm" onClick={() => set({ items: [...inv.items, { text: "", qty: 1, unit: "Stk", price: "" }] })}>＋ Position</button>
+        <div className="posbtns">
+          <button type="button" className="btn sm" onClick={() => set({ items: [...inv.items, { text: "", qty: 1, unit: "Stk", price: "" }] })}>＋ Position</button>
+          <button type="button" className="btn sm" onClick={() => setScanPos(true)}>📷 Artikel scannen</button>
+        </div>
+        {scanMsg && <small className="muted block" style={{ marginTop: 6 }}>{scanMsg}</small>}
         <div className="invtotal"><span>Gesamt</span><b>{fmtMoney(total)}</b></div>
         <small className="muted">{KU_NOTE}</small>
       </fieldset>
@@ -4594,6 +4611,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
         </fieldset>
       )}
       {!!warn.length && !locked && <div className="invwarn">{warn.map((w) => <div key={w}>⚠︎ {w}</div>)}</div>}
+      {scanPos && createPortal(<CodeScanWin title="Artikel scannen" onClose={() => setScanPos(false)} onResult={onScanPos} />, document.querySelector(".app") || document.body)}
       {!locked && <button className="btn primary wide" disabled={!!blocking.length} onClick={() => doSave(true)}>{isA ? "Angebot ausstellen" : "Rechnung ausstellen"} – Nummer vergeben</button>}
     </Win>
   );
@@ -5250,6 +5268,53 @@ function DunningSettings() {
   </>);
 }
 
+/* ---------- Strichcode / QR-Code scannen (Kamera oder Foto) ---------- */
+async function lookupProduct(code, format) {
+  const r = await fetch("/api/product", { method: "POST", headers: { "content-type": "application/json", "x-app-token": ls.get("appToken", "") }, body: JSON.stringify({ code, format }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "Suche fehlgeschlagen (" + r.status + ")");
+  return j;
+}
+function CodeScanWin({ onResult, onClose, title = "Code scannen" }) {
+  const vid = useRef(), ctl = useRef(), fileRef = useRef();
+  const [err, setErr] = useState(""), [manual, setManual] = useState("");
+  const done = useRef(false);
+  const finish = (text, fmt) => { if (done.current || !text) return; done.current = true; try { ctl.current?.stop(); } catch {} navigator.vibrate?.(60); onResult(String(text).trim(), fmt || ""); };
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const [{ BrowserMultiFormatReader }, { BarcodeFormat }] = await Promise.all([import("@zxing/browser"), import("@zxing/library")]);
+        const r = new BrowserMultiFormatReader();
+        const c = await r.decodeFromConstraints({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } } }, vid.current, (res) => { if (res && !dead) finish(res.getText(), BarcodeFormat[res.getBarcodeFormat()]); });
+        if (dead) c.stop(); else ctl.current = c;
+      } catch (e) { if (!dead) setErr(/Permission|NotAllowed/i.test(e.name + e.message) ? "Kamera-Zugriff verweigert – in den Browser-Einstellungen erlauben oder ein Foto wählen." : "Kamera nicht verfügbar – Foto wählen oder Code eintippen."); }
+    })();
+    return () => { dead = true; try { ctl.current?.stop(); } catch {} };
+  }, []);
+  return (
+    <Win id="codescan" onClose={onClose} small center dirty={false}>
+      <div className="panelhead"><b>{title}</b><XBtn /></div>
+      <div className="scanview">
+        <video ref={vid} playsInline muted />
+        <div className="scanframe" />
+        {err && <div className="scanerr">{err}</div>}
+      </div>
+      <p className="muted small">Strichcode (EAN) oder QR-Code in den Rahmen halten – wird automatisch erkannt.</p>
+      <div className="libadd">
+        <input value={manual} inputMode="numeric" placeholder="oder Code eintippen" onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && finish(manual, "manuell")} />
+        <button className="btn sm" disabled={!manual.trim()} onClick={() => finish(manual, "manuell")}>OK</button>
+        <button className="btn sm" onClick={() => fileRef.current.click()}>🖼 Foto</button>
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={async (e) => {
+          const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+          try { const [{ BrowserMultiFormatReader }, { BarcodeFormat }] = await Promise.all([import("@zxing/browser"), import("@zxing/library")]);
+            const u = URL.createObjectURL(f); const res = await new BrowserMultiFormatReader().decodeFromImageUrl(u); URL.revokeObjectURL(u); finish(res.getText(), BarcodeFormat[res.getBarcodeFormat()]);
+          } catch { setErr("Auf dem Foto wurde kein Code gefunden."); }
+        }} />
+      </div>
+    </Win>
+  );
+}
 /* ======================= Artikel (Einstellungen + Reiter) ======================= */
 const ART_DEF = { prefix: "ART-", autoNo: true, defUnit: "Std", groups: ["Leistungen", "Material"] };
 const artCfg = () => ({ ...ART_DEF, ...ls.get("articleCfg", {}) });
@@ -5275,14 +5340,36 @@ function ArticleSettings() {
   </>);
 }
 function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
-  const [a, setA] = useState(init);
+  const [a, setA] = useState(() => { const { autoLookup, ...x } = init; return x; });
   const set = (p) => setA((x) => ({ ...x, ...p }));
+  const [scan, setScan] = useState(false), [look, setLook] = useState(null); // {busy}|{data}|{error}
+  const runLookup = async (code, fmt) => {
+    set({ ean: code }); setLook({ busy: true });
+    try {
+      const d = await lookupProduct(code, fmt); setLook({ data: d });
+      if (d.found) setA((x) => ({ ...x, ean: code, text: x.text || d.name || x.text, price: x.price !== "" && x.price != null ? x.price : d.price_eur ?? "", unit: d.unit && !x.text ? d.unit : x.unit,
+        note: x.note || [d.brand && "Marke: " + d.brand, d.manufacturer_number && "Herst.-Nr.: " + d.manufacturer_number, d.description, d.price_source && "Preis lt. " + d.price_source, d.url].filter(Boolean).join("\n") }));
+    } catch (e) { setLook({ error: e.message }); }
+  };
+  useEffect(() => { if (init.autoLookup && init.ean) runLookup(init.ean, init.eanFormat); }, []);
   const [fields] = useLsState("invoiceFields", []);
   const posFields = fields.filter((f) => f.scope === "position");
   const C = artCfg();
   return (
     <Win id="artedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.text || "Neuer Artikel"}</b><button className="btn primary" disabled={!a.text?.trim()} onClick={() => { onSave(a); onClose(); }}>Speichern</button><XBtn /></div>
+      <div className="scanrow">
+        <label className="grow">EAN / Strichcode<input value={a.ean || ""} inputMode="numeric" placeholder="scannen oder eintippen" onChange={(e) => set({ ean: e.target.value })} /></label>
+        <button className="btn" onClick={() => setScan(true)}>📷 Scannen</button>
+        <button className="btn" disabled={!a.ean || look?.busy} onClick={() => runLookup(a.ean, "manuell")}>🔎 Daten suchen</button>
+      </div>
+      {look?.busy && <div className="lookbox">🔎 Suche Artikeldaten zu {a.ean} … (Produktdatenbanken + Websuche, bis zu 30 s)</div>}
+      {look?.error && <div className="lookbox err">Suche nicht möglich: {look.error}</div>}
+      {look?.data && (look.data.found ? (
+        <div className="lookbox ok"><b>Gefunden{look.data.source ? " · " + look.data.source : ""}:</b> {look.data.name}{look.data.price_eur ? ` · ca. € ${money(look.data.price_eur)}` : ""}
+          <button className="link small" onClick={() => setA((x) => ({ ...x, text: look.data.name || x.text, price: look.data.price_eur ?? x.price, unit: look.data.unit || x.unit }))}>Alles übernehmen</button>
+          <small className="muted block">Leere Felder wurden ausgefüllt – Preise bitte prüfen.</small></div>
+      ) : <div className="lookbox">Zu diesem Code wurden keine Daten gefunden – bitte selbst ausfüllen.</div>)}
       <label>Bezeichnung<input value={a.text || ""} placeholder="z. B. Elektroinstallation, LED-Panel 60x60" onChange={(e) => set({ text: e.target.value })} /></label>
       <div className="grid2">
         <label>Artikelnummer<input value={a.number || ""} onChange={(e) => set({ number: e.target.value })} /></label>
@@ -5300,6 +5387,7 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
       <label>Interne Notiz<textarea rows={2} value={a.note || ""} onChange={(e) => set({ note: e.target.value })} placeholder="z. B. Einkaufspreis, Lieferant" /></label>
       <label className="check"><input type="checkbox" checked={a.inactive !== true} onChange={(e) => set({ inactive: !e.target.checked })} /> Aktiv (in Rechnungen vorschlagen)</label>
       {init.text && <button className="link red" style={{ marginTop: 12 }} onClick={() => confirm(`Artikel „${a.text}“ löschen?`) && (onDelete(a), onClose())}>Artikel löschen</button>}
+      {scan && createPortal(<CodeScanWin title="Artikel scannen" onClose={() => setScan(false)} onResult={(code, fmt) => { setScan(false); runLookup(code, fmt); }} />, document.querySelector(".app") || document.body)}
     </Win>
   );
 }
@@ -5308,18 +5396,20 @@ function ArticlesPage({ setTab }) {
   const invoices = ls.get("invoices", []);
   const C = artCfg();
   const [edit, setEdit] = useState(null), [q, setQ] = useState(""), [grp, setGrp] = useState("alle"), [sort, setSort] = useState("name");
+  const [scan, setScan] = useState(false);
   const nextNo = () => C.prefix + String(list.reduce((m, a) => Math.max(m, String(a.number || "").startsWith(C.prefix) ? parseInt(a.number.slice(C.prefix.length), 10) || 0 : 0), 0) + 1).padStart(3, "0");
   const usage = (a) => { let n = 0, sum = 0; for (const i of invoices) if (i.kind === "rechnung" && !["entwurf", "storniert"].includes(i.status)) for (const it of i.items || []) if (it.text === a.text) { n++; sum += (Number(it.qty) || 0) * (Number(it.price) || 0); } return { n, sum }; };
   const save = (a) => setList((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
   const groups = [...new Set([...C.groups, ...list.map((a) => a.group).filter(Boolean)])];
   const shown = list.filter((a) => grp === "alle" || (grp === "ohne" ? !a.group : a.group === grp))
-    .filter((a) => !q || norm(`${a.text} ${a.number} ${a.group} ${a.note}`).includes(norm(q)))
+    .filter((a) => !q || norm(`${a.text} ${a.number} ${a.group} ${a.note} ${a.ean}`).includes(norm(q)))
     .map((a) => ({ a, u: usage(a) }))
     .sort((x, y) => (sort === "umsatz" ? y.u.sum - x.u.sum : sort === "preis" ? (Number(y.a.price) || 0) - (Number(x.a.price) || 0) : (x.a.text || "").localeCompare(y.a.text || "", "de")));
   return (
     <div className="ctpage">
       <div className="invbar">
         <button className="btn primary" onClick={() => setEdit({ id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: grp !== "alle" && grp !== "ohne" ? grp : "" })}>＋ Artikel</button>
+        <button className="btn" onClick={() => setScan(true)}>📷 Artikel scannen</button>
         <span className="grow" />
         <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">Name</option><option value="preis">Preis</option><option value="umsatz">Umsatz</option></select>
         {setTab && <button className="chip" title="Einstellungen" onClick={() => { ls.set("openSettingsSec", "artikel"); setTab("settings"); }}>⚙︎</button>}
@@ -5340,6 +5430,11 @@ function ArticlesPage({ setTab }) {
           </div>
         ))}
       </section>
+      {scan && <CodeScanWin title="Artikel scannen" onClose={() => setScan(false)} onResult={(code, fmt) => {
+        setScan(false);
+        const hit = list.find((a) => a.ean && a.ean === code);
+        setEdit(hit || { id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: "", ean: code, eanFormat: fmt, autoLookup: true });
+      }} />}
       {edit && <ArticleEditor a={edit} onSave={save} onDelete={(a) => setList((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
     </div>
   );
@@ -6363,4 +6458,13 @@ nav.bottom>button.subtab span.tabico{font-size:16px}
 .pdfprev{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:10px;min-height:200px;transition:opacity .2s}.pdfprev.busy{opacity:.6}.pdfprev img{width:100%;display:block;border-radius:4px;box-shadow:0 2px 10px #0004;background:#fff}
 .dunlvl{padding:0}.dunhead{display:flex;align-items:center;gap:10px;padding:12px;cursor:pointer}.dunhead b{flex:1}.dunlvl>:not(.dunhead){margin-left:12px;margin-right:12px}.dunlvl .actions{margin-bottom:12px}
 code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
+
+/* v0.24.0: Artikelscan */
+.scanview{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:4/3}.scanview video{width:100%;height:100%;object-fit:cover;display:block}
+.scanframe{position:absolute;left:12%;right:12%;top:28%;bottom:28%;border:3px solid #fff;border-radius:14px;box-shadow:0 0 0 999px #0006}
+.scanerr{position:absolute;left:12px;right:12px;bottom:12px;background:#000c;color:#fff;padding:8px 10px;border-radius:10px;font-size:13px}
+.scanrow{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}.scanrow label{flex:1 1 200px}.scanrow .btn{margin:0;height:46px}
+.lookbox{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--card2);font-size:13px}.lookbox.ok{background:#16a34a1f}.lookbox.err{background:#ef44441f;color:var(--red)}
+.lookbox .link{margin-left:8px}
+.posbtns{display:flex;gap:8px;flex-wrap:wrap}.posbtns .btn{margin:0}
 `;
