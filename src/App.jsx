@@ -1206,6 +1206,7 @@ export default function App() {
       <style>{CSS}</style>
       <header className="top">
         <h1>{tabLabel(nav, tab)}</h1>
+        <div className="topactions">
         <div className="topicons">
           {tab === "home" && <button className={"eyebtn" + (homeEdit ? " on" : "")} onClick={() => setHomeEdit(!homeEdit)} aria-label="Übersicht anpassen" title="Übersicht anpassen"><IcoLayout /></button>}
           <button className="eyebtn" onClick={() => setHideAmounts(!hideAmounts)} aria-label={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"} title={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"}>{hideAmounts ? <IcoEyeOff /> : <IcoEye />}</button>
@@ -1213,6 +1214,7 @@ export default function App() {
         </div>
         <div className="addbtn">
           <button className={"btn primary addplus" + (fabOpen ? " open" : "")} onClick={() => setFabOpen(!fabOpen)} aria-label="Hinzufügen" aria-expanded={fabOpen} title="Hinzufügen">＋</button>
+        </div>
         </div>
       </header>
 
@@ -3723,4 +3725,15 @@ nav .acctree .accitem .ab{font-size:11.5px}
 
 @container (max-width:700px){.maincol .hero-row.four{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .hero-row>div{min-width:0}.hero-row b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+
+/* v0.12.1 schwebende Kopf-Buttons */
+.topactions{position:fixed;top:calc(env(safe-area-inset-top) + 12px);right:16px;z-index:30;display:flex;align-items:center;gap:2px;padding:4px;border-radius:999px;
+  background:color-mix(in srgb,var(--card) 82%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);box-shadow:0 6px 20px #0003}
+.topactions .topicons{margin:0}
+.topactions .addbtn{margin:0 0 0 4px}
+.top{padding-right:var(--topact-w,150px)}
+@media (min-width:1024px){.topactions{right:40px;top:22px}}
+.editbar{top:calc(env(safe-area-inset-top) + 66px)}@media (min-width:1024px){.editbar{top:86px}}
+@media (min-width:768px){.fabmenu{top:80px}}
+.editbar{z-index:25!important}
 `;

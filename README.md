@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.12.1
+- Raster, Auge, Tag/Nacht und ＋ schweben als Leiste oben rechts und bleiben beim Scrollen sichtbar – auch im Anpassen-Modus der Übersicht; „Übersicht anpassen“-Leiste bleibt darunter angeheftet.
+
 ## v0.12.0 – Privat/Firma, Belege an Buchungen, Netto-Lohn
 - Dokumente: „👤 Privat / 🏢 Firma“ – Claude ordnet zu (Firmenname unter Einstellungen › Meine Daten), änderbar im Dokument, Filter in der Liste. „Steuerrelevant“ ohne Zusatz.
 - Beleg ↔ Buchung: in der Buchung „Scannen / Datei / Vorhandenes Dokument“, im Dokument „Mit Buchung verknüpfen“ (passende Buchungen nach Betrag & Datum zuerst), jeweils lösbar.
