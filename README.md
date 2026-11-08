@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.54.0
+- **Verschiebbare Widgets** in den Reitern Analyse, Vermögen und Firmenauswertung: Über das Layout-Symbol oben rechts lässt sich jede Kachel verschieben (⠿ ziehen oder ▲▼), auf halbe oder ganze Breite stellen (am Desktop) und aus- oder wieder einblenden. Die Anordnung wird pro Reiter gespeichert (`anaBoard`, `wealthBoard`, `bizBoard`). Die Übersicht hat das bereits über „Übersicht anpassen“.
+- **Export-Prüfung:** Alle 38 Exportfunktionen in 11 Reitern wurden mit den Demodaten ausgelöst und die Dateien geprüft (Excel, PDF, ZIP, CSV, vCard, ICS).
+- Fix: Die Dokumente-CSV hat jetzt das gleiche Format wie die anderen Exporte (Datum TT.MM.JJJJ, Beträge mit Komma).
+
 ## v0.53.2
 - Fix: Export-Menü im Fahrtenbuch (und in Konten/Vermögen/Analyse-Leisten) öffnete sich unsichtbar, weil die Leiste es abgeschnitten hat. Das Menü schwebt jetzt frei unter dem Knopf (am Handy unten als Blatt) und ist in allen Reitern sichtbar.
 

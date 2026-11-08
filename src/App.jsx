@@ -444,12 +444,10 @@ function downloadIcs(items, name) {
 
 /* ---------- CSV-Export (Excel-tauglich, de-AT) ---------- */
 function exportCsv(list, name) {
-  const num = (v) => (v == null ? "" : String(v).replace(".", ","));
-  const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const head = ["Datum", "Titel", "Absender", "Kategorie", "Typ", "Brutto", "Netto", "USt", "Währung", "Art", "Steuerrelevant", "Bezahlt", "Tags"];
-  const rows = list.map((d) => [d.documentDate, d.title, d.sender, d.category, d.docType, num(d.amount?.total), num(d.amount?.net), num(d.amount?.vat),
-    d.amount?.currency || "", d.direction || "", d.taxRelevant ? "ja" : "", d.paid ? "ja" : "", (d.tags || []).join(", ")].map(esc).join(";"));
-  download(new Blob(["﻿" + [head.join(";"), ...rows].join("\r\n")], { type: "text/csv" }), name);
+  const n = (v) => (typeof v === "number" && isFinite(v) ? v : null);
+  const head = ["Datum", "Titel", "Absender", "Kategorie", "Typ", "Brutto €", "Netto €", "USt €", "Währung", "Art", "Steuerrelevant", "Bezahlt", "Tags"];
+  downloadCsv(name, head, list.map((d) => [d.documentDate || "", d.title || "", d.sender || "", d.category || "", d.docType || "", n(d.amount?.total), n(d.amount?.net), n(d.amount?.vat),
+    d.amount?.currency || "", d.direction || "", d.taxRelevant ? "ja" : "", d.paid ? "ja" : "", (d.tags || []).join(", ")]));
 }
 
 /* ---------- EPC-QR („Zahlen mit Code“) ---------- */
@@ -1485,6 +1483,7 @@ function AppMain() {
   const [theme, setTheme] = useState(() => effectiveTheme(ls.get("theme", "auto")));
   const [newAccReq, setNewAccReq] = useState(false);
   const [homeEdit, setHomeEdit] = useState(false);
+  const [boardEdit, setBoardEdit] = useState(null);
   const [calSync, setCalSyncRaw] = useState(() => ls.get("calSync", { on: false, key: "", at: "" }));
   const setCalSync = (v) => { ls.set("calSync", v); setCalSyncRaw(v); };
   const [design, setDesignRaw] = useState(() => ls.get("design", { preset: "fido" }));
@@ -1927,6 +1926,7 @@ function AppMain() {
         <div className="topactions">
         <div className="topicons">
           {tab === "home" && <button className={"eyebtn" + (homeEdit ? " on" : "")} onClick={() => setHomeEdit(!homeEdit)} aria-label="Übersicht anpassen" title="Übersicht anpassen"><IcoLayout /></button>}
+          {["analyse", "vermoegen", "firma"].includes(tab) && <button className={"eyebtn" + (boardEdit === tab ? " on" : "")} onClick={() => setBoardEdit(boardEdit === tab ? null : tab)} aria-label="Widgets anpassen" title="Widgets anpassen"><IcoLayout /></button>}
           <button className="eyebtn" onClick={() => setHideAmounts(!hideAmounts)} aria-label={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"} title={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"}>{hideAmounts ? <IcoEyeOff /> : <IcoEye />}</button>
           <button className="eyebtn" onClick={() => setThemeMode(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Tagmodus" : "Nachtmodus"} title={theme === "dark" ? "Tagmodus" : "Nachtmodus"}>{theme === "dark" ? <IcoSun /> : <IcoMoon />}</button>
         </div>
@@ -1958,13 +1958,13 @@ function AppMain() {
           onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
           suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")}
           docs={active} onOpen={setOpenId} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
-        {tab === "analyse" && <Analysis txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} accounts={visAccounts} hasCash={visAccounts.some((a) => a.kind === "cash")} />}
+        {tab === "analyse" && <Analysis txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} accounts={visAccounts} hasCash={visAccounts.some((a) => a.kind === "cash")} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
         {tab === "fahrtenbuch" && <Fahrtenbuch accounts={visAccounts} notify={notify} onBook={async (t) => { const tx = await addManualTx(t); return tx; }}
           txs={txs} docs={active} onScan={scanFor} onOpen={setOpenId}
           onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
           onLink={async (txId, docId) => { await linkTx(txId, docId); const d = docsRef.current.find((x) => x.id === docId); if (d?.receiptFlow) await saveDoc({ ...d, receiptFlow: false, paid: true }); }} />}
-        {tab === "firma" && <BizReport docs={active} setTab={setTab} />}
-        {tab === "vermoegen" && <Wealth txs={txs} accounts={visAccounts} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
+        {tab === "firma" && <BizReport docs={active} setTab={setTab} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
+        {tab === "vermoegen" && <Wealth txs={txs} accounts={visAccounts} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
         {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
         {tab === "artikel" && <ArticlesPage setTab={setTab} />}
@@ -2378,7 +2378,7 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
 }
 
 /* ======================= Firmen-Auswertung ======================= */
-function BizReport({ docs, setTab }) {
+function BizReport({ docs, setTab, editing = false, setEditing = () => {} }) {
   const [list] = useLsState("invoices", []);
   const [fb] = useLsState("fbook", FB_EMPTY);
   const thisYear = todayISO().slice(0, 4);
@@ -2439,52 +2439,52 @@ function BizReport({ docs, setTab }) {
             { label: "📒 Rechnungsausgangsbuch Excel", run: () => downloadXlsx(`Rechnungsausgangsbuch-${year}.xlsx`, [{ name: "Rechnungen", head: INV_HEAD, rows: list.filter((x) => x.kind === "rechnung" && x.number && inY(x.date)).map(invRow) }]) },
             { label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) }]} /></div>
       </div>
-      <div className="anakpis">
+      <WidgetBoard storeKey="bizBoard" title="Firmenauswertung" editing={editing} setEditing={setEditing}>
+      <W k="kennzahlen" label="Kennzahlen"><div className="anakpis">
         <div className="tile kpi"><small className="muted">Fakturiert</small><div className="kpiv">{fmtMoney(billed)}</div><small className="muted">{yInv.length} Rechnungen</small></div>
         <div className="tile kpi"><small className="muted">Eingegangen</small><div className="kpiv pos">{fmtMoney(received)}</div><small className="muted">{paidL.length} bezahlt</small></div>
         <div className="tile kpi click" onClick={() => setTab("invoices")}><small className="muted">Offen</small><div className={"kpiv" + (overL.length ? " neg" : "")}>{fmtMoney(sum(openL))}</div><small className={overL.length ? "warnc" : "muted"}>{openL.length} offen{overL.length ? ` · ${overL.length} überfällig` : ""}</small></div>
         <div className="tile kpi"><small className="muted">Ø Zahlungsdauer</small><div className="kpiv">{avgDays != null ? avgDays + " Tage" : "—"}</div><small className="muted">{paidWithDates.length ? `${pct(onTime, paidWithDates.length)} % pünktlich` : "noch keine Zahlungen"}</small></div>
-      </div>
-      <section className="tile">
+      </div></W>
+      <W k="einnahmen-ausgaben-rechnung" label="Einnahmen-Ausgaben-Rechnung"><section className="tile">
         <div className="tilehead"><b>Einnahmen-Ausgaben-Rechnung</b><small>{year === "alle" ? "gesamt" : year} · vereinfacht</small></div>
         <div className="earrow"><span>Betriebseinnahmen (bezahlte Rechnungen)</span><b className="pos">{fmtMoney(received)}</b></div>
         <div className="earrow"><span>Betriebsausgaben (Dokumente „Firma“, {bizDocs.length})</span><b className="neg">−{fmtMoney(expDocs)}</b></div>
         <div className="earrow"><span>Kilometergeld ({bizKm.toLocaleString("de-AT")} km × {fmtMoney(kmRate)}){bizKm > 30000 ? " · max. 30.000 km" : ""}</span><b className="neg">−{fmtMoney(kmMoney)}</b></div>
         <div className="earrow total"><span>Gewinn (vor Steuern & SV)</span><b className={profit >= 0 ? "pos" : "neg"}>{fmtMoney(profit)}</b></div>
         <small className="muted">Nur eine Übersicht aus den Daten der App – keine Steuerberatung. Ausgaben zählen, wenn das Dokument als „Firma“ markiert ist.</small>
-      </section>
-      <section className="tile">
+      </section></W>
+      <W k="umsatz-pro-monat" label="Umsatz pro Monat"><section className="tile">
         <div className="tilehead"><b>Umsatz pro Monat</b></div>
         <div className="kuhead"><small className="muted">Kleinunternehmergrenze {kuYear}</small><small><b>{fmtMoney(kuRev)}</b> / {fmtMoney(KU_LIMIT)} · {Math.round(kuPct)} %</small></div>
         <div className="kubar"><div style={{ width: kuPct + "%", background: kuPct > 90 ? "var(--red)" : kuPct > 75 ? "var(--warn)" : "var(--acc)" }} /></div>
         <MiniBars data={chart} h={140} />
         <div className="legend"><span className="dot inc" />Zahlungseingang <span className="dot out" />fakturiert</div>
-      </section>
-      <div className="anagrid">
-        <section className="tile">
+      </section></W>
+        <W k="kunden" label="Kunden" w="half"><section className="tile">
           <div className="tilehead"><b>Kunden</b><small>{custs.length}</small></div>
           {custs.slice(0, 10).map((c) => (
             <div key={c.k} className="frow"><div className="grow"><div className="row1"><span>{c.k}</span><span><b>{fmtMoney(c.v)}</b></span></div>
               <Bar value={c.v} max={custs[0].v} color="var(--acc)" />
               <small className="muted">{c.n} Rechnung{c.n === 1 ? "" : "en"} · {pct(c.v, billed)} %{c.open ? <span className="warnc"> · offen {fmtMoney(c.open)}</span> : ""}{c.late ? ` · ${c.late}× gemahnt` : ""}</small></div></div>))}
           {!custs.length && <p className="muted small">Noch keine Rechnungen in diesem Zeitraum.</p>}
-        </section>
-        <section className="tile">
+        </section></W>
+        <W k="leistungen-und-artikel" label="Leistungen & Artikel" w="half"><section className="tile">
           <div className="tilehead"><b>Leistungen & Artikel</b></div>
           {items.map((x) => (
             <div key={x.k} className="frow"><div className="grow"><div className="row1"><span>{x.k}</span><span><b>{fmtMoney(x.v)}</b></span></div>
               <Bar value={x.v} max={items[0].v} color="#8b5cf6" /><small className="muted">{String(Math.round(x.q * 100) / 100).replace(".", ",")} {x.unit} · {pct(x.v, billed)} %</small></div></div>))}
           {!items.length && <p className="muted small">Keine Positionen.</p>}
-        </section>
-        <section className="tile">
+        </section></W>
+        <W k="angebote" label="Angebote" w="half"><section className="tile">
           <div className="tilehead"><b>Angebote</b></div>
           <div className="minikpis">
             <div><small className="muted">Gestellt</small><b>{offers.length}</b><small className="muted">{fmtMoney(sum(offers, net))}</small></div>
             <div><small className="muted">Angenommen</small><b className="pos">{accepted.length}</b><small className="muted">{offers.length ? pct(accepted.length, offers.length) + " %" : "—"}</small></div>
             <div><small className="muted">Abgelehnt</small><b>{declined.length}</b><small className="muted">{fmtMoney(sum(declined, net))}</small></div>
           </div>
-        </section>
-        <section className="tile click" onClick={() => setTab("mahnungen")}>
+        </section></W>
+        <W k="mahnwesen" label="Mahnwesen" w="half"><section className="tile click" onClick={() => setTab("mahnungen")}>
           <div className="tilehead"><b>Mahnwesen</b><span className="muted">›</span></div>
           <div className="minikpis">
             <div><small className="muted">Versendet</small><b>{rem.length}</b><small className="muted">Erinnerungen & Mahnungen</small></div>
@@ -2494,8 +2494,8 @@ function BizReport({ docs, setTab }) {
           {overL.slice(0, 4).map((x) => (
             <div key={x.id} className="frow"><div className="grow"><b>{x.number}</b><small className="muted block">{x.customer?.name} · seit {fmtDate(invDueEff(x))} fällig · {(x.reminders || []).length ? remindName((x.reminders || []).length - 1) : "noch nicht gemahnt"}</small></div>
               <div className="right"><b className="neg">{fmtMoney(invTotal(x))}</b></div></div>))}
-        </section>
-      </div>
+        </section></W>
+      </WidgetBoard>
     </div>
   );
 }
@@ -3330,7 +3330,7 @@ function MiniBars({ data, h = 120, onPick, sel, fmt = (v) => fmtMoney(v).replace
   );
 }
 
-function Analysis({ txs, accounts, hasCash }) {
+function Analysis({ txs, accounts, hasCash, editing = false, setEditing = () => {} }) {
   const thisMonth = todayISO().slice(0, 7);
   const [mode, setMode] = useLsState("anaMode", "month"); // month | year | 12m
   const [cur, setCur] = useState(thisMonth);
@@ -3448,18 +3448,19 @@ function Analysis({ txs, accounts, hasCash }) {
           {accounts.map((a) => <button key={a.id} className={"chip" + (valid.includes(a.id) ? " on" : "")} onClick={() => setAccSel(valid.includes(a.id) ? valid.filter((x) => x !== a.id) : [...valid, a.id])}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</button>)}
         </div>
       )}
-      <div className="anakpis">
+      <WidgetBoard storeKey="anaBoard" title="Analyse" editing={editing} setEditing={setEditing}>
+      <W k="kennzahlen" label="Kennzahlen"><div className="anakpis">
         <div className="tile kpi"><small className="muted">Einnahmen</small><div className="kpiv pos">{fmtMoney(inc)}</div><Delta a={inc} b={pInc} good="up" /></div>
         <div className="tile kpi"><small className="muted">Ausgaben</small><div className="kpiv neg">{fmtMoney(out)}</div><Delta a={out} b={pOut} /></div>
         <div className="tile kpi"><small className="muted">Saldo</small><div className={"kpiv " + (inc - out >= 0 ? "pos" : "neg")}>{(inc - out >= 0 ? "+" : "") + fmtMoney(inc - out)}</div><small className="muted">Vorperiode {fmtMoney(pInc - pOut)}</small></div>
         <div className="tile kpi"><small className="muted">Sparquote</small><div className="kpiv">{inc > 0 ? Math.round(((inc - out) / inc) * 100) + " %" : "—"}</div><small className="muted">vom Einkommen übrig</small></div>
-      </div>
-      <section className="tile">
+      </div></W>
+      <W k="in-und-out" label="In & Out"><section className="tile">
         <div className="tilehead"><b>In & Out</b><small>Ø Ausgaben {fmtMoney(avgOut)}/Monat</small></div>
         <MiniBars data={chart} h={150} sel={mode === "month" ? cur : null} onPick={(m) => { setMode("month"); setCur(m); }} />
         <div className="legend"><span className="dot inc" />Einnahmen <span className="dot out" />Ausgaben</div>
-      </section>
-      <section className="tile">
+      </section></W>
+      <W k="kategorien" label="Kategorien"><section className="tile">
         <div className="tilehead"><b>Kategorien</b>
           <div className="seg sm">{[["out", "Ausgaben"], ["in", "Einnahmen"]].map(([k, l]) => <button key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>{l}</button>)}</div></div>
         {parts.length ? (<>
@@ -3473,9 +3474,8 @@ function Analysis({ txs, accounts, hasCash }) {
               <span className="muted">›</span>
             </div>))}
         </>) : <p className="muted small">Keine {kind === "out" ? "Ausgaben" : "Einnahmen"} im Zeitraum.</p>}
-      </section>
-      <div className="anagrid">
-        <section className="tile">
+      </section></W>
+        <W k="top-haendler" label="Top-Händler" w="half"><section className="tile">
           <div className="tilehead"><b>Top-Händler</b><small>{kind === "out" ? "Ausgaben" : "Einnahmen"}</small></div>
           {topMerch.slice(0, 8).map((m) => (
             <div key={m.k} className="frow click" onClick={() => { setDrill(m.cat || "Sonstiges"); setDrillM(m.k); }}>
@@ -3484,21 +3484,21 @@ function Analysis({ txs, accounts, hasCash }) {
               <div className="right"><b>{fmtMoney(m.v)}</b></div>
             </div>))}
           {!topMerch.length && <p className="muted small">Keine Daten.</p>}
-        </section>
-        <section className="tile">
+        </section></W>
+        <W k="groesste-ausgaben" label="Größte Ausgaben" w="half"><section className="tile">
           <div className="tilehead"><b>Größte Ausgaben</b></div>
           {biggest.map((t) => (
             <div key={t.id} className="frow"><CatIcon c={t.category} size={32} /><div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b><small className="muted block">{fmtDate(t.date)} · {t.category}</small></div>
               <div className="right"><b className="neg">{fmtMoney(t.amount)}</b></div></div>))}
           {!biggest.length && <p className="muted small">Keine Ausgaben.</p>}
-        </section>
-        <section className="tile">
+        </section></W>
+        <W k="ausgaben-nach-wochentag" label="Ausgaben nach Wochentag" w="half"><section className="tile">
           <div className="tilehead"><b>Ausgaben nach Wochentag</b></div>
           <div className="wdbars">{wd.map((v, i) => (
             <div key={i} className="wdcol" title={fmtMoney(v)}><div className="wdv" style={{ height: (v / wdMax) * 100 + "%" }} /><small>{WD[i]}</small></div>))}</div>
           <small className="muted">Am meisten am {["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"][wd.indexOf(Math.max(...wd))]}{wd.some(Boolean) ? ` (${fmtMoney(Math.max(...wd))})` : ""}</small>
-        </section>
-        <section className="tile">
+        </section></W>
+        <W k="einkaufs-positionen" label="Einkaufs-Positionen" w="half"><section className="tile">
           <div className="tilehead"><b>Einkaufs-Positionen</b><small>{items.length} Artikel aus Belegen</small></div>
           {itemParts.length ? (<>
             {itemParts.slice(0, 8).map((p, i) => (
@@ -3508,10 +3508,58 @@ function Analysis({ txs, accounts, hasCash }) {
             {topItems.map((x) => (
               <div key={x.name} className="exprow"><span className="muted">{String(Math.round(x.q * 100) / 100).replace(".", ",")}×</span><span className="grow">{x.name}<small className="muted block">{[...x.shops].filter(Boolean).join(", ")}</small></span><b>{fmtMoney(x.v)}</b></div>))}
           </>) : <p className="muted small">Noch keine Positionen – scanne Kassenbons im Reiter „Ausgabe“, dann siehst du hier, wofür du im Detail Geld ausgibst (z. B. Getränke, Snacks, Drogerie).</p>}
-        </section>
-      </div>
+        </section></W>
+      </WidgetBoard>
     </div>
   );
+}
+
+/* ======================= Verschiebbare Widgets (Analyse-Reiter) ======================= */
+const W = ({ children }) => children;
+function WidgetBoard({ storeKey, title, editing = false, setEditing = () => {}, children }) {
+  const items = React.Children.toArray(children).filter((c) => c && c.props && c.props.k)
+    .map((c) => ({ k: c.props.k, label: c.props.label, w: c.props.w || "full", el: c.props.children }));
+  const [cfg, setCfg] = useLsState(storeKey, { order: [], hidden: [], w: {} });
+  const byK = Object.fromEntries(items.map((x) => [x.k, x]));
+  const keys = items.map((x) => x.k), hid = cfg.hidden || [];
+  const order = [...(cfg.order || []).filter((k) => keys.includes(k)), ...keys.filter((k) => !(cfg.order || []).includes(k))];
+  const shown = order.filter((k) => !hid.includes(k)), hidden = order.filter((k) => hid.includes(k));
+  const wOf = (k) => cfg.w?.[k] || byK[k].w;
+  const dnd = useDnd((d, over) => setCfg((c) => ({ ...c, order: [...moveBetween({ s: shown }, "s", d.index, "s", over.index).s, ...hidden] })));
+  const setHide = (k, h) => setCfg((c) => ({ ...c, order, hidden: h ? [...hid.filter((x) => x !== k), k] : hid.filter((x) => x !== k) }));
+  const vis = editing ? shown : shown.filter((k) => byK[k].el);
+  return (<>
+    {editing && (
+      <div className="editbar">
+        <div className="grow"><b>{title} anpassen</b><small className="muted block">⠿ ziehen oder ▲▼ zum Verschieben<span className="wbwide"> · ◧/▭ halbe oder ganze Breite</span> · ✕ ausblenden</small></div>
+        <button className="link" onClick={() => confirm(title + " auf Standard zurücksetzen?") && setCfg({ order: [], hidden: [], w: {} })}>Zurücksetzen</button>
+        <button className="btn primary" onClick={() => setEditing(false)}>Fertig</button>
+      </div>)}
+    <div className={"wboard" + (editing ? " editing" : "")} data-wb-list={`s|${vis.length}`}>
+      {vis.map((k, i) => (
+        <div key={k} className={"wbitem " + wOf(k) + (dnd.isDragging("wb", "s", i) ? " dragging" : "")} data-wb-item={`s|${i}`} data-grid={wOf(k) === "half" ? "1" : undefined} data-wbk={k}>
+          {dnd.lineAt("wb", "s", i) && <div className="dropline" />}
+          {editing && (
+            <div className="wbbar">
+              <Handle onDown={(e) => dnd.start(e, { kind: "wb", list: "s", index: i, label: byK[k].label })} />
+              <b className="grow">{byK[k].label}</b>
+              <button className="iconbtn" title="Nach oben" aria-label="Nach oben" disabled={!i} onClick={() => setCfg((c) => ({ ...c, order: [...moveBetween({ s: shown }, "s", shown.indexOf(k), "s", Math.max(0, shown.indexOf(k) - 1)).s, ...hidden] }))}>▲</button>
+              <button className="iconbtn" title="Nach unten" aria-label="Nach unten" disabled={i === vis.length - 1} onClick={() => setCfg((c) => ({ ...c, order: [...moveBetween({ s: shown }, "s", shown.indexOf(k), "s", shown.indexOf(k) + 2).s, ...hidden] }))}>▼</button>
+              <button className="iconbtn wbwide" title={wOf(k) === "half" ? "Ganze Breite" : "Halbe Breite"} aria-label="Breite ändern"
+                onClick={() => setCfg((c) => ({ ...c, w: { ...(c.w || {}), [k]: wOf(k) === "half" ? "full" : "half" } }))}>{wOf(k) === "half" ? "▭" : "◧"}</button>
+              <button className="iconbtn" title="Ausblenden" aria-label="Ausblenden" onClick={() => setHide(k, true)}>✕</button>
+            </div>)}
+          <div className="wbbody">{byK[k].el || <section className="tile"><small className="muted">derzeit keine Daten</small></section>}</div>
+          {i === vis.length - 1 && dnd.lineAt("wb", "s", vis.length) && <div className="dropline" />}
+        </div>))}
+      {dnd.ghost}
+    </div>
+    {editing && hidden.length > 0 && (
+      <section className="tile addwidgets">
+        <div className="tilehead"><b>Ausgeblendete Widgets</b><small>antippen zum Einblenden</small></div>
+        <div className="wadd">{hidden.map((k) => <button key={k} onClick={() => setHide(k, false)}><span>▦</span><div><b>{byK[k].label}</b></div><i>＋</i></button>)}</div>
+      </section>)}
+  </>);
 }
 
 /* ======================= Vermögen ======================= */
@@ -3563,7 +3611,7 @@ function WealthExport({ accs, assets, points, assetVal }) {
       { name: "Verlauf", head: ["Monat", "Vermögen €"], rows: points.map((p) => [p.m, Math.round(p.v * 100) / 100]) }]) },
     { label: "📄 CSV", run: () => downloadCsv(`vermoegen-${isoToday()}.csv`, head, [...accRows, ...aRows(pos), ...aRows(neg), ["Nettovermögen", "", "", Math.round(net * 100) / 100]]) }]} />;
 }
-function Wealth({ txs, accounts, openAccount }) {
+function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () => {} }) {
   const thisMonth = todayISO().slice(0, 7);
   const [range, setRange] = useLsState("wealthRange", 12);
   const [assets, setAssets] = useLsState("assets", []);
@@ -3607,7 +3655,8 @@ function Wealth({ txs, accounts, openAccount }) {
           <WealthExport accs={accs} assets={wAssets ? assets : []} points={points} assetVal={assetVal} />
         </div>
       )}
-      <section className="tile wealthhero">
+      <WidgetBoard storeKey="wealthBoard" title="Vermögen" editing={editing} setEditing={setEditing}>
+      <W k="vermoegensverlauf" label="Vermögensverlauf"><section className="tile wealthhero">
         <small className="muted">{wValid.length ? `Vermögen · ${wValid.length} von ${allAccs.length} Konten` : "Nettovermögen"}</small>
         <div className="kpiv big">{fmtMoney(now)}</div>
         <div className="wealthdelta">
@@ -3617,17 +3666,16 @@ function Wealth({ txs, accounts, openAccount }) {
         </div>
         <div className="seg sm">{[[6, "6 M"], [12, "1 J"], [36, "3 J"], [0, "Alles"]].map(([k, l]) => <button key={k} className={range === k ? "on" : ""} onClick={() => setRange(k)}>{l}</button>)}</div>
         <LineChart points={points} />
-      </section>
-      <div className="anagrid">
-        <section className="tile">
+      </section></W>
+        <W k="verteilung" label="Verteilung" w="half"><section className="tile">
           <div className="tilehead"><b>Verteilung</b><small>{debts ? `Schulden ${fmtMoney(debts)}` : ""}</small></div>
           {posTotal > 0 && <div className="stackbar">{gList.filter((g) => g.v > 0).map((g, i) => <div key={g.k} style={{ width: (g.v / posTotal) * 100 + "%", background: COLORS[i % COLORS.length] }} title={g.label} />)}</div>}
           {gList.map((g, i) => (
             <div key={g.k} className="frow"><span className="dot" style={{ background: g.v > 0 ? COLORS[gList.filter((x) => x.v > 0).indexOf(g) % COLORS.length] : "var(--red)" }} /><span>{g.icon}</span>
               <div className="grow"><b>{g.label}</b></div><div className="right"><b className={g.v < 0 ? "neg" : ""}>{fmtMoney(g.v)}</b><small className="muted block">{g.v > 0 ? pct(g.v, posTotal) + " %" : ""}</small></div></div>))}
           {!gList.length && <p className="muted small">Noch keine Konten mit Kontostand.</p>}
-        </section>
-        <section className="tile">
+        </section></W>
+        <W k="veraenderung-pro-monat" label="Veränderung pro Monat" w="half"><section className="tile">
           <div className="tilehead"><b>Veränderung pro Monat</b></div>
           {monthly.length ? (
             <div className="mbars diverge" style={{ height: 130 }}>
@@ -3638,9 +3686,8 @@ function Wealth({ txs, accounts, openAccount }) {
                   <small>{x.label}</small>
                 </div>)); })()}
             </div>) : <p className="muted small">Noch kein Verlauf.</p>}
-        </section>
-      </div>
-      <section className="tile">
+        </section></W>
+      <W k="konten" label="Konten"><section className="tile">
         <div className="tilehead"><b>Konten</b><small>{fmtMoney(accs.reduce((s, x) => s + x.now, 0))}</small></div>
         {accs.sort((a, b) => b.now - a.now).map((x) => { const d = x.now - accAt(x, months[0]); return (
           <div key={x.a.id} className="frow click" onClick={() => openAccount(x.a.id)}>
@@ -3648,8 +3695,8 @@ function Wealth({ txs, accounts, openAccount }) {
             <div className="grow"><b style={accStyle(x.a)}>{x.a.name}</b><small className="muted block">{KIND_DEFS[x.a.kind || "bank"]?.[1]}{balEstimated(x.a) ? " · aus Umsätzen berechnet" : ""}</small></div>
             <div className="right"><b className={x.now < 0 ? "neg" : ""}>{fmtMoney(x.now)}</b><small className={"block " + (d >= 0 ? "pos" : "neg")}>{d >= 0 ? "+" : ""}{fmtMoney(d)}</small></div>
           </div>); })}
-      </section>
-      <section className="tile">
+      </section></W>
+      <W k="weitere-vermoegenswerte-und-schulden" label="Weitere Vermögenswerte & Schulden"><section className="tile">
         <div className="tilehead"><b>Weitere Vermögenswerte & Schulden</b><button className="link" onClick={() => setEdit({ id: uid(), name: "", kind: "immo", value: "", since: todayISO() })}>＋ Hinzufügen</button></div>
         {!assets.length && !edit && <p className="muted small">Immobilie, Auto, Gold, Depot oder Kredite manuell erfassen – sie fließen ins Nettovermögen ein.</p>}
         {assets.map((x) => (
@@ -3673,7 +3720,8 @@ function Wealth({ txs, accounts, openAccount }) {
             </div>
           </div>
         )}
-      </section>
+      </section></W>
+      </WidgetBoard>
     </div>
   );
 }
@@ -9512,4 +9560,19 @@ html,body{min-height:100%}
 
 @media (max-width:600px){.expmenu .moremenu{position:fixed!important;left:12px!important;right:12px!important;top:auto!important;bottom:calc(env(safe-area-inset-bottom) + 96px)!important;z-index:200}}
 .expmenu .moremenu{z-index:200;max-height:70vh;overflow:auto}
+
+.wboard{display:grid;gap:16px;grid-template-columns:minmax(0,1fr);align-items:start}
+@media (min-width:900px){.wboard{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.wbitem.full{grid-column:1/-1}}
+.wbitem{position:relative;min-width:0}
+.wbitem>.wbbody>*{margin:0}
+.wboard.editing .wbitem{outline:2px dashed var(--line);outline-offset:4px;border-radius:18px}
+.wbitem.dragging{opacity:.4}
+.wbbar{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:6px 8px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.wbbar .handle{cursor:grab;touch-action:none;font-size:18px;padding:0 4px}
+.wbbar .iconbtn{width:30px;height:30px;font-size:14px}
+.wbitem>.dropline{position:absolute;left:0;right:0;top:-10px}
+.wbitem>.dropline:last-child{top:auto;bottom:-10px}
+.wbitem[data-grid]>.dropline{left:-10px;right:auto;top:0;bottom:0;width:3px;height:auto}
+.wboard.editing .wbbody{max-height:190px;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(#000 60%,transparent);mask-image:linear-gradient(#000 60%,transparent)}
+@media (max-width:899px){.wbwide{display:none!important}}
 `;
