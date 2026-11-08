@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf } from "./scan.js";
-import { parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS } from "./importers.js";
+import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrinkPdf } from "./scan.js";
+import { latestBalance, parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS } from "./importers.js";
 
 /* ============================================================
    Dokumente – PWA für Dokumente, Verträge & Finanzen
@@ -110,7 +110,8 @@ const db = {
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 const todayISO = () => new Date().toLocaleDateString("sv-SE");
 const fmtDate = (iso) => (iso ? new Date(iso + "T12:00:00").toLocaleDateString("de-AT") : "–");
-const fmtMoney = (v, cur = "EUR") =>
+let HIDE_AMOUNTS = false; // Einstellungen → Datenschutz
+const fmtMoney = (v, cur = "EUR") => HIDE_AMOUNTS && v != null && !isNaN(v) ? "€ •••" :
   v == null || isNaN(v) ? "" : new Intl.NumberFormat("de-AT", { style: "currency", currency: cur || "EUR" }).format(v);
 const daysUntil = (iso) => Math.round((new Date(iso + "T12:00:00") - new Date(todayISO() + "T12:00:00")) / 864e5);
 const monthKey = (d) => (d.documentDate || d.createdAt || "").slice(0, 7);
@@ -611,6 +612,89 @@ function NavSettings({ nav, setNav, accounts, setAccounts, txs, deleteAccount, n
   );
 }
 
+/* ---------- Freischwebende Fenster (ab Tablet) ---------- */
+function useMedia(q) {
+  const [m, setM] = useState(() => window.matchMedia(q).matches);
+  useEffect(() => { const mq = window.matchMedia(q), h = () => setM(mq.matches); mq.addEventListener("change", h); return () => mq.removeEventListener("change", h); }, [q]);
+  return m;
+}
+let winZ = 60; // zuletzt angeklicktes Fenster liegt oben
+function clampRect(r) {
+  const W = window.innerWidth, H = window.innerHeight;
+  const w = Math.min(Math.max(320, r.w), W - 16), h = Math.min(Math.max(240, r.h), H - 16);
+  // horizontal darf ein Teil aus dem Bild ragen, vertikal bleibt das Fenster ganz sichtbar (Ecke greifbar)
+  return { w, h, x: Math.min(Math.max(-(w - 140), r.x), W - 140), y: Math.min(Math.max(0, r.y), Math.max(0, H - h - 8)) };
+}
+function defaultRect(defW, small) {
+  const W = window.innerWidth, H = window.innerHeight;
+  if (small) { const w = Math.min(defW || 520, W - 48), h = Math.min(680, H - 64); return { w, h, x: Math.round((W - w) / 2), y: Math.round((H - h) / 2) }; }
+  const w = Math.min(defW || 580, W - 48);
+  return { w, h: H - 48, x: W - w - 24, y: 24 };
+}
+function Win({ id, onClose, children, className = "", defW, small = false }) {
+  const wide = useMedia("(min-width:768px)");
+  const [rect, setRect] = useState(() => clampRect(ls.get("win:" + id, null) || defaultRect(defW, small)));
+  const [z, setZ] = useState(() => ++winZ);
+  useEffect(() => { const t = setTimeout(() => ls.set("win:" + id, rect), 150); return () => clearTimeout(t); }, [rect, id]);
+  useEffect(() => { const h = () => setRect((r) => clampRect(r)); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, []);
+
+  if (!wide) return (
+    <div className={"sheet " + className} onClick={onClose}>
+      <div className={"panel" + (small ? " small-panel" : "")} onClick={(e) => e.stopPropagation()}>{children}</div>
+    </div>
+  );
+
+  // Ziehen am Fensterkopf bzw. an Rändern/Ecken (Maus & Touch)
+  const track = (e, apply) => {
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY, start = { ...rect };
+    document.body.classList.add("win-moving");
+    const mv = (ev) => setRect(clampRect(apply(start, ev.clientX - sx, ev.clientY - sy)));
+    const up = () => { document.body.classList.remove("win-moving"); window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up); };
+    window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+  };
+  const onHead = (e) => {
+    setZ(++winZ);
+    if (!e.target.closest(".panelhead") || e.target.closest("button,input,select,a,textarea,label")) return;
+    track(e, (s, dx, dy) => ({ ...s, x: s.x + dx, y: s.y + dy }));
+  };
+  const edge = (dir) => (e) => {
+    e.stopPropagation();
+    track(e, (s, dx, dy) => {
+      const r = { ...s };
+      if (dir.includes("e")) r.w = s.w + dx;
+      if (dir.includes("s")) r.h = s.h + dy;
+      if (dir.includes("w")) { r.w = s.w - dx; r.x = s.x + dx; }
+      if (dir.includes("n")) { r.h = s.h - dy; r.y = s.y + dy; }
+      return r;
+    });
+  };
+  return (
+    <div className={"win " + className} style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: z }} onPointerDown={onHead}>
+      <div className="wininner">{children}</div>
+      {["n", "e", "s", "w", "ne", "se", "sw", "nw"].map((d) => <span key={d} className={"rz rz-" + d} onPointerDown={edge(d)} />)}
+      <span className="rzgrip" aria-hidden="true" />
+    </div>
+  );
+}
+
+/* Seitenleiste in der Breite ziehbar (Breite wird gemerkt) */
+function SideResizer() {
+  useEffect(() => { const w = ls.get("sideW", null); if (w) document.documentElement.style.setProperty("--side", w + "px"); }, []);
+  const down = (e) => {
+    e.preventDefault();
+    document.body.classList.add("win-moving");
+    const mv = (ev) => {
+      const w = Math.min(420, Math.max(180, Math.round(ev.clientX)));
+      document.documentElement.style.setProperty("--side", w + "px"); ls.set("sideW", w);
+    };
+    const up = () => { document.body.classList.remove("win-moving"); window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
+  };
+  const reset = () => { document.documentElement.style.removeProperty("--side"); ls.set("sideW", null); };
+  return <div className="sideresize" onPointerDown={down} onDoubleClick={reset} title="Ziehen = Breite ändern · Doppelklick = Standard" />;
+}
+
 function AccountTree({ groups, txs, selected, onSelect, onToggleGroup, variant = "" }) {
   const shown = groups.filter((g) => g.accounts.length);
   if (!shown.length) return null;
@@ -630,7 +714,8 @@ function AccountTree({ groups, txs, selected, onSelect, onToggleGroup, variant =
             return (
               <button key={a.id} className={"accitem" + (selected === a.id ? " on" : "")} onClick={() => onSelect(selected === a.id ? "" : a.id)}>
                 <span className="ki">{kindIcon(a.kind)}</span><span className="an">{a.name}</span>
-                {bal != null && <span className={"ab" + (bal < 0 ? " red" : "")}>{fmtMoney(bal)}</span>}
+                {bal != null ? <span className={"ab" + (bal < 0 ? " red" : "")}>{fmtMoney(bal)}</span>
+                  : <span className="ab muted" title="Kontostand unbekannt – im Konto eintragen oder per Import mit Saldo übernehmen">—</span>}
               </button>
             );
           })}
@@ -670,6 +755,9 @@ export default function App() {
   const [docAreaSel, setDocAreaSel] = useState(() => ls.get("docArea", "alle"));
   const [manualTx, setManualTx] = useState(null);
   const [fabOpen, setFabOpen] = useState(false);
+  const [hideAmounts, setHideAmounts] = useState(() => ls.get("hideAmounts", false));
+  HIDE_AMOUNTS = hideAmounts;
+  useEffect(() => ls.set("hideAmounts", hideAmounts), [hideAmounts]);
   useEffect(() => {
     if (!fabOpen) return;
     const h = (e) => e.key === "Escape" && setFabOpen(false);
@@ -719,11 +807,16 @@ export default function App() {
   const fixExtra = confirmedSubs.reduce((s, r) => s + r.amount * (INTERVAL_FACTOR[r.interval] || 0), 0);
 
   // Umsätze importieren: IDs (Dubletten-Schutz), Kategorien, Abgleich mit Rechnungen
-  async function importTxs(accountId, list, ownIbans) {
+  async function importTxs(accountId, list, ownIbans, meta) {
+    const stamp = new Date().toISOString();
     const own = ownIbans || accounts.map((a) => a.iban).filter(Boolean);
     const current = txsRef.current;
     const existing = new Set(current.map((t) => t.id));
-    const withMeta = withIds(list, accountId).map((t) => ({ ...t, category: categorize(t, rules, own), importedAt: new Date().toISOString() }));
+    const withMeta = withIds(list, accountId).map((t) => ({ ...t, category: categorize(t, rules, own), importedAt: stamp }));
+    // Kontostand aus der Datei (Schlusssaldo/Saldo-Spalte) übernehmen, wenn er neuer ist als der bekannte
+    const lb = latestBalance(list, meta);
+    if (lb) setAccounts((l) => l.map((a) => (a.id === accountId && a.kind !== "cash" && (!a.openingDate || lb.date >= a.openingDate)
+      ? { ...a, opening: lb.amount, openingDate: lb.date, openingAt: stamp } : a)));
     const fresh = withMeta.filter((t) => !existing.has(t.id));
     let all = [...current, ...fresh];
     const links = matchInvoices(active, all);
@@ -810,14 +903,16 @@ export default function App() {
   async function analyze(doc, blob) {
     await saveDoc({ ...doc, status: "processing", error: null });
     try {
-      const data = await blobToBase64(blob);
+      // Vercel nimmt max. ~4,5 MB pro Anfrage: große PDFs fürs Auslesen verkleinern
+      const send = blob.type === "application/pdf" && blob.size > 3.6 * 1024 * 1024 ? await shrinkPdf(blob) : blob;
+      const data = await blobToBase64(send);
       const r = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json", "x-app-token": token },
-        body: JSON.stringify({ data, mediaType: blob.type, categories, today: todayISO(),
+        body: JSON.stringify({ data, mediaType: send.type, categories, today: todayISO(),
           groups: nav.docGroups.map((g) => `${g.title || "Gruppe"} (${AREAS[g.area][1]}): ${g.cats.join(", ")}`).join("\n") })
       });
-      const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+      const j = await r.json().catch(() => ({ error: r.status === 413 ? "Datei zu groß für den Server (max. ca. 4 MB)" : `HTTP ${r.status}` }));
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
       const c = j.contract;
       const done = ({
@@ -856,7 +951,7 @@ export default function App() {
     for (const f of files) {
       let blob;
       try { blob = await prepareFile(f); } catch (e) { notify(`${f.name}: ${e.message}`); continue; }
-      if (blob.size > 4.3 * 1024 * 1024) notify(`${f.name} ist größer als ~4 MB – Analyse kann scheitern`);
+      if (blob.size > 3.6 * 1024 * 1024) notify(`${f.name}: ${(blob.size / 1048576).toFixed(0)} MB – wird zum Auslesen automatisch verkleinert`);
       const doc = {
         id: uid(), createdAt: new Date().toISOString(), fileName: f.name, mimeType: blob.type, size: blob.size,
         title: f.name, category: "Sonstiges", tags: [], deadlines: [], amount: null, paid: false, notes: "", status: "processing",
@@ -885,13 +980,15 @@ export default function App() {
       <style>{CSS}</style>
       <header className="top">
         <h1>{tabLabel(nav, tab)}</h1>
+        <button className="eyebtn" onClick={() => setHideAmounts(!hideAmounts)} aria-label={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"} title={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"}>{hideAmounts ? "🙈" : "👁️"}</button>
         <div className="addbtn">
           <button className={"btn primary addplus" + (fabOpen ? " open" : "")} onClick={() => setFabOpen(!fabOpen)} aria-label="Hinzufügen" aria-expanded={fabOpen} title="Hinzufügen">＋</button>
         </div>
       </header>
 
       <main>
-        {tab === "home" && <Home docs={active} txs={txs} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={accounts.some((a) => a.kind === "cash")} />}
+        {tab === "home" && <Home docs={active} txs={txs} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={accounts.some((a) => a.kind === "cash")}
+          accounts={accounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
         {tab === "accounts" && <Accounts txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
@@ -901,7 +998,7 @@ export default function App() {
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} />}
         {tab === "settings" && (
-          <Settings nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
+          <Settings importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
             docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} notify={notify} />
         )}
@@ -954,6 +1051,7 @@ export default function App() {
         })}
       </nav>
 
+      <SideResizer />
       {openDoc && (
         <Detail doc={openDoc} categories={categories} onClose={() => setOpenId(null)} bookCash={bookCash}
           saveDoc={saveDoc} trashDoc={trashDoc} reanalyze={reanalyze} notify={notify} />
@@ -990,7 +1088,8 @@ function Donut({ parts, total }) {
     </svg>
   );
 }
-function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash }) {
+function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount }) {
+  const cashAccs = accounts.filter((a) => a.kind === "cash");
   const thisMonth = todayISO().slice(0, 7);
   const money = docs.filter((d) => d.amount?.total && isEUR(d) && inAnalysis(d));
   // Monate mit importierten Kontoumsätzen werden aus den Umsätzen berechnet, sonst aus den Dokumenten
@@ -1048,6 +1147,20 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash }) {
           <div className="grow"><b>{openInv.length} offene Rechnung{openInv.length > 1 ? "en" : ""}</b><small>Jetzt prüfen und per QR bezahlen</small></div>
           <b>{fmtMoney(openInv.reduce((s, d) => s + d.amount.total, 0))}</b>
         </div>
+      )}
+
+      {!!cashAccs.length && (
+        <section className="tile">
+          <div className="tilehead"><b>Bargeld</b><button className="link" onClick={() => onManual({ accountId: cashAccs[0].id })}>＋ Barausgabe</button></div>
+          {cashAccs.map((a) => (
+            <div key={a.id} className="frow click" onClick={() => openAccount(a.id)}>
+              <span className="caticon" style={{ width: 40, height: 40, background: "#16a34a22", fontSize: 20 }}>💶</span>
+              <div className="grow"><b>{a.name}</b><small className="muted block">{txs.filter((t) => t.accountId === a.id).length} Buchungen{a.atm ? " · inkl. Bankomat-Behebungen" : ""}</small></div>
+              <div className="right"><b className={cashBalance(a, txs) < 0 ? "red" : ""}>{fmtMoney(cashBalance(a, txs))}</b><small className="muted block">Bestand</small></div>
+            </div>
+          ))}
+          {cashBalance(cashAccs[0], txs) < 0 && <p className="warn small">Bestand negativ – vermutlich fehlt eine Behebung oder der Startbestand.</p>}
+        </section>
       )}
 
       <section className="tile">
@@ -1347,8 +1460,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [] }) {
       {!!ended.length && <p className="muted small" style={{ marginTop: 16 }}>{ended.length} beendete Verträge (im Dokument unter „Vertrag / Abo“ abgewählt)</p>}
 
       {letterFor && (
-        <div className="sheet" onClick={() => setLetterFor(null)}>
-          <div className="panel" onClick={(e) => e.stopPropagation()}>
+        <Win id="letter" onClose={() => setLetterFor(null)}>
             <div className="panelhead"><button className="link" onClick={() => setLetterFor(null)}>‹ Zurück</button><b>Kündigung</b><span /></div>
             {!me.name && <p className="warn small">Tipp: Name und Adresse unter „Einstellungen“ eintragen, dann ist das Schreiben komplett.</p>}
             <pre className="fulltext letter">{letter}</pre>
@@ -1358,8 +1470,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [] }) {
               <button className="btn" onClick={() => download(new Blob([letter], { type: "text/plain" }), `Kuendigung-${letterFor.contract.provider}.txt`)}>⬇︎ .txt</button>
             </div>
             <p className="muted small">Kündigungen am besten nachweisbar schicken (Einschreiben, E-Mail mit Bestätigung oder Kundenportal). Keine Rechtsberatung.</p>
-          </div>
-        </div>
+        </Win>
       )}
     </div>
   );
@@ -1394,6 +1505,10 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
   const out = bank.filter((t) => t.amount < 0).reduce((s, t) => s - t.amount, 0);
   const pending = recurring.filter((r) => !subs.confirmed.includes(r.key) && !subs.dismissed.includes(r.key));
   const accName = (id) => accounts.find((a) => a.id === id)?.name || "Konto";
+  const [editAcc, setEditAcc] = useState(null);
+  const selA = accounts.find((a) => a.id === acc);
+  const selBal = selA ? accountBalance(selA, txs) : null;
+  const knownBal = accounts.map((a) => accountBalance(a, txs)).filter((x) => x != null);
 
   async function onPick(file) {
     if (!file) return;
@@ -1407,41 +1522,10 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
   return (
     <div className="split">
       <aside className="side">
-      <div className="hero">
-        <small>{month ? new Date(month + "-15").toLocaleDateString("de-AT", { month: "long", year: "numeric" }) : "Alle Umsätze"}{acc ? " · " + accName(acc) : ""}</small>
-        <div className="hero-v">{(inc - out >= 0 ? "+" : "") + fmtMoney(inc - out)}</div>
-        <div className="hero-row">
-          <div><small>Eingänge</small><b>↑ {fmtMoney(inc)}</b></div>
-          <div><small>Ausgänge</small><b>↓ {fmtMoney(out)}</b></div>
-          <div><small>Buchungen</small><b>{list.length}</b></div>
-        </div>
-      </div>
-
-      <input ref={fileRef} type="file" accept={IMPORT_ACCEPT} hidden onChange={(e) => { onPick(e.target.files[0]); e.target.value = ""; }} />
-      <button className="tile importbtn" onClick={() => fileRef.current.click()}>
-        <span className="caticon" style={{ width: 40, height: 40, background: "#0b63f622", fontSize: 20 }}>⬆︎</span>
-        <div className="grow"><b>Umsätze importieren</b><small className="muted block">CSV · Excel · CAMT · MT940 · OFX · QIF · JSON · PDF</small></div>
-        <span className="muted">›</span>
-      </button>
       <div className="twobtn">
         <button className="btn" onClick={() => onManual({ accountId: acc || undefined })}>＋ Buchung</button>
         <button className="btn" onClick={() => setNewAcc(true)}>＋ Konto</button>
       </div>
-
-      {!!cashAccs.length && (
-        <section className="tile">
-          <div className="tilehead"><b>Bargeld</b><button className="link" onClick={() => onManual({ accountId: cashAccs[0].id })}>＋ Barausgabe</button></div>
-          {cashAccs.map((a) => (
-            <div key={a.id} className="frow click" onClick={() => setAcc(a.id)}>
-              <span className="caticon" style={{ width: 40, height: 40, background: "#16a34a22", fontSize: 20 }}>💶</span>
-              <div className="grow"><b>{a.name}</b><small className="muted block">{txs.filter((t) => t.accountId === a.id).length} Buchungen{a.atm ? " · inkl. Bankomat-Behebungen" : ""}</small></div>
-              <div className="right"><b className={cashBalance(a, txs) < 0 ? "red" : ""}>{fmtMoney(cashBalance(a, txs))}</b><small className="muted block">Bestand</small></div>
-            </div>
-          ))}
-          {cashBalance(cashAccs[0], txs) < 0 && <p className="warn small">Bestand negativ – vermutlich fehlt eine Behebung oder der Startbestand.</p>}
-        </section>
-      )}
-
 
       {!!pending.length && (
         <section className="tile">
@@ -1478,6 +1562,21 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
 
       </aside>
       <div className="maincol">
+      <div className="hero">
+        {selA ? <>
+          <small>Kontostand · {selA.name}</small>
+          <div className="hero-v">{selBal != null ? fmtMoney(selBal) : "—"}</div>
+          {selBal == null && <button className="herolink" onClick={() => setEditAcc(selA)}>Kontostand eintragen ›</button>}
+        </> : <>
+          <small>Gesamtstand · {knownBal.length} von {accounts.length} Konten</small>
+          <div className="hero-v">{knownBal.length ? fmtMoney(knownBal.reduce((s, x) => s + x, 0)) : "—"}</div>
+        </>}
+        <div className="hero-row">
+          <div><small>Eingänge{month ? " " + monthLabel(month) : ""}</small><b>↑ {fmtMoney(inc)}</b></div>
+          <div><small>Ausgänge{month ? " " + monthLabel(month) : ""}</small><b>↓ {fmtMoney(out)}</b></div>
+          <div><small>Buchungen</small><b>{list.length}</b></div>
+        </div>
+      </div>
       {!!accounts.length && (
         <div className="tile mobile-only accphone">
           <AccountTree groups={groups} txs={txs} selected={acc} onSelect={setAcc} onToggleGroup={toggleGroup} variant="card" />
@@ -1486,6 +1585,7 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
       {!!accounts.length && (
         <div className="chips">
           <button className={!acc ? "chip on" : "chip"} onClick={() => setAcc("")}>{acc ? "✕ " + accName(acc) : "Alle Konten"}</button>
+          {selA && <button className="chip" onClick={() => setEditAcc(selA)}>✎ Konto bearbeiten</button>}
           <select className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
         </div>
       )}
@@ -1517,6 +1617,8 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
       {acc && <button className="link red" style={{ marginTop: 16 }} onClick={() => confirm(`Konto „${accName(acc)}“ samt Umsätzen löschen?`) && (deleteAccount(acc), setAcc(""))}>Konto löschen</button>}
 
       </div>
+      {editAcc && <AccountSheet init={editAcc} txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm && a.id !== editAcc.id)} onClose={() => setEditAcc(null)}
+        onSave={(a) => { setAccounts((l) => l.map((x) => (x.id === a.id ? a : x))); setEditAcc(null); notify("Konto gespeichert"); }} />}
       {newAcc && <AccountSheet txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
       {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
       {txOpen && <TxSheet deleteTx={deleteTx} t={txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
@@ -1547,7 +1649,8 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
     try {
       let body;
       if (res.format === "PDF" || res.format === "Bild" || /xls/i.test(res.format)) {
-        const blob = res.format === "Bild" ? await prepareFile(imp.file) : imp.file;
+        let blob = res.format === "Bild" ? await prepareFile(imp.file) : imp.file;
+        if (blob.type === "application/pdf" && blob.size > 3.6 * 1024 * 1024) blob = await shrinkPdf(blob, 3.6 * 1024 * 1024, 25);
         body = { data: await blobToBase64(blob), mediaType: blob.type || "application/pdf" };
       } else body = { text: res.text || (await imp.file.text()) };
       const r = await fetch("/api/statement", { method: "POST", headers: { "content-type": "application/json", "x-app-token": token }, body: JSON.stringify(body) });
@@ -1569,16 +1672,19 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
     try {
       if (fileAccounts.length) {
         // Jedes Konto aus der Datei einem bestehenden (Name/IBAN) oder neuen Konto zuordnen
-        const known = [...accounts]; let added = 0, dupes = 0, matched = 0;
+        const known = [...accounts]; let added = 0, dupes = 0, matched = 0; const plan = [];
         for (const name of fileAccounts) {
           const part = txs.filter((t) => t.accountName === name);
           const iban = part.find((t) => t.ownIban)?.ownIban || "";
           let a = known.find((x) => (iban && x.iban === iban) || x.name === name);
-          if (!a) { a = { id: uid(), name, iban, kind: "bank" }; known.push(a); }
+          if (!a) { a = { id: uid(), name, iban, kind: /kredit|card|visa|master/i.test(name) ? "card" : /spar/i.test(name) ? "savings" : /paypal/i.test(name) ? "wallet" : "bank" }; known.push(a); }
+          plan.push([a, part]);
+        }
+        setAccounts(known);
+        for (const [a, part] of plan) {
           const r = await importTxs(a.id, part, known.map((x) => x.iban).filter(Boolean));
           added += r.added; dupes += r.dupes; matched += r.matched;
         }
-        setAccounts(known);
         if (res.signature && res.mapping) ls.set("mappings", { ...ls.get("mappings", {}), [res.signature]: res.mapping.map });
         notify(`${added} neu in ${fileAccounts.length} Konten${dupes ? `, ${dupes} bereits vorhanden` : ""}${matched ? `, ${matched} Rechnung(en) bezahlt` : ""}`);
         return onClose();
@@ -1589,15 +1695,14 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
         setAccounts((a) => [...a, { id, name: newName || "Konto", iban: metaIban, kind: isBroker ? "broker" : "bank" }]);
       }
       if (res.signature && res.mapping) ls.set("mappings", { ...ls.get("mappings", {}), [res.signature]: res.mapping.map });
-      const r = await importTxs(id, txs);
+      const r = await importTxs(id, txs, undefined, res.meta);
       notify(`${r.added} neu importiert${r.dupes ? `, ${r.dupes} bereits vorhanden` : ""}${r.matched ? `, ${r.matched} Rechnung(en) als bezahlt erkannt` : ""}`);
       onClose();
     } finally { setBusy(false); }
   }
 
   return (
-    <div className="sheet" onClick={onClose}>
-      <div className="panel" onClick={(e) => e.stopPropagation()}>
+    <Win id="import" onClose={onClose}>
         <div className="panelhead"><button className="link" onClick={onClose}>Abbrechen</button><b>Import</b>
           <button className="btn primary" disabled={busy || !txs.length} onClick={doImport}>Importieren</button></div>
 
@@ -1674,8 +1779,7 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
             {txs.length > 8 && <p className="muted small">… und {txs.length - 8} weitere</p>}
           </fieldset>
         )}
-      </div>
-    </div>
+    </Win>
   );
 }
 
@@ -1688,8 +1792,7 @@ function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, dele
     ["Verwendungszweck", t.purpose], ["Buchungstext", t.bookingText], ["ISIN", t.isin], ["Wertpapier", t.security], ["Stück", t.shares], ["Kurs", t.price != null && fmtMoney(t.price, t.currency)],
     ["Gebühren", t.fee ? fmtMoney(t.fee) : ""], ["Steuern", t.tax ? fmtMoney(t.tax) : ""]].filter(([, v]) => v != null && v !== "" && v !== false);
   return (
-    <div className="sheet" onClick={onClose}>
-      <div className="panel" onClick={(e) => e.stopPropagation()}>
+    <Win id="tx" onClose={onClose}>
         <div className="panelhead"><button className="link" onClick={onClose}>‹ Zurück</button><b>Buchung</b>
           <button className="btn primary" disabled={cat === t.category} onClick={() => { updateTx({ ...t, category: cat }, rule); onClose(); }}>Speichern</button></div>
         <div className="tile center-text">
@@ -1713,8 +1816,7 @@ function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, dele
           {rows.map(([k, v]) => <div key={k} className="kv"><small className="muted">{k}</small><span>{String(v)}</span></div>)}
         </fieldset>
         {t.manual && <button className="btn danger" style={{ marginTop: 14 }} onClick={() => confirm("Buchung löschen?") && (deleteTx(t), onClose())}>🗑 Buchung löschen</button>}
-      </div>
-    </div>
+    </Win>
   );
 }
 
@@ -1771,8 +1873,7 @@ function Scanner({ onDone, onClose }) {
   }
 
   return (
-    <div className="sheet scanner" onClick={onClose}>
-      <div className="panel" onClick={(e) => e.stopPropagation()}>
+    <Win id="scanner" onClose={onClose} className="scanner">
         <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { onShot(e.target.files[0], edit?.idx ?? pages.length); e.target.value = ""; }} />
         <input ref={galRef} type="file" accept="image/*" hidden onChange={(e) => { onShot(e.target.files[0], edit?.idx ?? pages.length); e.target.value = ""; }} />
         <div className="panelhead">
@@ -1823,8 +1924,7 @@ function Scanner({ onDone, onClose }) {
           </>
         )}
         {busy && <div className="busy"><div className="spinner" />{busy}</div>}
-      </div>
-    </div>
+    </Win>
   );
 }
 
@@ -1879,8 +1979,7 @@ function AccountSheet({ init, onSave, onClose, onDelete, hasAtmAccount, txs = []
     onSave(base);
   }
   return (
-    <div className="sheet" onClick={onClose}>
-      <div className="panel small-panel" onClick={(e) => e.stopPropagation()}>
+    <Win id="account" onClose={onClose} small>
         <div className="panelhead"><button className="link" onClick={onClose}>Abbrechen</button><b>{init ? "Konto bearbeiten" : "Neues Konto"}</b>
           <button className="btn primary" disabled={!name.trim()} onClick={save}>{init ? "Speichern" : "Anlegen"}</button></div>
         <fieldset>
@@ -1899,8 +1998,7 @@ function AccountSheet({ init, onSave, onClose, onDelete, hasAtmAccount, txs = []
           {kind === "cash" && <label className="check"><input type="checkbox" checked={atm} onChange={(e) => setAtm(e.target.checked)} /> Bankomat-Behebungen aus importierten Konten automatisch als Einzahlung zählen</label>}
         </fieldset>
         {onDelete && <button className="btn danger" style={{ marginTop: 14 }} onClick={onDelete}>🗑 Konto löschen</button>}
-      </div>
-    </div>
+    </Win>
   );
 }
 
@@ -1916,8 +2014,7 @@ function ManualTxSheet({ init, accounts, categories, onSave, onClose }) {
   const val = Number(String(amount).replace(",", "."));
   const ok = val > 0 && date && text.trim();
   return (
-    <div className="sheet" onClick={onClose}>
-      <div className="panel small-panel" onClick={(e) => e.stopPropagation()}>
+    <Win id="manual" onClose={onClose} small>
         <div className="panelhead"><button className="link" onClick={onClose}>Abbrechen</button><b>Buchung erfassen</b>
           <button className="btn primary" disabled={!ok} onClick={() => onSave({ accountId, date, amount: dir === "out" ? -val : val, counterparty: text.trim(), purpose: "", category: dir === "in" && category === "Lebensmittel & Haushalt" ? "Einnahmen" : category })}>Speichern</button></div>
         <div className="seg">
@@ -1938,8 +2035,7 @@ function ManualTxSheet({ init, accounts, categories, onSave, onClose }) {
           </div>
           <label>Kategorie<select value={category} onChange={(e) => setCategory(e.target.value)}>{categories.map((c) => <option key={c}>{c}</option>)}</select></label>
         </fieldset>
-      </div>
-    </div>
+    </Win>
   );
 }
 
@@ -1983,8 +2079,7 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
   const numIn = (v) => { const s = String(v).replace(",", "."); return s === "" ? null : Number(s); };
 
   return (
-    <div className="sheet" onClick={onClose}>
-      <div className="panel" onClick={(e) => e.stopPropagation()}>
+    <Win id="detail" onClose={onClose}>
         <div className="panelhead">
           <button className="link" onClick={onClose}>‹ Zurück</button>
           <button className="btn primary" disabled={!dirty} onClick={() => saveDoc(d)}>Speichern</button>
@@ -2103,13 +2198,14 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
           <button className="btn danger" onClick={() => trashDoc(doc)}>🗑 Papierkorb</button>
         </div>
         <p className="muted small">{doc.fileName} · {(doc.size / 1024).toFixed(0)} KB · hinzugefügt {new Date(doc.createdAt).toLocaleString("de-AT")}</p>
-      </div>
-    </div>
+    </Win>
   );
 }
 
 /* ---------- Einstellungen, Budgets, Papierkorb, Backup ---------- */
-function Settings({ nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+function Settings({ importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+  const impRef = useRef();
+  const [imp, setImp] = useState(null);
   const [health, setHealth] = useState(null);
   const [usage, setUsage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2150,6 +2246,25 @@ function Settings({ nav, setNav, deleteAccount, renameCategory, deleteCategory, 
         <span className="caticon" style={{ width: 40, height: 40, background: "#e5484d22", fontSize: 18 }}>⏰</span>
         <div className="grow"><b>Fristen</b><small className="muted block">Zahlungen, Kündigungen, Termine</small></div><span className="muted">›</span>
       </div>
+
+      <fieldset className="span2">
+        <legend>Datenschutz</legend>
+        <label className="switchrow">
+          <span><b>Geldbeträge anzeigen</b><small className="muted block">Aus = alle Beträge werden als „€ •••“ verdeckt (z. B. wenn jemand mitschaut). Schnell umschalten auch mit 👁️ oben rechts.</small></span>
+          <input type="checkbox" className="switch" checked={!hideAmounts} onChange={(e) => setHideAmounts(!e.target.checked)} />
+        </label>
+      </fieldset>
+
+      <fieldset className="span2">
+        <legend>Umsätze importieren</legend>
+        <p className="muted small">Kontoauszüge von Banken, Brokern & Co.: CSV · Excel · CAMT · MT940 · OFX · QIF · JSON · Finanzguru · PDF/Foto (per Claude). Doppelte Buchungen werden übersprungen, Kontostände übernommen.</p>
+        <input ref={impRef} type="file" accept={IMPORT_ACCEPT} hidden onChange={async (e) => {
+          const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+          try { setImp({ file: f, result: await parseFile(f, ls.get("mappings", {})) }); } catch (err) { notify("Datei nicht lesbar: " + err.message); }
+        }} />
+        <button className="btn primary" onClick={() => impRef.current.click()}>⬆︎ Datei auswählen …</button>
+        {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
+      </fieldset>
 
       <NavSettings nav={nav} setNav={setNav} accounts={accounts} setAccounts={setAccounts} txs={txs} deleteAccount={deleteAccount} notify={notify} />
 
@@ -2561,4 +2676,34 @@ body.dnd-active,body.dnd-active *{cursor:grabbing!important;user-select:none!imp
 input[type=date]{min-width:0;max-width:100%;display:block;-webkit-appearance:none;appearance:none;min-height:44px}
 input[type=date]::-webkit-date-and-time-value{text-align:left}
 .healthbox{background:var(--card2);border-radius:12px;padding:8px 12px;margin-top:10px}.healthbox p{margin:4px 0;font-size:14px;font-weight:500}
+
+/* Freischwebende Fenster */
+.win{position:fixed;display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--line);border-radius:18px;box-shadow:0 24px 70px #0f1b2d4d,0 2px 6px #0f1b2d1f;overflow:hidden;animation:popin .14s ease-out}
+.wininner{flex:1;overflow:auto;padding:0 20px 24px;overscroll-behavior:contain}
+.win .panelhead{cursor:move;padding-top:12px;background:var(--bg);user-select:none;-webkit-user-select:none}
+.win .panelhead b{pointer-events:none}
+.win.scanner .busy{border-radius:18px}
+.rz{position:absolute;z-index:3;touch-action:none}
+.rz-n,.rz-s{left:14px;right:14px;height:8px;cursor:ns-resize}.rz-n{top:-3px}.rz-s{bottom:-3px}
+.rz-e,.rz-w{top:14px;bottom:14px;width:8px;cursor:ew-resize}.rz-e{right:-3px}.rz-w{left:-3px}
+.rz-ne,.rz-se,.rz-sw,.rz-nw{width:18px;height:18px}
+.rz-ne{top:-3px;right:-3px;cursor:nesw-resize}.rz-sw{bottom:-3px;left:-3px;cursor:nesw-resize}
+.rz-se{bottom:-3px;right:-3px;cursor:nwse-resize}.rz-nw{top:-3px;left:-3px;cursor:nwse-resize}
+.rzgrip{position:absolute;right:5px;bottom:5px;width:12px;height:12px;pointer-events:none;opacity:.5;
+  background:linear-gradient(135deg,transparent 45%,var(--mut) 45%,var(--mut) 52%,transparent 52%,transparent 68%,var(--mut) 68%,var(--mut) 75%,transparent 75%)}
+body.win-moving,body.win-moving *{user-select:none!important;-webkit-user-select:none!important}
+/* Seitenleiste ziehbar */
+.sideresize{display:none}
+@media (min-width:768px){
+  .sideresize{display:block;position:fixed;top:0;bottom:0;left:calc(var(--side) - 4px);width:8px;cursor:col-resize;z-index:7;touch-action:none}
+  .sideresize:hover,body.win-moving .sideresize{background:linear-gradient(90deg,transparent 3px,color-mix(in srgb,var(--acc) 60%,transparent) 3px,color-mix(in srgb,var(--acc) 60%,transparent) 5px,transparent 5px)}
+}
+
+.eyebtn{margin-left:auto;background:var(--card);border:1px solid var(--line);border-radius:50%;width:40px;height:40px;font-size:18px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+.top .addbtn{margin-left:8px}
+.herolink{background:#ffffff26;color:#fff;border:0;border-radius:999px;padding:4px 12px;font:inherit;font-size:13px;margin:-6px 0 12px;cursor:pointer}
+.switchrow{display:flex;align-items:center;justify-content:space-between;gap:14px;color:var(--txt);font-size:15px;margin:6px 0}
+.switch{appearance:none;-webkit-appearance:none;width:52px;height:32px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;flex:none;transition:background .2s;margin:0;padding:0;border:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0004;transition:transform .2s}
+.switch:checked{background:var(--ok)}.switch:checked::after{transform:translateX(20px)}
 `;

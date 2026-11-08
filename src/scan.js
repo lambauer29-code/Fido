@@ -221,3 +221,28 @@ export async function pagesToPdf(blobs) {
   pdf.setProducer("Dokumente-App Scanner");
   return new Blob([await pdf.save()], { type: "application/pdf" });
 }
+
+/** Großes PDF fürs Auslesen verkleinern: Seiten rendern → JPEG → neues PDF (Original bleibt unverändert) */
+export async function shrinkPdf(blob, maxBytes = 3.6 * 1024 * 1024, maxPages = 15) {
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+  const pdf = await pdfjs.getDocument({ data: await blob.arrayBuffer() }).promise;
+  const n = Math.min(pdf.numPages, maxPages);
+  let out = blob;
+  for (const [longSide, q] of [[1800, 0.72], [1400, 0.62], [1100, 0.55], [850, 0.5]]) {
+    const pages = [];
+    for (let i = 1; i <= n; i++) {
+      const page = await pdf.getPage(i);
+      const v1 = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: longSide / Math.max(v1.width, v1.height) });
+      const c = document.createElement("canvas"); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      pages.push(await toJpeg(c, q));
+    }
+    out = await pagesToPdf(pages);
+    if (out.size <= maxBytes) break;
+  }
+  pdf.destroy();
+  return out;
+}

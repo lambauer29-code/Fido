@@ -135,7 +135,16 @@ export function parseCamt(text, DOMParserImpl = globalThis.DOMParser) {
       else transactions.push({ date, valueDate, amount, currency: ccy, counterparty: "", iban: "", purpose: bookingText, bookingText, kind: "bank" });
     }
   }
-  return { format: "CAMT (ISO 20022)", transactions, meta: { iban: accountIban, currency } };
+  // Schlusssaldo (gebucht) des letzten Auszugs
+  let closing = null;
+  for (const st of stmts) for (const b of kids(st, "Bal")) {
+    const tp = txt(path(b, "Tp/CdOrPrtry/Cd"));
+    if (tp !== "CLBD" && tp !== "CLAV") continue;
+    const amt = (parseFloat(txt(kid(b, "Amt"))) || 0) * (txt(kid(b, "CdtDbtInd")) === "DBIT" ? -1 : 1);
+    const dt = parseDate(txt(path(b, "Dt/Dt")) || txt(path(b, "Dt/DtTm")));
+    if (dt && (!closing || dt >= closing.date) && (tp === "CLBD" || !closing)) closing = { amount: amt, date: dt };
+  }
+  return { format: "CAMT (ISO 20022)", transactions, meta: { iban: accountIban, currency, closingBalance: closing?.amount, closingDate: closing?.date } };
 }
 
 /* ---------- MT940 / STA ---------- */
@@ -147,10 +156,14 @@ export function parseMt940(text) {
     if (m) { cur = { tag: m[1], val: m[2] }; fields.push(cur); }
     else if (cur && l.trim() !== "-" && l.trim() !== "") cur.val += "\n" + l;
   }
-  const transactions = []; let currency = "EUR", account = "", last = null;
+  const transactions = []; let currency = "EUR", account = "", last = null, closing = null;
   for (const f of fields) {
     if (f.tag === "25") account = f.val.trim();
     if (f.tag === "60F" || f.tag === "60M") currency = f.val.slice(7, 10) || currency;
+    if (f.tag === "62F" || f.tag === "62M") {
+      const m = f.val.trim().match(/^([CD])(\d{6})([A-Z]{3})([\d,]+)/);
+      if (m) closing = { amount: parseFloat(m[4].replace(",", ".")) * (m[1] === "D" ? -1 : 1), date: parseDate("20" + m[2].slice(0, 2) + "-" + m[2].slice(2, 4) + "-" + m[2].slice(4, 6)) };
+    }
     if (f.tag === "61") {
       const m = f.val.replace(/\n/g, "").match(/^(\d{6})(\d{4})?(R?[CD])([A-Z])?(\d+,\d*)/);
       if (!m) continue;
@@ -173,7 +186,7 @@ export function parseMt940(text) {
       last = null;
     }
   }
-  return { format: "MT940", transactions, meta: { account, currency } };
+  return { format: "MT940", transactions, meta: { account, currency, closingBalance: closing?.amount, closingDate: closing?.date } };
 }
 
 /* ---------- OFX / QFX ---------- */
@@ -187,7 +200,9 @@ export function parseOfx(text) {
     counterparty: tag(b, "NAME") || tag(b, "PAYEE"), iban: "", purpose: tag(b, "MEMO"), bookingText: tag(b, "TRNTYPE"),
     reference: tag(b, "FITID"), kind: "bank"
   }));
-  return { format: "OFX", transactions, meta: { iban, currency } };
+  const lb = (text.match(/<LEDGERBAL>[\s\S]*?(?=<\/LEDGERBAL>|<AVAILBAL>|<\/STMTRS>)/i) || [""])[0];
+  const bal = parseNum(tag(lb, "BALAMT").replace(",", "."));
+  return { format: "OFX", transactions, meta: { iban, currency, closingBalance: bal ?? undefined, closingDate: parseDate(tag(lb, "DTASOF")) || undefined } };
 }
 
 /* ---------- QIF ---------- */
@@ -246,7 +261,8 @@ export const FIELDS = {
   purpose: ["verwendungszweck", "zahlungsreferenz", "beschreibung", "description", "reference", "memo", "umsatztext", "details", "text", "betreff", "note", "zweck", "notiz", "mitteilung"],
   bookingText: ["buchungstext", "umsatzart", "booking text", "transaktionsart", "art", "buchungsart"],
   type: ["typ", "type", "transaktionstyp", "transaction type", "vorgang", "aktion", "action", "transaction"],
-  ignore: ["split-typ", "kontostand", "saldo", "balance", "analyse-betrag", "buchungs-id", "referenz-original-id", "analyse-woche", "analyse-monat", "analyse-quartal", "analyse-jahr"],
+  balance: ["kontostand", "saldo", "balance", "neuer saldo", "saldo nach buchung", "kontostand nach buchung", "running balance"],
+  ignore: ["split-typ", "analyse-betrag", "buchungs-id", "referenz-original-id", "analyse-woche", "analyse-monat", "analyse-quartal", "analyse-jahr"],
   isin: ["isin"],
   security: ["wertpapier", "security name", "instrument", "titel", "produkt", "asset name", "wertpapiername", "bezeichnung", "name des wertpapiers"],
   shares: ["stück", "stueck", "anzahl", "quantity", "shares", "menge", "stückzahl", "nominale", "units"],
@@ -254,7 +270,7 @@ export const FIELDS = {
   fee: ["gebühr", "gebühren", "fee", "fees", "kosten", "provision", "commission", "transaktionsgebühr"],
   tax: ["steuer", "steuern", "tax", "taxes", "kest", "quellensteuer", "withholding tax"]
 };
-const LABELS = { account: "Konto (Name)", subCategory: "Unterkategorie", ownIban: "Eigene IBAN", category: "Kategorie", transfer: "Umbuchung (ja/nein)", date: "Datum", valueDate: "Valuta", amount: "Betrag", debit: "Soll / Ausgang", credit: "Haben / Eingang", sign: "Soll/Haben-Kennz.", currency: "Währung",
+const LABELS = { balance: "Kontostand nach Buchung", account: "Konto (Name)", subCategory: "Unterkategorie", ownIban: "Eigene IBAN", category: "Kategorie", transfer: "Umbuchung (ja/nein)", date: "Datum", valueDate: "Valuta", amount: "Betrag", debit: "Soll / Ausgang", credit: "Haben / Eingang", sign: "Soll/Haben-Kennz.", currency: "Währung",
   counterparty: "Gegenpartei", iban: "IBAN", purpose: "Verwendungszweck", bookingText: "Buchungstext", type: "Typ", isin: "ISIN", security: "Wertpapier",
   shares: "Stück", price: "Kurs", fee: "Gebühren", tax: "Steuern" };
 export const FIELD_LABELS = LABELS;
@@ -283,7 +299,7 @@ export function guessMapping(rows) {
   if (headerRow >= 0) {
     // spezifische Felder zuerst, damit "Betrag" nicht von "Wert" etc. geschluckt wird
     headers.forEach((h, i) => { if (FIELDS.ignore.some((x) => normH(h) === x)) used.add(i); });
-    for (const f of ["account", "ownIban", "transfer", "subCategory", "category", "isin", "valueDate", "date", "debit", "credit", "sign", "currency", "iban", "shares", "price", "fee", "tax", "amount", "type", "bookingText", "counterparty", "purpose", "security"]) {
+    for (const f of ["balance", "account", "ownIban", "transfer", "subCategory", "category", "isin", "valueDate", "date", "debit", "credit", "sign", "currency", "iban", "shares", "price", "fee", "tax", "amount", "type", "bookingText", "counterparty", "purpose", "security"]) {
       let best = -1, bs = 0;
       headers.forEach((h, i) => { if (used.has(i)) return; const s = scoreHeader(h, FIELDS[f]); if (s > bs) { bs = s; best = i; } });
       if (best >= 0 && (bs >= 2 || (bs === 1 && !["type", "sign", "security", "account", "ownIban", "category", "transfer", "subCategory"].includes(f)))) { map[f] = best; used.add(best); }
@@ -349,6 +365,7 @@ export function rowsToTransactions(rows, mapping) {
       counterparty: clean(col(r, "counterparty")), iban: clean(col(r, "iban")).replace(/\s/g, ""),
       purpose: clean(col(r, "purpose")), bookingText: clean(col(r, "bookingText")) || typeRaw, kind: "bank"
     };
+    if (map.balance != null) { const b = parseNum(col(r, "balance")); if (b != null) tx.balanceAfter = b; }
     if (map.account != null) tx.accountName = clean(col(r, "account"));
     if (map.ownIban != null) tx.ownIban = clean(col(r, "ownIban")).replace(/\s/g, "");
     if (map.category != null) tx.extCategory = [clean(col(r, "category")), clean(col(r, "subCategory"))].filter(Boolean).join(" / ");
@@ -540,4 +557,16 @@ export function portfolio(txs) {
   }
   const positions = Object.values(pos).filter((p) => Math.abs(p.shares) > 1e-6).sort((a, b) => b.cost - a.cost);
   return { positions, invested, income, costs, deposits, count: b.length };
+}
+
+/** Neuester bekannter Kontostand aus einer Importdatei (Schlusssaldo oder Saldo-Spalte) */
+export function latestBalance(txs, meta) {
+  if (meta?.closingBalance != null && meta.closingDate) return { amount: meta.closingBalance, date: meta.closingDate };
+  const withBal = txs.filter((t) => t.balanceAfter != null);
+  if (!withBal.length) return null;
+  const maxDate = withBal.reduce((m, t) => (t.date > m ? t.date : m), "");
+  const sameDay = withBal.filter((t) => t.date === maxDate);
+  const desc = txs.length > 1 && txs[0].date >= txs[txs.length - 1].date; // Datei neueste zuerst?
+  const pick = desc ? sameDay[0] : sameDay[sameDay.length - 1];
+  return { amount: pick.balanceAfter, date: maxDate };
 }
