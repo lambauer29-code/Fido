@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.47.0
+- Backup: neue „Gefahrenzone“ mit „Alle Daten löschen“. Warnung mit Übersicht, was gelöscht wird, Bestätigungs-Häkchen und Eingabe von „ALLES LÖSCHEN“ (genau so, in Großbuchstaben). Löscht Dokumente, Dateien, Umsätze und alle gespeicherten Daten/Einstellungen auf diesem Gerät und lädt die App neu.
+
 ## v0.46.4
 - Fahrtenbuch: eigene Fahrzeug-Symbole über „＋“ – Emoji eintippen oder Bild hochladen. Eigene Symbole bleiben für alle Fahrzeuge verfügbar und lassen sich über „×“ wieder löschen.
 

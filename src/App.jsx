@@ -2971,6 +2971,55 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
   );
 }
 
+
+/* ---------- Alle Daten löschen (Backup-Bereich) ---------- */
+const WIPE_WORD = "ALLES LÖSCHEN";
+async function wipeAllData() {
+  const d = await openDB();
+  await new Promise((res, rej) => { const t = d.transaction(["docs", "files", "tx"], "readwrite"); ["docs", "files", "tx"].forEach((n) => t.objectStore(n).clear()); t.oncomplete = res; t.onerror = () => rej(t.error); });
+  try { localStorage.clear(); } catch {}
+  try { sessionStorage.clear(); } catch {}
+}
+function WipeAll({ docs, txs }) {
+  const [open, setOpen] = useState(false), [ok, setOk] = useState(false), [word, setWord] = useState(""), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const n = (k) => { const v = ls.get(k, []); return Array.isArray(v) ? v.length : 0; };
+  const fb = ls.get("fbook", null);
+  const match = word.trim() === WIPE_WORD;
+  const close = () => { setOpen(false); setOk(false); setWord(""); setErr(""); };
+  return (
+    <div className="wipezone">
+      <h4 className="bkh">⚠️ Gefahrenzone</h4>
+      {!open ? (
+        <button className="btn danger" onClick={() => setOpen(true)}>🗑 Alle Daten löschen …</button>
+      ) : (
+        <div className="wipebox" role="alertdialog" aria-label="Alle Daten löschen">
+          <b>Wirklich ALLE Daten in FinDocu löschen?</b>
+          <p className="small">Das kann <b>nicht rückgängig</b> gemacht werden. Gelöscht wird auf diesem Gerät:</p>
+          <ul className="small">
+            <li>{docs} Dokumente samt Dateien (auch im Papierkorb)</li>
+            <li>{txs} Umsätze und {n("accounts")} Konten</li>
+            <li>{n("invoices")} Rechnungen & Angebote, {n("customers")} Kunden, {n("articles")} Artikel</li>
+            <li>Fahrtenbuch ({fb?.vehicles?.length || 0} Fahrzeuge, {fb?.entries?.length || 0} Einträge), Vermögenswerte, Budgets, Regeln</li>
+            <li>alle Einstellungen, Firmendaten, App-Token und das App-Passwort</li>
+          </ul>
+          <p className="small">Erstelle vorher ein <b>Backup</b> (oben), wenn du die Daten noch brauchst. Daten auf anderen Geräten und deine Dateien in Vercel/GitHub bleiben unberührt.</p>
+          <label className="check"><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} /> Ich habe verstanden, dass alle Daten endgültig gelöscht werden.</label>
+          <label>Zum Bestätigen genau <b className="wipeword">{WIPE_WORD}</b> eintippen (Großbuchstaben)
+            <input value={word} autoComplete="off" autoCapitalize="characters" spellCheck={false} placeholder={WIPE_WORD} onChange={(e) => setWord(e.target.value)} disabled={!ok} />
+          </label>
+          {err && <p className="red small">{err}</p>}
+          <div className="actions">
+            <button className="btn danger" disabled={!ok || !match || busy} onClick={async () => {
+              setBusy(true);
+              try { await wipeAllData(); location.reload(); } catch (e) { setErr("Löschen fehlgeschlagen: " + (e.message || e)); setBusy(false); }
+            }}>{busy ? "Löscht …" : "Endgültig löschen"}</button>
+            <button className="btn" onClick={close}>Abbrechen</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 /* ======================= Analyse ======================= */
 const addMon = (m, n) => { const d = new Date(m + "-15"); d.setMonth(d.getMonth() + n); return d.toLocaleDateString("sv-SE").slice(0, 7); };
 const monthsRange = (from, to) => { const out = []; for (let m = from; m <= to && out.length < 600; m = addMon(m, 1)) out.push(m); return out; };
@@ -5762,6 +5811,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         </div>}
         <input ref={importRef} type="file" accept="application/json,.json" hidden onChange={(e) => { e.target.files[0] && importBackup(e.target.files[0]); e.target.value = ""; }} />
         <p className="muted small">{docs.length} Dokumente · {txs.length} Umsätze · {usage}</p>
+        <WipeAll docs={docs.length} txs={txs.length} />
       </SetSec></>,
     "verbindung": <><SetSec id="verbindung" title="Verbindung">
         <label>App-Token (wie APP_TOKEN in Vercel)
@@ -8961,4 +9011,11 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 .vehicons .chip img{width:22px;height:22px;object-fit:contain;vertical-align:middle}
 .vehadd{margin-top:8px}
 .vehimg{width:1.2em;height:1.2em;object-fit:contain;vertical-align:-.25em}.fbcaric .vehimg{width:34px;height:34px}
+
+.wipezone{margin-top:22px;padding-top:14px;border-top:1px solid var(--line)}
+.wipebox{border:1.5px solid var(--red);border-radius:16px;padding:14px 16px;background:color-mix(in srgb,var(--red) 8%,var(--card));margin-top:8px}
+.wipebox>b{color:var(--red);font-size:16px}.wipebox ul{margin:6px 0 10px;padding-left:20px}.wipebox li{margin:3px 0}
+.wipeword{color:var(--red);letter-spacing:.04em}.wipebox input:disabled{opacity:.5}
+.wipebox .btn.danger:not(:disabled){background:var(--red);color:#fff;border-color:var(--red)}
+.wipezone>.btn.danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 50%,transparent)}
 `;
