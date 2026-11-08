@@ -23,7 +23,9 @@ const CAT_META = {
   "Bargeld": ["💶", "#16a34a"], "Einnahmen": ["💰", "#22c55e"], "Umbuchung": ["🔁", "#64748b"]
 };
 const PALETTE = ["#3b82f6", "#f97316", "#22c55e", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444", "#6366f1", "#84cc16"];
+let CAT_STYLE = {}; // Symbol/Farbe umbenannter Kategorien (aus den Einstellungen)
 function catMeta(c) {
+  if (CAT_STYLE[c]) return { icon: CAT_STYLE[c][0], color: CAT_STYLE[c][1] };
   if (CAT_META[c]) return { icon: CAT_META[c][0], color: CAT_META[c][1] };
   let h = 0; for (const ch of String(c)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return { icon: "📁", color: PALETTE[h % PALETTE.length] };
@@ -241,7 +243,9 @@ const DEFAULT_NAV = {
 };
 function loadNav() {
   const n = ls.get("nav", null);
-  if (!n) return DEFAULT_NAV;
+  const docGroups = n?.docGroups || buildDocGroups(ls.get("categories", DEFAULT_CATEGORIES));
+  if (!n) return { ...DEFAULT_NAV, docGroups };
+  n.docGroups = docGroups;
   const keys = n.tabs.map((t) => t.key);
   return { ...DEFAULT_NAV, ...n, tabs: [...n.tabs, ...DEFAULT_NAV.tabs.filter((t) => !keys.includes(t.key))] };
 }
@@ -272,12 +276,340 @@ function accountBalance(acc, txs) {
 
 const AREAS = { finanzen: ["💶", "Finanzen"], vertraege: ["📑", "Verträge"], sonstiges: ["🗂️", "Sonstiges"] };
 function docArea(d) {
+  if (d.areaManual) return d.areaManual;
+  if (d.area === "sonstiges") return "sonstiges";
+  if (CAT_AREA[d.category]) return CAT_AREA[d.category];
   if (d.area) return d.area;
   if (d.contract || d.docType === "Vertrag" || d.docType === "Polizze") return "vertraege";
   if (d.amount?.total && d.direction && d.direction !== "keine") return "finanzen";
   return "sonstiges";
 }
 const inAnalysis = (d) => docArea(d) !== "sonstiges";
+
+/* ---------- Dokument-Kategorien in Gruppen (wie Konten) ---------- */
+const DEFAULT_CAT_AREA = {
+  "Rechnungen": "finanzen", "Bank & Finanzen": "finanzen", "Steuer & Finanzamt": "finanzen", "Lohn & Arbeit": "finanzen",
+  "Lebensmittel & Haushalt": "finanzen", "Freizeit & Abos": "finanzen", "Auto & Mobilität": "finanzen", "Wohnen & Energie": "finanzen",
+  "Garantie & Kaufbelege": "finanzen", "Gesundheit": "finanzen", "Verträge": "vertraege", "Versicherung": "vertraege",
+  "Behörden": "sonstiges", "Sonstiges": "sonstiges"
+};
+function buildDocGroups(categories) {
+  const g = [
+    { id: "d-fin", title: "Finanzen", area: "finanzen", cats: [] },
+    { id: "d-vert", title: "Verträge", area: "vertraege", cats: [] },
+    { id: "d-sonst", title: "Sonstiges", area: "sonstiges", cats: [] }
+  ];
+  for (const c of categories) (g.find((x) => x.area === (DEFAULT_CAT_AREA[c] || "sonstiges")) || g[2]).cats.push(c);
+  if (!g.some((x) => x.cats.includes("Sonstiges"))) g[2].cats.push("Sonstiges");
+  return g;
+}
+const flattenCats = (docGroups) => [...new Set([...docGroups.flatMap((g) => g.cats), "Sonstiges"])];
+// Kategorie → Bereich (wird bei jedem Rendern aus der Konfiguration gesetzt)
+let CAT_AREA = { ...DEFAULT_CAT_AREA };
+
+function DocTree({ docGroups, docs, selected, onSelect, onToggleGroup, variant = "", showEmpty = false }) {
+  const count = (c) => docs.filter((d) => d.category === c).length;
+  const shown = docGroups.map((g) => ({ ...g, cats: g.cats.filter((c) => showEmpty || count(c)) })).filter((g) => g.cats.length);
+  if (!shown.length) return null;
+  return (
+    <div className={"acctree " + variant}>
+      {shown.map((g, gi) => (
+        <div key={g.id} className="accgroup">
+          {gi > 0 && <div className="accdiv" />}
+          {g.title?.trim() && (
+            <button className="acctitle" onClick={() => onToggleGroup(g.id)} aria-expanded={!g.collapsed}>
+              <span className={"chev" + (g.collapsed ? "" : " open")}>›</span><span className="grow">{g.title}</span>
+              {g.collapsed && <small>{g.cats.reduce((s, c) => s + count(c), 0)}</small>}
+            </button>
+          )}
+          {!g.collapsed && g.cats.map((c) => (
+            <button key={c} className={"accitem" + (selected === c ? " on" : "")} onClick={() => onSelect(selected === c ? "" : c)}>
+              <span className="ki">{catMeta(c).icon}</span><span className="an">{c}</span><span className="ab muted">{count(c)}</span>
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- Ziehen & Ablegen (Maus + Touch, über Pointer-Events) ---------- */
+// Ziele werden über data-Attribute gefunden: data-<art>-item="liste|index" und data-<art>-list="liste|länge"
+function findDropTarget(x, y, kind) {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return null;
+  const item = el.closest(`[data-${kind}-item]`);
+  if (item) {
+    const [list, idx] = item.getAttribute(`data-${kind}-item`).split("|");
+    const r = item.getBoundingClientRect();
+    return { list, index: +idx + (y > r.top + r.height / 2 ? 1 : 0) };
+  }
+  const lst = el.closest(`[data-${kind}-list]`);
+  if (!lst) return null;
+  const [list, len] = lst.getAttribute(`data-${kind}-list`).split("|");
+  // zwischen zwei Zeilen: nächstgelegene Position statt Listenende
+  const items = [...lst.querySelectorAll(`[data-${kind}-item]`)].filter((n) => n.getAttribute(`data-${kind}-item`).split("|")[0] === list);
+  for (const n of items) {
+    const r = n.getBoundingClientRect();
+    if (y < r.top + r.height / 2) return { list, index: +n.getAttribute(`data-${kind}-item`).split("|")[1] };
+  }
+  return { list, index: +len };
+}
+function useDnd(onDrop) {
+  const [drag, setDrag] = useState(null);
+  const cur = useRef(null), dropRef = useRef(onDrop);
+  dropRef.current = onDrop;
+  function start(e, payload) {
+    if (e.button > 0) return;
+    e.preventDefault(); e.stopPropagation();
+    cur.current = { ...payload, x: e.clientX, y: e.clientY, over: null };
+    setDrag({ ...cur.current });
+    document.body.classList.add("dnd-active");
+    navigator.vibrate?.(8);
+    let raf;
+    const move = (ev) => {
+      const d = cur.current; if (!d) return;
+      ev.preventDefault();
+      d.x = ev.clientX; d.y = ev.clientY; d.over = findDropTarget(ev.clientX, ev.clientY, d.kind);
+      setDrag({ ...d });
+    };
+    const end = () => {
+      const d = cur.current; cur.current = null; setDrag(null);
+      document.body.classList.remove("dnd-active");
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); window.removeEventListener("pointercancel", end);
+      cancelAnimationFrame(raf);
+      if (d?.over) dropRef.current(d, d.over);
+    };
+    // automatisch scrollen, wenn man an den Rand zieht
+    const tick = () => {
+      const d = cur.current; if (!d) return;
+      if (d.y < 90) window.scrollBy(0, -12); else if (d.y > innerHeight - 90) window.scrollBy(0, 12);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", end); window.addEventListener("pointercancel", end);
+  }
+  // Hilfen fürs Rendern
+  const isDragging = (kind, list, index) => drag && drag.kind === kind && drag.list === list && drag.index === index;
+  const lineAt = (kind, list, index) => drag && drag.kind === kind && drag.over && drag.over.list === list && drag.over.index === index &&
+    !(drag.list === list && (index === drag.index || index === drag.index + 1));
+  const ghost = drag && <div className="dndghost" style={{ left: drag.x, top: drag.y }}>{drag.label}</div>;
+  return { drag, start, isDragging, lineAt, ghost };
+}
+// Element in Listen verschieben (Quelle und Ziel können verschiedene Listen sein)
+function moveBetween(lists, from, fromIdx, to, toIdx) {
+  const out = Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, [...v]]));
+  const [item] = out[from].splice(fromIdx, 1);
+  if (from === to && toIdx > fromIdx) toIdx--;
+  out[to].splice(toIdx, 0, item);
+  return out;
+}
+const Handle = ({ onDown, label = "Ziehen zum Verschieben" }) => (
+  <span className="handle" onPointerDown={onDown} aria-label={label} title={label} role="button">⠿</span>
+);
+
+/* ---------- Textfeld mit ✓ übernehmen / ✕ verwerfen ---------- */
+function EditText({ value = "", onSave, placeholder, className = "", validate, resetOnSave = false, inputClass = "" }) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  const dirty = v !== value;
+  const ok = () => {
+    const t = v.trim();
+    if (validate) { const err = validate(t); if (err) return; }
+    onSave(t);
+    if (resetOnSave) setV("");
+  };
+  const cancel = () => setV(value);
+  return (
+    <div className={"edittext " + className + (dirty ? " dirty" : "")}>
+      <input className={inputClass} value={v} placeholder={placeholder} onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (dirty) ok(); } if (e.key === "Escape" && dirty) { e.stopPropagation(); e.preventDefault(); cancel(); } }} />
+      {dirty && (
+        <span className="editbtns">
+          <button className="okbtn" onClick={ok} aria-label="Übernehmen" title="Übernehmen (Enter)">✓</button>
+          <button className="nobtn" onClick={cancel} aria-label="Verwerfen" title="Verwerfen (Esc)">✕</button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, notify }) {
+  const groups = nav.docGroups;
+  const all = flattenCats(groups);
+  const save = (g) => setNav((n) => ({ ...n, docGroups: g }));
+  const patch = (gi, p) => save(groups.map((g, k) => (k === gi ? { ...g, ...p } : g)));
+  const count = (c) => docs.filter((d) => d.category === c).length;
+  const dnd = useDnd((d, over) => {
+    if (d.kind === "dcat") {
+      const m = moveBetween(Object.fromEntries(groups.map((g) => [g.id, g.cats])), d.list, d.index, over.list, over.index);
+      save(groups.map((g) => ({ ...g, cats: m[g.id] })));
+    } else if (d.kind === "dgrp") save(moveBetween({ g: groups }, "g", d.index, "g", over.index).g);
+  });
+  const delGroup = (gi) => {
+    if (groups.length <= 1) return notify("Mindestens eine Gruppe wird gebraucht");
+    const rest = groups.filter((_, k) => k !== gi), moved = groups[gi].cats;
+    if (moved.length && !confirm(`Gruppe löschen? Die ${moved.length} Kategorien wandern in „${rest[0].title || "erste Gruppe"}“.`)) return;
+    rest[0] = { ...rest[0], cats: [...rest[0].cats, ...moved] }; save(rest);
+  };
+  const addGroup = () => save([...groups, { id: "d-" + uid(), title: "Neue Gruppe", area: "sonstiges", cats: [] }]);
+  const check = (old) => (t) => {
+    if (!t) { notify("Der Name darf nicht leer sein"); return "leer"; }
+    if (t.toLowerCase() !== old.toLowerCase() && all.some((c) => c.toLowerCase() === t.toLowerCase())) { notify("Diese Kategorie gibt es schon"); return "doppelt"; }
+  };
+
+  return (
+    <fieldset className="span2">
+      <legend>Dokumente – Gruppen & Kategorien</legend>
+      <p className="muted small">Am Griff <b>⠿</b> ziehen, um Kategorien zu sortieren oder in eine andere Gruppe zu verschieben – auch ganze Gruppen. Die Gruppe legt fest, ob ihre Dokumente als Finanzen, Verträge oder Sonstiges zählen („Sonstiges“ fließt nicht in Übersicht und Budgets).</p>
+      {groups.map((g, gi) => (
+        <React.Fragment key={g.id}>
+          {dnd.lineAt("dgrp", "g", gi) && <div className="dropline" />}
+          <div className={"grpcfg" + (dnd.isDragging("dgrp", "g", gi) ? " dragging" : "") + (dnd.drag?.kind === "dcat" && dnd.drag.over?.list === g.id ? " dropover" : "")}
+            data-dgrp-item={`g|${gi}`} data-dcat-list={`${g.id}|${g.cats.length}`}>
+            <div className="grphead">
+              <Handle onDown={(e) => dnd.start(e, { kind: "dgrp", list: "g", index: gi, label: `📁 ${g.title || "Gruppe"}` })} label="Gruppe verschieben" />
+              <EditText className="grow" inputClass="grptitle" value={g.title || ""} placeholder="Ohne Überschrift (nur Trennlinie)" onSave={(t) => patch(gi, { title: t })} />
+              <button className="iconbtn" onClick={() => delGroup(gi)} aria-label="Gruppe löschen" title="Gruppe löschen">🗑</button>
+            </div>
+            <div className="areapick">
+              <small className="muted">zählt als</small>
+              {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={g.area === k ? "on" : ""} onClick={() => patch(gi, { area: k })}>{i} {l}</button>)}
+            </div>
+            {g.cats.map((c, ci) => (
+              <React.Fragment key={c}>
+                {dnd.lineAt("dcat", g.id, ci) && <div className="dropline" />}
+                <div className={"acccfg catrow" + (dnd.isDragging("dcat", g.id, ci) ? " dragging" : "")} data-dcat-item={`${g.id}|${ci}`}>
+                  <Handle onDown={(e) => dnd.start(e, { kind: "dcat", list: g.id, index: ci, label: `${catMeta(c).icon} ${c}` })} />
+                  <span className="ki">{catMeta(c).icon}</span>
+                  <EditText className="grow" inputClass="catname" value={c} validate={check(c)} onSave={(t) => t !== c && renameCategory(c, t)} />
+                  <small className="muted cnt" title="Dokumente">{count(c)}</small>
+                  {c !== "Sonstiges"
+                    ? <button className="iconbtn" aria-label="Kategorie löschen" title="Kategorie löschen"
+                        onClick={() => confirm(`Kategorie „${c}“ löschen?${count(c) ? ` ${count(c)} Dokument(e) wandern nach „Sonstiges“.` : ""}`) && deleteCategory(c)}>🗑</button>
+                    : <span className="iconbtn-spacer" />}
+                </div>
+              </React.Fragment>
+            ))}
+            {dnd.lineAt("dcat", g.id, g.cats.length) && <div className="dropline" />}
+            {!g.cats.length && <div className="dropzone">Kategorie hierher ziehen</div>}
+            <div className="acccfg addcat">
+              <span className="ki">＋</span>
+              <EditText className="grow" value="" resetOnSave placeholder="Neue Kategorie, z. B. „KFZ“, „Haustier“" validate={check("")}
+                onSave={(t) => patch(gi, { cats: [...g.cats, t] })} />
+            </div>
+          </div>
+        </React.Fragment>
+      ))}
+      {dnd.lineAt("dgrp", "g", groups.length) && <div className="dropline" />}
+      <div className="actions" data-dgrp-list={`g|${groups.length}`}>
+        <button className="btn" onClick={addGroup}>＋ Gruppe / Überschrift</button>
+        <button className="link" onClick={() => confirm("Dokument-Gruppen auf Standard zurücksetzen? (Kategorien bleiben erhalten)") && save(buildDocGroups(all))}>Zurücksetzen</button>
+      </div>
+      {dnd.ghost}
+    </fieldset>
+  );
+}
+
+function NavSettings({ nav, setNav, accounts, setAccounts, txs, deleteAccount, notify }) {
+  const [edit, setEdit] = useState(null);
+  const resolved = resolveGroups(nav, accounts);
+  const real = resolved.filter((g) => !g.auto);
+  const saveGroups = (gs) => setNav((n) => ({ ...n, groups: gs.filter((g) => !g.auto).map(({ accounts: _a, ...g }) => ({ ...g, ids: g.ids })) }));
+  const explicit = () => resolved.map((g) => ({ ...g, ids: g.accounts.map((a) => a.id) }));
+  const patchTab = (i, p) => setNav((n) => ({ ...n, tabs: n.tabs.map((t, k) => (k === i ? { ...t, ...p } : t)) }));
+  const patchGroup = (gi, p) => saveGroups(explicit().map((g, k) => (k === gi ? { ...g, ...p } : g)));
+  const delGroup = (gi) => { const g = explicit(); if (g[gi].accounts.length && !confirm("Gruppe löschen? Die Konten werden automatisch neu einsortiert.")) return; saveGroups(g.filter((_, k) => k !== gi)); };
+  const addGroup = () => saveGroups([...explicit(), { id: "g-" + uid(), title: "Neue Gruppe", kinds: [], ids: [] }]);
+  const dnd = useDnd((d, over) => {
+    if (d.kind === "tab") setNav((n) => ({ ...n, tabs: moveBetween({ t: n.tabs }, "t", d.index, "t", over.index).t }));
+    if (d.kind === "agrp") saveGroups(moveBetween({ g: explicit().filter((x) => !x.auto) }, "g", d.index, "g", over.index).g);
+    if (d.kind === "acc") {
+      const ex = explicit();
+      const m = moveBetween(Object.fromEntries(ex.map((g) => [g.id, g.ids])), d.list, d.index, over.list, over.index);
+      saveGroups(ex.map((g) => ({ ...g, ids: m[g.id] })));
+    }
+  });
+
+  return (
+    <>
+      <fieldset className="span2">
+        <legend>Seitenleiste – Reiter</legend>
+        <p className="muted small">Am Griff <b>⠿</b> ziehen zum Sortieren. Namen ändern und mit ✓ übernehmen. „Leiste“ = Seitenleiste auf Tablet & Mac, „Handy“ = untere Leiste am Phone (am besten max. 5).</p>
+        <div data-tab-list={`t|${nav.tabs.length}`}>
+          {nav.tabs.map((t, i) => (
+            <React.Fragment key={t.key}>
+              {dnd.lineAt("tab", "t", i) && <div className="dropline" />}
+              <div className={"navcfg" + (dnd.isDragging("tab", "t", i) ? " dragging" : "")} data-tab-item={`t|${i}`}>
+                <Handle onDown={(e) => dnd.start(e, { kind: "tab", list: "t", index: i, label: `${TAB_DEFS[t.key][0]} ${tabLabel(nav, t.key)}` })} />
+                <span className="ki">{TAB_DEFS[t.key][0]}</span>
+                <EditText className="grow" value={t.label || ""} placeholder={TAB_DEFS[t.key][1]} onSave={(v) => patchTab(i, { label: v })} />
+                <label className="mini"><input type="checkbox" checked={t.side} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { side: e.target.checked })} />Leiste</label>
+                <label className="mini"><input type="checkbox" checked={t.phone} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { phone: e.target.checked })} />Handy</label>
+              </div>
+            </React.Fragment>
+          ))}
+          {dnd.lineAt("tab", "t", nav.tabs.length) && <div className="dropline" />}
+        </div>
+        <p className="muted small">Handy-Leiste: {nav.tabs.filter((t) => t.phone).length} Reiter{nav.tabs.filter((t) => t.phone).length > 5 ? " – mehr als 5 werden am Phone eng" : ""}</p>
+      </fieldset>
+
+      <fieldset className="span2">
+        <legend>Konten & Gruppen</legend>
+        <p className="muted small">Gruppen erscheinen unter „{tabLabel(nav, "accounts")}“ mit Überschrift und Trennlinie und lassen sich dort ein- und ausklappen. Konten und Gruppen am Griff <b>⠿</b> verschieben. Leere Überschrift = nur Trennlinie.</p>
+        {resolved.map((g, gi) => (
+          <React.Fragment key={g.id}>
+            {!g.auto && dnd.lineAt("agrp", "g", gi) && <div className="dropline" />}
+            <div className={"grpcfg" + (dnd.isDragging("agrp", "g", gi) ? " dragging" : "") + (dnd.drag?.kind === "acc" && dnd.drag.over?.list === g.id ? " dropover" : "")}
+              {...(g.auto ? {} : { "data-agrp-item": `g|${gi}`, "data-acc-list": `${g.id}|${g.accounts.length}` })}>
+              <div className="grphead">
+                {g.auto ? <b className="grow">{g.title} <small className="muted">(automatisch – in eine Gruppe ziehen)</small></b> : <>
+                  <Handle onDown={(e) => dnd.start(e, { kind: "agrp", list: "g", index: gi, label: `📁 ${g.title || "Gruppe"}` })} label="Gruppe verschieben" />
+                  <EditText className="grow" inputClass="grptitle" value={g.title || ""} placeholder="Ohne Überschrift (nur Trennlinie)" onSave={(t) => patchGroup(gi, { title: t })} />
+                  <button className="iconbtn" onClick={() => delGroup(gi)} aria-label="Gruppe löschen" title="Gruppe löschen">🗑</button>
+                </>}
+              </div>
+              {g.accounts.map((a, ai) => {
+                const bal = accountBalance(a, txs);
+                return (
+                  <React.Fragment key={a.id}>
+                    {!g.auto && dnd.lineAt("acc", g.id, ai) && <div className="dropline" />}
+                    <div className={"acccfg accrow" + (dnd.isDragging("acc", g.id, ai) ? " dragging" : "")} {...(g.auto ? {} : { "data-acc-item": `${g.id}|${ai}` })}>
+                      <Handle onDown={(e) => dnd.start(e, { kind: "acc", list: g.id, index: ai, label: `${kindIcon(a.kind)} ${a.name}` })} />
+                      <span className="ki">{kindIcon(a.kind)}</span>
+                      <button className="link grow left" onClick={() => setEdit(a)}>{a.name}{bal != null && <small className="muted"> · {fmtMoney(bal)}</small>}</button>
+                      <button className="iconbtn" onClick={() => setEdit(a)} aria-label="Konto bearbeiten" title="Bearbeiten">✎</button>
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+              {!g.auto && dnd.lineAt("acc", g.id, g.accounts.length) && <div className="dropline" />}
+              {!g.accounts.length && <div className="dropzone">Konto hierher ziehen</div>}
+            </div>
+          </React.Fragment>
+        ))}
+        {dnd.lineAt("agrp", "g", real.length) && <div className="dropline" />}
+        <div className="actions" data-agrp-list={`g|${real.length}`}>
+          <button className="btn" onClick={addGroup}>＋ Gruppe / Überschrift</button>
+          <button className="btn" onClick={() => setEdit("new")}>＋ Konto anlegen</button>
+          <button className="link" onClick={() => confirm("Seitenleiste auf Standard zurücksetzen?") && setNav((n) => ({ ...DEFAULT_NAV, docGroups: n.docGroups }))}>Zurücksetzen</button>
+        </div>
+        {dnd.ghost}
+      </fieldset>
+
+      {edit && (
+        <AccountSheet init={edit === "new" ? null : edit} hasAtmAccount={accounts.some((a) => a.atm && a.id !== edit?.id)} txs={txs}
+          onClose={() => setEdit(null)}
+          onDelete={edit !== "new" ? () => { if (confirm(`Konto „${edit.name}“ samt Umsätzen löschen?`)) { deleteAccount(edit.id); setEdit(null); } } : null}
+          onSave={(a) => {
+            setAccounts((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
+            setEdit(null); notify(edit === "new" ? `Konto „${a.name}“ angelegt` : "Konto gespeichert");
+          }} />
+      )}
+    </>
+  );
+}
 
 function AccountTree({ groups, txs, selected, onSelect, onToggleGroup, variant = "" }) {
   const shown = groups.filter((g) => g.accounts.length);
@@ -309,106 +641,13 @@ function AccountTree({ groups, txs, selected, onSelect, onToggleGroup, variant =
 }
 
 /* ---------- Einstellungen: Seitenleiste & Kontengruppen ---------- */
-function NavSettings({ nav, setNav, accounts, setAccounts, txs, deleteAccount, notify }) {
-  const [edit, setEdit] = useState(null);
-  const resolved = resolveGroups(nav, accounts);
-  const saveGroups = (gs) => setNav({ ...nav, groups: gs.filter((g) => !g.auto).map(({ accounts: _a, ...g }) => g) });
-  // aktuelle Sortierung festschreiben, damit Verschieben stabil ist
-  const explicit = () => resolved.map((g) => ({ ...g, ids: g.accounts.map((a) => a.id) }));
-
-  const moveTab = (i, d) => { const t = [...nav.tabs], j = i + d; if (j < 0 || j >= t.length) return; [t[i], t[j]] = [t[j], t[i]]; setNav({ ...nav, tabs: t }); };
-  const patchTab = (i, p) => setNav({ ...nav, tabs: nav.tabs.map((t, k) => (k === i ? { ...t, ...p } : t)) });
-  const moveGroup = (gi, d) => { const g = explicit().filter((x) => !x.auto), j = gi + d; if (j < 0 || j >= g.length) return; [g[gi], g[j]] = [g[j], g[gi]]; saveGroups(g); };
-  const patchGroup = (gi, p) => saveGroups(explicit().map((g, k) => (k === gi ? { ...g, ...p } : g)));
-  const delGroup = (gi) => { const g = explicit(); if (g[gi].accounts.length && !confirm("Gruppe löschen? Die Konten werden automatisch neu einsortiert.")) return; saveGroups(g.filter((_, k) => k !== gi)); };
-  const addGroup = () => saveGroups([...explicit(), { id: "g-" + uid(), title: "Neue Gruppe", kinds: [], ids: [] }]);
-  const moveAcc = (gi, ai, d) => { const g = explicit(), ids = [...g[gi].ids], j = ai + d; if (j < 0 || j >= ids.length) return; [ids[ai], ids[j]] = [ids[j], ids[ai]]; g[gi].ids = ids; saveGroups(g); };
-  const moveAccTo = (accId, gid) => {
-    const g = explicit().map((x) => ({ ...x, ids: x.ids.filter((id) => id !== accId) }));
-    const t = g.find((x) => x.id === gid); if (t) t.ids.push(accId);
-    saveGroups(g);
-  };
-  const realGroups = resolved.filter((g) => !g.auto);
-
-  return (
-    <>
-      <fieldset className="span2">
-        <legend>Seitenleiste – Reiter</legend>
-        <p className="muted small">Reihenfolge, Name und Sichtbarkeit. „Leiste“ = Seitenleiste auf Tablet & Mac, „Handy“ = untere Leiste am Phone (am besten max. 5).</p>
-        {nav.tabs.map((t, i) => (
-          <div key={t.key} className="navcfg">
-            <span className="ki">{TAB_DEFS[t.key][0]}</span>
-            <input value={t.label || ""} placeholder={TAB_DEFS[t.key][1]} onChange={(e) => patchTab(i, { label: e.target.value })} />
-            <label className="mini"><input type="checkbox" checked={t.side} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { side: e.target.checked })} />Leiste</label>
-            <label className="mini"><input type="checkbox" checked={t.phone} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { phone: e.target.checked })} />Handy</label>
-            <button className="iconbtn" disabled={i === 0} onClick={() => moveTab(i, -1)} aria-label="nach oben">↑</button>
-            <button className="iconbtn" disabled={i === nav.tabs.length - 1} onClick={() => moveTab(i, 1)} aria-label="nach unten">↓</button>
-          </div>
-        ))}
-        <p className="muted small">Handy-Leiste: {nav.tabs.filter((t) => t.phone).length} Reiter{nav.tabs.filter((t) => t.phone).length > 5 ? " – mehr als 5 werden am Phone eng" : ""}</p>
-      </fieldset>
-
-      <fieldset className="span2">
-        <legend>Konten & Gruppen</legend>
-        <p className="muted small">Gruppen erscheinen unter „{tabLabel(nav, "accounts")}“ mit Überschrift und Trennlinie und lassen sich dort ein- und ausklappen. Leere Überschrift = nur Trennlinie.</p>
-        {resolved.map((g, gi) => (
-          <div key={g.id} className="grpcfg">
-            <div className="grphead">
-              {g.auto ? <b className="grow">{g.title} <small className="muted">(automatisch)</small></b>
-                : <input className="grow" value={g.title || ""} placeholder="Ohne Überschrift (nur Trennlinie)" onChange={(e) => patchGroup(gi, { title: e.target.value })} />}
-              {!g.auto && <>
-                <button className="iconbtn" disabled={gi === 0} onClick={() => moveGroup(gi, -1)}>↑</button>
-                <button className="iconbtn" disabled={gi === realGroups.length - 1} onClick={() => moveGroup(gi, 1)}>↓</button>
-                <button className="iconbtn" onClick={() => delGroup(gi)} aria-label="Gruppe löschen">✕</button>
-              </>}
-            </div>
-            {!g.accounts.length && <p className="muted small" style={{ margin: "6px 0 0 4px" }}>Noch keine Konten – über „verschieben“ hierher holen.</p>}
-            {g.accounts.map((a, ai) => {
-              const bal = accountBalance(a, txs);
-              return (
-                <div key={a.id} className="acccfg">
-                  <span className="ki">{kindIcon(a.kind)}</span>
-                  <button className="link grow left" onClick={() => setEdit(a)}>{a.name}{bal != null && <small className="muted"> · {fmtMoney(bal)}</small>}</button>
-                  {!g.auto && <>
-                    <button className="iconbtn" disabled={ai === 0} onClick={() => moveAcc(gi, ai, -1)}>↑</button>
-                    <button className="iconbtn" disabled={ai === g.accounts.length - 1} onClick={() => moveAcc(gi, ai, 1)}>↓</button>
-                  </>}
-                  <select className="movesel" value="" onChange={(e) => e.target.value && moveAccTo(a.id, e.target.value)} aria-label="In Gruppe verschieben">
-                    <option value="">verschieben …</option>
-                    {realGroups.filter((x) => x.id !== g.id).map((x) => <option key={x.id} value={x.id}>→ {x.title || "(ohne Überschrift)"}</option>)}
-                  </select>
-                </div>
-              );
-            })}
-          </div>
-        ))}
-        <div className="actions">
-          <button className="btn" onClick={addGroup}>＋ Gruppe / Überschrift</button>
-          <button className="btn" onClick={() => setEdit("new")}>＋ Konto anlegen</button>
-          <button className="link" onClick={() => confirm("Seitenleiste auf Standard zurücksetzen?") && setNav(DEFAULT_NAV)}>Zurücksetzen</button>
-        </div>
-      </fieldset>
-
-      {edit && (
-        <AccountSheet init={edit === "new" ? null : edit} hasAtmAccount={accounts.some((a) => a.atm && a.id !== edit?.id)} txs={txs}
-          onClose={() => setEdit(null)}
-          onDelete={edit !== "new" ? () => { if (confirm(`Konto „${edit.name}“ samt Umsätzen löschen?`)) { deleteAccount(edit.id); setEdit(null); } } : null}
-          onSave={(a) => {
-            setAccounts((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
-            setEdit(null); notify(edit === "new" ? `Konto „${a.name}“ angelegt` : "Konto gespeichert");
-          }} />
-      )}
-    </>
-  );
-}
-
 /* ============================================================ */
 
 export default function App() {
   const [docs, setDocs] = useState([]);
   const [tab, setTab] = useState("home");
   const [openId, setOpenId] = useState(null);
-  const [categories, setCategories] = useState(() => ls.get("categories", DEFAULT_CATEGORIES));
+  const [docCat, setDocCat] = useState("");
   const [budgets, setBudgets] = useState(() => ls.get("budgets", {}));
   const [me, setMe] = useState(() => ls.get("me", { name: "", address: "", city: "" }));
   const [token, setToken] = useState(() => ls.get("appToken", ""));
@@ -421,6 +660,12 @@ export default function App() {
   const setAccounts = (v) => setAccountsState((prev) => { const n = typeof v === "function" ? v(prev) : v; accountsRef.current = n; return n; });
   const [scanOpen, setScanOpen] = useState(false);
   const [nav, setNav] = useState(loadNav);
+  const categories = useMemo(() => flattenCats(nav.docGroups), [nav.docGroups]);
+  CAT_AREA = Object.fromEntries(nav.docGroups.flatMap((g) => g.cats.map((c) => [c, g.area])));
+  CAT_STYLE = nav.catStyle || {};
+  useEffect(() => ls.set("categories", categories), [categories]);
+  const setCategories = (list) => setNav((n) => ({ ...n, docGroups: buildDocGroups(list) }));
+  const toggleDocGroup = (id) => setNav((n) => ({ ...n, docGroups: n.docGroups.map((g) => (g.id === id ? { ...g, collapsed: !g.collapsed } : g)) }));
   const [selAcc, setSelAcc] = useState("");
   const [docAreaSel, setDocAreaSel] = useState(() => ls.get("docArea", "alle"));
   const [manualTx, setManualTx] = useState(null);
@@ -450,7 +695,7 @@ export default function App() {
     })();
     navigator.storage?.persist?.();
   }, []);
-  useEffect(() => ls.set("categories", categories), [categories]);
+
   useEffect(() => ls.set("budgets", budgets), [budgets]);
   useEffect(() => ls.set("me", me), [me]);
   useEffect(() => ls.set("appToken", token), [token]);
@@ -496,6 +741,28 @@ export default function App() {
     }
     setTxs(list); await db.putTxs(list.filter((x) => x.id === t.id || (applyRule && x.counterparty?.toLowerCase().includes(t.counterparty.toLowerCase()))));
   }
+  // Kategorie umbenennen/löschen: Dokumente, Umsätze, Budgets, Regeln mitziehen
+  async function renameCategory(from, to) {
+    const m = catMeta(from);
+    setNav((n) => ({ ...n, catStyle: { ...(n.catStyle || {}), [to]: [m.icon, m.color] }, docGroups: n.docGroups.map((g) => ({ ...g, cats: g.cats.map((c) => (c === from ? to : c)) })) }));
+    const changed = docs.filter((d) => d.category === from).map((d) => ({ ...d, category: to }));
+    for (const d of changed) await saveDoc(d);
+    const tx = txsRef.current.filter((t) => t.category === from).map((t) => ({ ...t, category: to }));
+    if (tx.length) { await db.putTxs(tx); setTxs((p) => p.map((t) => (t.category === from ? { ...t, category: to } : t))); }
+    if (budgets[from] != null) { const b = { ...budgets, [to]: budgets[from] }; delete b[from]; setBudgets(b); }
+    setRules((r) => r.map((x) => (x.category === from ? { ...x, category: to } : x)));
+    if (docCat === from) setDocCat(to);
+    notify(`„${from}“ → „${to}“${changed.length ? ` (${changed.length} Dokumente)` : ""}`);
+  }
+  async function deleteCategory(c) {
+    setNav((n) => ({ ...n, docGroups: n.docGroups.map((g) => ({ ...g, cats: g.cats.filter((x) => x !== c) })) }));
+    for (const d of docs.filter((d) => d.category === c)) await saveDoc({ ...d, category: "Sonstiges" });
+    const tx = txsRef.current.filter((t) => t.category === c).map((t) => ({ ...t, category: "Sonstiges" }));
+    if (tx.length) { await db.putTxs(tx); setTxs((p) => p.map((t) => (t.category === c ? { ...t, category: "Sonstiges" } : t))); }
+    if (docCat === c) setDocCat("");
+    notify(`Kategorie „${c}“ gelöscht`);
+  }
+
   // Bargeld: Konto sicherstellen, manuelle Buchung, Beleg als Barausgabe
   function ensureCashAccount() {
     let a = accountsRef.current.find((x) => x.kind === "cash");
@@ -542,7 +809,8 @@ export default function App() {
       const r = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json", "x-app-token": token },
-        body: JSON.stringify({ data, mediaType: blob.type, categories, today: todayISO() })
+        body: JSON.stringify({ data, mediaType: blob.type, categories, today: todayISO(),
+          groups: nav.docGroups.map((g) => `${g.title || "Gruppe"} (${AREAS[g.area][1]}): ${g.cats.join(", ")}`).join("\n") })
       });
       const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -625,11 +893,12 @@ export default function App() {
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
           acc={selAcc} setAcc={setSelAcc} groups={groups} toggleGroup={toggleGroup} />}
-        {tab === "docs" && <DocList docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel} />}
+        {tab === "docs" && <DocList docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
+          cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} />}
         {tab === "settings" && (
-          <Settings nav={nav} setNav={setNav} deleteAccount={deleteAccount} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
+          <Settings nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
             docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} notify={notify} />
         )}
@@ -653,31 +922,28 @@ export default function App() {
       <nav className="bottom">
         <div className="brand"><img src="/icon.svg" alt="" /><div><b>Fido</b><small>Finanzen & Dokumente</small></div></div>
         {nav.tabs.filter((t) => t.side || t.phone).map((t) => {
-          const sub = (t.key === "accounts" && accounts.length) || t.key === "docs";
+          const sub = (t.key === "accounts" && accounts.length) || (t.key === "docs" && active.length);
           const open = t.key === "accounts" ? nav.accOpen : nav.docsOpen;
           const flag = t.key === "accounts" ? "accOpen" : "docsOpen";
           return (
             <React.Fragment key={t.key}>
               <button className={(tab === t.key ? "on" : "") + (t.phone ? "" : " ph-hide") + (t.side ? "" : " side-hide")}
-                onClick={() => { setTab(t.key); if (t.key === "accounts") setSelAcc(""); if (t.key === "docs") setDocAreaSel("alle"); }} aria-label={tabLabel(nav, t.key)}>
+                onClick={() => { setTab(t.key); if (t.key === "accounts") setSelAcc(""); if (t.key === "docs") { setDocAreaSel("alle"); setDocCat(""); } }} aria-label={tabLabel(nav, t.key)}>
                 <span>{TAB_DEFS[t.key][0]}</span>{tabLabel(nav, t.key)}
                 {t.key === "home" && <Badge docs={active} />}
                 {sub && <i className={"subtog side-only" + (open ? " open" : "")} role="button" aria-label="ein-/ausklappen"
                   onClick={(e) => { e.stopPropagation(); setNav((n) => ({ ...n, [flag]: !n[flag] })); }}>›</i>}
               </button>
-              {t.key === "accounts" && t.side && nav.accOpen && (
+              {t.key === "accounts" && t.side && nav.accOpen && accounts.length > 0 && (
                 <div className="subnav side-only">
                   <AccountTree groups={groups} txs={txs} selected={tab === "accounts" ? selAcc : ""} onToggleGroup={toggleGroup}
                     onSelect={(id) => { setSelAcc(id); setTab("accounts"); }} />
                 </div>
               )}
-              {t.key === "docs" && t.side && nav.docsOpen && (
+              {t.key === "docs" && t.side && nav.docsOpen && active.length > 0 && (
                 <div className="subnav side-only">
-                  {Object.entries(AREAS).map(([k, [i, l]]) => (
-                    <button key={k} className={"accitem" + (tab === "docs" && docAreaSel === k ? " on" : "")} onClick={() => { setDocAreaSel(k); setTab("docs"); }}>
-                      <span className="ki">{i}</span><span className="an">{l}</span><span className="ab muted">{areaCounts[k]}</span>
-                    </button>
-                  ))}
+                  <DocTree docGroups={nav.docGroups} docs={active} selected={tab === "docs" ? docCat : ""} onToggleGroup={toggleDocGroup}
+                    onSelect={(c) => { setDocCat(c); setDocAreaSel("alle"); setTab("docs"); }} />
                 </div>
               )}
             </React.Fragment>
@@ -846,9 +1112,8 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash }) {
 }
 
 /* ---------- Dokumente (Docutain-Look) ---------- */
-function DocList({ docs, categories, onOpen, area = "alle", setArea }) {
+function DocList({ docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup }) {
   const [q, setQ] = useState("");
-  const [cat, setCat] = useState("");
   const [tag, setTag] = useState("");
   const [year, setYear] = useState("");
   const [sort, setSort] = useState("date");
@@ -889,17 +1154,13 @@ function DocList({ docs, categories, onOpen, area = "alle", setArea }) {
         ))}
       </div>
       {area === "sonstiges" && <p className="muted small" style={{ margin: "4px 2px 8px" }}>Dokumente in „Sonstiges“ zählen nicht in Übersicht, Budgets und Auswertungen.</p>}
-      <div className="folders">
-        <button className={!cat ? "folder on" : "folder"} onClick={() => setCat("")}><span>🗂️</span><b>Alle</b><small>{docs.length}</small></button>
-        {categories.filter((c) => counts[c]).map((c) => (
-          <button key={c} className={cat === c ? "folder on" : "folder"} onClick={() => setCat(cat === c ? "" : c)}
-            style={cat === c ? { borderColor: catMeta(c).color } : null}>
-            <span>{catMeta(c).icon}</span><b>{c}</b><small>{counts[c]}</small>
-          </button>
-        ))}
-      </div>
-
+      {!!docs.length && (
+        <div className="tile mobile-only accphone">
+          <DocTree docGroups={docGroups} docs={docs} selected={cat} onSelect={setCat} onToggleGroup={toggleDocGroup} variant="card" />
+        </div>
+      )}
       <div className="chips">
+        {cat && <button className="chip on" onClick={() => setCat("")}>✕ {catMeta(cat).icon} {cat}</button>}
         <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button>
         <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button>
         <select className="chip" value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</select>
@@ -1730,7 +1991,7 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
           : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b>PDF-Dokument</b><small className="muted block">{doc.fileName}</small><button className="btn" style={{ marginTop: 8 }} onClick={() => window.open(url)}>Öffnen</button></div></div>)}
         <div className="seg areaseg" style={{ margin: "6px 0 10px" }}>
-          {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={docArea(d) === k ? "on" : ""} onClick={() => set({ area: k })}>{i} {l}</button>)}
+          {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={docArea(d) === k ? "on" : ""} onClick={() => set({ areaManual: k })}>{i} {l}</button>)}
         </div>
         <div className="labels" style={{ marginBottom: 4 }}><Label c={d.category} />{d.taxRelevant && <span className="label tax">Steuer</span>}{d.contract && <span className="label">Vertrag</span>}</div>
 
@@ -1845,8 +2106,7 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
 }
 
 /* ---------- Einstellungen, Budgets, Papierkorb, Backup ---------- */
-function Settings({ nav, setNav, deleteAccount, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
-  const [catText, setCatText] = useState(categories.join("\n"));
+function Settings({ nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [usage, setUsage] = useState("");
   const [busy, setBusy] = useState(false);
   const importRef = useRef();
@@ -1859,7 +2119,7 @@ function Settings({ nav, setNav, deleteAccount, txs, setTxs, accounts, setAccoun
     try {
       const out = [];
       for (const d of docs) { const b = await db.getFile(d.id); out.push({ doc: d, file: b ? await blobToBase64(b) : null }); }
-      download(new Blob([JSON.stringify({ version: 3, exported: new Date().toISOString(), categories, budgets, accounts, rules, txs, items: out })], { type: "application/json" }),
+      download(new Blob([JSON.stringify({ version: 4, exported: new Date().toISOString(), categories, nav, budgets, accounts, rules, txs, items: out })], { type: "application/json" }),
         `dokumente-backup-${todayISO()}.json`);
     } finally { setBusy(false); }
   }
@@ -1869,7 +2129,7 @@ function Settings({ nav, setNav, deleteAccount, txs, setTxs, accounts, setAccoun
       const j = JSON.parse(await file.text());
       let n = 0;
       for (const { doc, file: f } of j.items || []) { if (f) await db.putFile(doc.id, base64ToBlob(f, doc.mimeType)); await db.putDoc(doc); n++; }
-      if (j.categories) { setCategories(j.categories); setCatText(j.categories.join("\n")); }
+      if (j.nav) setNav(j.nav); else if (j.categories) setCategories(j.categories);
       if (j.budgets) setBudgets(j.budgets);
       if (j.accounts) setAccounts(j.accounts);
       if (j.rules) setRules(j.rules);
@@ -1908,11 +2168,7 @@ function Settings({ nav, setNav, deleteAccount, txs, setTxs, accounts, setAccoun
         <label>Ort<input value={me.city} onChange={(e) => setMe({ ...me, city: e.target.value })} /></label>
       </fieldset>
 
-      <fieldset>
-        <legend>Kategorien</legend>
-        <textarea rows={8} value={catText} onChange={(e) => setCatText(e.target.value)} />
-        <button className="btn" onClick={() => { const c = catText.split("\n").map((s) => s.trim()).filter(Boolean); if (!c.includes("Sonstiges")) c.push("Sonstiges"); setCategories(c); notify("Kategorien gespeichert"); }}>Kategorien speichern</button>
-      </fieldset>
+      <DocNavSettings nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} />
 
       {!!rules.length && (
         <fieldset>
@@ -2230,7 +2486,7 @@ img{max-width:100%}
 .kindgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}
 .kindgrid button{display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--card2);border:1.5px solid transparent;border-radius:12px;padding:10px 4px;font:inherit;font-size:12px;color:var(--txt);cursor:pointer}
 .kindgrid button span{font-size:22px}.kindgrid button.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--card))}
-.navcfg{display:grid;grid-template-columns:28px minmax(0,1fr) auto auto 40px 40px;gap:6px;align-items:center;margin-top:8px}
+
 .navcfg input:not([type=checkbox]){padding:8px 10px}.navcfg .ki{font-size:18px;text-align:center}
 .mini{display:flex;align-items:center;gap:4px;margin:0;font-size:12px;color:var(--mut)}.mini input{width:auto;margin:0}
 .grpcfg{background:var(--card2);border-radius:14px;padding:10px;margin-top:10px}
@@ -2239,5 +2495,37 @@ img{max-width:100%}
 .acccfg .ki{font-size:17px;width:24px;text-align:center}.link.left{text-align:left;color:var(--txt)}
 .movesel{width:auto;max-width:130px;padding:6px 8px;font-size:13px}
 .settings>.span2{grid-column:1/-1}
-@media (max-width:420px){.navcfg{grid-template-columns:24px minmax(0,1fr) 36px 36px}.navcfg .mini{grid-row:2;grid-column:2/span 1}.navcfg .mini+.mini{grid-column:3/span 2}.movesel{max-width:100px}}
+
+
+.areapick{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 2px 2px}
+.areapick button{background:var(--card);border:1.5px solid var(--line);border-radius:999px;padding:5px 10px;font:inherit;font-size:12px;color:var(--txt);cursor:pointer}
+.areapick button.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,var(--card));font-weight:600}
+.catname{padding:7px 10px;font-size:14px;background:transparent;border-color:transparent}.catname:hover,.catname:focus{border-color:var(--line);background:var(--card)}
+.acccfg .cnt{min-width:18px;text-align:right}
+.addcat{background:transparent;border:1.5px dashed var(--line)}.addcat input{padding:7px 10px;font-size:14px;background:transparent}.addcat .btn{padding:6px 12px;font-size:13px}
+
+
+/* Ziehen & Ablegen, ✓/✕ */
+.handle{flex:none;width:30px;height:36px;display:inline-flex;align-items:center;justify-content:center;color:var(--mut);font-size:18px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:8px}
+.handle:hover{background:var(--card2);color:var(--txt)}
+body.dnd-active,body.dnd-active *{cursor:grabbing!important;user-select:none!important;-webkit-user-select:none!important}
+.dragging{opacity:.35}
+.dropline{height:3px;background:var(--acc);border-radius:2px;margin:3px 4px;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 20%,transparent)}
+.dropover{outline:2px dashed color-mix(in srgb,var(--acc) 55%,transparent);outline-offset:2px}
+.dropzone{margin-top:6px;padding:12px;border:1.5px dashed var(--line);border-radius:10px;text-align:center;color:var(--mut);font-size:13px}
+.dndghost{position:fixed;z-index:100;pointer-events:none;transform:translate(-18px,-50%) rotate(-1.5deg);background:var(--card);color:var(--txt);border:2px solid var(--acc);border-radius:12px;padding:9px 14px;font-weight:600;font-size:14px;box-shadow:0 14px 34px #0f1b2d40;white-space:nowrap}
+.edittext{display:flex;align-items:center;gap:6px;min-width:0}.edittext input{flex:1;min-width:0}
+.edittext.dirty input{border-color:var(--acc);background:var(--card)}
+.editbtns{display:flex;gap:4px;flex:none}
+.okbtn,.nobtn{width:34px;height:34px;border-radius:50%;border:0;color:#fff;font-size:17px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px #0002}
+.okbtn{background:#16a34a}.nobtn{background:#e5484d}.okbtn:hover,.nobtn:hover{filter:brightness(1.08)}
+.grptitle{font-weight:600}
+.iconbtn-spacer{width:40px;flex:none}
+.navcfg{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;background:var(--card2);border-radius:12px;padding:4px 8px 4px 2px}
+.navcfg .edittext{flex:1 1 160px}.navcfg .edittext input{padding:8px 10px}
+@media (max-width:520px){
+  .catrow,.accrow{display:flex;flex-wrap:nowrap}
+  .catrow .edittext.dirty{flex-basis:100%}
+  .navcfg .mini{margin-left:36px}
+}
 `;

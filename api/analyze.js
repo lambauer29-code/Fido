@@ -92,7 +92,7 @@ export default async function handler(req, res) {
   }
   if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY fehlt in Vercel" });
 
-  const { data, mediaType, categories, today } = req.body || {};
+  const { data, mediaType, categories, today, groups } = req.body || {};
   if (!data || !mediaType) return res.status(400).json({ error: "data und mediaType erforderlich" });
   const cats = Array.isArray(categories) && categories.length ? categories : ["Sonstiges"];
 
@@ -102,7 +102,7 @@ export default async function handler(req, res) {
       : { type: "image", source: { type: "base64", media_type: mediaType, data } };
 
   const prompt = `Analysiere dieses Dokument (Kontext: Privatperson in Österreich). Heute ist ${today || new Date().toISOString().slice(0, 10)}.
-- Wähle die passendste Kategorie aus der vorgegebenen Liste.
+- Wähle die passendste Kategorie aus der vorgegebenen Liste.${groups ? `\n  Die Kategorien des Nutzers sind so gruppiert:\n${groups}` : ""}
 - Beträge: Endsumme brutto als "total". Österreichische Schreibweise beachten (1.234,56 € = 1234.56).
 - Fristen: rechne relative Angaben ("zahlbar binnen 14 Tagen", "Einspruch binnen 4 Wochen ab Zustellung") ausgehend vom Dokumentdatum in ein konkretes Datum um. Keine erfundenen Fristen.
 - Vertrag: bei Verträgen/Abos Anbieter, Kundennummer, regelmäßigen Betrag, Intervall, Vertragsende und Kündigungsfrist erfassen; "cancel_by" aus Vertragsende minus Kündigungsfrist berechnen und zusätzlich als Frist "Kündigung bis" eintragen.
