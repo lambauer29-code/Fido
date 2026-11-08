@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.20.0
+
+- „Fristen“ heißt jetzt **Umtauschfrist** und steht in der Seitenleiste als Unterpunkt unter **Dokumente** (plus Knopf „⏰ Umtauschfrist“ in der Dokumentenliste, Zähler für Fristen der nächsten 7 Tage).
+- Neuer Reiter **Kunden**: Kontakte verwalten (Kunde, Lieferant, Partner, Privat, Behörde), Anschrift, E-Mail, Telefon, Kundennr. (automatisch K-001 …), UID, IBAN, Notiz; Suche/Filter, Mail/Anruf-Knöpfe, vCard-Export, „Rechnung“ startet eine Rechnung mit diesem Kunden, Umsatz/offene Rechnungen je Kunde. Gleiche Kundenliste wie in den Rechnungen.
+- Einstellungen › **Rechnungen**: Firmendaten, Logo, Bank, Nummernkreise, Texte sowie Artikel & Leistungen.
+- Einstellungen › **Seitenleiste** (vorher „Seitenleiste – Reiter“): Symbol & Textfarbe je Reiter (auch eigenes Bild), **Linien** und **Überschriften** einfügen und per Griff platzieren, Reiter als Unterpunkt eines anderen Reiters („unter Dokumente“ …).
+- Dokumente – Kategorien: eigene Farbe färbt jetzt auch den Kategorienamen in der Seitenleiste.
+- Schwebendes ＋: neuer Eintrag **Umsätze importieren**.
+
 ## v0.19.0
 
 - Neuer Reiter **Rechnungen** (Firma, Kleinunternehmer):

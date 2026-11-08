@@ -442,7 +442,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Fristen"], accounts: ["🏦", "Konten"], cash: ["💶", "Barausgabe"], invoices: ["🧾", "Rechnungen"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Barausgabe"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -514,8 +514,8 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 }
 const DEFAULT_NAV = {
   tabs: [
-    { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: false },
-    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }
+    { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: false, parent: "docs" },
+    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "kunden", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }
   ],
   groups: [
     { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
@@ -530,6 +530,7 @@ function loadNav() {
   const docGroups = n?.docGroups || buildDocGroups(ls.get("categories", DEFAULT_CATEGORIES));
   if (!n) return { ...DEFAULT_NAV, docGroups };
   n.docGroups = docGroups;
+  if (!n.v19) { n.tabs = n.tabs.map((t) => (t.key === "deadlines" && !t.parent ? { ...t, parent: "docs" } : t)); n.v19 = true; }
   const keys = n.tabs.map((t) => t.key);
   // fehlende (neue) Reiter vor „Einstellungen“ einfügen
   const missing = DEFAULT_NAV.tabs.filter((t) => !keys.includes(t.key));
@@ -537,7 +538,14 @@ function loadNav() {
   const tabs = si < 0 ? [...n.tabs, ...missing] : [...n.tabs.slice(0, si), ...missing, ...n.tabs.slice(si)];
   return { ...DEFAULT_NAV, ...n, tabs };
 }
-const tabLabel = (nav, key) => nav.tabs.find((t) => t.key === key)?.label?.trim() || TAB_DEFS[key][1];
+const tabLabel = (nav, key) => nav.tabs.find((t) => t.key === key)?.label?.trim() || TAB_DEFS[key]?.[1] || "";
+const isNavDeco = (t) => !!t.sep || t.head != null;
+/* Reiter-Symbol: eigenes Bild > eigenes Emoji > Standard */
+function TabIcon({ t }) {
+  const cls = "tabico" + (t.iconImg || t.icon || t.color ? " custom" : "");
+  if (t.iconImg) return <span className={cls}><img src={t.iconImg} alt="" /></span>;
+  return <span className={cls}>{t.icon || TAB_DEFS[t.key]?.[0]}</span>;
+}
 
 // Gruppen aus der Konfiguration + Konten, die noch keiner Gruppe zugeordnet sind (nach Art einsortiert)
 function resolveGroups(nav, accounts) {
@@ -617,7 +625,7 @@ function DocTree({ docGroups, docs, selected, onSelect, onToggleGroup, variant =
           )}
           {!g.collapsed && g.cats.map((c) => (
             <button key={c} className={"accitem" + (selected === c ? " on" : "")} onClick={() => onSelect(selected === c ? "" : c)}>
-              <span className="ki"><CatGlyph c={c} /></span><span className="an">{c}</span><span className="ab muted">{count(c)}</span>
+              <span className="ki"><CatGlyph c={c} /></span><span className="an" style={CAT_STYLE[c] ? { color: CAT_STYLE[c][1] } : undefined}>{c}</span><span className="ab muted">{count(c)}</span>
             </button>
           ))}
         </div>
@@ -894,6 +902,7 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
   const real = resolved.filter((g) => !g.auto);
   const saveGroups = (gs) => setNav((n) => ({ ...n, groups: gs.filter((g) => !g.auto).map(({ accounts: _a, ...g }) => ({ ...g, ids: g.ids })) }));
   const explicit = () => resolved.map((g) => ({ ...g, ids: g.accounts.map((a) => a.id) }));
+  const [tabStyle, setTabStyle] = useState(null);
   const patchTab = (i, p) => setNav((n) => ({ ...n, tabs: n.tabs.map((t, k) => (k === i ? { ...t, ...p } : t)) }));
   const patchGroup = (gi, p) => saveGroups(explicit().map((g, k) => (k === gi ? { ...g, ...p } : g)));
   const delGroup = (gi) => { const g = explicit(); if (g[gi].accounts.length && !confirm("Gruppe löschen? Die Konten werden automatisch neu einsortiert.")) return; saveGroups(g.filter((_, k) => k !== gi)); };
@@ -910,24 +919,53 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
 
   return (
     <>
-      {part !== "accounts" && <SetSec id="nav-tabs" title="Seitenleiste – Reiter">
-        <p className="muted small">Am Griff <b>⠿</b> ziehen zum Sortieren. Namen ändern und mit ✓ übernehmen. „Leiste“ = Seitenleiste auf Tablet & Mac, „Handy“ = untere Leiste am Phone (am besten max. 5).</p>
+      {part !== "accounts" && <SetSec id="nav-tabs" title="Seitenleiste">
+        <p className="muted small">Am Griff <b>⠿</b> ziehen zum Sortieren. Auf das Symbol tippen für Symbol &amp; Textfarbe (auch eigenes Bild). „Leiste“ = Seitenleiste auf Tablet &amp; Mac, „Handy“ = untere Leiste am Phone (am besten max. 5). Linien und Überschriften gliedern die Seitenleiste.</p>
         <div data-tab-list={`t|${nav.tabs.length}`}>
           {nav.tabs.map((t, i) => (
             <React.Fragment key={t.key}>
               {dnd.lineAt("tab", "t", i) && <div className="dropline" />}
-              <div className={"navcfg" + (dnd.isDragging("tab", "t", i) ? " dragging" : "")} data-tab-item={`t|${i}`}>
-                <Handle onDown={(e) => dnd.start(e, { kind: "tab", list: "t", index: i, label: `${TAB_DEFS[t.key][0]} ${tabLabel(nav, t.key)}` })} />
-                <span className="ki">{TAB_DEFS[t.key][0]}</span>
-                <EditText className="grow" value={t.label || ""} placeholder={TAB_DEFS[t.key][1]} onSave={(v) => patchTab(i, { label: v })} />
-                <label className="mini"><input type="checkbox" checked={t.side} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { side: e.target.checked })} />Leiste</label>
-                <label className="mini"><input type="checkbox" checked={t.phone} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { phone: e.target.checked })} />Handy</label>
-              </div>
+              {t.sep ? (
+                <div className={"navcfg decocfg" + (dnd.isDragging("tab", "t", i) ? " dragging" : "")} data-tab-item={`t|${i}`}>
+                  <Handle onDown={(e) => dnd.start(e, { kind: "tab", list: "t", index: i, label: "── Linie" })} />
+                  <span className="sepline" /><small className="muted">Linie</small>
+                  <button className="iconbtn" title="Entfernen" onClick={() => setNav((n) => ({ ...n, tabs: n.tabs.filter((x) => x.key !== t.key) }))}>🗑</button>
+                </div>
+              ) : t.head != null ? (
+                <div className={"navcfg decocfg" + (dnd.isDragging("tab", "t", i) ? " dragging" : "")} data-tab-item={`t|${i}`}>
+                  <Handle onDown={(e) => dnd.start(e, { kind: "tab", list: "t", index: i, label: "Überschrift " + t.head })} />
+                  <small className="muted hdlbl">Überschrift</small>
+                  <EditText className="grow" value={t.head} placeholder="z. B. Finanzen" onSave={(v) => patchTab(i, { head: v })} />
+                  <button className="iconbtn" title="Entfernen" onClick={() => setNav((n) => ({ ...n, tabs: n.tabs.filter((x) => x.key !== t.key) }))}>🗑</button>
+                </div>
+              ) : (<>
+                <div className={"navcfg" + (t.parent ? " childcfg" : "") + (dnd.isDragging("tab", "t", i) ? " dragging" : "")} data-tab-item={`t|${i}`}>
+                  <Handle onDown={(e) => dnd.start(e, { kind: "tab", list: "t", index: i, label: `${TAB_DEFS[t.key]?.[0] || ""} ${tabLabel(nav, t.key)}` })} />
+                  <button className="ki catki" title="Symbol & Textfarbe" style={t.color ? { background: t.color + "22" } : undefined} onClick={() => setTabStyle(tabStyle === t.key ? null : t.key)}><TabIcon t={t} /></button>
+                  <EditText className="grow" value={t.label || ""} placeholder={TAB_DEFS[t.key]?.[1]} onSave={(v) => patchTab(i, { label: v })} />
+                  {t.key !== "settings" && t.key !== "home" && <select className="chip parentsel" title="Ebene" value={t.parent || ""} onChange={(e) => patchTab(i, { parent: e.target.value || undefined })}>
+                    <option value="">Hauptreiter</option>
+                    {nav.tabs.filter((p) => !isNavDeco(p) && p.key !== t.key && !p.parent && p.key !== "settings").map((p) => <option key={p.key} value={p.key}>unter {tabLabel(nav, p.key)}</option>)}
+                  </select>}
+                  <label className="mini"><input type="checkbox" checked={t.side} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { side: e.target.checked })} />Leiste</label>
+                  <label className="mini"><input type="checkbox" checked={t.phone} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { phone: e.target.checked })} />Handy</label>
+                </div>
+                {tabStyle === t.key && <div className="catstylebox">
+                  <CatStylePicker icon={t.icon || TAB_DEFS[t.key]?.[0]} color={t.color} img={t.iconImg} onChange={(m) => patchTab(i, { icon: m.icon, color: m.color, iconImg: m.img })} />
+                  <div className="asfoot"><span className="aspreview"><span className="tabprev" style={t.color ? { color: t.color } : undefined}><TabIcon t={t} /> {tabLabel(nav, t.key)}</span></span>
+                    <button className="link" onClick={() => patchTab(i, { icon: undefined, color: undefined, iconImg: undefined })}>Standard</button>
+                    <button className="btn sm" onClick={() => setTabStyle(null)}>Fertig</button></div>
+                </div>}
+              </>)}
             </React.Fragment>
           ))}
           {dnd.lineAt("tab", "t", nav.tabs.length) && <div className="dropline" />}
         </div>
-        <p className="muted small">Handy-Leiste: {nav.tabs.filter((t) => t.phone).length} Reiter{nav.tabs.filter((t) => t.phone).length > 5 ? " – mehr als 5 werden am Phone eng" : ""}</p>
+        <div className="actions">
+          <button className="btn" onClick={() => setNav((n) => ({ ...n, tabs: [...n.tabs, { key: "sep-" + uid(), sep: true }] }))}>＋ Linie</button>
+          <button className="btn" onClick={() => setNav((n) => ({ ...n, tabs: [...n.tabs, { key: "head-" + uid(), head: "Neue Überschrift" }] }))}>＋ Überschrift</button>
+        </div>
+        <p className="muted small">Neue Linien/Überschriften landen unten – an den Griff ziehen, um sie zu platzieren. Handy-Leiste: {nav.tabs.filter((t) => t.phone).length} Reiter{nav.tabs.filter((t) => t.phone).length > 5 ? " – mehr als 5 werden am Phone eng" : ""}</p>
       </SetSec>}
 
       {part !== "tabs" && <SetSec id="nav-accounts" title="Konten & Gruppen">
@@ -1412,6 +1450,8 @@ export default function App() {
     }));
   }
   const [shareData, setShareData] = useState(null);
+  const impRef = useRef(null);
+  const [imp, setImp] = useState(null);
   shareUi = setShareData;
   const scanCb = useRef(null);
   const scanFor = (cb) => { scanCb.current = cb; setScanOpen(true); };
@@ -1617,11 +1657,13 @@ export default function App() {
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
           acc={selAcc} setAcc={setSelAcc} sel={effSel} allSel={allSel} setSel={setSelAccs} accActions={accActions} hiddenAccs={hiddenAccs} visAccounts={visAccounts} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
         {tab === "docs" && <DocList trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
-          cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup} />}
+          cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup}
+          deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "cash" && <CashPage accounts={accounts} txs={txs} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory}
           docs={active} onOpen={setOpenId} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
-        {tab === "invoices" && <InvoicesPage me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
+        {tab === "invoices" && <InvoicesPage setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
+        {tab === "kunden" && <ContactsPage setTab={setTab} />}
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
         {tab === "settings" && (
@@ -1631,6 +1673,11 @@ export default function App() {
         )}
       </main>
 
+      <input ref={impRef} type="file" accept={IMPORT_ACCEPT} hidden onChange={async (e) => {
+        const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+        try { setImp({ file: f, result: await parseFile(f, ls.get("mappings", {})) }); } catch (err) { notify("Datei nicht lesbar: " + err.message); }
+      }} />
+      {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
       <input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden
         onChange={(e) => { const l = pendingLink.current; pendingLink.current = null; onFiles(e.target.files, l ? { linkTx: l } : {}); e.target.value = ""; }} />
       {fabOpen && <div className="fabmenu-bg" onClick={() => setFabOpen(false)} />}
@@ -1639,6 +1686,7 @@ export default function App() {
           <button role="menuitem" onClick={() => { setFabOpen(false); setScanOpen(true); }}><span>📷</span><div><b>Scannen</b><small>Bon oder Rechnung fotografieren</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); fileInput.current.click(); }}><span>📄</span><div><b>Datei / Foto</b><small>PDF oder Bild hochladen</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); setManualTx(tab === "accounts" && selAcc ? { accountId: selAcc } : {}); }}><span>💶</span><div><b>Buchung</b><small>Barausgabe oder Buchung erfassen</small></div></button>
+          <button role="menuitem" onClick={() => { setFabOpen(false); impRef.current.click(); }}><span>⬆️</span><div><b>Umsätze importieren</b><small>Kontoauszug: CSV, Excel, CAMT, PDF …</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); setTab("accounts"); setNewAccReq(true); }}><span>🏦</span><div><b>Konto anlegen</b><small>Girokonto, Karte, Sparkonto, Bargeld …</small></div></button>
         </div>
       )}
@@ -1651,7 +1699,16 @@ export default function App() {
 
       <nav className="bottom">
         <div className="brand"><img src="/icon.svg" alt="" /><div><b>Fidocu</b><small>Finanzen & Dokumente</small></div></div>
-        {nav.tabs.filter((t) => t.side || t.phone).map((t) => {
+        {nav.tabs.map((t) => {
+          if (t.sep) return <hr key={t.key} className="navsep side-only" />;
+          if (t.head != null) return <div key={t.key} className="navhead side-only">{t.head}</div>;
+          if (!(t.side || t.phone)) return null;
+          // Unterreiter: in der Seitenleiste unter dem Elternreiter, am Handy normal in der Leiste
+          const parentShown = t.parent && nav.tabs.some((p) => p.key === t.parent && p.side);
+          if (parentShown) return t.phone ? (
+            <button key={t.key} className={(tab === t.key ? "on" : "") + " side-hide"} onClick={() => setTab(t.key)} aria-label={tabLabel(nav, t.key)}>
+              <TabIcon t={t} /><span style={t.color ? { color: t.color } : undefined}>{tabLabel(nav, t.key)}</span></button>) : null;
+          const kids = nav.tabs.filter((c) => c.parent === t.key && c.side && !isNavDeco(c));
           const sub = (t.key === "accounts" && accounts.length) || (t.key === "docs" && active.length);
           const open = t.key === "accounts" ? nav.accOpen : nav.docsOpen;
           const flag = t.key === "accounts" ? "accOpen" : "docsOpen";
@@ -1670,11 +1727,17 @@ export default function App() {
                   }
                   setTab(t.key); if (t.key === "docs") { setDocAreaSel("alle"); setDocCat(""); }
                 }} aria-label={tabLabel(nav, t.key)}>
-                <span>{TAB_DEFS[t.key][0]}</span>{tabLabel(nav, t.key)}
+                <TabIcon t={t} /><span className="tl" style={t.color ? { color: t.color } : undefined}>{tabLabel(nav, t.key)}</span>
                 {t.key === "home" && <Badge docs={active} />}
                 {!!sub && <i className={"subtog side-only" + (open ? " open" : "")} role="button" aria-label="ein-/ausklappen"
                   onClick={(e) => { e.stopPropagation(); setNav((n) => ({ ...n, [flag]: !n[flag] })); }}>›</i>}
               </button>
+              {t.side && kids.map((c) => (
+                <button key={c.key} className={"subtab side-only" + (tab === c.key ? " on" : "")} onClick={() => setTab(c.key)} aria-label={tabLabel(nav, c.key)}>
+                  <TabIcon t={c} /><span className="tl" style={c.color ? { color: c.color } : undefined}>{tabLabel(nav, c.key)}</span>
+                  {c.key === "deadlines" && <DeadlineBadge docs={active} />}
+                </button>
+              ))}
               {t.key === "accounts" && t.side && nav.accOpen && accounts.length > 0 && (
                 <div className="subnav side-only">
                   <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={hiddenAccs} showChecks={nav.showChecks !== false} {...accActions} />
@@ -1703,6 +1766,10 @@ export default function App() {
   );
 }
 
+function DeadlineBadge({ docs }) {
+  const n = docs.reduce((s, d) => s + (d.deadlines || []).filter((dl) => !dl.done && daysUntil(dl.date) <= 7).length, 0);
+  return n ? <i className="badge">{n}</i> : null;
+}
 function Badge({ docs }) {
   const n = docs.flatMap((d) => d.deadlines || []).filter((x) => !x.done && daysUntil(x.date) <= 7).length;
   return n ? <b className="badge">{n}</b> : null;
@@ -2122,7 +2189,7 @@ function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore,
 }
 
 /* ---------- Dokumente (Docutain-Look) ---------- */
-function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup }) {
+function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab }) {
   const [q, setQ] = useState("");
   const [prevId, setPrevId] = useState(null);
   const [winPrev, setWinPrev] = useState(null);
@@ -2181,6 +2248,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         </div>
       )}
       <div className="chips">
+        {deadlineTab && <button className="chip" onClick={deadlineTab.open}>⏰ {deadlineTab.label}</button>}
         {cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>}
         <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button>
         <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button>
@@ -3676,7 +3744,7 @@ function SetSec({ id, title, children }) {
   );
 }
 
-const SET_IDS = ["darstellung", "design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"];
+const SET_IDS = ["darstellung", "design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -3804,7 +3872,7 @@ function DesignSettings({ design, setDesign, theme }) {
 
 function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
-  const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
+  const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
   useEffect(() => ls.set("settingsOrder", secOrder), [secOrder]);
   useEffect(() => ls.set("settingsClosed", secClosed), [secClosed]);
   const secDnd = useDnd((d, over) => setSecOrder((cur) => moveBetween({ s: mergeOrder(cur, SET_IDS) }, "s", d.index, "s", over.index).s));
@@ -3889,6 +3957,7 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
         <label>Adresse<textarea rows={2} value={me.address} onChange={(e) => setMe({ ...me, address: e.target.value })} /></label>
         <label>Ort<input value={me.city} onChange={(e) => setMe({ ...me, city: e.target.value })} /></label>
       </SetSec></>,
+    "rechnungen": <><SetSec id="rechnungen" title="Rechnungen"><InvoiceSettings me={me} /></SetSec></>,
     "doccats": <><DocNavSettings part="cats" nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} /></>,
     "docgroups": <><DocNavSettings nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} /></>,
     "rules": <>{!!rules.length && (
@@ -4169,77 +4238,85 @@ async function sharePdf(blob, name, title) {
 }
 
 /* ---------- Firmendaten ---------- */
-function CompanyWin({ co, setCo, onClose }) {
-  const [v, setV] = useState({ ...CO_DEFAULT, ...co });
+function CompanyFields({ v, setV }) {
   const f = (k, label, ph = "", type = "text") => <label>{label}<input type={type} value={v[k] ?? ""} placeholder={ph} onChange={(e) => setV({ ...v, [k]: type === "number" ? Number(e.target.value) : e.target.value })} /></label>;
   const logoRef = useRef();
+  return (<>
+    <fieldset><legend>Unternehmen</legend>
+      {f("name", "Firmenname", "z. B. Mustermann e.U.")}{f("owner", "Inhaber/in (Unterschrift)", "z. B. Roland Mustermann")}
+      {f("street", "Straße & Nr.")}<div className="grid2">{f("zip", "PLZ")}{f("city", "Ort")}</div>
+      <div className="grid2">{f("email", "E-Mail", "", "email")}{f("phone", "Telefon")}</div>
+      <div className="grid2">{f("web", "Website")}{f("fn", "Firmenbuchnr. (falls vorhanden)")}</div>
+      <div className="grid2">{f("taxNo", "Steuernummer")}{f("uid", "UID-Nr. (nur falls vorhanden)", "ATU…")}</div>
+      <div className="logorow">
+        {v.logo ? <img src={v.logo} alt="Logo" /> : <span className="muted small">Kein Logo</span>}
+        <button className="btn sm" onClick={() => logoRef.current.click()}>{v.logo ? "Logo ändern" : "Logo hochladen"}</button>
+        {v.logo && <button className="link red" onClick={() => setV({ ...v, logo: "" })}>Entfernen</button>}
+        <input ref={logoRef} type="file" accept="image/png,image/jpeg" hidden onChange={async (e) => {
+          const file = e.target.files[0]; e.target.value = ""; if (!file) return;
+          const img = await loadImage(file).catch(() => null); if (!img) return alert("Bild konnte nicht gelesen werden");
+          const sc = Math.min(1, 600 / img.width, 240 / img.height), cv = document.createElement("canvas");
+          cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc); cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+          setV({ ...v, logo: cv.toDataURL("image/png") });
+        }} />
+      </div>
+    </fieldset>
+    <fieldset><legend>Bankverbindung</legend>
+      {f("iban", "IBAN", "AT..")}<div className="grid2">{f("bic", "BIC")}{f("bank", "Bank")}</div>
+    </fieldset>
+    <fieldset><legend>Vorgaben</legend>
+      <div className="grid2">{f("dueDays", "Zahlungsziel (Tage)", "14", "number")}{f("validDays", "Angebote gültig (Tage)", "30", "number")}</div>
+      <div className="grid2">{f("prefixR", "Kürzel Rechnungsnummer", "RE")}{f("prefixA", "Kürzel Angebotsnummer", "AN")}</div>
+      <label>Einleitung Rechnung<textarea rows={2} value={v.intro} onChange={(e) => setV({ ...v, intro: e.target.value })} /></label>
+      <label>Einleitung Angebot<textarea rows={2} value={v.introA} onChange={(e) => setV({ ...v, introA: e.target.value })} /></label>
+      <label>Schlusstext<textarea rows={2} value={v.outro} onChange={(e) => setV({ ...v, outro: e.target.value })} /></label>
+    </fieldset>
+  </>);
+}
+function CompanyWin({ co, setCo, onClose }) {
+  const [v, setV] = useState({ ...CO_DEFAULT, ...co });
   return (
     <Win id="company" onClose={onClose} dirty={JSON.stringify(v) !== JSON.stringify({ ...CO_DEFAULT, ...co })}>
       <div className="panelhead"><b>Firmendaten für Rechnungen</b><button className="btn primary" onClick={() => { setCo(v); onClose(); }}>Speichern</button><XBtn /></div>
-      <p className="muted small">Diese Angaben erscheinen auf jeder Rechnung (Pflichtangaben nach § 11 UStG: Name und Anschrift des Unternehmens). Als Kleinunternehmer wird automatisch der Hinweis „{KU_NOTE}“ gedruckt.</p>
-      <fieldset><legend>Unternehmen</legend>
-        {f("name", "Firmenname", "z. B. Mustermann e.U.")}{f("owner", "Inhaber/in (Unterschrift)", "z. B. Roland Mustermann")}
-        {f("street", "Straße & Nr.")}<div className="grid2">{f("zip", "PLZ")}{f("city", "Ort")}</div>
-        <div className="grid2">{f("email", "E-Mail", "", "email")}{f("phone", "Telefon")}</div>
-        <div className="grid2">{f("web", "Website")}{f("fn", "Firmenbuchnr. (falls vorhanden)")}</div>
-        <div className="grid2">{f("taxNo", "Steuernummer")}{f("uid", "UID-Nr. (nur falls vorhanden)", "ATU…")}</div>
-        <div className="logorow">
-          {v.logo ? <img src={v.logo} alt="Logo" /> : <span className="muted small">Kein Logo</span>}
-          <button className="btn sm" onClick={() => logoRef.current.click()}>{v.logo ? "Logo ändern" : "Logo hochladen"}</button>
-          {v.logo && <button className="link red" onClick={() => setV({ ...v, logo: "" })}>Entfernen</button>}
-          <input ref={logoRef} type="file" accept="image/png,image/jpeg" hidden onChange={async (e) => {
-            const file = e.target.files[0]; e.target.value = ""; if (!file) return;
-            const img = await loadImage(file).catch(() => null); if (!img) return alert("Bild konnte nicht gelesen werden");
-            const sc = Math.min(1, 600 / img.width, 240 / img.height), cv = document.createElement("canvas");
-            cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc); cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
-            setV((x) => ({ ...x, logo: cv.toDataURL("image/png") }));
-          }} />
-        </div>
-      </fieldset>
-      <fieldset><legend>Bankverbindung</legend>
-        {f("iban", "IBAN", "AT..")}<div className="grid2">{f("bic", "BIC")}{f("bank", "Bank")}</div>
-      </fieldset>
-      <fieldset><legend>Vorgaben</legend>
-        <div className="grid2">{f("dueDays", "Zahlungsziel (Tage)", "14", "number")}{f("validDays", "Angebote gültig (Tage)", "30", "number")}</div>
-        <div className="grid2">{f("prefixR", "Kürzel Rechnungsnummer", "RE")}{f("prefixA", "Kürzel Angebotsnummer", "AN")}</div>
-        <label>Einleitung Rechnung<textarea rows={2} value={v.intro} onChange={(e) => setV({ ...v, intro: e.target.value })} /></label>
-        <label>Einleitung Angebot<textarea rows={2} value={v.introA} onChange={(e) => setV({ ...v, introA: e.target.value })} /></label>
-        <label>Schlusstext<textarea rows={2} value={v.outro} onChange={(e) => setV({ ...v, outro: e.target.value })} /></label>
-      </fieldset>
+      <p className="muted small">Diese Angaben erscheinen auf jeder Rechnung (Pflichtangaben nach § 11 UStG: Name und Anschrift des Unternehmens). Als Kleinunternehmer wird automatisch der Hinweis „{KU_NOTE}“ gedruckt. Auch unter Einstellungen › Rechnungen.</p>
+      <CompanyFields v={v} setV={setV} />
     </Win>
   );
 }
+/* Einstellungen › Rechnungen */
+function InvoiceSettings({ me }) {
+  const [co, setCo] = useLsState("company", { ...CO_DEFAULT, name: me?.company || "", owner: me?.name || "" });
+  const [articles, setArticles] = useLsState("articles", []);
+  const [part, setPart] = useState("firma");
+  return (<>
+    <p className="muted small">Firmendaten, Nummernkreise und Texte für Rechnungen &amp; Angebote (Kleinunternehmer – ohne USt). Änderungen werden sofort gespeichert.</p>
+    <div className="seg"><button className={part === "firma" ? "on" : ""} onClick={() => setPart("firma")}>🏢 Firmendaten &amp; Vorgaben</button><button className={part === "artikel" ? "on" : ""} onClick={() => setPart("artikel")}>📦 Artikel &amp; Leistungen ({articles.length})</button></div>
+    {part === "firma" ? <CompanyFields v={{ ...CO_DEFAULT, ...co }} setV={setCo} /> : <ArticlesEditor articles={articles} setArticles={setArticles} />}
+  </>);
+}
+function ArticlesEditor({ articles, setArticles }) {
+  const patchA = (id, p) => setArticles((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  return (<>
+    {!articles.length && <p className="muted small">Noch keine Artikel. Häufige Leistungen hier anlegen oder beim Schreiben einer Rechnung mit ☆ merken.</p>}
+    {articles.map((a) => (
+      <div key={a.id} className="artrow">
+        <input value={a.text} placeholder="Bezeichnung" onChange={(e) => patchA(a.id, { text: e.target.value })} />
+        <select value={a.unit || "Stk"} onChange={(e) => patchA(a.id, { unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
+        <input inputMode="decimal" value={a.price ?? ""} placeholder="Preis €" onChange={(e) => patchA(a.id, { price: e.target.value.replace(",", ".") })} />
+        <button className="iconbtn" title="Löschen" onClick={() => setArticles((l) => l.filter((x) => x.id !== a.id))}>✕</button>
+      </div>
+    ))}
+    <button className="btn" onClick={() => setArticles((l) => [...l, { id: uid(), text: "", unit: "Std", price: "" }])}>＋ Artikel / Leistung</button>
+  </>);
+}
 
 /* ---------- Kunden & Artikel ---------- */
-function MasterDataWin({ customers, setCustomers, articles, setArticles, onClose }) {
-  const [tab, setTab] = useState("kunden");
-  const patchC = (id, p) => setCustomers((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
-  const patchA = (id, p) => setArticles((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
+function MasterDataWin({ articles, setArticles, onClose }) {
   return (
     <Win id="masterdata" onClose={onClose} dirty={false}>
-      <div className="panelhead"><b>Kunden & Artikel</b><XBtn /></div>
-      <div className="seg"><button className={tab === "kunden" ? "on" : ""} onClick={() => setTab("kunden")}>Kunden ({customers.length})</button><button className={tab === "artikel" ? "on" : ""} onClick={() => setTab("artikel")}>Artikel & Leistungen ({articles.length})</button></div>
-      {tab === "kunden" ? <>
-        {customers.map((c) => (
-          <fieldset key={c.id} className="mdrow">
-            <div className="grid2"><label>Name<input value={c.name} onChange={(e) => patchC(c.id, { name: e.target.value })} /></label><label>Kundennr.<input value={c.number || ""} onChange={(e) => patchC(c.id, { number: e.target.value })} /></label></div>
-            <label>Anschrift<textarea rows={2} value={c.address || ""} onChange={(e) => patchC(c.id, { address: e.target.value })} /></label>
-            <div className="grid2"><label>E-Mail<input value={c.email || ""} onChange={(e) => patchC(c.id, { email: e.target.value })} /></label><label>UID<input value={c.uid || ""} onChange={(e) => patchC(c.id, { uid: e.target.value })} /></label></div>
-            <button className="link red" onClick={() => confirm(`Kunde „${c.name}“ löschen?`) && setCustomers((l) => l.filter((x) => x.id !== c.id))}>Löschen</button>
-          </fieldset>
-        ))}
-        <button className="btn" onClick={() => setCustomers((l) => [...l, { id: uid(), name: "Neuer Kunde", address: "" }])}>＋ Kunde</button>
-      </> : <>
-        {articles.map((a) => (
-          <div key={a.id} className="artrow">
-            <input value={a.text} placeholder="Bezeichnung" onChange={(e) => patchA(a.id, { text: e.target.value })} />
-            <select value={a.unit || "Stk"} onChange={(e) => patchA(a.id, { unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
-            <input inputMode="decimal" value={a.price ?? ""} placeholder="Preis" onChange={(e) => patchA(a.id, { price: e.target.value.replace(",", ".") })} />
-            <button className="iconbtn" title="Löschen" onClick={() => setArticles((l) => l.filter((x) => x.id !== a.id))}>✕</button>
-          </div>
-        ))}
-        <button className="btn" onClick={() => setArticles((l) => [...l, { id: uid(), text: "", unit: "Std", price: "" }])}>＋ Artikel / Leistung</button>
-      </>}
+      <div className="panelhead"><b>Artikel &amp; Leistungen</b><XBtn /></div>
+      <ArticlesEditor articles={articles} setArticles={setArticles} />
+      <p className="muted small">Kunden verwaltest du im Reiter „Kunden“.</p>
     </Win>
   );
 }
@@ -4362,7 +4439,7 @@ function RemindWin({ inv, co, onDone, onClose }) {
 }
 
 /* ---------- Seite ---------- */
-function InvoicesPage({ me, txs = [], notify, onArchive }) {
+function InvoicesPage({ me, txs = [], notify, onArchive, setTab }) {
   const [list, setList] = useLsState("invoices", []);
   const [templates, setTemplates] = useLsState("invoiceTemplates", []);
   const [customers, setCustomers] = useLsState("customers", []);
@@ -4387,8 +4464,12 @@ function InvoicesPage({ me, txs = [], notify, onArchive }) {
     if (add.length) { setList((l) => [...add, ...l]); setTemplates(tpl); notify?.(`${add.length} wiederkehrende Rechnung${add.length > 1 ? "en" : ""} als Entwurf vorbereitet`); }
   }, []);
 
-  const newDoc = (kind) => setEdit({ id: uid(), kind, status: "entwurf", number: "", date: todayISO(), serviceFrom: todayISO(), dueDays: co.dueDays, validDays: co.validDays,
-    customer: { name: "", address: "" }, items: [{ text: "", qty: 1, unit: kind === "angebot" ? "Pausch." : "Std", price: "" }], reminders: [], createdAt: new Date().toISOString() });
+  useEffect(() => {
+    const pc = ls.get("pendingInvoice", null); if (!pc) return; ls.set("pendingInvoice", null);
+    newDoc(pc.kind || "rechnung", pc.customer);
+  }, []);
+  const newDoc = (kind, cust) => setEdit({ id: uid(), kind, status: "entwurf", number: "", date: todayISO(), serviceFrom: todayISO(), dueDays: co.dueDays, validDays: co.validDays,
+    customer: cust ? { name: cust.name, address: cust.address || "", uid: cust.uid || "", email: cust.email || "", number: cust.number || "", contact: cust.contact || "" } : { name: "", address: "" }, items: [{ text: "", qty: 1, unit: kind === "angebot" ? "Pausch." : "Std", price: "" }], reminders: [], createdAt: new Date().toISOString() });
   const save = (inv, saveCust) => {
     setList((l) => (l.some((x) => x.id === inv.id) ? l.map((x) => (x.id === inv.id ? inv : x)) : [inv, ...l]));
     if (saveCust && inv.customer?.name) setCustomers((l) => (l.some((c) => c.name === inv.customer.name) ? l : [...l, { id: uid(), ...inv.customer }]));
@@ -4443,7 +4524,8 @@ function InvoicesPage({ me, txs = [], notify, onArchive }) {
         <button className="btn primary" onClick={() => newDoc("rechnung")}>＋ Rechnung</button>
         <button className="btn" onClick={() => newDoc("angebot")}>＋ Angebot</button>
         <span className="grow" />
-        <button className="btn" onClick={() => setMdOpen(true)}>👥 Kunden & Artikel</button>
+        <button className="btn" onClick={() => setTab?.("kunden")}>👥 Kunden</button>
+        <button className="btn" onClick={() => setMdOpen(true)}>📦 Artikel</button>
         <button className="btn" onClick={() => setCoOpen(true)}>🏢 Firmendaten</button>
       </div>
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Nummer, Kunde, Leistung suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -4504,7 +4586,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive }) {
       )}
       {edit && <InvoiceEditor inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
       {coOpen && <CompanyWin co={co} setCo={setCo} onClose={() => setCoOpen(false)} />}
-      {mdOpen && <MasterDataWin customers={customers} setCustomers={setCustomers} articles={articles} setArticles={setArticles} onClose={() => setMdOpen(false)} />}
+      {mdOpen && <MasterDataWin articles={articles} setArticles={setArticles} onClose={() => setMdOpen(false)} />}
       {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
     </div>
   );
@@ -4662,6 +4744,79 @@ function ContractsPage({ docs, me, onOpen }) {
         ))}
       </section>
       {edit && <ContractEditor c={edit} docs={docs} me={me} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
+    </div>
+  );
+}
+
+
+/* ======================= Kunden / Kontakte ======================= */
+const CONTACT_TYPES = { Kunde: "🧑‍💼", Lieferant: "🚚", Partner: "🤝", Privat: "👤", Behörde: "🏛️" };
+function ContactEditor({ c: init, onSave, onDelete, onClose }) {
+  const [c, setC] = useState(init);
+  const set = (p) => setC((x) => ({ ...x, ...p }));
+  const f = (k, label, ph = "", type = "text") => <label>{label}<input type={type} value={c[k] || ""} placeholder={ph} onChange={(e) => set({ [k]: e.target.value })} /></label>;
+  return (
+    <Win id="contact" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
+      <div className="panelhead"><b>{init.name || "Neuer Kontakt"}</b><button className="btn primary" disabled={!c.name?.trim()} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
+      <div className="seg">{Object.entries(CONTACT_TYPES).map(([k, i]) => <button key={k} className={(c.type || "Kunde") === k ? "on" : ""} onClick={() => set({ type: k })}>{i} {k}</button>)}</div>
+      <fieldset><legend>Kontakt</legend>
+        <div className="grid2">{f("name", "Name / Firma", "z. B. Muster GmbH")}{f("contact", "Ansprechperson", "z. B. Frau Huber")}</div>
+        <label>Anschrift<textarea rows={3} value={c.address || ""} placeholder={"Straße Nr.\nPLZ Ort"} onChange={(e) => set({ address: e.target.value })} /></label>
+        <div className="grid2">{f("email", "E-Mail", "", "email")}{f("phone", "Telefon", "", "tel")}</div>
+        <div className="grid2">{f("mobile", "Mobil", "", "tel")}{f("web", "Website")}</div>
+      </fieldset>
+      <fieldset><legend>Geschäftlich</legend>
+        <div className="grid2">{f("number", "Kundennummer")}{f("uid", "UID-Nr.", "ATU…")}</div>
+        <div className="grid2">{f("iban", "IBAN")}{f("birthday", "Geburtstag", "", "date")}</div>
+      </fieldset>
+      <label>Notiz<textarea rows={3} value={c.note || ""} onChange={(e) => set({ note: e.target.value })} /></label>
+      {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={() => confirm(`Kontakt „${c.name}“ löschen?`) && (onDelete(c), onClose())}>Kontakt löschen</button>}
+    </Win>
+  );
+}
+function ContactsPage({ setTab }) {
+  const [list, setList] = useLsState("customers", []);
+  const invoices = ls.get("invoices", []);
+  const [edit, setEdit] = useState(null), [q, setQ] = useState(""), [type, setType] = useState("alle");
+  const save = (c) => setList((l) => (l.some((x) => x.id === c.id) ? l.map((x) => (x.id === c.id ? c : x)) : [...l, c]));
+  const nextNo = () => "K-" + String(list.reduce((m, c) => Math.max(m, parseInt(String(c.number || "").replace(/\D/g, ""), 10) || 0), 0) + 1).padStart(3, "0");
+  const invOf = (c) => invoices.filter((i) => i.kind === "rechnung" && i.customer?.name === c.name && !["entwurf", "storniert"].includes(i.status));
+  const shown = list.filter((c) => type === "alle" || (c.type || "Kunde") === type)
+    .filter((c) => !q || norm(`${c.name} ${c.contact} ${c.email} ${c.phone} ${c.address} ${c.number}`).includes(norm(q)))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || "", "de"));
+  const vcard = (c) => {
+    const v = ["BEGIN:VCARD", "VERSION:3.0", `FN:${c.name}`, c.contact && `NOTE:Ansprechperson ${c.contact}`, c.email && `EMAIL:${c.email}`, c.phone && `TEL;TYPE=WORK:${c.phone}`, c.mobile && `TEL;TYPE=CELL:${c.mobile}`,
+      c.address && `ADR;TYPE=WORK:;;${c.address.replace(/\n/g, ";")};;;;`, c.web && `URL:${c.web}`, "END:VCARD"].filter(Boolean).join("\r\n");
+    downloadFiles([new File([v], safeName(c.name) + ".vcf", { type: "text/vcard" })]);
+  };
+  return (
+    <div className="ctpage">
+      <div className="invbar">
+        <button className="btn primary" onClick={() => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() })}>＋ Kontakt</button>
+        <span className="grow" />
+        <small className="muted">{list.length} Kontakt{list.length === 1 ? "" : "e"}</small>
+      </div>
+      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Name, E-Mail, Telefon, Ort suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="chips invfilter">{["alle", ...Object.keys(CONTACT_TYPES)].map((k) => <button key={k} className={"chip" + (type === k ? " on" : "")} onClick={() => setType(k)}>{k === "alle" ? "Alle" : CONTACT_TYPES[k] + " " + k} <small>({k === "alle" ? list.length : list.filter((c) => (c.type || "Kunde") === k).length})</small></button>)}</div>
+      <section className="tile ctlist">
+        {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
+        {shown.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
+          <div key={c.id} className="frow click contactrow" onClick={() => setEdit(c)}>
+            <span className="caticon avatar" style={{ width: 42, height: 42 }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>
+            <div className="grow">
+              <b>{c.name}</b> <small className="muted">{CONTACT_TYPES[c.type || "Kunde"]} {c.number || ""}</small>
+              <small className="muted block">{[c.contact, (c.address || "").split("\n").pop()].filter(Boolean).join(" · ")}</small>
+              <div className="cactions" onClick={(e) => e.stopPropagation()}>
+                {c.email && <a className="chip" href={`mailto:${c.email}`}>✉️ {c.email}</a>}
+                {(c.phone || c.mobile) && <a className="chip" href={`tel:${(c.mobile || c.phone).replace(/\s/g, "")}`}>📞 {c.mobile || c.phone}</a>}
+                {(c.type || "Kunde") === "Kunde" && setTab && <button className="chip" onClick={() => { ls.set("pendingInvoice", { kind: "rechnung", customer: c }); setTab("invoices"); }}>🧾 Rechnung</button>}
+                <button className="chip" onClick={() => vcard(c)}>📇 vCard</button>
+              </div>
+            </div>
+            {!!inv.length && <div className="right"><b>{fmtMoney(inv.reduce((s, i) => s + invTotal(i), 0))}</b><small className={"block " + (open.length ? "warnc" : "muted")}>{inv.length} Rechnung{inv.length === 1 ? "" : "en"}{open.length ? ` · ${open.length} offen` : ""}</small></div>}
+          </div>); })}
+      </section>
+      {edit && <ContactEditor c={edit} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
     </div>
   );
 }
@@ -5561,4 +5716,26 @@ fieldset:disabled{opacity:.75}
 @media (max-width:899px){.invrow{flex-wrap:wrap}.invmain{flex-basis:calc(100% - 100px)}.invacts{width:100%;justify-content:flex-start}}
 
 @media (max-width:699px){.invstats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.invstats .tile{padding:12px}.invstats .tile b{font-size:17px}.invstats .tile small{font-size:11px}}
+
+/* v0.20.0: Seitenleiste mit Linien, Überschriften, Unterreitern, eigenen Symbolen */
+.tabico{display:inline-flex;align-items:center;justify-content:center}.tabico img{width:1.25em;height:1.25em;object-fit:contain;border-radius:4px}
+nav.bottom .navsep{border:0;border-top:1px solid var(--line);margin:8px 10px}
+nav.bottom .navhead{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);padding:10px 14px 4px}
+nav.bottom .subtab{font-size:14px;padding-left:34px!important;opacity:.95}
+nav.bottom .subtab .tabico{font-size:15px}
+nav.bottom .subtab .badge{margin-left:auto}
+@media (max-width:767px){nav.bottom .navsep,nav.bottom .navhead,nav.bottom .subtab{display:none}}
+.decocfg{min-height:44px}.decocfg .sepline{flex:1;border-top:2px solid var(--line);margin:0 8px}.hdlbl{white-space:nowrap}
+.childcfg{margin-left:26px}
+.parentsel{max-width:150px;font-size:12px}
+.tabprev{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.cactions{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.cactions .chip{font-size:12px;padding:4px 10px;text-decoration:none;color:var(--txt)}
+.avatar{background:var(--acc)!important;color:#fff;font-weight:700;font-size:18px!important}
+.contactrow{align-items:flex-start}
+
+@media (min-width:768px){nav.bottom .navsep.side-only,nav.bottom .navhead.side-only{display:block}nav.bottom .subtab.side-only{display:flex}}
+
+nav.bottom>button span.tl{font-size:inherit;filter:none;opacity:1}
+nav.bottom>button span.tabico.custom{filter:none;opacity:1}
+nav.bottom>button.subtab span.tabico{font-size:16px}
 `;
