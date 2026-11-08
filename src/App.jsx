@@ -4299,6 +4299,7 @@ const invTotal = (inv) => r2((inv.items || []).reduce((s, it) => s + (Number(it.
 const invDue = (inv) => (inv.date ? addDays(inv.date, inv.dueDays ?? 14) : "");
 const lastReminder = (inv) => (inv.reminders || [])[(inv.reminders || []).length - 1];
 const invDueEff = (inv) => lastReminder(inv)?.due || invDue(inv);
+if (typeof document !== "undefined" && !window.__moreCloser) { window.__moreCloser = true; document.addEventListener("click", (e) => document.querySelectorAll("details.more[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; }), true); }
 function invState(inv) {
   if (inv.kind === "angebot") return inv.status === "entwurf" ? "entwurf" : inv.status || "offen";
   if (inv.status === "entwurf" || inv.status === "storniert" || inv.status === "bezahlt") return inv.status;
@@ -5119,20 +5120,28 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                   {pay && <button className="link pos small" onClick={async (e) => { e.stopPropagation(); if (book) await book.link(pay.id, x); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id, paidAccount: pay.accountId, payMethod: "Überweisung" }); }}>💡 Zahlungseingang vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}
                 </div>
                 <b className="invamt">{fmtMoney(invTotal(x))}</b>
-            <span className={"stpill " + cls}>{label}</span>
+            {x.kind === "rechnung" && s !== "entwurf" ? (
+              <details className="more stmenu" onClick={(e) => e.stopPropagation()}>
+                <summary className={"stpill " + cls} title="Status ändern">{label} <span className="stcaret">▾</span></summary>
+                <div className="moremenu" onClick={(e) => { if (e.target.closest("button")) e.currentTarget.closest("details").open = false; }}>
+                  <button className={s === "bezahlt" ? "cur" : ""} onClick={() => s !== "bezahlt" && setPayFor2(x)}>{s === "bezahlt" ? "✓ " : ""}Bezahlt</button>
+                  <button className={["offen", "überfällig"].includes(s) ? "cur" : ""} onClick={() => s === "bezahlt" ? unpay(x) : s === "storniert" ? patch(x.id, { status: "offen" }) : null}>{["offen", "überfällig"].includes(s) ? "✓ " : ""}Offen{s === "überfällig" ? " (überfällig)" : ""}</button>
+                  {s === "bezahlt" && !x.paidTx && book?.accounts?.length > 0 && <button onClick={() => setPayFor2(x)}>🔗 Buchung zuordnen</button>}
+                  {s !== "storniert" ? <button className="red" onClick={() => confirm(`Rechnung ${x.number} stornieren? Sie bleibt im Verlauf, zählt aber nicht mehr zum Umsatz.`) && patch(x.id, { status: "storniert" })}>Stornieren</button>
+                    : <button className="cur">✓ Storniert</button>}
+                </div>
+              </details>
+            ) : <span className={"stpill " + cls}>{label}</span>}
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
                   {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button>}
                   {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button>}
                   {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" title="Zahlungseingang auf ein Konto buchen und Rechnung als bezahlt markieren" onClick={() => setPayFor2(x)}>Als bezahlt markieren</button>}
-                  {s === "bezahlt" && !x.paidTx && book?.accounts?.length > 0 && <button className="btn sm" title="Bereits bezahlte Rechnung nachträglich mit einer Kontobuchung verknüpfen" onClick={() => setPayFor2(x)}>🔗 Buchung zuordnen</button>}
-                  {s === "bezahlt" && <button className="link small" onClick={() => unpay(x)} title="Rechnung wieder als offen markieren">Offen</button>}
                   {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>}
                   {x.kind === "angebot" && s === "offen" && <><button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button><button className="link small" onClick={() => patch(x.id, { status: "abgelehnt" })}>Abgelehnt</button></>}
                   <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
                     <div className="moremenu">
                       <button onClick={() => copyAsNew(x)}>Als neue {x.kind === "angebot" ? "Angebot" : "Rechnung"} kopieren</button>
                       {s !== "entwurf" && onArchive && <button onClick={async () => { await onArchive(await buildInvoicePdf(x, co), invFileName(x), x); }}>In Dokumente ablegen</button>}
-                      {x.kind === "rechnung" && !["entwurf", "storniert"].includes(s) && <button onClick={() => confirm(`Rechnung ${x.number} stornieren? Sie bleibt im Verlauf, zählt aber nicht mehr zum Umsatz.`) && patch(x.id, { status: "storniert" })}>Stornieren</button>}
                       {s === "entwurf" && <button className="red" onClick={() => confirm("Entwurf löschen?") && setList((l) => l.filter((y) => y.id !== x.id))}>Entwurf löschen</button>}
                     </div>
                   </details>
@@ -6931,4 +6940,9 @@ nav.bottom>button.sidetoggle{display:none}
 .txradio.on{border-color:var(--acc);background:radial-gradient(circle,var(--acc) 0 5px,transparent 6px)}
 .payfoot{position:sticky;bottom:-1px;display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;margin:12px -4px 0;padding:10px 4px;background:var(--bg);border-top:1px solid var(--line)}
 .payfoot .btn{margin-left:auto}
+
+.stmenu{flex:none}.stmenu>summary.stpill{width:auto;min-width:84px;cursor:pointer;gap:4px;user-select:none;-webkit-user-select:none}
+.stmenu>summary .stcaret{font-size:9px;opacity:.75}
+.stmenu .moremenu{min-width:200px;top:calc(100% + 6px);left:0;right:auto;z-index:60}
+.stmenu .moremenu .cur{color:var(--acc);font-weight:600}
 `;

@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.27.0
+- Rechnungsliste: Status-Pill ist jetzt antippbar – Menü mit Bezahlt, Offen, Buchung zuordnen und Stornieren
+- Separater „Offen“-Link und „Buchung zuordnen“-Button entfernt, Stornieren aus dem „…“-Menü in die Pill verschoben
+- Aufklappmenüs schließen sich bei Klick daneben bzw. nach Auswahl
+
 ## v0.26.3
 - Mahnungen → Mahnverlauf: „🔗 Buchung zuordnen“ für bezahlte Rechnungen ohne Kontobuchung, „Als bezahlt markieren“ für noch offene
 
