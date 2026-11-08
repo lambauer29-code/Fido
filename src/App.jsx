@@ -771,21 +771,64 @@ function defaultRect(defW, small) {
   const w = Math.min(defW || 580, W - 48);
   return { w, h: H - 48, x: W - w - 24, y: 24 };
 }
-function Win({ id, onClose, children, className = "", defW, small = false, center = false }) {
+const WinCtx = React.createContext(null);
+const XBtn = () => { const close = React.useContext(WinCtx); return <button className="xbtn" onClick={() => close?.()} aria-label="Schließen" title="Schließen">✕</button>; };
+/* Schwebendes Fenster. Klick daneben / Esc / ✕ schließt – bei ungespeicherten Änderungen wird erst nachgefragt.
+   dirty: true/false erzwingt, undefined = automatisch (sobald im Fenster etwas eingegeben wurde) */
+function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern" }) {
   const wide = useMedia("(min-width:768px)");
+  const rootRef = useRef(null);
+  const [touched, setTouched] = useState(false);
+  const [ask, setAsk] = useState(false);
+  const isDirty = dirty ?? touched;
+  const dirtyRef = useRef(isDirty); dirtyRef.current = isDirty;
+  const requestClose = () => { if (dirtyRef.current) setAsk(true); else onClose(); };
+  const reqRef = useRef(requestClose); reqRef.current = requestClose;
+  const zRef = useRef(0);
+  useEffect(() => {
+    let block = false;
+    const down = (e) => {
+      const el = rootRef.current; if (!el || el.contains(e.target)) return;
+      if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost")) return;
+      if (dirtyRef.current) block = true; // Klick nicht weiterreichen, sonst gehen Eingaben verloren
+      reqRef.current();
+    };
+    const click = (e) => { if (block) { block = false; e.stopPropagation(); e.preventDefault(); } };
+    const key = (e) => { if (e.key === "Escape" && zRef.current === winZ) { e.stopPropagation(); if (ask) setAsk(false); else reqRef.current(); } };
+    document.addEventListener("pointerdown", down, true); document.addEventListener("click", click, true); window.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", down, true); document.removeEventListener("click", click, true); window.removeEventListener("keydown", key); };
+  }, [ask]);
+  const doSave = () => {
+    const btn = [...(rootRef.current?.querySelectorAll(".btn.primary") || [])].find((b) => !b.disabled && !b.closest(".winguard"));
+    btn?.click(); setAsk(false); setTimeout(() => onClose(), 0);
+  };
+  const canSave = () => [...(rootRef.current?.querySelectorAll(".btn.primary") || [])].some((b) => !b.disabled && !b.closest(".winguard"));
+  const guard = ask && (
+    <div className="winguard" role="alertdialog" aria-label="Ungespeicherte Änderungen">
+      <b>Ungespeicherte Änderungen</b>
+      <span className="grow" />
+      {canSave() && <button className="btn primary sm" onClick={doSave}>{saveLabel}</button>}
+      <button className="btn sm danger" onClick={() => { setAsk(false); onClose(); }}>Verwerfen</button>
+      <button className="btn sm" onClick={() => setAsk(false)}>Weiter bearbeiten</button>
+    </div>
+  );
+  const touchProps = { onInput: () => setTouched(true), onChange: () => setTouched(true) };
   const [rect, setRect] = useState(() => {
     const r = ls.get("win:" + id, null) || defaultRect(defW, small);
     // center: gemerkte Größe, aber immer mittig öffnen
     return clampRect(center ? { ...r, x: Math.round((innerWidth - r.w) / 2), y: Math.max(16, Math.round((innerHeight - r.h) / 2)) } : r);
   });
   const [z, setZ] = useState(() => ++winZ);
+  zRef.current = z;
   useEffect(() => { const t = setTimeout(() => ls.set("win:" + id, rect), 150); return () => clearTimeout(t); }, [rect, id]);
   useEffect(() => { const h = () => setRect((r) => clampRect(r)); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, []);
 
   if (!wide) return (
-    <div className={"sheet " + className} onClick={onClose}>
-      <div className={"panel" + (small ? " small-panel" : "")} onClick={(e) => e.stopPropagation()}>{children}</div>
+    <WinCtx.Provider value={requestClose}>
+    <div className={"sheet " + className} onClick={requestClose}>
+      <div ref={rootRef} className={"panel" + (small ? " small-panel" : "")} onClick={(e) => e.stopPropagation()} {...touchProps}>{guard}{children}</div>
     </div>
+    </WinCtx.Provider>
   );
 
   // Ziehen am Fensterkopf bzw. an Rändern/Ecken (Maus & Touch)
@@ -814,11 +857,13 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
     });
   };
   return (
-    <div className={"win " + className} style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: z }} onPointerDown={onHead}>
-      <div className="wininner">{children}</div>
+    <WinCtx.Provider value={requestClose}>
+    <div ref={rootRef} className={"win " + className} style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: z }} onPointerDown={onHead} {...touchProps}>
+      <div className="wininner">{guard}{children}</div>
       {["n", "e", "s", "w", "ne", "se", "sw", "nw"].map((d) => <span key={d} className={"rz rz-" + d} onPointerDown={edge(d)} />)}
       <span className="rzgrip" aria-hidden="true" />
     </div>
+    </WinCtx.Provider>
   );
 }
 
@@ -907,9 +952,9 @@ function AccountPicker({ groups, txs, sel, onApply, onClose }) {
   const total = all.filter((a) => s.includes(a.id)).reduce((t, a) => t + (bal(a) || 0), 0);
   const tog = (id) => setS((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
   return (
-    <Win id="accpick" onClose={onClose} small>
+    <Win id="accpick" onClose={onClose} small dirty={[...s].sort().join() !== [...(sel.length ? sel : all.map((a) => a.id))].sort().join()} saveLabel="Übernehmen">
       <div className="panelhead"><b>Konten auswählen</b><small className="muted">{s.length} von {all.length}</small>
-        <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button></div>
+        <XBtn /></div>
       <div className="quickpick">
         <button onClick={() => setS(all.map((a) => a.id))}>Alle</button>
         <button onClick={() => setS([])}>Keine</button>
@@ -1954,8 +1999,8 @@ function CalSyncSheet({ sync, setSync, items, token, onClose, notify }) {
     setSync({ on: false, key: "", at: "" });
   }
   return (
-    <Win id="calsync" onClose={onClose} small>
-      <div className="panelhead"><b>Mit Apple Kalender verbinden</b><button className="xbtn" onClick={onClose} aria-label="Schließen">✕</button></div>
+    <Win id="calsync" onClose={onClose} small dirty={false}>
+      <div className="panelhead"><b>Mit Apple Kalender verbinden</b><XBtn /></div>
       {!sync.on ? <>
         <p>Fido stellt deine Fristen als <b>Kalender-Abo</b> bereit. Apple Kalender (iPhone, iPad, Mac) holt Änderungen dann selbst ab – neue Bons, Zahlungsfristen, Garantie- und Kündigungstermine erscheinen automatisch.</p>
         <p className="muted small">Die Fristen werden dafür verschlüsselt übertragen und in deinem Vercel-Speicher unter einem geheimen Link abgelegt. Wer den Link kennt, kann die Termine sehen – nicht weitergeben.</p>
@@ -2197,7 +2242,6 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
   const [letterFor, setLetterFor] = useState(null);
   const [showStale, setShowStale] = useState(false);
   const [sortBy, setSortBy] = useState("monat");
-  useEsc(() => letterFor && setLetterFor(null));
   const list = activeContracts(docs).sort((a, b) => monthlyCost(b.contract) - monthlyCost(a.contract));
   const ended = docs.filter((d) => d.contract && d.contract.active === false);
   const inactive = (r) => subInactive(r, subs);
@@ -2299,8 +2343,8 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
       {!!ended.length && <p className="muted small" style={{ marginTop: 16 }}>{ended.length} beendete Verträge (im Dokument unter „Vertrag / Abo“ abgewählt)</p>}
 
       {letterFor && (
-        <Win id="letter" onClose={() => setLetterFor(null)}>
-            <div className="panelhead"><b>Kündigung</b><button className="xbtn" onClick={() => setLetterFor(null)} aria-label="Schließen" title="Schließen">✕</button></div>
+        <Win id="letter" onClose={() => setLetterFor(null)} dirty={false}>
+            <div className="panelhead"><b>Kündigung</b><XBtn /></div>
             {!me.name && <p className="warn small">Tipp: Name und Adresse unter „Einstellungen“ eintragen, dann ist das Schreiben komplett.</p>}
             <pre className="fulltext letter">{letter}</pre>
             <div className="actions">
@@ -2523,7 +2567,6 @@ function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, 
 }
 
 function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onClose }) {
-  useEsc(onClose);
   const [res, setRes] = useState(imp.result);
   const [busy, setBusy] = useState(false);
   const [showMap, setShowMap] = useState(false);
@@ -2598,10 +2641,10 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
   }
 
   return (
-    <Win id="import" onClose={onClose}>
+    <Win id="import" onClose={onClose} dirty={!busy && txs.length > 0} saveLabel="Importieren">
         <div className="panelhead"><b>Import</b>
           <button className="btn primary" disabled={busy || !txs.length} onClick={doImport}>Importieren</button>
-          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
+          <XBtn />
         </div>
 
         <div className="tile">
@@ -2682,7 +2725,6 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
 }
 
 function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, deleteTx, linkTx, attachNew, addCategory, accounts = [] }) {
-  useEsc(onClose);
   const [accId, setAccId] = useState(t.accountId);
   const [extraCats, setExtraCats] = useState([]);
   const [pickDoc, setPickDoc] = useState(false);
@@ -2694,10 +2736,10 @@ function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, dele
     ["Verwendungszweck", t.purpose], ["Buchungstext", t.bookingText], ["ISIN", t.isin], ["Wertpapier", t.security], ["Stück", t.shares], ["Kurs", t.price != null && fmtMoney(t.price, t.currency)],
     ["Gebühren", t.fee ? fmtMoney(t.fee) : ""], ["Steuern", t.tax ? fmtMoney(t.tax) : ""]].filter(([, v]) => v != null && v !== "" && v !== false);
   return (
-    <Win id="tx" onClose={onClose}>
+    <Win id="tx" onClose={onClose} dirty={cat !== t.category || accId !== t.accountId}>
         <div className="panelhead"><b>Buchung</b>
           <button className="btn primary" disabled={cat === t.category && accId === t.accountId} onClick={() => { updateTx({ ...t, category: cat, accountId: accId }, rule); onClose(); }}>Speichern</button>
-          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
+          <XBtn />
         </div>
         <div className="tile center-text">
           <div className={"hero-v" + (t.amount > 0 ? " ok" : "")} style={{ color: t.amount > 0 ? "var(--ok)" : "var(--txt)" }}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</div>
@@ -2768,7 +2810,6 @@ const SCAN_FILTERS = [["original", "Original"], ["farbe", "Farbe"], ["dokument",
 const tick = () => new Promise((r) => setTimeout(r, 30));
 
 function Scanner({ onDone, onClose }) {
-  useEsc(onClose);
   const camRef = useRef(), galRef = useRef();
   const [pages, setPages] = useState([]);   // { src, corners, blob, url }
   const [edit, setEdit] = useState(null);   // { src, url, corners, idx }
@@ -2816,14 +2857,14 @@ function Scanner({ onDone, onClose }) {
   }
 
   return (
-    <Win id="scanner" onClose={onClose} className="scanner">
+    <Win id="scanner" onClose={onClose} className="scanner" dirty={pages.length > 0} saveLabel="Fertig">
         <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { onShot(e.target.files[0], edit?.idx ?? pages.length); e.target.value = ""; }} />
         <input ref={galRef} type="file" accept="image/*" hidden onChange={(e) => { onShot(e.target.files[0], edit?.idx ?? pages.length); e.target.value = ""; }} />
         <div className="panelhead">
           <b>{edit ? "Ecken anpassen" : "Scannen"}</b>
           {edit ? <button className="btn primary" onClick={confirmCrop}>Weiter</button>
             : <button className="btn primary" disabled={!pages.length} onClick={finish}>Fertig{pages.length > 1 ? ` (${pages.length})` : ""}</button>}
-          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
+          <XBtn />
         </div>
 
         {!edit && !pages.length && (
@@ -2905,7 +2946,6 @@ function cashBalance(acc, txs) {
 }
 
 function AccountSheet({ init, onSave, onClose, onDelete, hasAtmAccount, txs = [] }) {
-  useEsc(onClose);
   const [kind, setKind] = useState(init?.kind || "cash");
   const [name, setName] = useState(init?.name ?? "Geldbörse");
   const cur = init ? accountBalance(init, txs) : null;
@@ -2925,7 +2965,7 @@ function AccountSheet({ init, onSave, onClose, onDelete, hasAtmAccount, txs = []
     <Win id="account" onClose={onClose} small>
         <div className="panelhead"><b>{init ? "Konto bearbeiten" : "Neues Konto"}</b>
           <button className="btn primary" disabled={!name.trim()} onClick={save}>{init ? "Speichern" : "Anlegen"}</button>
-          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
+          <XBtn />
         </div>
         <fieldset>
           <legend>Art</legend>
@@ -2948,7 +2988,6 @@ function AccountSheet({ init, onSave, onClose, onDelete, hasAtmAccount, txs = []
 }
 
 function ManualTxSheet({ init, accounts, categories, onSave, onClose }) {
-  useEsc(onClose);
   const cashAcc = accounts.find((a) => a.kind === "cash");
   const [accountId, setAccountId] = useState(init?.accountId || cashAcc?.id || accounts[0]?.id || "new-cash");
   const [dir, setDir] = useState("out");
@@ -2962,7 +3001,7 @@ function ManualTxSheet({ init, accounts, categories, onSave, onClose }) {
     <Win id="manual" onClose={onClose} small>
         <div className="panelhead"><b>Buchung erfassen</b>
           <button className="btn primary" disabled={!ok} onClick={() => onSave({ accountId, date, amount: dir === "out" ? -val : val, counterparty: text.trim(), purpose: "", category: dir === "in" && category === "Lebensmittel & Haushalt" ? "Einnahmen" : category })}>Speichern</button>
-          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
+          <XBtn />
         </div>
         <div className="seg">
           <button className={dir === "out" ? "on" : ""} onClick={() => setDir("out")}>Ausgabe</button>
@@ -3005,7 +3044,6 @@ function PayQR({ doc, notify }) {
 function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash, txs = [], accounts = [], linkTx }) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [lq, setLq] = useState("");
-  useEsc(onClose);
   const [url, setUrl] = useState(null);
   const [blob, setBlob] = useState(null);
   const [d, setD] = useState(doc);
@@ -3028,11 +3066,11 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
   const numIn = (v) => { const s = String(v).replace(",", "."); return s === "" ? null : Number(s); };
 
   return (
-    <Win id="detail" onClose={onClose} center>
+    <Win id="detail" onClose={onClose} center dirty={dirty}>
         <div className="panelhead">
           <b>Dokument</b>
           <button className="btn primary" disabled={!dirty} onClick={() => saveDoc(d)}>Speichern</button>
-          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
+          <XBtn />
         </div>
 
         {url && (doc.mimeType.startsWith("image/")
@@ -4283,4 +4321,8 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .yday.over{background:color-mix(in srgb,var(--red) 40%,transparent);font-weight:700}
 .yday.done{background:color-mix(in srgb,var(--mut) 25%,transparent)}
 .yday.today{outline:2px solid var(--acc)}.yday.sel{box-shadow:inset 0 0 0 2px var(--txt)}
+
+.winguard{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:10px 12px;border-radius:14px;
+  background:color-mix(in srgb,var(--warn) 18%,var(--card));border:1px solid color-mix(in srgb,var(--warn) 55%,transparent);box-shadow:0 6px 20px #0004;animation:menuin .15s ease-out}
+.winguard .btn{margin:0}
 `;
