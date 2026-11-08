@@ -3073,6 +3073,28 @@ function PwInput({ show, setShow, ...rest }) {
 
 /* ---------- Zeitraum-Kalender (groß, Von–Bis) ---------- */
 const MONTHS_LONG = ["Jänner", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+// Datum eintippen (TT.MM.JJJJ), übernimmt bei Enter oder Verlassen des Felds
+function DateTyper({ label, value, on, max, onFocus, onCommit }) {
+  const fmt = (d) => (d ? d.split("-").reverse().join(".") : "");
+  const [txt, setTxt] = useState(fmt(value)), [bad, setBad] = useState(false), [edit, setEdit] = useState(false);
+  useEffect(() => { if (!edit) setTxt(fmt(value)); }, [value, edit]);
+  const commit = () => {
+    setEdit(false);
+    const m = txt.trim().match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2}|\d{4})$/);
+    if (!m) { setBad(!!txt.trim() && txt.trim() !== fmt(value)); setTxt(fmt(value)); return; }
+    const y = m[3].length === 2 ? 2000 + +m[3] : +m[3], d = new Date(y, +m[2] - 1, +m[1]);
+    if (d.getMonth() !== +m[2] - 1) { setBad(true); setTxt(fmt(value)); return; }
+    let iso = d.toLocaleDateString("sv-SE"); if (iso > max) iso = max;
+    setBad(false); if (iso !== value) onCommit(iso); else setTxt(fmt(value));
+  };
+  return (
+    <label className={"rcalfield" + (on ? " on" : "") + (bad ? " bad" : "")} onClick={onFocus}>
+      <small>{label}</small>
+      <input value={txt} inputMode="numeric" placeholder="TT.MM.JJJJ" onFocus={() => { setEdit(true); onFocus(); }} onChange={(e) => setTxt(e.target.value)} onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }} />
+    </label>
+  );
+}
 function RangeCalendar({ from, to, max, onChange }) {
   const [view, setView] = useState(() => (to || max).slice(0, 7));
   const [pickEnd, setPickEnd] = useState(false), [hover, setHover] = useState(null);
@@ -3085,7 +3107,7 @@ function RangeCalendar({ from, to, max, onChange }) {
   const endPrev = pickEnd && hover ? (hover < from ? [hover, from] : [from, hover]) : [from, to];
   const click = (iso) => {
     if (iso > max) return;
-    if (!pickEnd) { onChange(iso, iso); setPickEnd(true); }
+    if (!pickEnd) { onChange(iso, to && to >= iso ? to : iso); setPickEnd(true); }
     else { onChange(iso < from ? iso : from, iso < from ? from : iso); setPickEnd(false); setHover(null); }
   };
   const years = []; for (let yy = +max.slice(0, 4); yy >= +max.slice(0, 4) - 15; yy--) years.push(yy);
@@ -3093,9 +3115,11 @@ function RangeCalendar({ from, to, max, onChange }) {
   return (
     <div className="rcal">
       <div className="rcalsel">
-        <button className={!pickEnd ? "on" : ""} onClick={() => setPickEnd(false)}><small>von</small><b>{fmt(from)}</b></button>
+        <DateTyper label="von" value={from} on={!pickEnd} max={max} onFocus={() => { setPickEnd(false); setView(from.slice(0, 7)); }}
+          onCommit={(d) => { onChange(d, d > to ? d : to); setView(d.slice(0, 7)); setPickEnd(true); }} />
         <span aria-hidden="true">→</span>
-        <button className={pickEnd ? "on" : ""} onClick={() => setPickEnd(true)}><small>bis</small><b>{fmt(to)}</b></button>
+        <DateTyper label="bis" value={to} on={pickEnd} max={max} onFocus={() => { setPickEnd(true); setView(to.slice(0, 7)); }}
+          onCommit={(d) => { onChange(d < from ? d : from, d < from ? from : d); setView(d.slice(0, 7)); setPickEnd(false); }} />
       </div>
       <div className="rcalhead">
         <button className="iconbtn" aria-label="Voriger Monat" onClick={() => go(-1)}>‹</button>
@@ -3111,7 +3135,7 @@ function RangeCalendar({ from, to, max, onChange }) {
             onMouseEnter={() => pickEnd && setHover(c.iso)} onClick={() => click(c.iso)}>{c.day}</button>;
         })}
       </div>
-      <small className="muted rcalhint">{pickEnd ? "Jetzt das Enddatum antippen" : "Startdatum antippen, dann Enddatum"}</small>
+      <small className="muted rcalhint">{pickEnd ? "Jetzt das Enddatum antippen – oder oben eintippen" : "Startdatum antippen, dann Enddatum – oder oben eintippen (TT.MM.JJJJ)"}</small>
     </div>
   );
 }
@@ -9456,4 +9480,8 @@ html,body{min-height:100%}
 .rcald.today:not(.edge)::after{content:"";position:absolute;left:50%;bottom:6px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--acc)}
 .rcald:not(.edge):not(:disabled):hover{background:color-mix(in srgb,var(--acc) 30%,transparent)}
 .rcalhint{display:block;margin-top:6px}
+
+.rcalfield{flex:1;display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);margin:0;cursor:text;min-width:0}
+.rcalfield.on{border-color:var(--acc)}.rcalfield.bad{border-color:var(--red)}.rcalfield small{font-size:11px;color:var(--mut)}
+.rcalfield input{border:0!important;background:none!important;padding:0!important;margin:0;font:inherit;font-size:16px;font-weight:700;color:var(--txt);width:100%;min-width:0;box-shadow:none!important;outline:none;height:auto!important}
 `;

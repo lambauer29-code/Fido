@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.52.1
+- Zeitraum-Kalender: „von“ und „bis“ lassen sich jetzt direkt eintippen (TT.MM.JJJJ, auch 1.3.23) – praktisch für Zeiträume über mehrere Jahre. Beim Ändern des Startdatums bleibt das Enddatum erhalten. Ein Klick in den Kalender direkt nach dem Antippen eines Felds geht nicht mehr verloren.
+
 ## v0.52.0
 - Analyse, eigener Zeitraum: großer eigener Kalender statt der kleinen Browser-Datumsauswahl – Start- und Enddatum antippen, Bereich farbig markiert, Monat/Jahr per Auswahl, Felder „von/bis“. Anzeige oben nur noch das gewählte Datum (ohne Pfeile).
 
