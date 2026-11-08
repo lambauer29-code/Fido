@@ -531,8 +531,7 @@ function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, not
   };
 
   return (
-    <fieldset className="span2">
-      <legend>Dokumente – Gruppen & Kategorien</legend>
+    <SetSec id="docgroups" title="Dokumente – Gruppen & Kategorien">
       <p className="muted small">Am Griff <b>⠿</b> ziehen, um Kategorien zu sortieren oder in eine andere Gruppe zu verschieben – auch ganze Gruppen. Die Gruppe legt fest, ob ihre Dokumente als Finanzen, Verträge oder Sonstiges zählen („Sonstiges“ fließt nicht in Übersicht und Budgets).</p>
       {groups.map((g, gi) => (
         <React.Fragment key={g.id}>
@@ -579,11 +578,11 @@ function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, not
         <button className="link" onClick={() => confirm("Dokument-Gruppen auf Standard zurücksetzen? (Kategorien bleiben erhalten)") && save(buildDocGroups(all))}>Zurücksetzen</button>
       </div>
       {dnd.ghost}
-    </fieldset>
+    </SetSec>
   );
 }
 
-function NavSettings({ nav, setNav, accounts, setAccounts, txs, deleteAccount, notify }) {
+function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAccount, notify }) {
   const [edit, setEdit] = useState(null);
   const resolved = resolveGroups(nav, accounts);
   const real = resolved.filter((g) => !g.auto);
@@ -605,8 +604,7 @@ function NavSettings({ nav, setNav, accounts, setAccounts, txs, deleteAccount, n
 
   return (
     <>
-      <fieldset className="span2">
-        <legend>Seitenleiste – Reiter</legend>
+      {part !== "accounts" && <SetSec id="nav-tabs" title="Seitenleiste – Reiter">
         <p className="muted small">Am Griff <b>⠿</b> ziehen zum Sortieren. Namen ändern und mit ✓ übernehmen. „Leiste“ = Seitenleiste auf Tablet & Mac, „Handy“ = untere Leiste am Phone (am besten max. 5).</p>
         <div data-tab-list={`t|${nav.tabs.length}`}>
           {nav.tabs.map((t, i) => (
@@ -624,10 +622,9 @@ function NavSettings({ nav, setNav, accounts, setAccounts, txs, deleteAccount, n
           {dnd.lineAt("tab", "t", nav.tabs.length) && <div className="dropline" />}
         </div>
         <p className="muted small">Handy-Leiste: {nav.tabs.filter((t) => t.phone).length} Reiter{nav.tabs.filter((t) => t.phone).length > 5 ? " – mehr als 5 werden am Phone eng" : ""}</p>
-      </fieldset>
+      </SetSec>}
 
-      <fieldset className="span2">
-        <legend>Konten & Gruppen</legend>
+      {part !== "tabs" && <SetSec id="nav-accounts" title="Konten & Gruppen">
         <p className="muted small">Gruppen erscheinen unter „{tabLabel(nav, "accounts")}“ mit Überschrift und Trennlinie und lassen sich dort ein- und ausklappen. Konten und Gruppen am Griff <b>⠿</b> verschieben. Leere Überschrift = nur Trennlinie.</p>
         {resolved.map((g, gi) => (
           <React.Fragment key={g.id}>
@@ -667,9 +664,9 @@ function NavSettings({ nav, setNav, accounts, setAccounts, txs, deleteAccount, n
           <button className="link" onClick={() => confirm("Seitenleiste auf Standard zurücksetzen?") && setNav((n) => ({ ...DEFAULT_NAV, docGroups: n.docGroups }))}>Zurücksetzen</button>
         </div>
         {dnd.ghost}
-      </fieldset>
+      </SetSec>}
 
-      {edit && (
+      {part !== "tabs" && edit && (
         <AccountSheet init={edit === "new" ? null : edit} hasAtmAccount={accounts.some((a) => a.atm && a.id !== edit?.id)} txs={txs}
           onClose={() => setEdit(null)}
           onDelete={edit !== "new" ? () => { if (confirm(`Konto „${edit.name}“ samt Umsätzen löschen?`)) { deleteAccount(edit.id); setEdit(null); } } : null}
@@ -2306,7 +2303,38 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
 }
 
 /* ---------- Einstellungen, Budgets, Papierkorb, Backup ---------- */
+const SetCtx = React.createContext(null);
+/* Einstellungs-Bereich: auf-/zuklappbar und per Griff verschiebbar */
+function SetSec({ id, title, children }) {
+  const c = React.useContext(SetCtx);
+  if (!c) return <fieldset><legend>{title}</legend>{children}</fieldset>;
+  const idx = c.order.indexOf(id), open = !c.collapsed.includes(id);
+  return (
+    <>
+      {c.dnd.lineAt("sec", "s", idx) && <div className="dropline" />}
+      <fieldset className={"ssec" + (open ? " open" : "") + (c.dnd.isDragging("sec", "s", idx) ? " dragging" : "")} data-sec-item={"s|" + idx}>
+        <div className="ssechead">
+          <Handle onDown={(e) => c.dnd.start(e, { kind: "sec", list: "s", index: idx, label: title })} label="Bereich verschieben" />
+          <button type="button" className="ssectitle" onClick={() => c.toggle(id)} aria-expanded={open}>
+            <span className="grow">{title}</span><IcoChev open={open} />
+          </button>
+        </div>
+        {open && <div className="ssecbody">{children}</div>}
+      </fieldset>
+    </>
+  );
+}
+
 function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+  const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
+  const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "rules", "trash", "backup", "verbindung"]);
+  useEffect(() => ls.set("settingsOrder", secOrder), [secOrder]);
+  useEffect(() => ls.set("settingsClosed", secClosed), [secClosed]);
+  const secDnd = useDnd((d, over) => setSecOrder((cur) => {
+    const ids = ["darstellung", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "rules", "trash", "backup", "verbindung"];
+    const full = [...cur.filter((x) => ids.includes(x)), ...ids.filter((x) => !cur.includes(x))];
+    return moveBetween({ s: full }, "s", d.index, "s", over.index).s;
+  }));
   const impRef = useRef();
   const [imp, setImp] = useState(null);
   const [health, setHealth] = useState(null);
@@ -2343,15 +2371,8 @@ function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmou
     finally { setBusy(false); }
   }
 
-  return (
-    <div className="settings">
-      <div className="tile frow click" onClick={() => setTab("deadlines")}>
-        <span className="caticon" style={{ width: 40, height: 40, background: "#e5484d22", fontSize: 18 }}>⏰</span>
-        <div className="grow"><b>Fristen</b><small className="muted block">Zahlungen, Kündigungen, Termine</small></div><span className="muted">›</span>
-      </div>
-
-      <fieldset className="span2">
-        <legend>Darstellung</legend>
+  const sections = {
+    "darstellung": <><SetSec id="darstellung" title="Darstellung">
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
             <button key={k} role="radio" aria-checked={themeMode === k} className={themeMode === k ? "on" : ""} onClick={() => setThemeMode(k)}>
@@ -2359,18 +2380,14 @@ function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmou
             </button>
           ))}
         </div>
-      </fieldset>
-
-      <fieldset className="span2">
-        <legend>Datenschutz</legend>
+      </SetSec></>,
+    "datenschutz": <><SetSec id="datenschutz" title="Datenschutz">
         <label className="switchrow">
           <span><b>Geldbeträge anzeigen</b><small className="muted block">Aus = alle Beträge werden als „€ •••“ verdeckt (z. B. wenn jemand mitschaut). Schnell umschalten auch mit dem Augen-Symbol oben rechts.</small></span>
           <input type="checkbox" className="switch" checked={!hideAmounts} onChange={(e) => setHideAmounts(!e.target.checked)} />
         </label>
-      </fieldset>
-
-      <fieldset className="span2">
-        <legend>Umsätze importieren</legend>
+      </SetSec></>,
+    "import": <><SetSec id="import" title="Umsätze importieren">
         <p className="muted small">Kontoauszüge von Banken, Brokern & Co.: CSV · Excel · CAMT · MT940 · OFX · QIF · JSON · Finanzguru · PDF/Foto (per Claude). Doppelte Buchungen werden übersprungen, Kontostände übernommen.</p>
         <input ref={impRef} type="file" accept={IMPORT_ACCEPT} hidden onChange={async (e) => {
           const f = e.target.files[0]; e.target.value = ""; if (!f) return;
@@ -2378,12 +2395,10 @@ function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmou
         }} />
         <button className="btn primary" onClick={() => impRef.current.click()}>⬆︎ Datei auswählen …</button>
         {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
-      </fieldset>
-
-      <NavSettings nav={nav} setNav={setNav} accounts={accounts} setAccounts={setAccounts} txs={txs} deleteAccount={deleteAccount} notify={notify} />
-
-      <fieldset>
-        <legend>Budgets pro Monat</legend>
+      </SetSec></>,
+    "nav-tabs": <><NavSettings part="tabs" nav={nav} setNav={setNav} accounts={accounts} setAccounts={setAccounts} txs={txs} deleteAccount={deleteAccount} notify={notify} /></>,
+    "nav-accounts": <><NavSettings part="accounts" nav={nav} setNav={setNav} accounts={accounts} setAccounts={setAccounts} txs={txs} deleteAccount={deleteAccount} notify={notify} /></>,
+    "budgets": <><SetSec id="budgets" title="Budgets pro Monat">
         <p className="muted small">Leer lassen = kein Budget. Ausgaben werden nach Dokumentdatum gezählt.</p>
         {categories.filter((c) => c !== "Sonstiges").map((c) => (
           <div key={c} className="budrow">
@@ -2392,31 +2407,24 @@ function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmou
               onChange={(e) => { const v = e.target.value.replace(",", "."); setBudgets({ ...budgets, [c]: v === "" ? undefined : Number(v) }); }} />
           </div>
         ))}
-      </fieldset>
-
-      <fieldset>
-        <legend>Meine Daten (für Kündigungsschreiben)</legend>
+      </SetSec></>,
+    "meinedaten": <><SetSec id="meinedaten" title="Meine Daten (für Kündigungsschreiben)">
         <label>Name<input value={me.name} onChange={(e) => setMe({ ...me, name: e.target.value })} /></label>
         <label>Adresse<textarea rows={2} value={me.address} onChange={(e) => setMe({ ...me, address: e.target.value })} /></label>
         <label>Ort<input value={me.city} onChange={(e) => setMe({ ...me, city: e.target.value })} /></label>
-      </fieldset>
-
-      <DocNavSettings nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} />
-
-      {!!rules.length && (
-        <fieldset>
-          <legend>Kategorie-Regeln ({rules.length})</legend>
+      </SetSec></>,
+    "docgroups": <><DocNavSettings nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} /></>,
+    "rules": <>{!!rules.length && (
+        <SetSec id="rules" title={`Kategorie-Regeln (${rules.length})`}>
           {rules.map((r) => (
             <div key={r.match} className="frow">
               <div className="grow"><b className="small">„{r.match}“</b><small className="muted block">→ {r.category}</small></div>
               <button className="link red" onClick={() => setRules(rules.filter((x) => x.match !== r.match))}>✕</button>
             </div>
           ))}
-        </fieldset>
-      )}
-
-      <fieldset>
-        <legend>Papierkorb ({trash.length})</legend>
+        </SetSec>
+      )}</>,
+    "trash": <><SetSec id="trash" title={`Papierkorb (${trash.length})`}>
         <p className="muted small">Wird nach {TRASH_DAYS} Tagen automatisch geleert.</p>
         <ul className="list">
           {trash.map((d) => (
@@ -2429,10 +2437,8 @@ function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmou
             </li>
           ))}
         </ul>
-      </fieldset>
-
-      <fieldset>
-        <legend>Backup</legend>
+      </SetSec></>,
+    "backup": <><SetSec id="backup" title="Backup">
         <p className="muted small">Die Dokumente liegen nur in diesem Browser auf diesem Gerät. Regelmäßig sichern (z. B. in iCloud Drive) – darüber auch auf ein anderes Gerät übertragen.</p>
         <div className="actions">
           <button className="btn" disabled={busy || (!docs.length && !txs.length)} onClick={exportBackup}>⬇︎ Backup exportieren</button>
@@ -2440,10 +2446,8 @@ function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmou
         </div>
         <input ref={importRef} type="file" accept="application/json" hidden onChange={(e) => { e.target.files[0] && importBackup(e.target.files[0]); e.target.value = ""; }} />
         <p className="muted small">{docs.length} Dokumente · {txs.length} Umsätze · {usage}</p>
-      </fieldset>
-
-      <fieldset>
-        <legend>Verbindung</legend>
+      </SetSec></>,
+    "verbindung": <><SetSec id="verbindung" title="Verbindung">
         <label>App-Token (wie APP_TOKEN in Vercel)
           <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="geheimes Passwort" />
         </label>
@@ -2463,8 +2467,31 @@ function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmou
             </>}
           </div>
         )}
-      </fieldset>
+      </SetSec></>
+  };
+  const ids = Object.keys(sections);
+  const order = [...secOrder.filter((x) => ids.includes(x)), ...ids.filter((x) => !secOrder.includes(x))];
+  const ctx = { order, collapsed: secClosed, dnd: secDnd,
+    toggle: (id) => setSecClosed((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id])) };
+  const allClosed = order.every((id) => secClosed.includes(id));
+  return (
+    <SetCtx.Provider value={ctx}>
+    <div className="settings" data-sec-list={"s|" + order.length}>
+      <div className="tile frow click" onClick={() => setTab("deadlines")}>
+        <span className="caticon" style={{ width: 40, height: 40, background: "#e5484d22", fontSize: 18 }}>⏰</span>
+        <div className="grow"><b>Fristen</b><small className="muted block">Zahlungen, Kündigungen, Termine</small></div><span className="muted">›</span>
+      </div>
+
+
+      <div className="secbar">
+        <small className="muted">Bereiche am Griff ⠿ ziehen zum Sortieren · Titel antippen zum Auf-/Zuklappen</small>
+        <button className="link" onClick={() => setSecClosed(allClosed ? [] : order)}>{allClosed ? "Alle aufklappen" : "Alle zuklappen"}</button>
+      </div>
+      {order.map((id) => <React.Fragment key={id}>{sections[id]}</React.Fragment>)}
+      {secDnd.lineAt("sec", "s", order.length) && <div className="dropline" />}
+      {secDnd.ghost}
     </div>
+    </SetCtx.Provider>
   );
 }
 
@@ -2844,4 +2871,17 @@ body.win-moving,body.win-moving *{user-select:none!important;-webkit-user-select
 .themeopts button span{font-size:22px}.themeopts button small{color:var(--mut);font-size:12px}
 .themeopts button.on{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 30%,transparent)}
 .fabmenu button:not(:first-child):not(:last-child){border-radius:0}
+
+/* v0.9.2 Einstellungen: Bereiche */
+.settings{display:flex!important;flex-direction:column;max-width:900px}
+.settings>.tile{margin:0 0 4px}
+.secbar{display:flex;align-items:center;gap:10px;justify-content:space-between;margin:10px 2px 0;flex-wrap:wrap}
+fieldset.ssec{padding:0}
+.ssechead{display:flex;align-items:center;gap:2px;padding:4px 8px 4px 4px}
+.ssectitle{flex:1;display:flex;align-items:center;gap:8px;background:transparent;border:0;color:var(--txt);font:inherit;font-weight:600;font-size:15px;text-align:left;padding:10px 6px;min-height:44px;cursor:pointer;border-radius:10px}
+.ssectitle:hover{background:var(--card2)}
+.ssectitle .pchev{color:var(--mut)}
+.ssecbody{padding:0 14px 14px;border-top:1px solid var(--line)}
+.ssecbody>p:first-child{margin-top:12px}
+.ssec.dragging{opacity:.35}
 `;
