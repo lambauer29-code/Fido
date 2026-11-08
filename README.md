@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.26.0
+
+- **Rechnung/Mahnung als Beleg an der Buchung**: Wird eine Rechnung mit einer Kontobuchung verknüpft oder ihr Zahlungseingang gebucht (Rechnungen, Mahnungen, beim Ausstellen), legt FinDocu das Rechnungs-PDF – inkl. aller Mahnungen als weitere Seiten – unter Dokumente ab (Firma, Einnahme, bezahlt) und hängt es als Beleg an die Buchung. Wird die Zahlung zurückgenommen, wird der Beleg von der Buchung gelöst.
+- **Gescannte/hochgeladene Dokumente automatisch an Buchungen hängen**: Nach dem Auslesen sucht FinDocu die passende Kontobuchung (gleicher Betrag – Brutto, Auszahlung oder Netto –, Datum passend, Absender/IBAN/Zahlungsreferenz) und hängt den Beleg an. Gilt jetzt für Ausgaben **und** Einnahmen (z. B. Lohnzettel ↔ Gehaltseingang), auch beim späteren Umsatz-Import.
+
 ## v0.25.3
 
 - **Buchungssuche beim Zahlungseingang** (Rechnungen, Mahnungen, Rechnung schreiben mit „Bezahlt“): Eingänge des gewählten Kontos durchsuchen – nach Name, Verwendungszweck oder Betrag. Automatisch vorgefiltert auf den Rechnungsbetrag (abschaltbar), ab Rechnungsdatum (ältere zuschaltbar); Treffer mit Rechnungsnummer/Kunde zuerst (⭐). Kontowechsel aktualisiert die Liste.

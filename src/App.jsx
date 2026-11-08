@@ -1341,6 +1341,7 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [txs, setTxsState] = useState([]);
   const txsRef = useRef([]);
+  const docsRef = useRef([]); docsRef.current = docs;
   const pendingLink = useRef(null);
   const setTxs = (v) => setTxsState((prev) => { const n = typeof v === "function" ? v(prev) : v; txsRef.current = n; return n; });
   const [accounts, setAccountsState] = useState(() => ls.get("accounts", []));
@@ -1500,17 +1501,45 @@ export default function App() {
   const [bizReq, setBizReq] = useState(0);
   const [imp, setImp] = useState(null);
   shareUi = setShareData;
+  // Rechnung (+ Mahnungen) als PDF-Beleg in Dokumente ablegen und an die Buchung hängen
+  async function attachInvoiceBeleg(invId, txId) {
+    try {
+      const inv = ls.get("invoices", []).find((x) => x.id === invId); if (!inv || !txId) return;
+      const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
+      let blob = await buildInvoicePdf(inv, co);
+      if ((inv.reminders || []).length) {
+        const { PDFDocument } = await import("pdf-lib");
+        const out = await PDFDocument.load(await blob.arrayBuffer());
+        for (let i = 0; i < inv.reminders.length; i++) {
+          const rb = await buildInvoicePdf({ ...inv, reminders: inv.reminders.slice(0, i + 1) }, co, inv.reminders[i]);
+          const src = await PDFDocument.load(await rb.arrayBuffer());
+          (await out.copyPages(src, src.getPageIndices())).forEach((pg) => out.addPage(pg));
+        }
+        blob = new Blob([await out.save()], { type: "application/pdf" });
+      }
+      const old = docsRef.current.find((d) => d.invoiceId === invId && !d.deletedAt);
+      const id = old?.id || uid();
+      const doc = { ...(old || {}), id, createdAt: old?.createdAt || new Date().toISOString(), fileName: invFileName(inv), mimeType: "application/pdf", size: blob.size,
+        title: `${inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${inv.number} – ${inv.customer?.name || ""}`.trim(), category: categories.includes("Einnahmen") ? "Einnahmen" : old?.category || "Sonstiges",
+        docType: "Ausgangsrechnung", tags: ["rechnung", "firma"], deadlines: [], sender: co.name, documentDate: inv.date, scope: "firma", scopeManual: true,
+        amount: { total: invTotal(inv), currency: "EUR" }, direction: "einnahme", paid: true, paidDate: inv.paidAt, status: "done", invoiceId: invId,
+        summary: `${inv.kind === "angebot" ? "Angebot" : "Rechnung"} an ${inv.customer?.name || ""}${(inv.reminders || []).length ? ` inkl. ${inv.reminders.length} Mahnung(en)` : ""}`, notes: old?.notes || "" };
+      try { doc.thumb = await makeThumb(blob); } catch {}
+      await db.putFile(id, blob); await saveDoc(doc); await linkTx(txId, id);
+    } catch (e) { notify("Beleg konnte nicht angehängt werden: " + e.message); }
+  }
   // Zahlungseingang einer Rechnung auf ein Konto buchen bzw. mit vorhandener Buchung verknüpfen
   const bizBook = {
     accounts, txs,
     async create({ inv, accountId, date, amount, method }) {
       const tx = await addManualTx({ accountId, date, amount, counterparty: inv.customer?.name || "Kunde", purpose: `${inv.number}${method ? " · " + method : ""}`, category: "Einnahmen", invoiceId: inv.id, bookingText: "Rechnung" });
-      notify(`Zahlungseingang ${fmtMoney(amount)} gebucht`); return tx.id;
+      notify(`Zahlungseingang ${fmtMoney(amount)} gebucht – Rechnung als Beleg angehängt`); setTimeout(() => attachInvoiceBeleg(inv.id, tx.id), 100); return tx.id;
     },
-    async link(txId, inv) { const t = txsRef.current.find((x) => x.id === txId); if (t) await updateTx({ ...t, invoiceId: inv.id, category: t.category && t.category !== "Sonstiges" ? t.category : "Einnahmen" }); return txId; },
+    async link(txId, inv) { const t = txsRef.current.find((x) => x.id === txId); if (t) await updateTx({ ...t, invoiceId: inv.id, category: t.category && t.category !== "Sonstiges" ? t.category : "Einnahmen" }); setTimeout(() => attachInvoiceBeleg(inv.id, txId), 100); return txId; },
     async unlink(txId, removeCreated) {
       const t = txsRef.current.find((x) => x.id === txId); if (!t) return;
-      if (removeCreated && t.manual && t.invoiceId) await deleteTx(t); else await updateTx({ ...t, invoiceId: undefined });
+      const belegDoc = t.docId && docsRef.current.find((d) => d.id === t.docId && d.invoiceId);
+      if (removeCreated && t.manual && t.invoiceId) await deleteTx(t); else await updateTx({ ...t, invoiceId: undefined, ...(belegDoc ? { docId: undefined } : {}) });
     },
   };
   const scanCb = useRef(null);
@@ -1626,6 +1655,10 @@ export default function App() {
       });
       await saveDoc(done);
       if (doc.payCash && done.amount?.total && done.direction !== "einnahme") await bookCash({ ...done, direction: "ausgabe" });
+      else if (!txsRef.current.some((t) => t.docId === done.id)) {
+        const [l] = matchInvoices([done], txsRef.current);
+        if (l) { await linkTx(l.txId, done.id); const t = txsRef.current.find((x) => x.id === l.txId); notify(`Beleg „${done.title}“ an Buchung ${t ? fmtDate(t.date) + " · " + fmtMoney(t.amount) : ""} angehängt`); }
+      }
     } catch (e) {
       await saveDoc({ ...doc, status: "error", error: e.message });
     }

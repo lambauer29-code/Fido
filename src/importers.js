@@ -520,10 +520,14 @@ export function detectRecurring(txs) {
 /* ---------- Abgleich Umsätze ↔ Rechnungen ---------- */
 export function matchInvoices(docs, txs) {
   const links = []; const usedTx = new Set(txs.filter((t) => t.docId).map((t) => t.id));
+  const linkedDocs = new Set(txs.filter((t) => t.docId).map((t) => t.docId));
   for (const d of docs) {
-    if (d.deletedAt || d.paid || d.direction !== "ausgabe" || !d.amount?.total) continue;
+    if (d.deletedAt || !["ausgabe", "einnahme"].includes(d.direction) || !d.amount?.total || linkedDocs.has(d.id) || d.invoiceId) continue;
+    if (d.paid && d.direction === "ausgabe" && d.paidCash) continue;
     const base = d.documentDate || (d.createdAt || "").slice(0, 10);
-    const cands = txs.filter((t) => !usedTx.has(t.id) && t.amount < 0 && Math.abs(-t.amount - d.amount.total) < 0.015 &&
+    const sign = d.direction === "einnahme" ? 1 : -1;
+    const amts = [d.amount.total, d.amount.payout, d.amount.net].filter((x) => x != null && x > 0);
+    const cands = txs.filter((t) => !usedTx.has(t.id) && t.amount * sign > 0 && amts.some((a) => Math.abs(Math.abs(t.amount) - a) < 0.015) &&
       (!base || (t.date >= shift(base, -7) && t.date <= shift(base, 75))));
     if (!cands.length) continue;
     const hay = (t) => norm(`${t.counterparty} ${t.purpose} ${t.reference || ""} ${t.iban}`);
