@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.45.0
+- Analyse: Konto-Auswahl bricht jetzt in mehrere Zeilen um (statt seitlich zu scrollen).
+- Vermögen: einzelne Konten (und „Weitere Werte“) auswählbar – Verlauf, Verteilung und Konten rechnen nur mit der Auswahl.
+- Neuer Reiter **„Firmenauswertung“**: Fakturiert, Eingegangen, Offen/Überfällig, Ø Zahlungsdauer & Pünktlichkeit, vereinfachte Einnahmen-Ausgaben-Rechnung (bezahlte Rechnungen − Dokumente „Firma“ − Kilometergeld), Umsatz pro Monat mit Kleinunternehmergrenze, Kunden, Leistungen & Artikel, Angebote (Annahmequote), Mahnwesen (versendet, Gebühren, überfällige Rechnungen). Jahr oder Gesamt.
+- Neuer Reiter **„Fahrtenbuch“** (Stil Drivvo): mehrere Fahrzeuge, Tanken (Preis/Liter/Gesamt rechnen sich gegenseitig, Volltank-Verbrauch), Ausgaben (Service, Reifen, Versicherung, Pickerl, Vignette …), Fahrten geschäftlich/privat/Arbeitsweg mit km-Ständen, Zweck und Kilometergeld (0,50 €/km, einstellbar), Erinnerungen nach Datum oder km-Stand, Berichte (Kosten/Monat, Verbrauchsverlauf, Kosten nach Art, km-Aufteilung) und CSV-Export fürs Finanzamt. Tanken/Ausgaben optional direkt im Konto buchen.
+
 ## v0.44.0
 - Reiter „Barausgabe“ heißt jetzt **„Ausgabe“** und wurde neu gebaut (Vorbild Bonsy): Beleg scannen, QR-Code oder Foto/PDF; Firma, Gesamtbetrag, Datum, Konto (alle Konten), Kategorie und **einzelne Positionen mit Warengruppe** (z. B. 1× Red Bull 0,95 € · Getränke). Die KI füllt alles nach dem Scannen selbst aus; Datum nur, wenn es heute oder in der Vergangenheit liegt. Differenz zwischen Positionen und Gesamtbetrag wird angezeigt.
 - **QR-Scanner für Kassenbons**: österreichischer Registrierkassen-QR (RKSV) und deutscher TSE-QR – übernimmt Betrag, Datum, Beleg-Nr. und Steuersätze. Händlername steht nicht im QR; wird gemerkt, sobald die Kasse einmal zugeordnet wurde.

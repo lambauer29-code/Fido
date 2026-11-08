@@ -480,7 +480,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -553,7 +553,7 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 const DEFAULT_NAV = {
   tabs: [
     { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: false, parent: "docs" },
-    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "analyse", side: true, phone: false }, { key: "vermoegen", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "kunden", side: true, phone: false }, { key: "mahnungen", side: true, phone: false }, { key: "artikel", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: false, parent: "settings" }
+    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "analyse", side: true, phone: false }, { key: "vermoegen", side: true, phone: false }, { key: "fahrtenbuch", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "kunden", side: true, phone: false }, { key: "mahnungen", side: true, phone: false }, { key: "firma", side: true, phone: false }, { key: "artikel", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: false, parent: "settings" }
   ],
   groups: [
     { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
@@ -579,8 +579,7 @@ function loadNav() {
   const keys = n.tabs.map((t) => t.key);
   // fehlende (neue) Reiter vor „Einstellungen“ einfügen
   // Analyse/Vermögen direkt nach „Ausgabe“ einfügen
-  for (const k of ["analyse", "vermoegen"]) if (!keys.includes(k)) {
-    const prevKey = k === "analyse" ? "cash" : "analyse";
+  for (const [k, prevKey] of [["analyse", "cash"], ["vermoegen", "analyse"], ["fahrtenbuch", "vermoegen"], ["firma", "mahnungen"]]) if (!keys.includes(k)) {
     const pi = n.tabs.findIndex((t) => t.key === prevKey);
     if (pi >= 0) { n.tabs = [...n.tabs.slice(0, pi + 1), DEFAULT_NAV.tabs.find((t) => t.key === k), ...n.tabs.slice(pi + 1)]; keys.push(k); }
   }
@@ -600,6 +599,8 @@ const TAB_SVG = {
   accounts: <><path d="M3 10 12 4l9 6" /><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8" /><path d="M3 20h18" /></>,
   analyse: <><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M21 20H3" /></>,
   vermoegen: <><path d="M3 17l5-5 4 4 8-8" /><path d="M15 8h5v5" /><path d="M3 21h18" /></>,
+  fahrtenbuch: <><path d="M5 17h14v-5l-2-5H7l-2 5z" /><path d="M5 12h14" /><circle cx="8" cy="17" r="1.8" /><circle cx="16" cy="17" r="1.8" /></>,
+  firma: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 16v-3M12 16V9M16 16v-5" /></>,
   cash: <><rect x="2.5" y="6" width="19" height="12" rx="2.5" /><circle cx="12" cy="12" r="2.6" /><path d="M6 9.5v5M18 9.5v5" /></>,
   invoices: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
   kunden: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.5 3 5.2" /></>,
@@ -1956,6 +1957,8 @@ function AppMain() {
           suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")}
           docs={active} onOpen={setOpenId} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
         {tab === "analyse" && <Analysis txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} accounts={visAccounts} hasCash={visAccounts.some((a) => a.kind === "cash")} />}
+        {tab === "fahrtenbuch" && <Fahrtenbuch accounts={visAccounts} notify={notify} onBook={async (t) => { const tx = await addManualTx(t); return tx; }} />}
+        {tab === "firma" && <BizReport docs={active} setTab={setTab} />}
         {tab === "vermoegen" && <Wealth txs={txs} accounts={visAccounts} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
         {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
@@ -2360,6 +2363,418 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
   );
 }
 
+/* ======================= Firmen-Auswertung ======================= */
+function BizReport({ docs, setTab }) {
+  const [list] = useLsState("invoices", []);
+  const [fb] = useLsState("fbook", FB_EMPTY);
+  const thisYear = todayISO().slice(0, 4);
+  const [year, setYear] = useState(thisYear);
+  const years = [...new Set([thisYear, ...list.map((x) => (x.date || "").slice(0, 4)).filter(Boolean)])].sort().reverse();
+  const inY = (d) => year === "alle" || (d || "").startsWith(year);
+  const inv = list.filter((x) => x.kind === "rechnung" && !["entwurf", "storniert"].includes(invState(x)));
+  const yInv = inv.filter((x) => inY(x.date));
+  const net = (x) => invTotal({ ...x, fee: 0 }), sum = (l, f = invTotal) => l.reduce((s, x) => s + f(x), 0);
+  const billed = sum(yInv, net);
+  const paidL = inv.filter((x) => invState(x) === "bezahlt" && inY(x.paidAt || x.date));
+  const received = sum(paidL);
+  const openL = inv.filter((x) => ["offen", "überfällig"].includes(invState(x)));
+  const overL = openL.filter((x) => invState(x) === "überfällig");
+  const days = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
+  const paidWithDates = yInv.filter((x) => invState(x) === "bezahlt" && x.paidAt && x.date);
+  const avgDays = paidWithDates.length ? Math.round(paidWithDates.reduce((s, x) => s + Math.max(0, days(x.date, x.paidAt)), 0) / paidWithDates.length) : null;
+  const onTime = paidWithDates.filter((x) => x.paidAt <= invDue(x)).length;
+  // Betriebsausgaben: Dokumente „Firma“ mit Ausgabe + Kilometergeld aus dem Fahrtenbuch
+  const bizDocs = docs.filter((d) => d.scope === "firma" && d.direction === "ausgabe" && d.amount?.total && inY(d.documentDate || d.createdAt));
+  const expDocs = bizDocs.reduce((s, d) => s + Math.abs(d.amount.total), 0);
+  const bizTrips = (fb.entries || []).filter((e) => e.type === "trip" && e.purpose === "business" && inY(e.date));
+  const bizKm = bizTrips.reduce((s, e) => s + Math.max(0, (+e.endKm || 0) - (+e.startKm || 0)), 0);
+  const kmRate = +(fb.settings?.kmRate ?? 0.5);
+  const kmMoney = Math.min(bizKm, 30000) * kmRate;
+  const profit = received - expDocs - kmMoney;
+  // Monate
+  const months = year === "alle" ? (() => { const t = todayISO().slice(0, 7); const o = []; for (let i = 11; i >= 0; i--) o.push(addMon(t, -i)); return o; })() : Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
+  const chart = months.map((m) => ({ k: m, label: monthLabel(m).split(" ")[0], a: sum(inv.filter((x) => invState(x) === "bezahlt" && (x.paidAt || x.date || "").startsWith(m))), b: sum(inv.filter((x) => (x.date || "").startsWith(m)), net) }));
+  // Kunden
+  const byCust = {};
+  yInv.forEach((x) => { const k = x.customer?.name || "Ohne Kunde"; const c = byCust[k] || (byCust[k] = { k, v: 0, n: 0, open: 0, late: 0 }); c.v += net(x); c.n++; if (["offen", "überfällig"].includes(invState(x))) c.open += invTotal(x); if ((x.reminders || []).length) c.late++; });
+  const custs = Object.values(byCust).sort((a, b) => b.v - a.v);
+  // Leistungen
+  const byItem = {};
+  yInv.forEach((x) => (x.items || []).forEach((it) => { const k = normName(it.text || "Position").split("\n")[0].slice(0, 60); const o = byItem[k] || (byItem[k] = { k, v: 0, q: 0, unit: it.unit || "" }); o.v += (+it.qty || 0) * (+it.price || 0); o.q += +it.qty || 0; }));
+  const items = Object.values(byItem).sort((a, b) => b.v - a.v).slice(0, 10);
+  // Angebote
+  const offers = list.filter((x) => x.kind === "angebot" && x.status !== "entwurf" && inY(x.date));
+  const accepted = offers.filter((x) => x.status === "angenommen"), declined = offers.filter((x) => x.status === "abgelehnt");
+  // Mahnungen
+  const rem = inv.flatMap((x) => (x.reminders || []).map((r) => ({ x, r }))).filter((h) => inY(h.r.date));
+  const feesPaid = inv.filter((x) => invState(x) === "bezahlt" && inY(x.paidAt || x.date)).reduce((s, x) => s + (+x.fee || 0), 0);
+  const withRem = yInv.filter((x) => (x.reminders || []).length).length;
+  // Kleinunternehmer
+  const kuYear = year === "alle" ? thisYear : year;
+  const kuRev = sum(inv.filter((x) => (x.date || "").startsWith(kuYear)), net);
+  const kuPct = Math.min(100, (kuRev / KU_LIMIT) * 100);
+  return (
+    <div className="anapage">
+      <div className="anahead">
+        <div className="chips anaaccs">{[...years, "alle"].map((y) => <button key={y} className={"chip" + (year === y ? " on" : "")} onClick={() => setYear(y)}>{y === "alle" ? "Gesamt" : y}</button>)}</div>
+      </div>
+      <div className="anakpis">
+        <div className="tile kpi"><small className="muted">Fakturiert</small><div className="kpiv">{fmtMoney(billed)}</div><small className="muted">{yInv.length} Rechnungen</small></div>
+        <div className="tile kpi"><small className="muted">Eingegangen</small><div className="kpiv pos">{fmtMoney(received)}</div><small className="muted">{paidL.length} bezahlt</small></div>
+        <div className="tile kpi click" onClick={() => setTab("invoices")}><small className="muted">Offen</small><div className={"kpiv" + (overL.length ? " neg" : "")}>{fmtMoney(sum(openL))}</div><small className={overL.length ? "warnc" : "muted"}>{openL.length} offen{overL.length ? ` · ${overL.length} überfällig` : ""}</small></div>
+        <div className="tile kpi"><small className="muted">Ø Zahlungsdauer</small><div className="kpiv">{avgDays != null ? avgDays + " Tage" : "—"}</div><small className="muted">{paidWithDates.length ? `${pct(onTime, paidWithDates.length)} % pünktlich` : "noch keine Zahlungen"}</small></div>
+      </div>
+      <section className="tile">
+        <div className="tilehead"><b>Einnahmen-Ausgaben-Rechnung</b><small>{year === "alle" ? "gesamt" : year} · vereinfacht</small></div>
+        <div className="earrow"><span>Betriebseinnahmen (bezahlte Rechnungen)</span><b className="pos">{fmtMoney(received)}</b></div>
+        <div className="earrow"><span>Betriebsausgaben (Dokumente „Firma“, {bizDocs.length})</span><b className="neg">−{fmtMoney(expDocs)}</b></div>
+        <div className="earrow"><span>Kilometergeld ({bizKm.toLocaleString("de-AT")} km × {fmtMoney(kmRate)}){bizKm > 30000 ? " · max. 30.000 km" : ""}</span><b className="neg">−{fmtMoney(kmMoney)}</b></div>
+        <div className="earrow total"><span>Gewinn (vor Steuern & SV)</span><b className={profit >= 0 ? "pos" : "neg"}>{fmtMoney(profit)}</b></div>
+        <small className="muted">Nur eine Übersicht aus den Daten der App – keine Steuerberatung. Ausgaben zählen, wenn das Dokument als „Firma“ markiert ist.</small>
+      </section>
+      <section className="tile">
+        <div className="tilehead"><b>Umsatz pro Monat</b><small>Kleinunternehmer {kuYear}: {fmtMoney(kuRev)} / {fmtMoney(KU_LIMIT)}</small></div>
+        <div className="kubar"><div style={{ width: kuPct + "%", background: kuPct > 90 ? "var(--red)" : kuPct > 75 ? "var(--warn)" : "var(--acc)" }} /></div>
+        <MiniBars data={chart} h={140} />
+        <div className="legend"><span className="dot inc" />Zahlungseingang <span className="dot out" />fakturiert</div>
+      </section>
+      <div className="anagrid">
+        <section className="tile">
+          <div className="tilehead"><b>Kunden</b><small>{custs.length}</small></div>
+          {custs.slice(0, 10).map((c) => (
+            <div key={c.k} className="frow"><div className="grow"><div className="row1"><span>{c.k}</span><span><b>{fmtMoney(c.v)}</b></span></div>
+              <Bar value={c.v} max={custs[0].v} color="var(--acc)" />
+              <small className="muted">{c.n} Rechnung{c.n === 1 ? "" : "en"} · {pct(c.v, billed)} %{c.open ? <span className="warnc"> · offen {fmtMoney(c.open)}</span> : ""}{c.late ? ` · ${c.late}× gemahnt` : ""}</small></div></div>))}
+          {!custs.length && <p className="muted small">Noch keine Rechnungen in diesem Zeitraum.</p>}
+        </section>
+        <section className="tile">
+          <div className="tilehead"><b>Leistungen & Artikel</b></div>
+          {items.map((x) => (
+            <div key={x.k} className="frow"><div className="grow"><div className="row1"><span>{x.k}</span><span><b>{fmtMoney(x.v)}</b></span></div>
+              <Bar value={x.v} max={items[0].v} color="#8b5cf6" /><small className="muted">{String(Math.round(x.q * 100) / 100).replace(".", ",")} {x.unit} · {pct(x.v, billed)} %</small></div></div>))}
+          {!items.length && <p className="muted small">Keine Positionen.</p>}
+        </section>
+        <section className="tile">
+          <div className="tilehead"><b>Angebote</b></div>
+          <div className="minikpis">
+            <div><small className="muted">Gestellt</small><b>{offers.length}</b><small className="muted">{fmtMoney(sum(offers, net))}</small></div>
+            <div><small className="muted">Angenommen</small><b className="pos">{accepted.length}</b><small className="muted">{offers.length ? pct(accepted.length, offers.length) + " %" : "—"}</small></div>
+            <div><small className="muted">Abgelehnt</small><b>{declined.length}</b><small className="muted">{fmtMoney(sum(declined, net))}</small></div>
+          </div>
+        </section>
+        <section className="tile click" onClick={() => setTab("mahnungen")}>
+          <div className="tilehead"><b>Mahnwesen</b><span className="muted">›</span></div>
+          <div className="minikpis">
+            <div><small className="muted">Versendet</small><b>{rem.length}</b><small className="muted">Erinnerungen & Mahnungen</small></div>
+            <div><small className="muted">Gemahnte Rechnungen</small><b>{withRem}</b><small className="muted">{yInv.length ? pct(withRem, yInv.length) + " % aller" : "—"}</small></div>
+            <div><small className="muted">Mahngebühren</small><b>{fmtMoney(feesPaid)}</b><small className="muted">eingenommen</small></div>
+          </div>
+          {overL.slice(0, 4).map((x) => (
+            <div key={x.id} className="frow"><div className="grow"><b>{x.number}</b><small className="muted block">{x.customer?.name} · seit {fmtDate(invDueEff(x))} fällig · {(x.reminders || []).length ? remindName((x.reminders || []).length - 1) : "noch nicht gemahnt"}</small></div>
+              <div className="right"><b className="neg">{fmtMoney(invTotal(x))}</b></div></div>))}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* ======================= Fahrtenbuch (Stil Drivvo) ======================= */
+const FB_EMPTY = { vehicles: [], entries: [], reminders: [], settings: { kmRate: 0.5 } };
+const FUELS = ["Super 95", "Super 98", "Diesel", "Strom (kWh)", "Autogas (LPG)", "CNG"];
+const FB_EXP = [["Service", "🔧"], ["Reparatur", "🛠️"], ["Reifen", "🛞"], ["Versicherung", "🛡️"], ["Motorbezogene Steuer", "🏛️"], ["Pickerl (§57a)", "✅"], ["Vignette & Maut", "🛣️"], ["Parken", "🅿️"], ["Autowäsche", "🧽"], ["Zubehör", "🧰"], ["Strafe", "🚨"], ["Sonstiges", "📁"]];
+const FB_ICON = { fuel: "⛽", expense: "🧾", trip: "🛣️" };
+const VEH_ICONS = ["🚗", "🚙", "🚐", "🛻", "🏍️", "🛵", "🚚", "⚡"];
+const kmFmt = (v) => (v == null || isNaN(v) ? "—" : Math.round(v).toLocaleString("de-AT") + " km");
+
+function fbStats(v, entries) {
+  const e = entries.filter((x) => x.vid === v.id);
+  const kms = [+v.startKm || 0, ...e.map((x) => +(x.type === "trip" ? x.endKm : x.km) || 0)];
+  const odo = Math.max(...kms);
+  const fuel = e.filter((x) => x.type === "fuel" && +x.km).sort((a, b) => a.km - b.km || a.date.localeCompare(b.date));
+  // Verbrauch nach Volltank-Methode
+  const cons = []; let lastFull = null, acc = 0;
+  for (const f of fuel) {
+    if (lastFull != null) acc += +f.liters || 0;
+    if (f.full) { if (lastFull != null && f.km > lastFull.km && acc > 0) cons.push({ date: f.date, km: f.km, v: (acc / (f.km - lastFull.km)) * 100, dist: f.km - lastFull.km }); lastFull = f; acc = 0; }
+  }
+  const totDist = cons.reduce((s, c) => s + c.dist, 0);
+  const avg = totDist ? cons.reduce((s, c) => s + (c.v * c.dist) / 100, 0) / totDist * 100 : null;
+  const costs = e.filter((x) => x.type !== "trip").reduce((s, x) => s + (+x.total || 0), 0);
+  const firstKm = Math.min(...kms);
+  const perKm = odo > firstKm ? costs / (odo - firstKm) : null;
+  return { odo, cons, avg, last: cons[cons.length - 1]?.v ?? null, costs, perKm, e };
+}
+
+function FbEntryWin({ init, vehicles, accounts, onSave, onDelete, onClose, lastKm, fuelPrice }) {
+  const [x, setX] = useState(() => ({ date: todayISO(), ...init }));
+  const set = (p) => setX((o) => ({ ...o, ...p }));
+  const v = vehicles.find((y) => y.id === x.vid) || vehicles[0];
+  const isNew = !init.id;
+  const t = x.type;
+  const n = (k) => parseAmt(x[k]);
+  // Tanken: aus zwei Werten den dritten berechnen
+  const calc = (p) => {
+    const o = { ...x, ...p }, L = parseAmt(o.liters), P = parseAmt(o.price), T = parseAmt(o.total);
+    if ("liters" in p || "price" in p) { if (L > 0 && P > 0) o.total = amtStr(L * P); }
+    else if ("total" in p && T > 0) { if (P > 0) o.liters = amtStr(T / P); else if (L > 0) o.price = (T / L).toFixed(3).replace(".", ","); }
+    setX(o);
+  };
+  const ok = x.vid && x.date && (t === "trip" ? n("endKm") > n("startKm") && (x.to || "").trim() : t === "fuel" ? n("total") > 0 && n("liters") > 0 : n("total") > 0 && (x.cat || "").trim());
+  const save = () => {
+    if (!ok) return;
+    const out = { ...x, id: x.id || uid() };
+    ["km", "startKm", "endKm"].forEach((k) => { if (out[k] !== undefined && out[k] !== "") out[k] = Math.round(parseAmt(out[k])); });
+    ["liters", "price", "total"].forEach((k) => { if (out[k] !== undefined && out[k] !== "") out[k] = parseAmt(out[k]); });
+    onSave(out);
+  };
+  const title = { fuel: "Tanken", expense: "Ausgabe", trip: "Fahrt" }[t];
+  return (
+    <Win id={"fb-" + t} onClose={onClose} small>
+      <div className="panelhead"><b>{FB_ICON[t]} {isNew ? title + " erfassen" : title}</b><XBtn /></div>
+      {vehicles.length > 1 && <label>Fahrzeug<select value={x.vid} onChange={(e) => set({ vid: e.target.value })}>{vehicles.map((y) => <option key={y.id} value={y.id}>{y.icon || "🚗"} {y.name}</option>)}</select></label>}
+      {t === "trip" ? (<>
+        <div className="seg">{[["business", "💼 Geschäftlich"], ["private", "🏠 Privat"], ["commute", "🏭 Arbeitsweg"]].map(([k, l]) => <button key={k} className={x.purpose === k ? "on" : ""} onClick={() => set({ purpose: k })}>{l}</button>)}</div>
+        <div className="grid2">
+          <label>Datum<input type="date" value={x.date} max={todayISO()} onChange={(e) => set({ date: e.target.value })} /></label>
+          <label>Uhrzeit<input type="time" value={x.time || ""} onChange={(e) => set({ time: e.target.value })} /></label>
+          <label>Von<input value={x.from || ""} placeholder="z. B. Linz" onChange={(e) => set({ from: e.target.value })} /></label>
+          <label>Nach<input value={x.to || ""} placeholder="z. B. Wels, Kunde Huber" onChange={(e) => set({ to: e.target.value })} /></label>
+          <label>km-Stand Beginn<input inputMode="numeric" value={x.startKm ?? ""} onChange={(e) => set({ startKm: e.target.value })} /></label>
+          <label>km-Stand Ende<input inputMode="numeric" value={x.endKm ?? ""} onChange={(e) => set({ endKm: e.target.value })} /></label>
+        </div>
+        <div className="fbkmhint">{n("endKm") > n("startKm") ? <b>{kmFmt(n("endKm") - n("startKm"))}</b> : <span className="muted">Strecke wird aus den km-Ständen berechnet</span>}
+          {x.purpose === "business" && n("endKm") > n("startKm") && <span className="muted"> · Kilometergeld {fmtMoney((n("endKm") - n("startKm")) * 0.5)}</span>}</div>
+        <label>Zweck der Fahrt{x.purpose === "business" ? " (Pflicht fürs Finanzamt)" : ""}<input value={x.note || ""} placeholder="z. B. Montage bei Kunde, Materialeinkauf" onChange={(e) => set({ note: e.target.value })} /></label>
+      </>) : (<>
+        <div className="grid2">
+          <label>Datum<input type="date" value={x.date} max={todayISO()} onChange={(e) => set({ date: e.target.value })} /></label>
+          <label>Kilometerstand<input inputMode="numeric" value={x.km ?? ""} placeholder={lastKm ? String(lastKm) : ""} onChange={(e) => set({ km: e.target.value })} /></label>
+        </div>
+        {t === "fuel" ? (<>
+          <label>Kraftstoff<select value={x.fuel || v?.fuel || FUELS[0]} onChange={(e) => set({ fuel: e.target.value })}>{FUELS.map((f) => <option key={f}>{f}</option>)}</select></label>
+          <div className="grid3">
+            <label>Preis/{/Strom/.test(x.fuel || v?.fuel || "") ? "kWh" : "Liter"}<input inputMode="decimal" value={x.price ?? ""} placeholder={fuelPrice ? String(fuelPrice).replace(".", ",") : "1,659"} onChange={(e) => calc({ price: e.target.value })} /></label>
+            <label>{/Strom/.test(x.fuel || v?.fuel || "") ? "kWh" : "Liter"}<input inputMode="decimal" value={x.liters ?? ""} onChange={(e) => calc({ liters: e.target.value })} /></label>
+            <label>Gesamt €<input inputMode="decimal" value={x.total ?? ""} onChange={(e) => calc({ total: e.target.value })} /></label>
+          </div>
+          <label className="check"><input type="checkbox" checked={x.full ?? true} onChange={(e) => set({ full: e.target.checked })} /> Vollgetankt (für die Verbrauchsberechnung)</label>
+          <label>Tankstelle<input value={x.station || ""} placeholder="z. B. OMV Linz Süd" onChange={(e) => set({ station: e.target.value })} /></label>
+        </>) : (<>
+          <div className="fbcats">{FB_EXP.map(([c, i]) => <button key={c} className={"chip" + (x.cat === c ? " on" : "")} onClick={() => set({ cat: c })}>{i} {c}</button>)}</div>
+          <div className="grid2">
+            <label>Betrag €<input inputMode="decimal" value={x.total ?? ""} onChange={(e) => set({ total: e.target.value })} /></label>
+            <label>Werkstatt / Anbieter<input value={x.station || ""} onChange={(e) => set({ station: e.target.value })} /></label>
+          </div>
+        </>)}
+        <label>Notiz<input value={x.note || ""} onChange={(e) => set({ note: e.target.value })} /></label>
+        {isNew && accounts.length > 0 && (
+          <div className="fbbook">
+            <label className="check"><input type="checkbox" checked={!!x.book} onChange={(e) => set({ book: e.target.checked, bookAcc: x.bookAcc || ls.get("expAcc", "") || accounts[0].id })} /> Auch als Ausgabe im Konto buchen</label>
+            {x.book && <select value={x.bookAcc} onChange={(e) => set({ bookAcc: e.target.value })}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}</select>}
+          </div>
+        )}
+      </>)}
+      <div className="row gap fbbtns">
+        <button className="btn primary" disabled={!ok} onClick={save}>Speichern</button>
+        {!isNew && <button className="btn danger" onClick={() => { if (confirm("Eintrag löschen?")) onDelete(x.id); }}>Löschen</button>}
+      </div>
+    </Win>
+  );
+}
+
+function VehicleWin({ init, onSave, onDelete, onClose }) {
+  const [v, setV] = useState(() => ({ icon: "🚗", fuel: "Super 95", ...init }));
+  const set = (p) => setV((o) => ({ ...o, ...p }));
+  return (
+    <Win id="fb-veh" onClose={onClose} small>
+      <div className="panelhead"><b>{init.id ? "Fahrzeug bearbeiten" : "Fahrzeug hinzufügen"}</b><XBtn /></div>
+      <div className="fbcats">{VEH_ICONS.map((i) => <button key={i} className={"chip" + (v.icon === i ? " on" : "")} onClick={() => set({ icon: i })}>{i}</button>)}</div>
+      <label>Name<input value={v.name || ""} autoFocus placeholder="z. B. Golf, Firmenauto" onChange={(e) => set({ name: e.target.value })} /></label>
+      <div className="grid2">
+        <label>Marke & Modell<input value={v.model || ""} placeholder="VW Golf 8" onChange={(e) => set({ model: e.target.value })} /></label>
+        <label>Kennzeichen<input value={v.plate || ""} placeholder="L-12345X" onChange={(e) => set({ plate: e.target.value.toUpperCase() })} /></label>
+        <label>Kraftstoff<select value={v.fuel} onChange={(e) => set({ fuel: e.target.value })}>{FUELS.map((f) => <option key={f}>{f}</option>)}</select></label>
+        <label>Tankvolumen (l)<input inputMode="decimal" value={v.tank ?? ""} onChange={(e) => set({ tank: e.target.value })} /></label>
+        <label>Kilometerstand jetzt<input inputMode="numeric" value={v.startKm ?? ""} onChange={(e) => set({ startKm: e.target.value })} /></label>
+        <label>Nutzung<select value={v.use || "privat"} onChange={(e) => set({ use: e.target.value })}><option value="privat">Privat</option><option value="firma">Firma</option><option value="beides">Privat & Firma</option></select></label>
+      </div>
+      <div className="row gap fbbtns">
+        <button className="btn primary" disabled={!(v.name || "").trim()} onClick={() => onSave({ ...v, id: v.id || uid(), name: v.name.trim(), startKm: Math.round(parseAmt(v.startKm) || 0) })}>Speichern</button>
+        {init.id && <button className="btn danger" onClick={() => { if (confirm("Fahrzeug samt allen Einträgen löschen?")) onDelete(v.id); }}>Löschen</button>}
+      </div>
+    </Win>
+  );
+}
+
+function Fahrtenbuch({ accounts, onBook, notify }) {
+  const [fb, setFb] = useLsState("fbook", FB_EMPTY);
+  const vehicles = fb.vehicles || [], entries = fb.entries || [], reminders = fb.reminders || [];
+  const [vid, setVid] = useLsState("fbVid", "");
+  const v = vehicles.find((x) => x.id === vid) || vehicles[0];
+  const [view, setView] = useState("verlauf");
+  const [edit, setEdit] = useState(null), [vEdit, setVEdit] = useState(null), [remEdit, setRemEdit] = useState(null);
+  const upd = (p) => setFb((o) => ({ ...FB_EMPTY, ...o, ...p(o) }));
+  if (!vehicles.length) return (
+    <div className="fbpage">
+      <section className="tile fbempty">
+        <div className="fbhero">🚗</div>
+        <b>Dein Fahrtenbuch</b>
+        <p className="muted">Tankfüllungen, Werkstatt & Kosten, Fahrten (geschäftlich/privat) und Erinnerungen wie Pickerl oder Service – mit Verbrauch, Kosten pro km und Kilometergeld.</p>
+        <button className="btn primary" onClick={() => setVEdit({})}>＋ Fahrzeug hinzufügen</button>
+      </section>
+      {vEdit && <VehicleWin init={vEdit} onClose={() => setVEdit(null)} onSave={(nv) => { upd((o) => ({ vehicles: [...(o.vehicles || []), nv] })); setVid(nv.id); setVEdit(null); }} />}
+    </div>
+  );
+  const st = fbStats(v, entries);
+  const today = todayISO(), month = today.slice(0, 7), year = today.slice(0, 4);
+  const mine = st.e.slice().sort((a, b) => (b.date + (b.time || "")).localeCompare(a.date + (a.time || "")) || ((+b.km || +b.endKm || 0) - (+a.km || +a.endKm || 0)));
+  const monthCost = st.e.filter((x) => x.type !== "trip" && x.date.startsWith(month)).reduce((s, x) => s + (+x.total || 0), 0);
+  const lastFuel = st.e.filter((x) => x.type === "fuel").sort((a, b) => b.date.localeCompare(a.date))[0];
+  const myRem = reminders.filter((r) => r.vid === v.id && !r.done);
+  const remState = (r) => { const dd = r.date ? daysUntil(r.date) : null, dk = r.km ? r.km - st.odo : null;
+    const due = (dd != null && dd <= 0) || (dk != null && dk <= 0), soon = (dd != null && dd <= 30) || (dk != null && dk <= 1000);
+    return { dd, dk, cls: due ? "due" : soon ? "soon" : "" }; };
+  const dueN = myRem.filter((r) => remState(r).cls).length;
+  const saveEntry = async (x) => {
+    const { book, bookAcc, ...e } = x;
+    upd((o) => ({ entries: (o.entries || []).some((y) => y.id === e.id) ? o.entries.map((y) => (y.id === e.id ? e : y)) : [...(o.entries || []), e] }));
+    if (book && bookAcc && e.total > 0) {
+      const tx = await onBook({ accountId: bookAcc, date: e.date, amount: -Math.abs(e.total), counterparty: e.station || (e.type === "fuel" ? "Tankstelle" : e.cat), purpose: `${v.name}: ${e.type === "fuel" ? `Tanken ${amtStr(e.liters)} l` : e.cat}${e.note ? " · " + e.note : ""}`, category: "Auto & Mobilität" });
+      upd((o) => ({ entries: o.entries.map((y) => (y.id === e.id ? { ...y, txId: tx?.id } : y)) }));
+      ls.set("expAcc", bookAcc);
+    }
+    notify(e.type === "trip" ? `Fahrt gespeichert · ${kmFmt(e.endKm - e.startKm)}` : `${e.type === "fuel" ? "Tanken" : e.cat} gespeichert · ${fmtMoney(e.total)}`);
+    setEdit(null);
+  };
+  const newEntry = (type) => setEdit({ type, vid: v.id, ...(type === "trip" ? { purpose: ls.get("fbPurpose", "business"), startKm: st.odo || "" } : type === "fuel" ? { fuel: v.fuel, full: true } : {}) });
+  // Berichte
+  const months = Array.from({ length: 12 }, (_, i) => addMon(month, i - 11));
+  const costChart = months.map((m) => ({ k: m, label: monthLabel(m).split(" ")[0], b: st.e.filter((x) => x.type !== "trip" && x.date.startsWith(m)).reduce((s, x) => s + (+x.total || 0), 0) }));
+  const byCat = {}; st.e.filter((x) => x.type !== "trip" && x.date.startsWith(year)).forEach((x) => { const k = x.type === "fuel" ? "Treibstoff" : x.cat || "Sonstiges"; byCat[k] = (byCat[k] || 0) + (+x.total || 0); });
+  const catList = Object.entries(byCat).sort((a, b) => b[1] - a[1]); const catTot = catList.reduce((s, x) => s + x[1], 0);
+  const trips = st.e.filter((x) => x.type === "trip");
+  const tripKm = (l) => l.reduce((s, x) => s + Math.max(0, x.endKm - x.startKm), 0);
+  const yTrips = trips.filter((x) => x.date.startsWith(year));
+  const bizKm = tripKm(yTrips.filter((x) => x.purpose === "business")), privKm = tripKm(yTrips.filter((x) => x.purpose === "private")), comKm = tripKm(yTrips.filter((x) => x.purpose === "commute"));
+  const kmRate = +(fb.settings?.kmRate ?? 0.5);
+  const exportCsv = () => {
+    const rows = [["Datum", "Uhrzeit", "Fahrzeug", "Kennzeichen", "Von", "Nach", "Zweck", "Art", "km-Stand Beginn", "km-Stand Ende", "km", "Kilometergeld"]];
+    trips.slice().sort((a, b) => a.date.localeCompare(b.date) || a.startKm - b.startKm).forEach((x) => rows.push([x.date, x.time || "", v.name, v.plate || "", x.from || "", x.to || "", x.note || "", { business: "geschäftlich", private: "privat", commute: "Arbeitsweg" }[x.purpose] || "", x.startKm, x.endKm, x.endKm - x.startKm, x.purpose === "business" ? amtStr((x.endKm - x.startKm) * kmRate) : ""]));
+    const csv = "﻿" + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\r\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = `Fahrtenbuch_${v.name}_${year}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+  const row = (x) => {
+    const icon = x.type === "expense" ? (FB_EXP.find((c) => c[0] === x.cat)?.[1] || "🧾") : FB_ICON[x.type];
+    return (
+      <div key={x.id} className="frow click fbrow" onClick={() => setEdit({ ...x, liters: amtStr(x.liters), total: amtStr(x.total), price: x.price != null ? String(x.price).replace(".", ",") : "" })}>
+        <span className={"fbic " + x.type}>{icon}</span>
+        <div className="grow">
+          <b>{x.type === "fuel" ? `Tanken · ${amtStr(x.liters)} ${/Strom/.test(x.fuel || "") ? "kWh" : "l"}` : x.type === "trip" ? `${x.from || "?"} → ${x.to}` : x.cat}</b>
+          <small className="muted block">{fmtDate(x.date)}{x.time ? " " + x.time : ""} · {x.type === "trip" ? `${kmFmt(x.endKm - x.startKm)} · ${{ business: "geschäftlich", private: "privat", commute: "Arbeitsweg" }[x.purpose] || ""}${x.note ? " · " + x.note : ""}` : `${kmFmt(x.km)}${x.station ? " · " + x.station : ""}${x.type === "fuel" && x.price ? ` · ${fmtMoney(x.price).replace(/(\d),(\d\d)\b/, "$1,$2")}/l` : ""}${x.txId ? " · 🏦 gebucht" : ""}`}</small>
+        </div>
+        <div className="right">{x.type === "trip" ? (x.purpose === "business" ? <b className="pos">{fmtMoney((x.endKm - x.startKm) * kmRate)}</b> : <b>{kmFmt(x.endKm - x.startKm)}</b>) : <b className="neg">{fmtMoney(-x.total)}</b>}</div>
+      </div>);
+  };
+  const VIEWS = [["verlauf", "Verlauf"], ["fuel", "Tanken"], ["trip", "Fahrten"], ["expense", "Ausgaben"], ["rem", `Erinnerungen${dueN ? ` (${dueN})` : ""}`], ["bericht", "Berichte"]];
+  return (
+    <div className="fbpage">
+      <div className="chips anaaccs">
+        {vehicles.map((x) => <button key={x.id} className={"chip" + (x.id === v.id ? " on" : "")} onClick={() => setVid(x.id)} onDoubleClick={() => setVEdit(x)}>{x.icon || "🚗"} {x.name}</button>)}
+        <button className="chip" onClick={() => setVEdit({})}>＋ Fahrzeug</button>
+      </div>
+      <section className="tile fbcar">
+        <div className="fbcarhead">
+          <span className="fbcaric">{v.icon || "🚗"}</span>
+          <div className="grow"><b>{v.name}</b><small className="muted block">{[v.model, v.plate, v.fuel].filter(Boolean).join(" · ")}</small></div>
+          <button className="iconbtn" title="Fahrzeug bearbeiten" aria-label="Fahrzeug bearbeiten" onClick={() => setVEdit(v)}>✎</button>
+        </div>
+        <div className="fbodo"><small className="muted">Kilometerstand</small><div className="kpiv big">{kmFmt(st.odo)}</div></div>
+        <div className="fbstats">
+          <div><small className="muted">Ø Verbrauch</small><b>{st.avg != null ? st.avg.toFixed(1).replace(".", ",") : "—"}</b><small className="muted">{/Strom/.test(v.fuel || "") ? "kWh" : "l"}/100 km</small></div>
+          <div><small className="muted">Letzter</small><b>{st.last != null ? st.last.toFixed(1).replace(".", ",") : "—"}</b><small className="muted">{/Strom/.test(v.fuel || "") ? "kWh" : "l"}/100 km</small></div>
+          <div><small className="muted">Kosten/km</small><b>{st.perKm != null ? fmtMoney(st.perKm) : "—"}</b><small className="muted">gesamt</small></div>
+          <div><small className="muted">{new Date(month + "-15").toLocaleDateString("de-AT", { month: "long" })}</small><b>{fmtMoney(monthCost)}</b><small className="muted">Kosten</small></div>
+        </div>
+        <div className="fbquick">
+          <button onClick={() => newEntry("fuel")}><span>⛽</span>Tanken</button>
+          <button onClick={() => newEntry("trip")}><span>🛣️</span>Fahrt</button>
+          <button onClick={() => newEntry("expense")}><span>🧾</span>Ausgabe</button>
+          <button onClick={() => setRemEdit({ vid: v.id })}><span>⏰</span>Erinnerung</button>
+        </div>
+      </section>
+      {dueN > 0 && view !== "rem" && (
+        <div className="tile alert click" onClick={() => setView("rem")}><span style={{ fontSize: 24 }}>⏰</span><div className="grow"><b>{dueN} Erinnerung{dueN > 1 ? "en" : ""} fällig</b><small>{myRem.filter((r) => remState(r).cls).map((r) => r.title).join(", ")}</small></div></div>
+      )}
+      <div className="seg fbseg">{VIEWS.map(([k, l]) => <button key={k} className={view === k ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div>
+      {["verlauf", "fuel", "trip", "expense"].includes(view) && (
+        <section className="tile">
+          {view === "trip" && trips.length > 0 && <div className="tilehead"><b>Fahrten {year}</b><button className="link" onClick={exportCsv}>⬇︎ CSV fürs Finanzamt</button></div>}
+          {mine.filter((x) => view === "verlauf" || x.type === view).map(row)}
+          {!mine.filter((x) => view === "verlauf" || x.type === view).length && <p className="muted small">Noch keine Einträge – oben über ⛽ Tanken, 🛣️ Fahrt oder 🧾 Ausgabe erfassen.</p>}
+        </section>
+      )}
+      {view === "rem" && (
+        <section className="tile">
+          <div className="tilehead"><b>Erinnerungen</b><button className="link" onClick={() => setRemEdit({ vid: v.id })}>＋ Neu</button></div>
+          {myRem.map((r) => { const s = remState(r); return (
+            <div key={r.id} className={"frow fbrem " + s.cls}>
+              <span className="fbic">⏰</span>
+              <div className="grow click" onClick={() => setRemEdit(r)}><b>{r.title}</b><small className="muted block">{[r.date && `${fmtDate(r.date)} (${s.dd < 0 ? `seit ${-s.dd} Tagen` : s.dd === 0 ? "heute" : `in ${s.dd} Tagen`})`, r.km && `bei ${kmFmt(r.km)} (${s.dk <= 0 ? "erreicht" : `noch ${kmFmt(s.dk)}`})`].filter(Boolean).join(" · ")}</small></div>
+              <button className="btn sm" onClick={() => upd((o) => ({ reminders: o.reminders.map((y) => (y.id === r.id ? { ...y, done: true, doneAt: today } : y)) }))}>Erledigt</button>
+            </div>); })}
+          {!myRem.length && <p className="muted small">Keine offenen Erinnerungen. Tipp: Pickerl (§57a), Service, Reifenwechsel, Vignette, Versicherung.</p>}
+          {reminders.some((r) => r.vid === v.id && r.done) && <small className="muted">Erledigt: {reminders.filter((r) => r.vid === v.id && r.done).map((r) => r.title).join(", ")}</small>}
+        </section>
+      )}
+      {view === "bericht" && (<>
+        <div className="anagrid">
+          <section className="tile"><div className="tilehead"><b>Kosten pro Monat</b><small>gesamt {fmtMoney(st.costs)}</small></div><MiniBars data={costChart} h={130} /></section>
+          <section className="tile"><div className="tilehead"><b>Verbrauch</b><small>l/100 km</small></div>
+            {st.cons.length >= 2 ? <LineChart points={st.cons.slice(-24).map((c) => ({ m: c.date.slice(0, 7), v: Math.round(c.v * 10) / 10 }))} h={130} /> : <p className="muted small">Ab zwei vollen Tankfüllungen wird der Verbrauch berechnet.</p>}
+            {lastFuel?.price && <small className="muted">Letzter Preis: {String(lastFuel.price).replace(".", ",")} €/l ({fmtDate(lastFuel.date)})</small>}
+          </section>
+          <section className="tile"><div className="tilehead"><b>Kosten {year} nach Art</b></div>
+            {catList.map(([k, val], i) => (
+              <div key={k} className="frow"><div className="grow"><div className="row1"><span>{k}</span><span><b>{fmtMoney(val)}</b></span></div><Bar value={val} max={catList[0][1]} color={PALETTE[i % PALETTE.length]} /><small className="muted">{pct(val, catTot)} %</small></div></div>))}
+            {!catList.length && <p className="muted small">Keine Kosten in {year}.</p>}
+          </section>
+          <section className="tile"><div className="tilehead"><b>Fahrten {year}</b><button className="link" onClick={exportCsv}>⬇︎ CSV</button></div>
+            <div className="minikpis">
+              <div><small className="muted">Geschäftlich</small><b>{kmFmt(bizKm)}</b><small className="muted">{fmtMoney(Math.min(bizKm, 30000) * kmRate)}</small></div>
+              <div><small className="muted">Privat</small><b>{kmFmt(privKm)}</b><small className="muted">{pct(privKm, bizKm + privKm + comKm)} %</small></div>
+              <div><small className="muted">Arbeitsweg</small><b>{kmFmt(comKm)}</b><small className="muted">{yTrips.length} Fahrten</small></div>
+            </div>
+            <label>Kilometergeld €/km<input inputMode="decimal" value={String(kmRate).replace(".", ",")} onChange={(e) => { const n = parseAmt(e.target.value); if (!isNaN(n)) upd((o) => ({ settings: { ...(o.settings || {}), kmRate: n } })); }} /></label>
+            <small className="muted">Amtliches Kilometergeld PKW 2026: 0,50 €/km, max. 30.000 km/Jahr. Geschäftliche Fahrten fließen in die Firmen-Auswertung ein.</small>
+          </section>
+        </div>
+      </>)}
+      {edit && <FbEntryWin init={edit} vehicles={vehicles} accounts={accounts} lastKm={st.odo} fuelPrice={lastFuel?.price} onClose={() => setEdit(null)} onSave={(x) => { if (x.type === "trip") ls.set("fbPurpose", x.purpose); saveEntry(x); }}
+        onDelete={(id) => { upd((o) => ({ entries: o.entries.filter((y) => y.id !== id) })); setEdit(null); }} />}
+      {vEdit && <VehicleWin init={vEdit} onClose={() => setVEdit(null)} onSave={(nv) => { upd((o) => ({ vehicles: o.vehicles.some((y) => y.id === nv.id) ? o.vehicles.map((y) => (y.id === nv.id ? nv : y)) : [...o.vehicles, nv] })); setVid(nv.id); setVEdit(null); }}
+        onDelete={(id) => { upd((o) => ({ vehicles: o.vehicles.filter((y) => y.id !== id), entries: o.entries.filter((y) => y.vid !== id), reminders: (o.reminders || []).filter((y) => y.vid !== id) })); setVEdit(null); }} />}
+      {remEdit && (
+        <Win id="fb-rem" onClose={() => setRemEdit(null)} small>
+          <div className="panelhead"><b>⏰ Erinnerung</b><XBtn /></div>
+          <div className="fbcats">{["Pickerl (§57a)", "Service", "Ölwechsel", "Reifenwechsel", "Vignette", "Versicherung", "Bremsen"].map((t) => <button key={t} className={"chip" + (remEdit.title === t ? " on" : "")} onClick={() => setRemEdit({ ...remEdit, title: t })}>{t}</button>)}</div>
+          <label>Bezeichnung<input value={remEdit.title || ""} onChange={(e) => setRemEdit({ ...remEdit, title: e.target.value })} /></label>
+          <div className="grid2">
+            <label>Fällig am<input type="date" value={remEdit.date || ""} onChange={(e) => setRemEdit({ ...remEdit, date: e.target.value })} /></label>
+            <label>oder bei km-Stand<input inputMode="numeric" value={remEdit.km ?? ""} placeholder={String(st.odo + 15000)} onChange={(e) => setRemEdit({ ...remEdit, km: e.target.value })} /></label>
+          </div>
+          <div className="row gap fbbtns">
+            <button className="btn primary" disabled={!(remEdit.title || "").trim() || !(remEdit.date || remEdit.km)} onClick={() => {
+              const r = { ...remEdit, id: remEdit.id || uid(), title: remEdit.title.trim(), km: remEdit.km ? Math.round(parseAmt(remEdit.km)) : null };
+              upd((o) => ({ reminders: (o.reminders || []).some((y) => y.id === r.id) ? o.reminders.map((y) => (y.id === r.id ? r : y)) : [...(o.reminders || []), r] })); setRemEdit(null); setView("rem");
+            }}>Speichern</button>
+            {remEdit.id && <button className="btn danger" onClick={() => { upd((o) => ({ reminders: o.reminders.filter((y) => y.id !== remEdit.id) })); setRemEdit(null); }}>Löschen</button>}
+          </div>
+        </Win>
+      )}
+    </div>
+  );
+}
+
 /* ======================= Analyse ======================= */
 const addMon = (m, n) => { const d = new Date(m + "-15"); d.setMonth(d.getMonth() + n); return d.toLocaleDateString("sv-SE").slice(0, 7); };
 const monthsRange = (from, to) => { const out = []; for (let m = from; m <= to && out.length < 600; m = addMon(m, 1)) out.push(m); return out; };
@@ -2570,7 +2985,11 @@ function Wealth({ txs, accounts, openAccount }) {
   const [range, setRange] = useLsState("wealthRange", 12);
   const [assets, setAssets] = useLsState("assets", []);
   const [edit, setEdit] = useState(null);
-  const accs = accounts.map((a) => ({ a, now: accountBalance(a, txs) })).filter((x) => x.now != null);
+  const [wSel, setWSel] = useLsState("wealthAccs", []);
+  const [wAssets, setWAssets] = useLsState("wealthAssets", true);
+  const wValid = wSel.filter((id) => accounts.some((a) => a.id === id));
+  const allAccs = accounts.map((a) => ({ a, now: accountBalance(a, txs) })).filter((x) => x.now != null);
+  const accs = allAccs.filter((x) => !wValid.length || wValid.includes(x.a.id));
   const firstTx = txs.reduce((m, t) => (t.date < m ? t.date : m), thisMonth + "-31").slice(0, 7);
   const firstM = [firstTx, ...assets.map((x) => (x.since || thisMonth).slice(0, 7))].sort()[0];
   const start = range === 0 ? (firstM < thisMonth ? firstM : addMon(thisMonth, -1)) : addMon(thisMonth, -(range - 1));
@@ -2580,13 +2999,13 @@ function Wealth({ txs, accounts, openAccount }) {
   const accAt = (x, m) => x.now - txs.filter((t) => t.accountId === x.a.id && t.date > endOf(m)).reduce((s, t) => s + t.amount, 0)
     - (x.a.kind === "cash" && x.a.atm ? txs.filter((t) => t.accountId !== x.a.id && t.category === "Bargeld" && t.amount < 0 && t.date > endOf(m) && afterOpening(t, x.a)).reduce((s, t) => s - t.amount, 0) : 0);
   const assetVal = (x) => (x.kind === "kredit" ? -Math.abs(+x.value || 0) : +x.value || 0);
-  const assetAt = (m) => assets.filter((x) => (x.since || "").slice(0, 7) <= m).reduce((s, x) => s + assetVal(x), 0);
+  const assetAt = (m) => !wAssets ? 0 : assets.filter((x) => (x.since || "").slice(0, 7) <= m).reduce((s, x) => s + assetVal(x), 0);
   const points = months.map((m) => ({ m, v: accs.reduce((s, x) => s + accAt(x, m), 0) + assetAt(m) }));
   const now = points[points.length - 1]?.v || 0, first = points[0]?.v || 0, prevM = points[points.length - 2]?.v;
   const change = now - first;
   const groups = {};
   accs.forEach((x) => { const k = KIND_DEFS[x.a.kind || "bank"] ? x.a.kind || "bank" : "bank"; groups[k] = (groups[k] || 0) + x.now; });
-  assets.forEach((x) => { const k = "a-" + (x.kind || "sonst"); groups[k] = (groups[k] || 0) + assetVal(x); });
+  (wAssets ? assets : []).forEach((x) => { const k = "a-" + (x.kind || "sonst"); groups[k] = (groups[k] || 0) + assetVal(x); });
   const gList = Object.entries(groups).map(([k, v]) => ({ k, v, label: k.startsWith("a-") ? ASSET_KINDS[k.slice(2)]?.[1] : KIND_DEFS[k][1], icon: k.startsWith("a-") ? ASSET_KINDS[k.slice(2)]?.[0] : KIND_DEFS[k][0] })).sort((a, b) => b.v - a.v);
   const posTotal = gList.filter((g) => g.v > 0).reduce((s, g) => s + g.v, 0);
   const debts = gList.filter((g) => g.v < 0).reduce((s, g) => s + g.v, 0);
@@ -2597,8 +3016,15 @@ function Wealth({ txs, accounts, openAccount }) {
     setAssets((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a])); setEdit(null); };
   return (
     <div className="wealthpage">
+      {(allAccs.length > 1 || assets.length > 0) && (
+        <div className="chips anaaccs">
+          <button className={"chip" + (!wValid.length ? " on" : "")} onClick={() => setWSel([])}>Alle Konten</button>
+          {allAccs.map(({ a }) => <button key={a.id} className={"chip" + (wValid.includes(a.id) ? " on" : "")} onClick={() => setWSel(wValid.includes(a.id) ? wValid.filter((x) => x !== a.id) : [...wValid, a.id])}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</button>)}
+          {assets.length > 0 && <button className={"chip" + (wAssets ? " on" : "")} onClick={() => setWAssets(!wAssets)}>💎 Weitere Werte</button>}
+        </div>
+      )}
       <section className="tile wealthhero">
-        <small className="muted">Nettovermögen</small>
+        <small className="muted">{wValid.length ? `Vermögen · ${wValid.length} von ${allAccs.length} Konten` : "Nettovermögen"}</small>
         <div className="kpiv big">{fmtMoney(now)}</div>
         <div className="wealthdelta">
           <span className={change >= 0 ? "pos" : "neg"}>{change >= 0 ? "▲ +" : "▼ "}{fmtMoney(change)}{first ? ` (${Math.round((change / Math.abs(first)) * 100)} %)` : ""}</span>
@@ -8257,7 +8683,7 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 .anahead .seg{margin:0;flex:0 1 auto}.anahead .seg button{padding:7px 12px;white-space:nowrap}
 @media (max-width:520px){.anaper{margin-left:0;width:100%;justify-content:space-between}}
 .anaper{display:flex;align-items:center;gap:6px;margin-left:auto}.anaper b{min-width:120px;text-align:center;text-transform:capitalize}
-.anaaccs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.anaaccs{display:flex;gap:6px;flex-wrap:wrap}
 .anakpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 @media (max-width:760px){.anakpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .kpi{padding:14px 16px}.kpiv{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:2px 0;overflow-wrap:anywhere}.kpiv.big{font-size:40px}
@@ -8290,4 +8716,29 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 .stackbar{display:flex;height:14px;border-radius:7px;overflow:hidden;margin:4px 0 10px;background:var(--line)}
 .assetedit{border:1px solid var(--line);border-radius:14px;padding:4px 12px 12px;margin-top:8px}
 .assetedit .row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+
+/* v0.45: Firmenauswertung, Fahrtenbuch */
+.earrow{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}.earrow span{min-width:0}
+.earrow.total{border-bottom:0;font-size:16px;font-weight:700;padding-top:12px}.earrow b{white-space:nowrap}
+.kubar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:2px 0 14px}.kubar>div{height:100%;border-radius:4px}
+.minikpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:6px}.minikpis>div{display:flex;flex-direction:column;gap:2px;background:var(--card2);border-radius:12px;padding:10px 12px;min-width:0}.minikpis b{font-size:18px}
+.tile.click,.kpi.click{cursor:pointer}
+.fbpage{display:grid;gap:14px;grid-template-columns:minmax(0,1fr)}
+.fbempty{text-align:center;padding:36px 20px}.fbempty .fbhero{font-size:56px}.fbempty b{font-size:20px;display:block;margin:6px 0}.fbempty p{max-width:460px;margin:8px auto 18px}
+.fbcarhead{display:flex;align-items:center;gap:12px}.fbcaric{font-size:30px;width:52px;height:52px;border-radius:16px;background:color-mix(in srgb,var(--acc) 16%,var(--card2));display:flex;align-items:center;justify-content:center;flex:none}
+.fbcarhead b{font-size:18px}
+.fbodo{margin:14px 0 6px}
+.fbstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.fbstats>div{display:flex;flex-direction:column;background:var(--card2);border-radius:12px;padding:10px;min-width:0}.fbstats b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:560px){.fbstats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.fbquick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+.fbquick button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 4px;border-radius:14px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.fbquick button span{font-size:22px}.fbquick button:first-child{background:color-mix(in srgb,var(--acc) 18%,var(--card));border-color:color-mix(in srgb,var(--acc) 45%,transparent)}
+.fbseg{margin:0;overflow-x:auto;scrollbar-width:none}.fbseg button{white-space:nowrap;flex:1 0 auto}
+.fbic{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none;background:var(--card2)}
+.fbic.fuel{background:#f59e0b22}.fbic.trip{background:#3b82f622}.fbic.expense{background:#8b5cf622}
+.fbrem.due .fbic{background:#ef444433}.fbrem.due b{color:var(--red)}.fbrem.soon .fbic{background:#f59e0b33}
+.fbcats{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.fbkmhint{margin:10px 0 0;font-size:15px}
+.fbbook{margin-top:10px}.fbbook select{margin-top:6px}
+.fbbtns{display:flex;gap:8px;margin-top:16px}.fbbtns .btn{flex:1}
 `;
