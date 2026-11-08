@@ -5489,17 +5489,19 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
   const [list, setList] = useLsState("contractList", []);
   const [showDrop, setShowDrop] = useLsState("ctrDrop", true);
   const [waitIds, setWaitIds] = useLsState("ctrWait", []);
+  const [prevCt, setPrevCt] = useState(null);
   const [scope, setScope] = useState(() => ls.get("ctScope", "alle"));
   useEffect(() => ls.set("ctScope", scope), [scope]);
   const [edit, setEdit] = useState(null), [showOld, setShowOld] = useState(false), [imp, setImp] = useState(false);
   const save = (c) => setList((l) => (l.some((x) => x.id === c.id) ? l.map((x) => (x.id === c.id ? c : x)) : [...l, c]));
   const monthly = (c) => (Number(c.amount) || 0) * (CT_FACTOR[c.interval || "monatlich"] || 1);
   const active = list.filter((c) => !c.cancelledAt || (c.cancelledEnd && c.cancelledEnd >= todayISO()));
+  const counting = active.filter((c) => !c.inactive);
   const inScope = (c) => scope === "alle" || (c.scope || "privat") === scope;
   const shown = list.filter(inScope).filter((c) => showOld || active.includes(c))
     .map((c) => ({ c, d: ctDates(c) })).sort((a, b) => (a.d.cancelBy || a.d.end || "9999").localeCompare(b.d.cancelBy || b.d.end || "9999"));
-  const sum = (sc) => active.filter((c) => sc === "alle" || (c.scope || "privat") === sc).reduce((s, c) => s + monthly(c), 0);
-  const soon = active.filter(inScope).map((c) => ({ c, d: ctDates(c) })).filter(({ c, d }) => !c.cancelledAt && !d.open && d.cancelBy && daysUntil(d.cancelBy) >= 0 && daysUntil(d.cancelBy) <= 60);
+  const sum = (sc) => counting.filter((c) => sc === "alle" || (c.scope || "privat") === sc).reduce((s, c) => s + monthly(c), 0);
+  const soon = counting.filter(inScope).map((c) => ({ c, d: ctDates(c) })).filter(({ c, d }) => !c.cancelledAt && !d.open && d.cancelBy && daysUntil(d.cancelBy) >= 0 && daysUntil(d.cancelBy) <= 60);
   const docCands = docs.filter((d) => d.contract && !list.some((c) => (c.docIds || []).includes(d.id)));
   const fromDoc = (d) => {
     const k = d.contract, cat = Object.keys(ctCats()).find((x) => norm(`${k.provider} ${k.name} ${d.category}`).includes(norm(x.split(" ")[0]))) || "Sonstiges";
@@ -5547,20 +5549,28 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
       </section>}
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">Noch keine Verträge hinterlegt. Mit „＋ Vertrag“ z. B. Internet, Handy, Strom, Versicherungen oder Miete eintragen – FinDocu rechnet den letzten Kündigungstag aus. Erkannte Abos aus deinen Kontobuchungen findest du weiterhin unter „Fixkosten & Abos“.</p>}
-        {shown.map(({ c, d }) => (
-          <div key={c.id} className={"frow click ctrow" + (c.cancelledAt ? " ended" : "")} onClick={() => setEdit(c)}>
-            <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{ctCats()[c.cat] || "📄"}</span>
+        {shown.map(({ c, d }) => { const cdocs = (c.docIds || []).map((id) => docs.find((x) => x.id === id)).filter(Boolean); const open = prevCt === c.id && cdocs.length; return (
+          <div key={c.id} className={"dwrap ctwrap" + (open ? " open" : "")}>
+          <div className={"frow click ctrow" + (c.cancelledAt ? " ended" : "") + (c.inactive ? " inactive" : "")} onClick={() => setEdit(c)}>
+            {cdocs[0] ? <span onClick={(e) => { e.stopPropagation(); setPrevCt(open ? null : c.id); }} title="Vorschau ein-/ausblenden"><Thumb d={cdocs[0]} /></span>
+              : <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{ctCats()[c.cat] || "📄"}</span>}
             <div className="grow">
-              <b>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small>
-              <small className="muted block">{[c.provider, c.customerNo && "Nr. " + c.customerNo, (c.docIds || []).length ? `📎 ${(c.docIds || []).length}` : ""].filter(Boolean).join(" · ")}</small>
+              <b className={cdocs.length ? "dtitle" : ""} title={cdocs.length ? "Vorschau ein-/ausblenden" : undefined} onClick={cdocs.length ? (e) => { e.stopPropagation(); setPrevCt(open ? null : c.id); } : undefined}>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small>
+              <small className="muted block">{[c.provider, c.customerNo && "Nr. " + c.customerNo, cdocs.length ? `📎 ${cdocs.length}` : ""].filter(Boolean).join(" · ")}</small>
               <small className="block">{c.cancelledAt ? <span className="muted">Gekündigt{c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}</span>
                 : d.open ? <span className="muted">unbefristet · jederzeit kündbar</span>
                 : d.cancelBy ? <span className={daysUntil(d.cancelBy) <= 30 ? "neg" : daysUntil(d.cancelBy) <= 60 ? "warnc" : "muted"}>kündigen bis {fmtDate(d.cancelBy)} · Ende {fmtDate(d.end)}</span>
                 : d.end ? <span className="muted">Ende {fmtDate(d.end)}</span> : <span className="muted">Laufzeit nicht eingetragen</span>}</small>
             </div>
             <div className="right"><b>{c.amount ? fmtMoney(Number(c.amount)) : "—"}</b><small className="muted block">{c.interval || "monatlich"}</small></div>
+            <div className="ctacts" onClick={(e) => e.stopPropagation()}>
+              <button className={"stpill ctstate " + (c.inactive ? "st-draft" : "st-paid")} title={c.inactive ? "Inaktiv – zählt nicht zu den Kosten. Antippen = aktiv" : "Aktiv – antippen = inaktiv"} onClick={() => save({ ...c, inactive: !c.inactive })}>{c.inactive ? "Inaktiv" : "Aktiv"}</button>
+              <button className={"iconbtn" + (open ? " on" : "")} disabled={!cdocs.length} title={cdocs.length ? "Vorschau ein-/ausblenden" : "Kein Dokument verknüpft"} onClick={() => setPrevCt(open ? null : c.id)}>{open ? <IcoEyeOff /> : <IcoEye />}</button>
+              {cdocs[0] && <button className="iconbtn" title="Drucken" onClick={() => printDoc(cdocs[0])}><IcoPrint /></button>}
+            </div>
           </div>
-        ))}
+          {open && cdocs.map((x) => <DocPreview key={x.id} d={x} onOpen={() => onOpen(x.id)} />)}
+          </div>); })}
       </section>
       {edit && <ContractEditor c={edit} docs={docs} me={me} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
     </div>
@@ -7264,4 +7274,12 @@ nav.bottom>button.sidetoggle{display:none}
 html.side-mini .sidebusy,html.side-mini .busytab small{display:none}
 .chip.ddshow{margin:6px 0 10px}
 .uniwidget .docdrop{width:100%;min-width:0;margin:6px 0 10px}.uniwidget .importbar{width:100%;min-width:0;margin:0 0 8px}.unilast{margin:4px 2px 0}
+
+.ctrow .ctacts{display:flex;align-items:center;gap:4px;flex:none}
+.ctrow .ctacts .iconbtn{width:36px;height:36px;min-width:36px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--mut)}
+.ctrow .ctacts .iconbtn svg{width:18px;height:18px}.ctrow .ctacts .iconbtn.on{color:var(--acc)}.ctrow .ctacts .iconbtn:disabled{opacity:.3}
+.ctstate{border:0;cursor:pointer;font:inherit;font-size:11px;font-weight:700}
+.ctrow.inactive>.grow,.ctrow.inactive>.right{opacity:.5}
+.ctwrap .dprev{margin:0 0 10px}
+@media (max-width:700px){.ctrow{flex-wrap:wrap}.ctrow .ctacts{width:100%;justify-content:flex-end}}
 `;

@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.36.0
+- Verträge: Vorschau der verknüpften Dokumente direkt in der Liste – Klick auf Titel, Vorschaubild oder Auge klappt sie auf/zu (wie bei Dokumente, mit Drucken & „Original öffnen“)
+- Verträge: Status „Aktiv“ / „Inaktiv“ per Klick auf die Pill; inaktive Verträge werden abgeblendet und zählen nicht zu Kosten und Kündigungs-Hinweisen
+
 ## v0.35.0
 - Verträge: Ablagefeld (Dateien & Ordner, ein-/ausblendbar über „📥 Ablagefeld“) – Dateien werden als Dokumente gespeichert und ausgelesen; erkennt die KI einen Vertrag, wird er automatisch in der Vertragsliste angelegt (mit Dokument verknüpft)
 - Fortschrittsanzeige auch in Verträge
