@@ -585,10 +585,25 @@ function loadNav() {
 const tabLabel = (nav, key) => nav.tabs.find((t) => t.key === key)?.label?.trim() || TAB_DEFS[key]?.[1] || "";
 const isNavDeco = (t) => !!t.sep || t.head != null;
 /* Reiter-Symbol: eigenes Bild > eigenes Emoji > Standard */
+const TAB_SVG = {
+  home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h5v-6h4v6h5V9.5" /></>,
+  docs: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h6" /></>,
+  deadlines: <><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5" /><path d="M5 3 2.5 5.5M19 3l2.5 2.5" /></>,
+  accounts: <><path d="M3 10 12 4l9 6" /><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8" /><path d="M3 20h18" /></>,
+  cash: <><rect x="2.5" y="6" width="19" height="12" rx="2.5" /><circle cx="12" cy="12" r="2.6" /><path d="M6 9.5v5M18 9.5v5" /></>,
+  invoices: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
+  kunden: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.5 3 5.2" /></>,
+  mahnungen: <><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z" /><path d="M10 21h4" /></>,
+  artikel: <><path d="M12 3 3.5 7.5v9L12 21l8.5-4.5v-9z" /><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9" /></>,
+  vertraege: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M8.5 17c1.2-1.6 2-1.6 2.6 0 .6 1.4 1.3 1.4 2.4 0" /></>,
+  contracts: <><path d="M4 11a8 8 0 0 1 14-5.3L20 8" /><path d="M20 3v5h-5" /><path d="M20 13a8 8 0 0 1-14 5.3L4 16" /><path d="M4 21v-5h5" /></>,
+  settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>,
+};
 function TabIcon({ t }) {
   const cls = "tabico" + (t.iconImg || t.icon || t.color ? " custom" : "");
+  const svg = !t.iconImg && !t.icon && TAB_SVG[t.key] ? <svg className="tabsvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{TAB_SVG[t.key]}</svg> : null;
   if (t.iconImg) return <span className={cls}><img src={t.iconImg} alt="" /></span>;
-  return <span className={cls}>{t.icon || TAB_DEFS[t.key]?.[0]}</span>;
+  return <span className={cls + (svg ? " hassvg" : "")}><span className="tabemo">{t.icon || TAB_DEFS[t.key]?.[0]}</span>{svg}</span>;
 }
 
 // Gruppen aus der Konfiguration + Konten, die noch keiner Gruppe zugeordnet sind (nach Art einsortiert)
@@ -1530,6 +1545,9 @@ export default function App() {
   const [sideTip, setSideTip] = useState(null);
   const setSideMini = (v) => { setSideMiniRaw(v); ls.set("sideMini", v); };
   useEffect(() => { document.documentElement.classList.toggle("side-mini", !!sideMini); }, [sideMini]);
+  const [iosDesign, setIosDesignRaw] = useState(() => { const q = new URLSearchParams(location.search).get("ios"); if (q != null) ls.set("iosDesign", q === "1"); return ls.get("iosDesign", false); });
+  const setIosDesign = (v) => { setIosDesignRaw(v); ls.set("iosDesign", v); };
+  useEffect(() => { document.documentElement.classList.toggle("ios", !!iosDesign); }, [iosDesign]);
   useEffect(() => {
     const k = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); setSideMiniRaw((v) => { ls.set("sideMini", !v); return !v; }); } };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
@@ -1870,7 +1888,7 @@ export default function App() {
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} onFiles={onFiles} docBusy={docBusy} notify={notify} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
         {tab === "settings" && (
-          <Settings theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
+          <Settings iosDesign={iosDesign} setIosDesign={setIosDesign} theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
             docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} notify={notify} />
         )}
@@ -4292,7 +4310,7 @@ function DesignSettings({ design, setDesign, theme }) {
   );
 }
 
-function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+function Settings({ iosDesign, setIosDesign = () => {}, theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
   const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
   useEffect(() => {
@@ -4356,6 +4374,10 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
             </button>
           ))}
         </div>
+        <label className="switchrow" style={{ marginTop: 12 }}>
+          <span><b>📱 Neues Handy-Design (Test)</b><small className="muted block">Modernes iOS-Design fürs Handy: schwebende Glas-Leiste mit Linien-Symbolen, iOS-Schrift, Listen und Bedienelemente im iOS-Stil. Nur auf diesem Gerät, jederzeit wieder ausschaltbar. Auch per Link: …/?ios=1 (an) bzw. ?ios=0 (aus).</small></span>
+          <input type="checkbox" className="switch" checked={!!iosDesign} onChange={(e) => setIosDesign(e.target.checked)} />
+        </label>
       </SetSec></>,
     "design": <><SetSec id="design" title="Design"><DesignSettings design={design} setDesign={setDesign} theme={theme} /></SetSec></>,
     "datenschutz": <><SetSec id="datenschutz" title="Datenschutz">
@@ -7291,4 +7313,61 @@ html.side-mini .sidebusy,html.side-mini .busytab small{display:none}
   nav.bottom>button{flex:0 0 auto;min-width:72px;padding:8px 6px;scroll-snap-align:start}
   nav.bottom>button span.tl{font-size:10.5px;white-space:nowrap}
 }
+
+/* ===== Tab-Symbole: Linien-SVG nur im iOS-Testdesign am Handy ===== */
+.tabico .tabsvg{display:none;width:24px;height:24px}
+@media (max-width:767px){
+  html.ios{--ios-glass:color-mix(in srgb,var(--card) 72%,transparent);--ios-sep:color-mix(in srgb,var(--txt) 9%,transparent)}
+  html.ios body,html.ios button,html.ios input,html.ios select,html.ios textarea{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",system-ui,sans-serif;letter-spacing:-.01em}
+  html.ios body{-webkit-font-smoothing:antialiased}
+  /* große Titel */
+  html.ios main h1,html.ios .pagetitle,html.ios header h1{font-size:34px;font-weight:700;letter-spacing:-.025em}
+  /* schwebende Glas-Tableiste */
+  html.ios nav.bottom{left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 8px);padding:6px;border:1px solid color-mix(in srgb,var(--txt) 8%,transparent);border-radius:30px;background:var(--ios-glass);backdrop-filter:saturate(180%) blur(22px);-webkit-backdrop-filter:saturate(180%) blur(22px);box-shadow:0 10px 30px #0006,0 1px 0 color-mix(in srgb,#fff 6%,transparent) inset;gap:2px}
+  html.ios nav.bottom>button{min-width:64px;min-height:50px;padding:5px 8px 4px;border-radius:24px;gap:1px;color:var(--mut);transition:background .2s,color .2s}
+  html.ios nav.bottom>button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc)}
+  html.ios nav.bottom>button span.tl{font-size:10px;font-weight:600;letter-spacing:0}
+  html.ios nav.bottom .tabico.hassvg .tabemo{display:none}
+  html.ios nav.bottom .tabico .tabsvg{display:block}
+  html.ios nav.bottom>button span.tabico{filter:none;opacity:1;font-size:22px;line-height:1}
+  html.ios main{padding-bottom:calc(env(safe-area-inset-bottom) + 96px)}
+  /* ＋-Button als Glas-Kreis über der Leiste */
+  html.ios .fab{bottom:calc(env(safe-area-inset-bottom) + 84px);right:18px;width:54px;height:54px;font-size:28px;font-weight:300;background:var(--acc);box-shadow:0 8px 24px color-mix(in srgb,var(--acc) 45%,transparent),0 0 0 1px color-mix(in srgb,#fff 18%,transparent) inset}
+  /* Werkzeugleiste oben rechts */
+  html.ios .topactions{background:var(--ios-glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid color-mix(in srgb,var(--txt) 8%,transparent);box-shadow:none}
+  /* Karten: weicher, ohne harte Ränder */
+  html.ios .tile{border-radius:22px;border:0;box-shadow:none;background:var(--card)}
+  html.ios .tilehead b{font-size:17px;font-weight:600;letter-spacing:-.01em}
+  html.ios .hero{border-radius:26px}
+  /* Listen: eingerückte Trennlinien wie in iOS */
+  html.ios .frow,html.ios .ditem,html.ios .invrow{border-color:var(--ios-sep)}
+  /* Chips & Buttons: Kapseln */
+  html.ios .chip{border:0;background:var(--card2);border-radius:999px;font-weight:500;min-height:34px}
+  html.ios .chip.on{background:var(--acc);color:#fff}
+  html.ios .btn{border-radius:14px;font-weight:600}
+  html.ios .btn.primary{border:0}
+  /* Segment-Steuerung wie iOS */
+  html.ios .seg{background:color-mix(in srgb,var(--txt) 8%,transparent);border:0;border-radius:12px;padding:3px}
+  html.ios .seg>button{border-radius:9px;font-weight:500}
+  html.ios .seg>button.on{background:color-mix(in srgb,var(--txt) 16%,var(--card));box-shadow:0 3px 8px #0003,0 0 0 .5px #0000000a;color:var(--txt)}
+  html:not([data-theme=dark]).ios .seg>button.on{background:#fff}
+  /* Dokumente: Aktionen waagrecht unter dem Eintrag statt gestapelt */
+  html.ios .ditem{flex-wrap:wrap;row-gap:4px}
+  html.ios .ditem .dactions{flex-direction:row;width:100%;justify-content:flex-end;gap:2px;margin-top:-4px}
+  html.ios .ditem .dactions button{width:38px;height:34px}
+  /* Suchfeld */
+  html.ios .searchbar{border:0;border-radius:12px;background:color-mix(in srgb,var(--txt) 8%,transparent);min-height:40px}
+  html.ios .searchbar input{background:transparent!important;border:0!important}
+  /* Eingabefelder gefüllt statt umrandet */
+  html.ios input:not([type=checkbox]):not([type=radio]):not([type=range]),html.ios select,html.ios textarea{border-color:transparent;background:color-mix(in srgb,var(--txt) 7%,transparent);border-radius:12px}
+  /* Fenster als Sheet mit Griff */
+  html.ios .win{border-radius:22px 22px 0 0;border:0}
+  html.ios .win::before{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);width:36px;height:5px;border-radius:3px;background:color-mix(in srgb,var(--txt) 22%,transparent);z-index:3;pointer-events:none}
+  /* ＋-Menü als Glas-Popover */
+  html.ios .fabmenu,html.ios [role=menu]{border-radius:22px;border:0;background:var(--ios-glass);backdrop-filter:saturate(180%) blur(24px);-webkit-backdrop-filter:saturate(180%) blur(24px);box-shadow:0 18px 50px #0007}
+  /* Ablagefeld & Status */
+  html.ios .docdrop{border-width:1.5px;border-radius:18px;background:transparent}
+  html.ios .importbar{border:0;border-radius:16px}
+}
+nav.bottom .tabico .tabemo{font-size:inherit!important;filter:none!important;opacity:1!important}
 `;

@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.38.0
+- Neues Handy-Design im iOS-Stil als **Testmodus** (standardmäßig aus): Einstellungen → Darstellung → „📱 Neues Handy-Design (Test)“ oder Link mit `?ios=1` (aus: `?ios=0`)
+  - schwebende Glas-Tableiste mit Linien-Symbolen und hervorgehobenem aktiven Reiter
+  - iOS-Systemschrift, große Titel, weichere Karten ohne Ränder, Kapsel-Chips, iOS-Segmentsteuerung, gefüllte Eingabe-/Suchfelder
+  - Dokumente: Aktionen waagrecht unter dem Eintrag
+- Betrifft nur Bildschirme unter 768 px – iPad/Desktop unverändert
+
 ## v0.37.1
 - Handy: Ein-/Ausblenden der unteren Leiste wieder entfernt (Griff & Wischen); seitliches Scrollen bleibt
 
