@@ -2,6 +2,22 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.40.0
+- **Neues Standard-Design** (vorher Testmodus „Finanz-App-Stil“) auf allen Geräten: Handy, iPad und Desktop
+  - tiefschwarz bzw. weiß, Mint als Akzent, Schrift „Outfit“, große Titel, flache stark gerundete Karten, Linien-Symbole
+  - Handy: schwebende Leiste; iPad/Desktop: Seitenleiste mit Linien-Symbolen, aktiver Reiter als Kachel in Mint
+- Einstellungen im neuen Design: große Bereichstitel, Zeilen mit Trennlinien, Mint-Schalter und -Auswahlkacheln
+- Testmodus und Auswahl „Handy-Design“ entfernt (Links mit ?ios / ?fg haben keine Wirkung mehr)
+
+## v0.39.4
+- Scannen repariert: Der Scanner öffnete sich bei „Barausgabe / Buchung erfassen“ (Fenster) hinter dem Fenster und war nicht bedienbar – liegt jetzt immer ganz oben
+- Scannen öffnet die Kamera jetzt direkt beim Antippen (＋-Menü, Schnellzugriff, Barausgabe, Buchung, Beleg an Buchung) und geht danach gleich zum Zuschneiden
+- Kann ein Foto am Handy nicht verarbeitet werden, wird angeboten, es unverändert als Beleg zu übernehmen; Fotos werden für die Verarbeitung etwas stärker verkleinert (weniger Speicher)
+
+## v0.39.3
+- Finanz-App-Stil: Symbole oben rechts scrollen mit der Seite mit (überdecken beim Scrollen keine Inhalte mehr)
+- Finanz-App-Stil: Abstand zwischen Datumsbalken und Buchungen, Datum in normaler Schreibweise
+
 ## v0.39.2
 - Fixkosten & Abos (Handy): lange Texte (Vertragsnummer, Kündigungsfrist) brechen jetzt um, statt die Seite zu verbreitern – Karten wieder in voller Breite
 

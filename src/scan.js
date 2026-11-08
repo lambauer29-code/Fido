@@ -4,7 +4,7 @@
    Läuft komplett im Browser (keine Daten verlassen das Gerät).
    ============================================================ */
 
-const MAX_SRC = 2400;   // Kantenlänge, auf die Fotos vor der Verarbeitung begrenzt werden
+const MAX_SRC = 2000;   // Kantenlänge, auf die Fotos vor der Verarbeitung begrenzt werden
 const MAX_OUT = 2000;   // Kantenlänge des entzerrten Scans
 
 /** Foto laden und auf MAX_SRC verkleinern → { canvas, width, height } */

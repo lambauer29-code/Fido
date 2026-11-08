@@ -1545,15 +1545,8 @@ export default function App() {
   const [sideTip, setSideTip] = useState(null);
   const setSideMini = (v) => { setSideMiniRaw(v); ls.set("sideMini", v); };
   useEffect(() => { document.documentElement.classList.toggle("side-mini", !!sideMini); }, [sideMini]);
-  // Handy-Testdesign: "" = Standard, "ios" = iOS-Stil, "fg" = Finanz-App-Stil (dunkel, Mint)
-  const [mobDesign, setMobDesignRaw] = useState(() => {
-    const q = new URLSearchParams(location.search);
-    if (q.get("fg") != null) ls.set("mobileDesign", q.get("fg") === "1" ? "fg" : "");
-    else if (q.get("ios") != null) ls.set("mobileDesign", q.get("ios") === "1" ? "ios" : "");
-    return ls.get("mobileDesign", ls.get("iosDesign", false) ? "ios" : "");
-  });
-  const setMobDesign = (v) => { setMobDesignRaw(v); ls.set("mobileDesign", v); };
-  useEffect(() => { const c = document.documentElement.classList; c.toggle("ios", mobDesign === "ios" || mobDesign === "fg"); c.toggle("fg", mobDesign === "fg"); }, [mobDesign]);
+  // Design „Finanz-App-Stil“ ist Standard auf allen Geräten
+  useEffect(() => { const c = document.documentElement.classList; c.add("ios", "fg"); }, []);
   useEffect(() => {
     const k = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); setSideMiniRaw((v) => { ls.set("sideMini", !v); return !v; }); } };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
@@ -1653,14 +1646,18 @@ export default function App() {
     },
   };
   const scanCb = useRef(null);
-  const scanFor = (cb) => { scanCb.current = cb; setScanOpen(true); };
+  // Scannen: Kamera direkt im Klick öffnen (iOS verlangt eine direkte Benutzeraktion), danach Zuschneiden im Scanner
+  const camGlobal = useRef(null);
+  const [scanFile, setScanFile] = useState(null);
+  const startScan = () => { const el = camGlobal.current; if (!el) return setScanOpen(true); el.value = ""; el.click(); };
+  const scanFor = (cb) => { scanCb.current = cb; startScan(); };
   async function saveCash(t, att) {
     const tx = await addManualTx(t);
     if (att?.file) await onFiles([att.file], { ...(att.opts || {}), linkTx: tx.id });
     else notify("Buchung gespeichert");
     return tx;
   }
-  function attachNew(txId, how) { pendingLink.current = txId; if (how === "scan") setScanOpen(true); else fileInput.current.click(); }
+  function attachNew(txId, how) { pendingLink.current = txId; if (how === "scan") startScan(); else fileInput.current.click(); }
   // Kategorie umbenennen/löschen: Dokumente, Umsätze, Budgets, Regeln mitziehen
   async function renameCategory(from, to) {
     const m = catMeta(from);
@@ -1876,7 +1873,7 @@ export default function App() {
             {uniLast && <p className="small muted unilast">{uniLast}</p>}
           </>}
           cashForm={<CashForm compact accounts={accounts} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory} />}
-          editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => setScanOpen(true), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
+          editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => startScan(), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
         {tab === "accounts" && <Accounts busy={accBusy} setBusy={setAccBusy} addCategory={addCategory} linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
@@ -1894,7 +1891,7 @@ export default function App() {
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} onFiles={onFiles} docBusy={docBusy} notify={notify} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
         {tab === "settings" && (
-          <Settings mobDesign={mobDesign} setMobDesign={setMobDesign} theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
+          <Settings theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
             docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} notify={notify} />
         )}
@@ -1916,7 +1913,7 @@ export default function App() {
       {fabOpen && <div className="fabmenu-bg" onClick={() => setFabOpen(false)} />}
       {fabOpen && (
         <div className="fabmenu" role="menu">
-          <button role="menuitem" onClick={() => { setFabOpen(false); setScanOpen(true); }}><span>📷</span><div><b>Scannen</b><small>Bon oder Rechnung fotografieren</small></div></button>
+          <button role="menuitem" onClick={() => { setFabOpen(false); startScan(); }}><span>📷</span><div><b>Scannen</b><small>Bon oder Rechnung fotografieren</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); fileInput.current.click(); }}><span>📄</span><div><b>Datei / Foto</b><small>PDF oder Bild hochladen</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); setManualTx(tab === "accounts" && selAcc ? { accountId: selAcc } : {}); }}><span>💶</span><div><b>Buchung</b><small>Barausgabe oder Buchung erfassen</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); ls.set("pendingInvoice", { kind: "rechnung" }); setTab("invoices"); setBizReq((n) => n + 1); }}><span>🧾</span><div><b>Neue Rechnung</b><small>Rechnung für deine Firma schreiben</small></div></button>
@@ -1932,9 +1929,10 @@ export default function App() {
         </div>
       )}
       <button className={"fab" + (fabOpen ? " open" : "")} onClick={() => setFabOpen(!fabOpen)} aria-label="Hinzufügen">＋</button>
-      {scanOpen && <Scanner onClose={() => { setScanOpen(false); pendingLink.current = null; scanCb.current = null; }} onDone={(file, o) => { setScanOpen(false);
+      <input ref={camGlobal} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) { setScanFile(f); setScanOpen(true); } }} />
+      {scanOpen && createPortal(<Scanner initial={scanFile} onClose={() => { setScanOpen(false); setScanFile(null); pendingLink.current = null; scanCb.current = null; }} onDone={(file, o) => { setScanOpen(false); setScanFile(null);
         if (scanCb.current) { const cb = scanCb.current; scanCb.current = null; cb(file, o); return; }
-        const l = pendingLink.current; pendingLink.current = null; onFiles([file], { ...o, scanned: true, ...(l ? { linkTx: l } : {}) }); }} />}
+        const l = pendingLink.current; pendingLink.current = null; onFiles([file], { ...o, scanned: true, ...(l ? { linkTx: l } : {}) }); }} />, document.querySelector(".app") || document.body)}
       {manualTx && <ManualTxSheet init={manualTx} accounts={accounts} categories={TX_CATS(categories)} onClose={() => setManualTx(null)}
         onSave={saveCash} onScan={scanFor} addCategory={addCategory} />}
 
@@ -3687,7 +3685,7 @@ function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, dele
 const SCAN_FILTERS = [["original", "Original"], ["farbe", "Farbe"], ["dokument", "Dokument"], ["sw", "S/W"]];
 const tick = () => new Promise((r) => setTimeout(r, 30));
 
-function Scanner({ onDone, onClose }) {
+function Scanner({ onDone, onClose, initial = null }) {
   const camRef = useRef(), galRef = useRef();
   const [pages, setPages] = useState([]);   // { src, corners, blob, url }
   const [edit, setEdit] = useState(null);   // { src, url, corners, idx }
@@ -3700,13 +3698,19 @@ function Scanner({ onDone, onClose }) {
     const blob = await toJpeg(out);
     return { blob, url: URL.createObjectURL(blob) };
   }
+  const rawRef = useRef([]);
   async function onShot(file, idx = pages.length) {
     if (!file) return;
+    rawRef.current[idx] = file;
     setBusy("Foto wird geladen …"); await tick();
     try { const src = await loadImage(file); setEdit({ src, url: src.toDataURL("image/jpeg", 0.75), corners: detectCorners(src), idx }); }
-    catch (e) { alert("Foto konnte nicht geladen werden: " + e.message); }
+    catch (e) {
+      // Bearbeitung nicht möglich (z. B. Speicher am Handy) → Foto unverändert übernehmen
+      if (confirm(`Das Foto konnte nicht zum Zuschneiden geladen werden (${e.message}).\n\nFoto unverändert als Beleg übernehmen?`)) onDone(file, { cash });
+    }
     finally { setBusy(""); }
   }
+  useEffect(() => { if (initial) onShot(initial, 0); }, []);
   function rotate() {
     const s = edit.src, c = document.createElement("canvas");
     c.width = s.height; c.height = s.width;
@@ -3715,9 +3719,14 @@ function Scanner({ onDone, onClose }) {
   }
   async function confirmCrop() {
     setBusy("Wird entzerrt …"); await tick();
-    const r = await render(edit.src, edit.corners, filter);
-    setPages((p) => { const n = [...p]; n[edit.idx] = { src: edit.src, corners: edit.corners, ...r }; return n; });
-    setEdit(null); setBusy("");
+    try {
+      const r = await render(edit.src, edit.corners, filter);
+      setPages((p) => { const n = [...p]; n[edit.idx] = { src: edit.src, corners: edit.corners, ...r }; return n; });
+      setEdit(null);
+    } catch (e) {
+      const raw = rawRef.current[edit.idx];
+      if (raw && confirm(`Entzerren fehlgeschlagen (${e.message}).\n\nFoto unverändert als Beleg übernehmen?`)) onDone(raw, { cash });
+    } finally { setBusy(""); }
   }
   async function changeFilter(f) {
     setFilter(f); ls.set("scanFilter", f);
@@ -3727,11 +3736,13 @@ function Scanner({ onDone, onClose }) {
   }
   async function finish() {
     setBusy("Wird gespeichert …"); await tick();
+    try {
     const stamp = new Date().toLocaleString("sv-SE").replace(" ", "_").replace(/:/g, "-").slice(0, 16);
     const file = pages.length === 1
       ? new File([pages[0].blob], `Scan_${stamp}.jpg`, { type: "image/jpeg" })
       : new File([await pagesToPdf(pages.map((p) => p.blob))], `Scan_${stamp}.pdf`, { type: "application/pdf" });
     onDone(file, { cash });
+    } catch (e) { alert("Speichern fehlgeschlagen: " + e.message); setBusy(""); }
   }
 
   return (
@@ -4316,7 +4327,7 @@ function DesignSettings({ design, setDesign, theme }) {
   );
 }
 
-function Settings({ mobDesign = "", setMobDesign = () => {}, theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
   const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
   useEffect(() => {
@@ -4380,11 +4391,7 @@ function Settings({ mobDesign = "", setMobDesign = () => {}, theme, design, setD
             </button>
           ))}
         </div>
-<div style={{ marginTop: 14 }}>
-          <b>📱 Handy-Design (Testmodus)</b>
-          <small className="muted block" style={{ margin: "2px 0 8px" }}>Gilt nur auf diesem Gerät und nur am Handy (unter 768 px). Auch per Link: …/?ios=1 bzw. …/?fg=1 – mit =0 wieder aus.</small>
-          <div className="seg">{[["", "Standard"], ["ios", "iOS-Stil"], ["fg", "Finanz-App-Stil"]].map(([k, l]) => <button key={k} className={mobDesign === k ? "on" : ""} onClick={() => setMobDesign(k)}>{l}</button>)}</div>
-        </div>
+
       </SetSec></>,
     "design": <><SetSec id="design" title="Design"><DesignSettings design={design} setDesign={setDesign} theme={theme} /></SetSec></>,
     "datenschutz": <><SetSec id="datenschutz" title="Datenschutz">
@@ -7321,15 +7328,97 @@ html.side-mini .sidebusy,html.side-mini .busytab small{display:none}
   nav.bottom>button span.tl{font-size:10.5px;white-space:nowrap}
 }
 
-/* ===== Tab-Symbole: Linien-SVG nur im iOS-Testdesign am Handy ===== */
+/* ===== FinDocu-Design (Finanz-App-Stil) – alle Geräte ===== */
+html.ios{--ios-glass:color-mix(in srgb,var(--card) 72%,transparent);--ios-sep:color-mix(in srgb,var(--txt) 9%,transparent)}
 .tabico .tabsvg{display:none;width:24px;height:24px}
+html.ios body,html.ios button,html.ios input,html.ios select,html.ios textarea{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",system-ui,sans-serif;letter-spacing:-.01em}
+html.ios body{-webkit-font-smoothing:antialiased}
+html.ios .tile{border-radius:22px;border:0;box-shadow:none;background:var(--card)}
+html.ios .tilehead b{font-size:17px;font-weight:600;letter-spacing:-.01em}
+html.ios .hero{border-radius:26px}
+html.ios .frow,html.ios .ditem,html.ios .invrow{border-color:var(--ios-sep)}
+html.ios .chip{border:0;background:var(--card2);border-radius:999px;font-weight:500;min-height:34px}
+html.ios .chip.on{background:var(--acc);color:#fff}
+html.ios .btn{border-radius:14px;font-weight:600}
+html.ios .btn.primary{border:0}
+html.ios .seg{background:color-mix(in srgb,var(--txt) 8%,transparent);border:0;border-radius:12px;padding:3px}
+html.ios .seg>button{border-radius:9px;font-weight:500}
+html.ios .seg>button.on{background:color-mix(in srgb,var(--txt) 16%,var(--card));box-shadow:0 3px 8px #0003,0 0 0 .5px #0000000a;color:var(--txt)}
+html:not([data-theme=dark]).ios .seg>button.on{background:#fff}
+html.ios .searchbar{border:0;border-radius:12px;background:color-mix(in srgb,var(--txt) 8%,transparent);min-height:40px}
+html.ios .searchbar input{background:transparent!important;border:0!important}
+html.ios input:not([type=checkbox]):not([type=radio]):not([type=range]),html.ios select,html.ios textarea{border-color:transparent;background:color-mix(in srgb,var(--txt) 7%,transparent);border-radius:12px}
+html.ios .fabmenu,html.ios [role=menu]{border-radius:22px;border:0;background:var(--ios-glass);backdrop-filter:saturate(180%) blur(24px);-webkit-backdrop-filter:saturate(180%) blur(24px);box-shadow:0 18px 50px #0007}
+html.ios .docdrop{border-width:1.5px;border-radius:18px;background:transparent}
+html.ios .importbar{border:0;border-radius:16px}
+nav.bottom .tabico .tabemo{font-size:inherit!important;filter:none!important;opacity:1!important}
+html.fg[data-theme=dark]{--bg:#000;--card:#1f1f1f;--card2:#2b2b2b;--line:#2e2e2e;--txt:#fff;--mut:#9b9b9f;--acc:#5ee6cf;--ok:#6fd36b;--red:#ff6b6b;--warn:#f5a524;--fg-pur:#a35cff;--fg-ind:#5b5be6;--ios-glass:rgba(46,46,48,.82);--ios-sep:#2e2e2e;color-scheme:dark}
+html.fg:not([data-theme=dark]){--bg:#fff;--card:#f3f3f5;--card2:#e8e8ec;--line:#e2e2e6;--txt:#0b0b0d;--mut:#6c6c72;--acc:#0fb39a;--ok:#2f9e3a;--fg-pur:#8a3ffc;--fg-ind:#4f46e5;--ios-glass:rgba(250,250,252,.85);--ios-sep:#e2e2e6}
+html.fg body,html.fg button,html.fg input,html.fg select,html.fg textarea{font-family:"Outfit Variable","Outfit",-apple-system,system-ui,sans-serif;letter-spacing:0}
+html.fg body,html.fg .app{background:var(--bg)}
+html.fg .topicons button,html.fg .eyebtn{color:var(--acc)!important;background:none!important}
+html.fg .topicons svg{width:24px;height:24px;stroke-width:2.2}
+html.fg .tile{background:var(--card);border-radius:26px;padding:18px}
+html.fg .tilehead b{font-size:19px;font-weight:600}
+html.fg .tilehead small,html.fg .tilehead a,html.fg .tilehead .link{color:var(--acc)}
+html.fg .hero{background:var(--card)!important;color:var(--txt)!important;box-shadow:none!important;border-radius:26px}
+html.fg .hero small{color:var(--mut)}
+html.fg .hero .hero-v,html.fg .hero b{color:var(--txt)}
+html.fg .hero .hsub>div,html.fg .hero .stats>div{background:var(--card2)!important;color:var(--txt)}
+html.fg .pos,html.fg .ok{color:var(--ok)!important}
+html.fg b,html.fg strong{font-weight:600}
+html.fg .frow,html.fg .ditem,html.fg .invrow{padding-top:14px;padding-bottom:14px;border-color:var(--line)}
+html.fg .frow b,html.fg .ditem .dtitle,html.fg .invrow .row1 b{font-size:18px;font-weight:500}
+html.fg .frow small,html.fg .ditem small{font-size:14px}
+html.fg .thumb,html.fg .caticon{border-radius:12px}
+html.fg .caticon{background:#fff!important}
+html.fg main section>h3{margin:14px -16px 0;padding:9px 16px;background:var(--card2);font-size:15px;font-weight:600;color:var(--txt);border-radius:0}
+html.fg .chip{background:var(--card2);border-radius:14px;font-weight:500;min-height:38px;padding:0 14px}
+html.fg .chip.on{background:color-mix(in srgb,var(--acc) 22%,var(--card));color:var(--acc)}
+html.fg .searchbar{background:var(--card2);border-radius:16px}
+html.fg .seg{background:var(--card);border-radius:16px;padding:4px}
+html.fg .seg>button{border-radius:12px}
+html.fg .seg>button.on{background:var(--card2)!important;color:var(--txt);box-shadow:none}
+html.fg .btn{border-radius:16px;background:var(--card2);border:0;color:var(--txt)}
+html.fg .btn.primary{background:var(--acc);color:#04201b}
+html.fg .link{color:var(--acc)}
+html.fg input:not([type=checkbox]):not([type=radio]):not([type=range]),html.fg select,html.fg textarea{background:var(--card2);border-radius:16px}
+html.fg .fab{background:var(--acc);color:#04201b;box-shadow:0 8px 24px color-mix(in srgb,var(--acc) 40%,transparent)}
+html.fg .win{background:var(--bg)}
+html.fg .fabmenu{background:var(--card)!important}
+html.fg .stpill.st-paid{background:color-mix(in srgb,var(--ok) 20%,transparent);color:var(--ok)}
+html.fg .docdrop{border-color:var(--card2)}
+html.fg body{font-size:17px;line-height:1.35}
+html.fg .tilehead b{font-size:24px;font-weight:600}
+html.fg .tilehead small,html.fg .tilehead .link,html.fg .tilehead button.link{font-size:15px;white-space:nowrap}
+html.fg .frow b,html.fg .ditem b,html.fg .ditem .dtitle,html.fg .invrow .row1 b,html.fg .contactrow b,html.fg .ctrow b{font-size:20px;font-weight:500;line-height:1.25}
+html.fg .frow .right b,html.fg .ditem b.amt,html.fg .invamt,html.fg .ditem .row1 .amt{font-size:20px;font-weight:500}
+html.fg .frow small,html.fg .ditem small,html.fg .invrow small,html.fg .contactrow small,html.fg .ctrow small,html.fg .muted.block{font-size:17px;line-height:1.3}
+html.fg .small{font-size:15px}
+html.fg .label{font-size:14px;padding:4px 10px;border-radius:8px;font-weight:500}
+html.fg .hero small{font-size:18px}
+html.fg .hero-v{font-size:44px;font-weight:600;letter-spacing:-.01em}
+html.fg .hero .hero-row small,html.fg .hero .stats small{font-size:14px}
+html.fg .hero .hero-row b,html.fg .hero .stats b{font-size:18px}
+html.fg .hero .hero-row>div,html.fg .hero .stats>div{background:var(--card2)!important;color:var(--txt)}
+html.fg .chip{font-size:17px;min-height:46px;padding:0 16px;border-radius:16px}
+html.fg .seg>button{font-size:16px;min-height:44px}
+html.fg .btn{font-size:17px;min-height:46px}
+html.fg .searchbar{min-height:52px}html.fg .searchbar input{font-size:18px}
+html.fg main section>h3{font-size:17px;padding:10px 16px}
+html.fg .acctree .accitem,html.fg .acctree.card .accitem{font-size:19px;min-height:50px}
+html.fg .acctitle{font-size:14px}
+html.fg .invstats .tile b{font-size:28px}html.fg .invstats .tile small{font-size:15px}
+html.fg .docdrop b{font-size:17px}html.fg .docdrop small{font-size:15px}
+html.fg label{font-size:16px}
+html.fg input:not([type=checkbox]):not([type=radio]):not([type=range]),html.fg select,html.fg textarea{font-size:18px}
+html.fg .caticon{width:48px!important;height:48px!important;font-size:24px!important}
+html.fg .fabmenu b{font-size:19px}html.fg .fabmenu small{font-size:15px}
+html.fg .moremenu button{font-size:18px;padding:12px 12px}
+
+/* ===== nur Handy: schwebende Leiste, Kopf, ＋-Button ===== */
 @media (max-width:767px){
-  html.ios{--ios-glass:color-mix(in srgb,var(--card) 72%,transparent);--ios-sep:color-mix(in srgb,var(--txt) 9%,transparent)}
-  html.ios body,html.ios button,html.ios input,html.ios select,html.ios textarea{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",system-ui,sans-serif;letter-spacing:-.01em}
-  html.ios body{-webkit-font-smoothing:antialiased}
-  /* große Titel */
   html.ios main h1,html.ios .pagetitle,html.ios header h1{font-size:34px;font-weight:700;letter-spacing:-.025em}
-  /* schwebende Glas-Tableiste */
   html.ios nav.bottom{left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 8px);padding:6px;border:1px solid color-mix(in srgb,var(--txt) 8%,transparent);border-radius:30px;background:var(--ios-glass);backdrop-filter:saturate(180%) blur(22px);-webkit-backdrop-filter:saturate(180%) blur(22px);box-shadow:0 10px 30px #0006,0 1px 0 color-mix(in srgb,#fff 6%,transparent) inset;gap:2px}
   html.ios nav.bottom>button{min-width:64px;min-height:50px;padding:5px 8px 4px;border-radius:24px;gap:1px;color:var(--mut);transition:background .2s,color .2s}
   html.ios nav.bottom>button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc)}
@@ -7338,142 +7427,40 @@ html.side-mini .sidebusy,html.side-mini .busytab small{display:none}
   html.ios nav.bottom .tabico .tabsvg{display:block}
   html.ios nav.bottom>button span.tabico{filter:none;opacity:1;font-size:22px;line-height:1}
   html.ios main{padding-bottom:calc(env(safe-area-inset-bottom) + 96px)}
-  /* ＋-Button als Glas-Kreis über der Leiste */
   html.ios .fab{bottom:calc(env(safe-area-inset-bottom) + 84px);right:18px;width:54px;height:54px;font-size:28px;font-weight:300;background:var(--acc);box-shadow:0 8px 24px color-mix(in srgb,var(--acc) 45%,transparent),0 0 0 1px color-mix(in srgb,#fff 18%,transparent) inset}
-  /* Werkzeugleiste oben rechts */
   html.ios .topactions{background:var(--ios-glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid color-mix(in srgb,var(--txt) 8%,transparent);box-shadow:none}
-  /* Karten: weicher, ohne harte Ränder */
-  html.ios .tile{border-radius:22px;border:0;box-shadow:none;background:var(--card)}
-  html.ios .tilehead b{font-size:17px;font-weight:600;letter-spacing:-.01em}
-  html.ios .hero{border-radius:26px}
-  /* Listen: eingerückte Trennlinien wie in iOS */
-  html.ios .frow,html.ios .ditem,html.ios .invrow{border-color:var(--ios-sep)}
-  /* Chips & Buttons: Kapseln */
-  html.ios .chip{border:0;background:var(--card2);border-radius:999px;font-weight:500;min-height:34px}
-  html.ios .chip.on{background:var(--acc);color:#fff}
-  html.ios .btn{border-radius:14px;font-weight:600}
-  html.ios .btn.primary{border:0}
-  /* Segment-Steuerung wie iOS */
-  html.ios .seg{background:color-mix(in srgb,var(--txt) 8%,transparent);border:0;border-radius:12px;padding:3px}
-  html.ios .seg>button{border-radius:9px;font-weight:500}
-  html.ios .seg>button.on{background:color-mix(in srgb,var(--txt) 16%,var(--card));box-shadow:0 3px 8px #0003,0 0 0 .5px #0000000a;color:var(--txt)}
-  html:not([data-theme=dark]).ios .seg>button.on{background:#fff}
-  /* Dokumente: Aktionen waagrecht unter dem Eintrag statt gestapelt */
   html.ios .ditem{flex-wrap:wrap;row-gap:4px}
   html.ios .ditem .dactions{flex-direction:row;width:100%;justify-content:flex-end;gap:2px;margin-top:-4px}
   html.ios .ditem .dactions button{width:38px;height:34px}
-  /* Suchfeld */
-  html.ios .searchbar{border:0;border-radius:12px;background:color-mix(in srgb,var(--txt) 8%,transparent);min-height:40px}
-  html.ios .searchbar input{background:transparent!important;border:0!important}
-  /* Eingabefelder gefüllt statt umrandet */
-  html.ios input:not([type=checkbox]):not([type=radio]):not([type=range]),html.ios select,html.ios textarea{border-color:transparent;background:color-mix(in srgb,var(--txt) 7%,transparent);border-radius:12px}
-  /* Fenster als Sheet mit Griff */
   html.ios .win{border-radius:22px 22px 0 0;border:0}
   html.ios .win::before{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);width:36px;height:5px;border-radius:3px;background:color-mix(in srgb,var(--txt) 22%,transparent);z-index:3;pointer-events:none}
-  /* ＋-Menü als Glas-Popover */
-  html.ios .fabmenu,html.ios [role=menu]{border-radius:22px;border:0;background:var(--ios-glass);backdrop-filter:saturate(180%) blur(24px);-webkit-backdrop-filter:saturate(180%) blur(24px);box-shadow:0 18px 50px #0007}
-  /* Ablagefeld & Status */
-  html.ios .docdrop{border-width:1.5px;border-radius:18px;background:transparent}
-  html.ios .importbar{border:0;border-radius:16px}
-}
-nav.bottom .tabico .tabemo{font-size:inherit!important;filter:none!important;opacity:1!important}
-
-/* ===== Handy-Testdesign „Finanz-App-Stil“ (html.fg, baut auf .ios auf) ===== */
-@media (max-width:767px){
-  html.fg[data-theme=dark]{--bg:#000;--card:#1f1f1f;--card2:#2b2b2b;--line:#2e2e2e;--txt:#fff;--mut:#9b9b9f;--acc:#5ee6cf;--ok:#6fd36b;--red:#ff6b6b;--warn:#f5a524;--fg-pur:#a35cff;--fg-ind:#5b5be6;--ios-glass:rgba(46,46,48,.82);--ios-sep:#2e2e2e;color-scheme:dark}
-  html.fg:not([data-theme=dark]){--bg:#fff;--card:#f3f3f5;--card2:#e8e8ec;--line:#e2e2e6;--txt:#0b0b0d;--mut:#6c6c72;--acc:#0fb39a;--ok:#2f9e3a;--fg-pur:#8a3ffc;--fg-ind:#4f46e5;--ios-glass:rgba(250,250,252,.85);--ios-sep:#e2e2e6}
-  html.fg body,html.fg button,html.fg input,html.fg select,html.fg textarea{font-family:"Outfit Variable","Outfit",-apple-system,system-ui,sans-serif;letter-spacing:0}
-  html.fg body,html.fg .app{background:var(--bg)}
-  /* Kopf: großer Titel, Symbole oben rechts in Mint ohne Rahmen */
   html.fg header.top{padding-top:calc(env(safe-area-inset-top) + 54px)}
   html.fg header.top h1{font-size:44px;font-weight:600;letter-spacing:-.01em;line-height:1.05}
   html.fg .topactions{background:none!important;border:0!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;top:calc(env(safe-area-inset-top) + 10px)!important;right:14px!important}
-  html.fg .topicons button,html.fg .eyebtn{color:var(--acc)!important;background:none!important}
-  html.fg .topicons svg{width:24px;height:24px;stroke-width:2.2}
-  /* Karten: großzügig gerundet, flach */
-  html.fg .tile{background:var(--card);border-radius:26px;padding:18px}
-  html.fg .tilehead b{font-size:19px;font-weight:600}
-  html.fg .tilehead small,html.fg .tilehead a,html.fg .tilehead .link{color:var(--acc)}
-  /* Hero ohne Farbverlauf: dunkle Karte, große Zahl, Mint-Fortschritt */
-  html.fg .hero{background:var(--card)!important;color:var(--txt)!important;box-shadow:none!important;border-radius:26px}
-  html.fg .hero small{color:var(--mut)}
-  html.fg .hero .hero-v,html.fg .hero b{color:var(--txt)}
-  html.fg .hero .hsub>div,html.fg .hero .stats>div{background:var(--card2)!important;color:var(--txt)}
-  /* Zahlen */
-  html.fg .pos,html.fg .ok{color:var(--ok)!important}
-  html.fg b,html.fg strong{font-weight:600}
-  /* Listen: große Schrift, Trennlinien über die ganze Breite */
-  html.fg .frow,html.fg .ditem,html.fg .invrow{padding-top:14px;padding-bottom:14px;border-color:var(--line)}
-  html.fg .frow b,html.fg .ditem .dtitle,html.fg .invrow .row1 b{font-size:18px;font-weight:500}
-  html.fg .frow small,html.fg .ditem small{font-size:14px}
-  html.fg .thumb,html.fg .caticon{border-radius:12px}
-  html.fg .caticon{background:#fff!important}
-  /* Tagesüberschriften wie graue Balken */
-  html.fg main section>h3{margin:14px -16px 0;padding:9px 16px;background:var(--card2);font-size:15px;font-weight:600;color:var(--txt);border-radius:0}
-  /* Chips, Suchfeld, Segmente */
-  html.fg .chip{background:var(--card2);border-radius:14px;font-weight:500;min-height:38px;padding:0 14px}
-  html.fg .chip.on{background:color-mix(in srgb,var(--acc) 22%,var(--card));color:var(--acc)}
-  html.fg .searchbar{background:var(--card2);border-radius:16px}
-  html.fg .seg{background:var(--card);border-radius:16px;padding:4px}
-  html.fg .seg>button{border-radius:12px}
-  html.fg .seg>button.on{background:var(--card2)!important;color:var(--txt);box-shadow:none}
-  /* Buttons: Primär in Mint mit dunkler Schrift, Links in Mint */
-  html.fg .btn{border-radius:16px;background:var(--card2);border:0;color:var(--txt)}
-  html.fg .btn.primary{background:var(--acc);color:#04201b}
-  html.fg .link{color:var(--acc)}
-  html.fg input:not([type=checkbox]):not([type=radio]):not([type=range]),html.fg select,html.fg textarea{background:var(--card2);border-radius:16px}
-  /* schwebende Leiste wie im Vorbild: dunkle Glas-Kapsel, aktiver Reiter als dunkle Kapsel in Mint */
   html.fg nav.bottom{border-radius:34px;padding:6px;background:var(--ios-glass);border:1px solid color-mix(in srgb,var(--txt) 10%,transparent);box-shadow:0 12px 34px #000a}
   html.fg nav.bottom>button{border-radius:28px;min-height:58px;color:var(--txt)}
   html.fg nav.bottom>button.on{background:color-mix(in srgb,#000 70%,var(--card));color:var(--acc)}
   html.fg:not([data-theme=dark]) nav.bottom>button.on{background:#fff;box-shadow:0 2px 8px #0001}
   html.fg nav.bottom>button span.tl{font-size:12px;font-weight:500}
   html.fg nav.bottom .tabico .tabsvg{width:27px;height:27px;stroke-width:2.1}
-  /* ＋-Button in Mint */
-  html.fg .fab{background:var(--acc);color:#04201b;box-shadow:0 8px 24px color-mix(in srgb,var(--acc) 40%,transparent)}
-  /* Fenster */
-  html.fg .win{background:var(--bg)}
-  html.fg .fabmenu{background:var(--card)!important}
-  html.fg .stpill.st-paid{background:color-mix(in srgb,var(--ok) 20%,transparent);color:var(--ok)}
-  html.fg .docdrop{border-color:var(--card2)}
-}
-
-/* ===== Finanz-App-Stil: Schriftgrößen nach Vorbild (Screenshots @3x ausgemessen) =====
-   Titel ~44pt · Abschnitts-/Kartentitel ~24pt · Listentitel & Beträge ~20pt · Untertitel ~17pt · Chips/Buttons ~17pt · Datumsbalken ~17pt · Leiste ~13pt */
-@media (max-width:767px){
-  html.fg body{font-size:17px;line-height:1.35}
   html.fg header.top h1{font-size:46px}
-  html.fg .tilehead b{font-size:24px;font-weight:600}
-  html.fg .tilehead small,html.fg .tilehead .link,html.fg .tilehead button.link{font-size:15px;white-space:nowrap}
-  html.fg .frow b,html.fg .ditem b,html.fg .ditem .dtitle,html.fg .invrow .row1 b,html.fg .contactrow b,html.fg .ctrow b{font-size:20px;font-weight:500;line-height:1.25}
-  html.fg .frow .right b,html.fg .ditem b.amt,html.fg .invamt,html.fg .ditem .row1 .amt{font-size:20px;font-weight:500}
-  html.fg .frow small,html.fg .ditem small,html.fg .invrow small,html.fg .contactrow small,html.fg .ctrow small,html.fg .muted.block{font-size:17px;line-height:1.3}
-  html.fg .small{font-size:15px}
-  html.fg .label{font-size:14px;padding:4px 10px;border-radius:8px;font-weight:500}
-  html.fg .hero small{font-size:18px}
-  html.fg .hero-v{font-size:44px;font-weight:600;letter-spacing:-.01em}
-  html.fg .hero .hero-row small,html.fg .hero .stats small{font-size:14px}
-  html.fg .hero .hero-row b,html.fg .hero .stats b{font-size:18px}
-  html.fg .hero .hero-row>div,html.fg .hero .stats>div{background:var(--card2)!important;color:var(--txt)}
-  html.fg .chip{font-size:17px;min-height:46px;padding:0 16px;border-radius:16px}
-  html.fg .seg>button{font-size:16px;min-height:44px}
-  html.fg .btn{font-size:17px;min-height:46px}
-  html.fg .searchbar{min-height:52px}html.fg .searchbar input{font-size:18px}
-  html.fg main section>h3{font-size:17px;padding:10px 16px}
-  html.fg .acctree .accitem,html.fg .acctree.card .accitem{font-size:19px;min-height:50px}
-  html.fg .hero .hero-row{flex-wrap:wrap}
-  html.fg .hero .hero-row>div{flex:1 1 calc(50% - 8px);min-width:0}
-  html.fg .acctitle{font-size:14px}
-  html.fg .invstats .tile b{font-size:28px}html.fg .invstats .tile small{font-size:15px}
-  html.fg .docdrop b{font-size:17px}html.fg .docdrop small{font-size:15px}
-  html.fg label{font-size:16px}
-  html.fg input:not([type=checkbox]):not([type=radio]):not([type=range]),html.fg select,html.fg textarea{font-size:18px}
-  html.fg .caticon{width:48px!important;height:48px!important;font-size:24px!important}
   html.fg nav.bottom>button span.tl{font-size:13px}
-  html.fg .fabmenu b{font-size:19px}html.fg .fabmenu small{font-size:15px}
-  html.fg .moremenu button{font-size:18px;padding:12px 12px}
 }
 
+/* ===== Tablet/Desktop: Seitenleiste & Kopf im gleichen Stil ===== */
+@media (min-width:768px){
+  html.fg nav.bottom{background:var(--bg);border-right:1px solid var(--line)}
+  html.fg nav.bottom>button{color:var(--txt);border-radius:16px}
+  html.fg nav.bottom>button.on{background:var(--card);color:var(--acc)}
+  html.fg nav.bottom>button:hover{background:var(--card)}
+  html.fg nav.bottom .tabico.hassvg .tabemo{display:none}
+  html.fg nav.bottom .tabico .tabsvg{display:block;width:22px;height:22px;stroke-width:2}
+  html.fg nav.bottom .brand b{font-weight:600}
+  html.fg header.top h1{font-size:40px;font-weight:600;letter-spacing:-.01em}
+  html.fg .topactions{background:var(--card)!important;border:0!important;box-shadow:none!important}
+  html.fg main section>h3{margin:18px 0 10px!important;border-radius:12px;text-transform:none;letter-spacing:0}
+  html.fg .ditem .dactions{gap:2px}
+}
 /* Fixkosten-Vertragsordner: lange Texte umbrechen statt die Seite zu verbreitern */
 .cgrid,.crow,.crow .frow{min-width:0;max-width:100%}
 @media (max-width:767px){.cgrid{grid-template-columns:minmax(0,1fr)}}
@@ -7483,4 +7470,35 @@ nav.bottom .tabico .tabemo{font-size:inherit!important;filter:none!important;opa
 .cmeta .pill{white-space:normal;max-width:100%;overflow-wrap:anywhere;margin-left:0;border-radius:12px}
 html.fg .cmeta .pill{font-size:15px;padding:5px 12px}
 html.fg .cmeta .link{font-size:16px}
+
+@media (max-width:767px){
+  html.fg .topactions{position:absolute!important}
+  html.fg main section>h3{margin:18px -16px 10px!important;text-transform:none;letter-spacing:0;position:relative;z-index:0}
+  html.fg main section>h3+.dlist{margin-top:0}
+}
+
+/* ===== Einstellungen im FinDocu-Design ===== */
+html.fg fieldset{border-radius:24px;box-shadow:none;background:var(--card);padding:10px 18px 18px}
+html.fg legend{font-size:19px;font-weight:600;padding:12px 0 6px}
+html.fg .ssec{padding:0;margin-top:14px}
+html.fg .ssechead{padding:6px 10px 6px 6px}
+html.fg .ssectitle{font-size:20px;font-weight:600;min-height:56px;padding:12px 8px;border-radius:16px}
+html.fg .ssectitle:hover{background:var(--card2)}
+html.fg .ssectitle .pchev{color:var(--acc)}
+html.fg .ssecbody{border-top:1px solid var(--line);padding:4px 18px 18px}
+html.fg .switchrow{font-size:17px;padding:12px 0;margin:0;border-bottom:1px solid var(--line)}
+html.fg .switchrow:last-child{border-bottom:0}
+html.fg .switchrow small{font-size:14px;margin-top:2px}
+html.fg .themeopts{gap:10px}
+html.fg .themeopts button{border:0;background:var(--card2);border-radius:18px;padding:16px 8px}
+html.fg .themeopts button.on{background:color-mix(in srgb,var(--acc) 18%,var(--card));color:var(--acc);box-shadow:inset 0 0 0 2px var(--acc)}
+html.fg .themeopts button b{font-size:16px}html.fg .themeopts button small{font-size:13px;color:var(--mut)}
+html.fg .tab-settings .muted.small,html.fg .tab-settings p.small{font-size:15px;line-height:1.45}
+html.fg .tab-settings .actions .link,html.fg .tab-settings button.link{color:var(--acc);font-size:16px}
+html.fg .grpcfg{background:var(--card2);border-radius:18px}
+html.fg .acccfg{border-radius:14px}
+html.fg input.switch{accent-color:var(--acc)}
+html.fg .switch:checked{background:var(--acc)}
+@media (max-width:1023px){html.fg .hero .hero-row{flex-wrap:wrap}html.fg .hero .hero-row>div{flex:1 1 calc(50% - 8px);min-width:0}}
+@media (min-width:768px){html.fg nav.bottom .acctree .accitem{font-size:14.5px;min-height:38px}html.fg nav.bottom .acctitle{font-size:11px}}
 `;
