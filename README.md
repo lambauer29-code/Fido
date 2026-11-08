@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.27.1
+- Status-Pill sitzt jetzt am Ende der Zeile (vor „…“), Menü öffnet nach links
+- Mahnungen: Status-Pill mit Menü (Bezahlt, Offen, Buchung zuordnen, Stornieren) bei „Zu mahnen“ und im Mahnverlauf (letzte Mahnung je Rechnung)
+
 ## v0.27.0
 - Rechnungsliste: Status-Pill ist jetzt antippbar – Menü mit Bezahlt, Offen, Buchung zuordnen und Stornieren
 - Separater „Offen“-Link und „Buchung zuordnen“-Button entfernt, Stornieren aus dem „…“-Menü in die Pill verschoben

@@ -4971,6 +4971,27 @@ function PayWin({ inv, book, onDone, onClose }) {
   );
 }
 
+/* ---------- Status-Pill mit Menü (Rechnungen + Mahnungen) ---------- */
+function StatusMenu({ x, s, book, onPay, onUnpay, onPatch }) {
+  const [label, cls] = STATE_UI[s] || [s, ""];
+  return (
+    <details className="more stmenu" onClick={(e) => e.stopPropagation()}>
+      <summary className={"stpill " + cls} title="Status ändern">{label} <span className="stcaret">▾</span></summary>
+      <div className="moremenu" onClick={(e) => { if (e.target.closest("button")) e.currentTarget.closest("details").open = false; }}>
+        <button className={s === "bezahlt" ? "cur" : ""} onClick={() => s !== "bezahlt" && onPay(x)}>{s === "bezahlt" ? "✓ " : ""}Bezahlt</button>
+        <button className={["offen", "überfällig"].includes(s) ? "cur" : ""} onClick={() => s === "bezahlt" ? onUnpay(x) : s === "storniert" ? onPatch(x.id, { status: "offen" }) : null}>{["offen", "überfällig"].includes(s) ? "✓ " : ""}Offen{s === "überfällig" ? " (überfällig)" : ""}</button>
+        {s === "bezahlt" && !x.paidTx && book?.accounts?.length > 0 && <button onClick={() => onPay(x)}>🔗 Buchung zuordnen</button>}
+        {s !== "storniert" ? <button className="red" onClick={() => confirm(`Rechnung ${x.number} stornieren? Sie bleibt im Verlauf, zählt aber nicht mehr zum Umsatz.`) && onPatch(x.id, { status: "storniert" })}>Stornieren</button>
+          : <button className="cur">✓ Storniert</button>}
+      </div>
+    </details>
+  );
+}
+const unpayInv = async (x, book, patch) => {
+  if (x.paidTx && book) { const created = x.paidTxCreated; await book.unlink(x.paidTx, created ? confirm("Die dabei angelegte Buchung ebenfalls löschen?") : false); }
+  patch(x.id, { status: "offen", paidAt: null, paidTx: null, paidTxCreated: false, paidAccount: null, payMethod: null });
+};
+
 /* ---------- Seite ---------- */
 function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }) {
   const [list, setList] = useLsState("invoices", []);
@@ -5120,24 +5141,14 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                   {pay && <button className="link pos small" onClick={async (e) => { e.stopPropagation(); if (book) await book.link(pay.id, x); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id, paidAccount: pay.accountId, payMethod: "Überweisung" }); }}>💡 Zahlungseingang vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}
                 </div>
                 <b className="invamt">{fmtMoney(invTotal(x))}</b>
-            {x.kind === "rechnung" && s !== "entwurf" ? (
-              <details className="more stmenu" onClick={(e) => e.stopPropagation()}>
-                <summary className={"stpill " + cls} title="Status ändern">{label} <span className="stcaret">▾</span></summary>
-                <div className="moremenu" onClick={(e) => { if (e.target.closest("button")) e.currentTarget.closest("details").open = false; }}>
-                  <button className={s === "bezahlt" ? "cur" : ""} onClick={() => s !== "bezahlt" && setPayFor2(x)}>{s === "bezahlt" ? "✓ " : ""}Bezahlt</button>
-                  <button className={["offen", "überfällig"].includes(s) ? "cur" : ""} onClick={() => s === "bezahlt" ? unpay(x) : s === "storniert" ? patch(x.id, { status: "offen" }) : null}>{["offen", "überfällig"].includes(s) ? "✓ " : ""}Offen{s === "überfällig" ? " (überfällig)" : ""}</button>
-                  {s === "bezahlt" && !x.paidTx && book?.accounts?.length > 0 && <button onClick={() => setPayFor2(x)}>🔗 Buchung zuordnen</button>}
-                  {s !== "storniert" ? <button className="red" onClick={() => confirm(`Rechnung ${x.number} stornieren? Sie bleibt im Verlauf, zählt aber nicht mehr zum Umsatz.`) && patch(x.id, { status: "storniert" })}>Stornieren</button>
-                    : <button className="cur">✓ Storniert</button>}
-                </div>
-              </details>
-            ) : <span className={"stpill " + cls}>{label}</span>}
+            {!(x.kind === "rechnung" && s !== "entwurf") && <span className={"stpill " + cls}>{label}</span>}
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
                   {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button>}
                   {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button>}
                   {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" title="Zahlungseingang auf ein Konto buchen und Rechnung als bezahlt markieren" onClick={() => setPayFor2(x)}>Als bezahlt markieren</button>}
                   {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>}
                   {x.kind === "angebot" && s === "offen" && <><button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button><button className="link small" onClick={() => patch(x.id, { status: "abgelehnt" })}>Abgelehnt</button></>}
+                  {x.kind === "rechnung" && s !== "entwurf" && <StatusMenu x={x} s={s} book={book} onPay={setPayFor2} onUnpay={unpay} onPatch={patch} />}
                   <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
                     <div className="moremenu">
                       <button onClick={() => copyAsNew(x)}>Als neue {x.kind === "angebot" ? "Angebot" : "Rechnung"} kopieren</button>
@@ -5850,7 +5861,7 @@ function DunningPage({ setTab, book }) {
             <span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? "fällig" : `in ${(dn.waitDays || 0) - since} T.`}</span>
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
               <button className={"btn sm" + (ready ? " danger" : "")} onClick={() => setRemind(x)}>{remindName(next)} erstellen</button>
-              <button className="btn sm" title="Zahlungseingang auf ein Konto buchen" onClick={() => setPayX(x)}>Als bezahlt markieren</button>
+              <StatusMenu x={x} s={invState(x)} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />
             </div>
           </div>
         ))}
@@ -5865,13 +5876,12 @@ function DunningPage({ setTab, book }) {
               <small className="muted block">{fmtDate(r.date)} · {x.number} · Frist {fmtDate(r.due)}{Number(r.fee) ? ` · Spesen ${fmtMoney(Number(r.fee))}` : ""}</small>
             </div>
             <b className="invamt">{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))}</b>
-            <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>
+            {i !== x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
               <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}><IcoEye /></button>
               <button className="iconbtn" title="Teilen" onClick={async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email)}><IcoShare /></button>
-              {i === x.reminders.length - 1 && ["offen", "überfällig"].includes(s) && book && <button className="btn sm" title="Zahlungseingang auf ein Konto buchen" onClick={() => setPayX(x)}>Als bezahlt markieren</button>}
-              {i === x.reminders.length - 1 && s === "bezahlt" && !x.paidTx && book?.accounts?.length > 0 && <button className="btn sm" title="Bereits bezahlte Rechnung nachträglich mit einer Kontobuchung verknüpfen" onClick={() => setPayX(x)}>🔗 Buchung zuordnen</button>}
               {i === x.reminders.length - 1 && s !== "bezahlt" && <button className="link small red" onClick={() => confirm("Diese Mahnung aus dem Verlauf entfernen?") && patch(x.id, { reminders: x.reminders.slice(0, -1) })}>Zurücknehmen</button>}
+              {i === x.reminders.length - 1 && <StatusMenu x={x} s={s} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />}
             </div>
           </div>); })}
       </section>
@@ -6910,7 +6920,7 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
 
 /* v0.24.11: einheitliche Symbol-Knöpfe in Rechnungen/Mahnungen */
 .invacts .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;min-width:36px;min-height:36px;padding:0;border-radius:10px;background:transparent;color:var(--mut);font-size:16px;line-height:1}
-.invacts .iconbtn:hover,.invacts .more[open]>summary{background:var(--card2);color:var(--acc)}
+.invacts .iconbtn:hover,.invacts .more:not(.stmenu)[open]>summary{background:var(--card2);color:var(--acc)}
 .invacts .iconbtn svg{width:18px;height:18px}
 .more>summary.morebtn{list-style:none}
 
@@ -6943,6 +6953,7 @@ nav.bottom>button.sidetoggle{display:none}
 
 .stmenu{flex:none}.stmenu>summary.stpill{width:auto;min-width:84px;cursor:pointer;gap:4px;user-select:none;-webkit-user-select:none}
 .stmenu>summary .stcaret{font-size:9px;opacity:.75}
-.stmenu .moremenu{min-width:200px;top:calc(100% + 6px);left:0;right:auto;z-index:60}
+.stmenu .moremenu{min-width:200px;top:calc(100% + 6px);right:0;left:auto;z-index:60}
 .stmenu .moremenu .cur{color:var(--acc);font-weight:600}
+.stmenu[open]>summary.stpill{box-shadow:0 0 0 2px var(--line)}
 `;
