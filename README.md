@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.55.2
+- Umtauschfrist-Kalender: „Bevorstehend“ ist jetzt ein schwebendes Fenster. Der Knopf „⏰ Bevorstehend“ in der Kalenderleiste zeigt die Anzahl offener Fristen und wird rot, wenn etwas überfällig ist. Das Fenster ist am Desktop verschieb- und größenveränderbar, am Handy ein Vollbild-Blatt. Ein Klick auf eine Zeile springt zum Tag im Kalender, › öffnet die Rechnung.
+
 ## v0.55.1
 - Umtauschfrist (Kalender und Liste): Ein Klick auf eine Frist öffnet jetzt direkt die verknüpfte Rechnung bzw. den Beleg als Vorschau, mit Drucken und „Original öffnen“. Bearbeiten geht über ✎ im Fenster. Vertragsfristen öffnen weiterhin den Vertrag.
 

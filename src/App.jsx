@@ -4574,8 +4574,7 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
   const toggle = (dl, doc) => saveDoc({ ...doc, deadlines: doc.deadlines.map((x) => (x.id === dl.id ? { ...x, done: !x.done } : x)), paid: /zahl|fällig/i.test(dl.label) && !dl.done ? true : doc.paid });
   const tone = (dl) => (dl.done ? "done" : dl.date < today ? "over" : daysUntil(dl.date) <= 7 ? "soon" : "");
   const sel = byDay[selDay] || [];
-  const [upOpen, setUpOpen] = useState(() => ls.get("calUpOpen", true));
-  useEffect(() => ls.set("calUpOpen", upOpen), [upOpen]);
+  const [upOpen, setUpOpen] = useState(false);
   const open = items.filter(([dl]) => !dl.done);
   const overdue = open.filter(([dl]) => dl.date < today), upcoming = open.filter(([dl]) => dl.date >= today);
   return (
@@ -4592,12 +4591,9 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
           </div>
         ))}
       </div>
-      <div className="calupc">
-        <button className="calupchead" onClick={() => setUpOpen(!upOpen)} aria-expanded={upOpen}>
-          <IcoChev open={upOpen} /><b className="grow">Bevorstehend</b>
-          <small className="muted">{overdue.length ? `${overdue.length} überfällig · ` : ""}{upcoming.length} offen</small>
-        </button>
-        {upOpen && (
+      {upOpen && (
+        <Win id="calupc" onClose={() => setUpOpen(false)} dirty={false} small defW={620} className="calupcwin">
+          <div className="panelhead"><b>⏰ Bevorstehend</b><small className="muted grow" style={{ marginLeft: 8 }}>{overdue.length ? `${overdue.length} überfällig · ` : ""}{upcoming.length} offen</small><XBtn /></div>
           <div className="calupclist">
             {!overdue.length && !upcoming.length && <p className="muted small">Keine offenen Fristen 🎉</p>}
             {[...overdue, ...upcoming].map(([dl, doc]) => {
@@ -4613,8 +4609,8 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
               );
             })}
           </div>
-        )}
-      </div>
+        </Win>
+      )}
       <div className="calhead">
         <button className="iconbtn" onClick={() => shift(-1)} aria-label="Zurück">‹</button>
         <b className="grow">{view === "jahr" ? cursor.slice(0, 4)
@@ -4626,6 +4622,7 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
           ))}
         </div>
         <button className="chip" onClick={() => pick(today)}>Heute</button>
+        <button className={"chip calupbtn" + (upOpen ? " on" : "") + (overdue.length ? " warn" : "")} onClick={() => setUpOpen(!upOpen)} title="Bevorstehende Fristen">⏰ Bevorstehend <b>{overdue.length + upcoming.length}</b></button>
         <button className="iconbtn" onClick={() => shift(1)} aria-label="Weiter">›</button>
       </div>
 
@@ -9585,4 +9582,11 @@ html,body{min-height:100%}
 .wbitem[data-grid]>.dropline{left:-10px;right:auto;top:0;bottom:0;width:3px;height:auto}
 .wboard.editing .wbbody{max-height:190px;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(#000 60%,transparent);mask-image:linear-gradient(#000 60%,transparent)}
 @media (max-width:899px){.wbwide{display:none!important}}
+.calupcwin .calupclist{max-height:none;overflow:visible}
+.calupbtn b{margin-left:4px;background:var(--acc);color:#000;border-radius:999px;padding:0 7px;font-size:12px}
+.calupbtn.warn b{background:var(--red);color:#fff}
+@media (max-width:600px){.calhead{flex-wrap:wrap}.calhead .calupbtn{order:10;flex:1 1 100%;justify-content:center;display:flex;align-items:center}}
+@media (max-width:600px){.calupcwin .calrow{display:grid;grid-template-columns:auto auto 1fr auto;grid-template-areas:"d t t btn" "d amt days btn";column-gap:10px;row-gap:2px;align-items:center}
+.calupcwin .calrow>.datebox{grid-area:d}.calupcwin .calrow>.grow{grid-area:t;min-width:0}.calupcwin .calrow>b{grid-area:amt;font-size:14px}
+.calupcwin .calrow>small.nowrap{grid-area:days;justify-self:start}.calupcwin .calrow>.iconbtn{grid-area:btn}}
 `;
