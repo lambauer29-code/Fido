@@ -2,6 +2,16 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.34.0
+- Universal-Ablage mit KI-Erkennung: PDFs/Fotos werden ausgelesen; erkennt die KI einen Kontoauszug (Dokumenttyp „Kontoauszug“), werden die Umsätze automatisch zum Import vorbereitet – das Dokument bleibt zusätzlich in Dokumente
+- Kontoauszug-PDFs/-Fotos aus der Ablage werden im Import-Fenster automatisch mit Claude ausgelesen (kein extra Klick)
+
+## v0.33.0
+- Neues Übersicht-Widget „Universal-Ablage“: beliebige Dateien und ganze Ordner ablegen – wird automatisch erkannt und einsortiert:
+  PDFs/Fotos → Dokumente (KI liest aus), CSV/CAMT/MT940/OFX/Excel und PDFs mit „Konto/Auszug/Umsatz“ im Namen → Kontoauszug-Import (nacheinander), .vcf → Kunden-Import; Rest wird übersprungen
+- Zusammenfassung „Erkannt: …“ im Widget, Fortschritt für Dokumente und Kontoauszüge
+- Konten: Ablagefeld direkt unter der Leiste (vor den Kontokarten)
+
 ## v0.32.2
 - Konten: „📥 Ablagefeld“ an erster Stelle der Zeile; bei Kunden standardmäßig ebenfalls vorne
 

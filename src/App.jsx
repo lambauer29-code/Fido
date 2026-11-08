@@ -1537,6 +1537,44 @@ export default function App() {
   const [bizReq, setBizReq] = useState(0);
   const [upl, setUpl] = useState(null), [accBusy, setAccBusy] = useState(null), [ctBusy, setCtBusy] = useState(null);
   const docPeak = useRef(0);
+  const [uniLast, setUniLast] = useState("");
+  const appQ = useRef({ files: [], i: 0, contacts: null, running: false });
+  const uniFiles = useRef({});
+  const enqueueStmt = (f) => { const q = appQ.current; q.files.push(f); if (!q.running) { q.running = true; nextAppImp(); } else setAccBusy((b) => b && { ...b, total: q.files.length, n: q.files.length - q.i + 1 }); };
+  const STMT_RE = /\.(csv|txt|tsv|xml|sta|mt940|940|ofx|qfx|qif|json|xlsx|xlsm|xls)$/i;
+  const nextAppImp = async () => {
+    const q = appQ.current;
+    if (q.i < q.files.length) {
+      const f = q.files[q.i++];
+      setAccBusy({ title: `Kontoauszug ${q.i} von ${q.files.length} wird importiert …`, sub: f.name, done: q.i - 1, total: q.files.length, n: q.files.length - q.i + 1 });
+      try { setImp({ file: f, result: await parseFile(f, ls.get("mappings", {})), uni: true, autoAi: f.__ai }); } catch (e) { notify(`${f.name}: nicht lesbar (${e.message})`); nextAppImp(); }
+      return;
+    }
+    setAccBusy(null);
+    const c = q.contacts; appQ.current = { files: [], i: 0, contacts: null, running: false };
+    if (c?.length) { ls.set("pendingContactImport", c); setTab("kunden"); setBizReq((n) => n + 1); }
+  };
+  async function smartImport(list) {
+    const docs = [], stmts = [], vcf = [], skip = [];
+    for (const f of list) {
+      if (f.name.startsWith(".")) continue;
+      if (/\.vcf$/i.test(f.name) || /vcard/i.test(f.type)) vcf.push(f);
+      else if (STMT_RE.test(f.name)) stmts.push(f);
+      else if (/\.pdf$/i.test(f.name) || /pdf$/i.test(f.type) || /^image\//.test(f.type) || /\.(jpe?g|png|heic|heif|webp)$/i.test(f.name))
+        (/(konto|auszug|umsatz|umsätze|statement|camt|depot)/i.test(f.name) ? (f.__ai = true, stmts) : docs).push(f);
+      else skip.push(f);
+    }
+    let contacts = [];
+    for (const f of vcf) { try { contacts = contacts.concat(parseVcf(await f.text())); } catch {} }
+    const parts = [docs.length && `${docs.length} Dokument${docs.length === 1 ? "" : "e"}`, stmts.length && `${stmts.length} Kontoauszug${stmts.length === 1 ? "" : "/-auszüge"}`,
+      contacts.length && `${contacts.length} Kontakt${contacts.length === 1 ? "" : "e"}`, skip.length && `${skip.length} übersprungen`].filter(Boolean);
+    const msg = parts.length ? "Erkannt: " + parts.join(" · ") : "Keine passenden Dateien gefunden";
+    setUniLast(msg + (docs.length ? " · KI prüft PDFs/Fotos zusätzlich auf Kontoauszüge" : "") + (skip.length ? ` (${skip.slice(0, 3).map((f) => f.name).join(", ")}${skip.length > 3 ? " …" : ""})` : "")); notify(msg);
+    const q = appQ.current;
+    q.files.push(...stmts); if (contacts.length) q.contacts = [...(q.contacts || []), ...contacts];
+    if (docs.length) onFiles(docs, { stay: true, uni: true });
+    if ((stmts.length || contacts.length) && !q.running) { q.running = true; setTimeout(nextAppImp, docs.length ? 300 : 0); }
+  }
   const [imp, setImp] = useState(null);
   shareUi = setShareData;
   // bestehende Rechnungsbelege einmalig in „Ausgangsrechnung“ verschieben
@@ -1702,6 +1740,11 @@ export default function App() {
         paidDate: doc.paidDate || txsRef.current.find((t) => t.docId === doc.id)?.date
       });
       await saveDoc(done);
+      const uf = uniFiles.current[doc.id];
+      if (uf) {
+        delete uniFiles.current[doc.id];
+        if (done.docType === "Kontoauszug") { notify(`KI hat einen Kontoauszug erkannt: „${done.title}“ – Umsätze werden importiert`); uf.__ai = true; enqueueStmt(uf); }
+      }
       if (doc.payCash && done.amount?.total && done.direction !== "einnahme") await bookCash({ ...done, direction: "ausgabe" });
       else if (!txsRef.current.some((t) => t.docId === done.id)) {
         const [l] = matchInvoices([done], txsRef.current);
@@ -1722,16 +1765,17 @@ export default function App() {
       const doc = {
         id: uid(), createdAt: new Date().toISOString(), fileName: f.name, mimeType: blob.type, size: blob.size,
         title: f.name, category: "Sonstiges", tags: [], deadlines: [], amount: null, paid: false, notes: "", status: "processing",
-        ...(opts.cash ? { payCash: true } : {}), ...(opts.scanned ? { scanned: true } : {})
+        ...(opts.cash ? { payCash: true } : {}), ...(opts.scanned ? { scanned: true } : {}), ...(opts.uni ? { uniCheck: true } : {})
       };
       try { doc.thumb = await makeThumb(blob); } catch {}
+      if (opts.uni) uniFiles.current[doc.id] = f;
       await db.putFile(doc.id, blob);
       await saveDoc(doc);
       if (opts.linkTx) { await linkTx(opts.linkTx, doc.id); notify("Beleg wird ausgelesen und ist der Buchung zugeordnet"); }
       queue.current = queue.current.then(() => analyze(doc, blob));
     }
     setUpl(null);
-    if (files.length && !opts.linkTx) setTab("docs");
+    if (files.length && !opts.linkTx && !opts.stay) setTab("docs");
   }
   async function reanalyze(doc) {
     const blob = await db.getFile(doc.id);
@@ -1800,6 +1844,11 @@ export default function App() {
       <main>
         {tab === "home" && <Home docs={active} txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={visAccounts.some((a) => a.kind === "cash")}
           accounts={visAccounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
+          uniDrop={<>
+            <DropField onFiles={smartImport} busy={!!(docBusy || accBusy)} title="Beliebige Dateien oder Ordner hierher ziehen" what="Dokumente, Kontoauszüge, vCards" isOk={() => true} accept="" />
+            {docBusy && <ImportBar {...docBusy} />}{accBusy && <ImportBar {...accBusy} />}
+            {uniLast && <p className="small muted unilast">{uniLast}</p>}
+          </>}
           cashForm={<CashForm compact accounts={accounts} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory} />}
           editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => setScanOpen(true), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
         {tab === "accounts" && <Accounts busy={accBusy} setBusy={setAccBusy} addCategory={addCategory} linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
@@ -1835,7 +1884,7 @@ export default function App() {
         const f = e.target.files[0]; e.target.value = ""; if (!f) return;
         try { setImp({ file: f, result: await parseFile(f, ls.get("mappings", {})) }); } catch (err) { notify("Datei nicht lesbar: " + err.message); }
       }} />
-      {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
+      {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => { const u = imp.uni; setImp(null); if (u) setTimeout(nextAppImp, 50); }} />}
       <input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden
         onChange={(e) => { const l = pendingLink.current; pendingLink.current = null; onFiles(e.target.files, l ? { linkTx: l } : {}); e.target.value = ""; }} />
       {fabOpen && <div className="fabmenu-bg" onClick={() => setFabOpen(false)} />}
@@ -1991,10 +2040,12 @@ const HOME_WIDGETS = {
   tx: ["Letzte Buchungen", 4, "💳", "Neueste Kontoumsätze"],
   tax: ["Steuer", 4, "🧮", "Steuerrelevante Belege des Jahres"],
   quick: ["Schnellzugriff", 4, "⚡", "Scannen, Datei, Buchung, Konto"],
+  ablage: ["Universal-Ablage", 4, "📥", "Alle Dateien & Ordner – wird automatisch einsortiert"],
 };
 const HOME_DEFAULT = { order: ["hero", "alerts", "konten", "bargeld", "kategorien", "verlauf", "budgets", "fristen"], hidden: ["docs", "contracts", "tx", "tax", "quick"], w: {}, h: {}, gap: 16 };
 function migrateLayout(l) {
-  if (!l) return JSON.parse(JSON.stringify(HOME_DEFAULT));
+  if (!l) return JSON.parse(JSON.stringify({ ...HOME_DEFAULT, order: ["ablage", ...HOME_DEFAULT.order], seenAblage: true }));
+  if (!l.seenAblage) l = { ...l, seenAblage: true, order: l.order.includes("ablage") ? l.order : ["ablage", ...l.order], hidden: (l.hidden || []).filter((x) => x !== "ablage") };
   if (l.size && !l.w) { const conv = { "1": 4, "2": 8, full: 12 }; l = { ...l, w: Object.fromEntries(Object.entries(l.size).map(([k, v]) => [k, conv[v] || 4])) }; }
   return { gap: 16, h: {}, w: {}, ...l };
 }
@@ -2031,7 +2082,7 @@ function CashPage({ accounts, txs, categories, onSave, onScan, addCategory, docs
     </div>
   );
 }
-function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount, cashForm, editing = false, setEditing = () => {}, actions }) {
+function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount, cashForm, uniDrop, editing = false, setEditing = () => {}, actions }) {
   const bankAccs = accounts.filter((a) => a.kind !== "cash");
   const bankBals = bankAccs.map((a) => accountBalance(a, txs)).filter((x) => x != null);
   const bankTotal = bankBals.length ? bankBals.reduce((x, y) => x + y, 0) : null;
@@ -2248,7 +2299,8 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
       <div className="tilehead"><b>Barausgabe erfassen</b></div>
       {cashForm}
     </section>) : null;
-  const els = { barerfassung: w_barerfassung, hero: w_hero, alerts: w_alerts, konten: w_konten, bargeld: w_bargeld, kategorien: w_kategorien, verlauf: w_verlauf,
+  const w_ablage = uniDrop ? <section className="tile uniwidget"><div className="tilehead"><b>Universal-Ablage</b><small>wird automatisch einsortiert</small></div>{uniDrop}</section> : null;
+  const els = { ablage: w_ablage, barerfassung: w_barerfassung, hero: w_hero, alerts: w_alerts, konten: w_konten, bargeld: w_bargeld, kategorien: w_kategorien, verlauf: w_verlauf,
     budgets: w_budgets, fristen: w_fristen, docs: w_docs, contracts: w_contracts, tx: w_tx, tax: w_tax, quick: w_quick };
   const [layout, setLayoutRaw] = useState(() => migrateLayout(ls.get("homeLayout", null)));
   const setLayout = (f) => setLayoutRaw((l) => { const n = typeof f === "function" ? f(l) : f; ls.set("homeLayout", n); return n; });
@@ -3282,6 +3334,10 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
           <select className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
         </div>
       )}
+      {showDrop ? <DropField onFiles={dropFiles} onHide={() => setShowDrop(false)} busy={!!busy} title="Kontoauszüge oder Ordner hierher ziehen" what="CSV, PDF, CAMT, MT940, Excel …"
+        accept={IMPORT_ACCEPT} isOk={(f) => /\.(csv|txt|tsv|xml|sta|mt940|940|ofx|qfx|qif|json|xlsx|xlsm|xls|pdf|jpe?g|png|heic|webp)$/i.test(f.name) || /^image\//.test(f.type)} emptyMsg="Keine Kontoauszug-Dateien gefunden." />
+        : !accounts.length && <button className="chip ddshow" onClick={() => setShowDrop(true)}>📥 Ablagefeld einblenden</button>}
+      {busy && <ImportBar {...busy} />}
       {selProp.length > 1 && (
         <div className={"selcards" + (peek ? " peeking" : "")}>
           {cardAccounts.map((a) => { const b = accountBalance(a, txs); return (
@@ -3301,10 +3357,6 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
             </div>); })}
         </div>
       )}
-      {showDrop ? <DropField onFiles={dropFiles} onHide={() => setShowDrop(false)} busy={!!busy} title="Kontoauszüge oder Ordner hierher ziehen" what="CSV, PDF, CAMT, MT940, Excel …"
-        accept={IMPORT_ACCEPT} isOk={(f) => /\.(csv|txt|tsv|xml|sta|mt940|940|ofx|qfx|qif|json|xlsx|xlsm|xls|pdf|jpe?g|png|heic|webp)$/i.test(f.name) || /^image\//.test(f.type)} emptyMsg="Keine Kontoauszug-Dateien gefunden." />
-        : !accounts.length && <button className="chip ddshow" onClick={() => setShowDrop(true)}>📥 Ablagefeld einblenden</button>}
-      {busy && <ImportBar {...busy} />}
       {pick && <AccountPicker groups={groups} txs={txs} sel={allSel ? [] : sel} onClose={() => setPick(false)} onApply={(l) => { setSel(l); setPick(false); }} />}
       {!txs.length && (
         <div className="empty"><div style={{ fontSize: 48 }}>🏦</div>
@@ -3401,6 +3453,8 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
     } catch (e) { notify("Claude-Import fehlgeschlagen: " + e.message); }
     finally { setBusy(false); }
   }
+  useEffect(() => { if (imp.autoAi && !res.transactions.length) viaClaude(); }, []);
+
   const fileAccounts = [...new Set(txs.map((t) => t.accountName).filter(Boolean))];
   async function doImport() {
     setBusy(true);
@@ -7188,4 +7242,5 @@ nav.bottom>button.sidetoggle{display:none}
 .sidebusy .ibar{margin-top:5px;height:4px}
 html.side-mini .sidebusy,html.side-mini .busytab small{display:none}
 .chip.ddshow{margin:6px 0 10px}
+.uniwidget .docdrop{width:100%;min-width:0;margin:6px 0 10px}.uniwidget .importbar{width:100%;min-width:0;margin:0 0 8px}.unilast{margin:4px 2px 0}
 `;
