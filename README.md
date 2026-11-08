@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.35.0
+- Verträge: Ablagefeld (Dateien & Ordner, ein-/ausblendbar über „📥 Ablagefeld“) – Dateien werden als Dokumente gespeichert und ausgelesen; erkennt die KI einen Vertrag, wird er automatisch in der Vertragsliste angelegt (mit Dokument verknüpft)
+- Fortschrittsanzeige auch in Verträge
+
 ## v0.34.0
 - Universal-Ablage mit KI-Erkennung: PDFs/Fotos werden ausgelesen; erkennt die KI einen Kontoauszug (Dokumenttyp „Kontoauszug“), werden die Umsätze automatisch zum Import vorbereitet – das Dokument bleibt zusätzlich in Dokumente
 - Kontoauszug-PDFs/-Fotos aus der Ablage werden im Import-Fenster automatisch mit Claude ausgelesen (kein extra Klick)

@@ -1756,7 +1756,7 @@ export default function App() {
   }
 
   async function onFiles(list, opts = {}) {
-    const files = [...list];
+    const files = [...list], ids = [];
     for (const [fi, f] of files.entries()) {
       setUpl({ i: fi + 1, n: files.length, name: f.name });
       let blob;
@@ -1769,6 +1769,7 @@ export default function App() {
       };
       try { doc.thumb = await makeThumb(blob); } catch {}
       if (opts.uni) uniFiles.current[doc.id] = f;
+      ids.push(doc.id);
       await db.putFile(doc.id, blob);
       await saveDoc(doc);
       if (opts.linkTx) { await linkTx(opts.linkTx, doc.id); notify("Beleg wird ausgelesen und ist der Buchung zugeordnet"); }
@@ -1776,6 +1777,7 @@ export default function App() {
     }
     setUpl(null);
     if (files.length && !opts.linkTx && !opts.stay) setTab("docs");
+    return ids;
   }
   async function reanalyze(doc) {
     const blob = await db.getFile(doc.id);
@@ -1865,7 +1867,7 @@ export default function App() {
         {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
         {tab === "artikel" && <ArticlesPage setTab={setTab} />}
         {tab === "kunden" && <ContactsPage setTab={setTab} req={bizReq} busy={ctBusy} setBusy={setCtBusy} />}
-        {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} />}
+        {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} onFiles={onFiles} docBusy={docBusy} notify={notify} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
         {tab === "settings" && (
           <Settings theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
@@ -5483,8 +5485,10 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
   );
 }
 
-function ContractsPage({ docs, me, onOpen }) {
+function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }) {
   const [list, setList] = useLsState("contractList", []);
+  const [showDrop, setShowDrop] = useLsState("ctrDrop", true);
+  const [waitIds, setWaitIds] = useLsState("ctrWait", []);
   const [scope, setScope] = useState(() => ls.get("ctScope", "alle"));
   useEffect(() => ls.set("ctScope", scope), [scope]);
   const [edit, setEdit] = useState(null), [showOld, setShowOld] = useState(false), [imp, setImp] = useState(false);
@@ -5504,6 +5508,20 @@ function ContractsPage({ docs, me, onOpen }) {
       customerNo: k.customerNumber || "", start: k.startDate || "", end: k.endDate || "", notice: nm ? nm[1] : "", noticeUnit: nm ? (/woche/i.test(nm[2]) ? "Wochen" : /tag/i.test(nm[2]) ? "Tage" : "Monate") : "Monate",
       renewMonths: "", docIds: [d.id], note: k.noticePeriod ? "Kündigungsfrist laut Dokument: " + k.noticePeriod : "" };
   };
+  // abgelegte Dateien: nach dem Auslesen erkannte Verträge automatisch anlegen
+  useEffect(() => {
+    if (!waitIds.length) return;
+    const fin = waitIds.map((id) => docs.find((d) => d.id === id)).filter((d) => d && d.status !== "processing");
+    const gone = waitIds.filter((id) => !docs.some((d) => d.id === id));
+    if (!fin.length && !gone.length) return;
+    const add = fin.filter((d) => d.contract?.provider && !list.some((c) => (c.docIds || []).includes(d.id))).map(fromDoc);
+    if (add.length) { setList((l) => [...l, ...add]); notify(`${add.length} Vertrag${add.length === 1 ? "" : "e"} erkannt und angelegt: ${add.map((c) => c.name).join(", ")}`); }
+    const none = fin.filter((d) => !d.contract?.provider);
+    if (none.length) notify(`${none.length} Datei${none.length === 1 ? "" : "en"} ohne erkennbaren Vertrag – liegt in Dokumente`);
+    const done = new Set([...fin.map((d) => d.id), ...gone]);
+    setWaitIds((w) => w.filter((id) => !done.has(id)));
+  }, [docs, waitIds]);
+  const dropCt = async (files) => { const ids = await onFiles(files, { stay: true }); setWaitIds((w) => [...w, ...(ids || [])]); };
   return (
     <div className="ctpage">
       <div className="seg scopeseg">{[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small className="cnt">({k === "alle" ? active.length : active.filter((c) => (c.scope || "privat") === k).length})</small></button>)}</div>
@@ -5516,9 +5534,12 @@ function ContractsPage({ docs, me, onOpen }) {
       <div className="invbar">
         <button className="btn primary" onClick={() => setEdit({ id: uid(), scope: scope === "firma" ? "firma" : "privat", interval: "monatlich", noticeUnit: "Monate", cat: "Internet", docIds: [] })}>＋ Vertrag</button>
         {!!docCands.length && <button className="btn" onClick={() => setImp(!imp)}>📄 Aus Dokumenten übernehmen ({docCands.length})</button>}
+        {onFiles && <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>}
         <span className="grow" />
         <label className="check mini"><input type="checkbox" checked={showOld} onChange={(e) => setShowOld(e.target.checked)} /> Gekündigte anzeigen</label>
       </div>
+      {onFiles && showDrop && <DropField onFiles={dropCt} onHide={() => setShowDrop(false)} busy={!!docBusy} title="Verträge oder Ordner hierher ziehen" what="PDF & Fotos · Vertrag wird automatisch angelegt" />}
+      {docBusy && waitIds.length > 0 && <ImportBar {...docBusy} />}
       {imp && <section className="tile">
         <div className="tilehead"><b>Von Claude erkannte Verträge in deinen Dokumenten</b></div>
         {docCands.map((d) => <div key={d.id} className="frow"><Thumb d={d} /><div className="grow"><b>{d.contract.provider}</b><small className="muted block">{d.title} · {d.contract.amount ? fmtMoney(d.contract.amount) + " " + (d.contract.interval || "") : ""}</small></div>
