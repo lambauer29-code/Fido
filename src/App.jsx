@@ -2931,7 +2931,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
       <div className="chips anaaccs">
         {vehicles.map((x) => <button key={x.id} className={"chip" + (x.id === v.id ? " on" : "")} onClick={() => setVid(x.id)} onDoubleClick={() => setVEdit(x)}><VehIcon v={x} /> {x.name}</button>)}
         <button className="chip fbaddveh" title="Fahrzeug hinzufügen" aria-label="Fahrzeug hinzufügen" onClick={() => setVEdit({})}>＋</button>
-        <button className={"chip" + (showDrop ? " on" : "")} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>
+        <button className={"chip fbdropchip" + (showDrop ? " on" : "")} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>
         <ExportMenu items={[{ head: `${v.name}${v.plate ? " · " + v.plate : ""}` },
           ...[year, String(+year - 1)].map((y) => ({ label: `🖨 Fahrtenbuch ${y} (PDF)`, sub: "alle Fahrten mit km-Ständen, Zweck und Kilometergeld", run: async () => saveBlob(await fbPdf(v, st.e, y, kmRate), `Fahrtenbuch-${fileSafe(v.name)}-${y}.pdf`) })),
           { label: "📊 Excel: Fahrten, Tanken, Kosten", run: () => downloadXlsx(`Fahrtenbuch-${fileSafe(v.name)}.xlsx`, fbSheets(v, st.e, kmRate)) },
@@ -9484,4 +9484,11 @@ html,body{min-height:100%}
 .rcalfield{flex:1;display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);margin:0;cursor:text;min-width:0}
 .rcalfield.on{border-color:var(--acc)}.rcalfield.bad{border-color:var(--red)}.rcalfield small{font-size:11px;color:var(--mut)}
 .rcalfield input{border:0!important;background:none!important;padding:0!important;margin:0;font:inherit;font-size:16px;font-weight:700;color:var(--txt);width:100%;min-width:0;box-shadow:none!important;outline:none;height:auto!important}
+
+.expmenu>summary.chip,.expmenu>summary.btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;line-height:1;white-space:nowrap}
+.fbdropchip{margin-left:14px}
+.chips.chipbar>.expmenu>summary{height:43px!important;min-height:43px!important}
+
+.chips:not(.chipbar)>.expmenu{margin-left:14px}.chips>.fbdropchip+.expmenu{margin-left:0}
+.invbar>.expmenu{margin-left:8px}
 `;

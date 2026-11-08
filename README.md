@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.52.3
+- Export-Knopf in Artikel, Firmenauswertung, Konten und Vermögen wie im Fahrtenbuch: mittig beschriftet, gleiche Höhe, mit Abstand zu den Filter-Knöpfen davor.
+
+## v0.52.2
+- Export-Knopf: Text mittig ausgerichtet und gleich hoch wie die anderen Knöpfe der Leiste. Fahrtenbuch: Abstand zwischen „＋“ und „Ablagefeld“.
+
 ## v0.52.1
 - Zeitraum-Kalender: „von“ und „bis“ lassen sich jetzt direkt eintippen (TT.MM.JJJJ, auch 1.3.23) – praktisch für Zeiträume über mehrere Jahre. Beim Ändern des Startdatums bleibt das Enddatum erhalten. Ein Klick in den Kalender direkt nach dem Antippen eines Felds geht nicht mehr verloren.
 
