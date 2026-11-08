@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.37.0
+- Handy: untere Leiste seitlich scrollbar (beliebig viele Reiter), gleich große Beschriftungen (Fehler bei Unterreitern wie „Umtauschfrist“ behoben)
+- Handy: Leiste ein-/ausblendbar – Griff mit Pfeil über der Leiste antippen oder nach unten/oben wischen; Zustand wird gemerkt, ＋-Button rutscht mit
+
 ## v0.36.1
 - Verträge: inaktive/gekündigte Verträge nicht mehr per Transparenz abgeblendet (wirkte verschwommen), sondern gestochen scharf in grauer Schrift mit grauem Vorschaubild
 
