@@ -1442,7 +1442,18 @@ export default function App() {
           return (
             <React.Fragment key={t.key}>
               <button className={(tab === t.key ? "on" : "") + (t.phone ? "" : " ph-hide") + (t.side ? "" : " side-hide")}
-                onClick={() => { setTab(t.key); if (t.key === "docs") { setDocAreaSel("alle"); setDocCat(""); } }} aria-label={tabLabel(nav, t.key)}>
+                onClick={() => {
+                  if (sub) {
+                    const gk = t.key === "accounts" ? "groups" : "docGroups";
+                    setNav((n) => {
+                      const gs = n[gk] || [];
+                      const allOpen = n[flag] && gs.every((g) => !g.collapsed);
+                      const collapse = tab === t.key && allOpen;
+                      return { ...n, [flag]: true, [gk]: gs.map((g) => ({ ...g, collapsed: collapse })) };
+                    });
+                  }
+                  setTab(t.key); if (t.key === "docs") { setDocAreaSel("alle"); setDocCat(""); }
+                }} aria-label={tabLabel(nav, t.key)}>
                 <span>{TAB_DEFS[t.key][0]}</span>{tabLabel(nav, t.key)}
                 {t.key === "home" && <Badge docs={active} />}
                 {sub && <i className={"subtog side-only" + (open ? " open" : "")} role="button" aria-label="ein-/ausklappen"

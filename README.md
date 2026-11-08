@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.16.5
+
+- Seitenleiste: Klick auf **Dokumente** bzw. **Konten** klappt alle Untergruppen auf einmal auf; ein weiterer Klick (wenn schon alles offen ist) klappt alle zu. Beim Wechsel aus einem anderen Bereich wird immer aufgeklappt.
+
 ## v0.16.4
 
 - App umbenannt in **Fidocu** (Titel, Seitenleiste, Home-Bildschirm-Name, Manifest, Kalender-Abo-Name). Interne IDs (gespeichertes Design, Kalender-Speicherpfad) bleiben gleich, damit Einstellungen und bestehende Kalender-Abos weiter funktionieren.
