@@ -4332,6 +4332,43 @@ function InvoiceSettings({ me }) {
     {part === "firma" ? <CompanyFields v={{ ...CO_DEFAULT, ...co }} setV={setCo} /> : part === "felder" ? <InvoiceFieldsEditor /> : <ArticlesEditor articles={articles} setArticles={setArticles} />}
   </>);
 }
+/* Einheiten: Standardliste + eigene, über „＋ Neue Einheit …“ in jeder Auswahl erweiterbar */
+const UNITS_EVT = "fidocu-units";
+function useUnits() {
+  const [units, setUnitsRaw] = useState(() => ls.get("units", UNITS));
+  useEffect(() => { const h = () => setUnitsRaw(ls.get("units", UNITS)); window.addEventListener(UNITS_EVT, h); return () => window.removeEventListener(UNITS_EVT, h); }, []);
+  const setUnits = (f) => { const n = typeof f === "function" ? f(ls.get("units", UNITS)) : f; ls.set("units", n); window.dispatchEvent(new Event(UNITS_EVT)); };
+  return [units, setUnits];
+}
+function UnitSelect({ value, onChange, className = "" }) {
+  const [units, setUnits] = useUnits();
+  const list = units.includes(value) || !value ? units : [...units, value];
+  return (
+    <select className={className} value={value} onChange={(e) => {
+      if (e.target.value !== "__new") return onChange(e.target.value);
+      const n = (prompt("Neue Einheit, z. B. „Paket“, „Lfm“, „Liter“:") || "").trim(); if (!n) return;
+      if (!units.some((u) => u.toLowerCase() === n.toLowerCase())) setUnits([...units, n]);
+      onChange(units.find((u) => u.toLowerCase() === n.toLowerCase()) || n);
+    }}>
+      {list.map((u) => <option key={u}>{u}</option>)}
+      <option value="__new">＋ Neue Einheit …</option>
+    </select>
+  );
+}
+function UnitsEditor() {
+  const [units, setUnits] = useUnits();
+  const [nn, setNn] = useState("");
+  const add = () => { const n = nn.trim(); if (n && !units.some((u) => u.toLowerCase() === n.toLowerCase())) setUnits([...units, n]); setNn(""); };
+  return (
+    <div className="unitsed">
+      <small className="muted">Einheiten</small>
+      <div className="chips">{units.map((u) => <span key={u} className="chip unitchip">{u}<button title="Entfernen" onClick={() => units.length > 1 && setUnits(units.filter((x) => x !== u))}>×</button></span>)}</div>
+      <div className="libadd"><input value={nn} placeholder="Neue Einheit, z. B. Lfm, Paket, Liter" onChange={(e) => setNn(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+        <button className="btn sm" disabled={!nn.trim()} onClick={add}>Hinzufügen</button>
+        <button className="link small" onClick={() => confirm("Einheiten auf Standard zurücksetzen?") && setUnits(UNITS)}>Standard</button></div>
+    </div>
+  );
+}
 function InvoiceFieldsEditor() {
   const [fields, setFields] = useLsState("invoiceFields", []);
   const patch = (id, p) => setFields((l) => l.map((f) => (f.id === id ? { ...f, ...p } : f)));
@@ -4368,13 +4405,14 @@ function ArticlesEditor({ articles, setArticles }) {
     {articles.map((a) => (
       <div key={a.id} className="artrow">
         <input value={a.text} placeholder="Bezeichnung" onChange={(e) => patchA(a.id, { text: e.target.value })} />
-        <select value={a.unit || "Stk"} onChange={(e) => patchA(a.id, { unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
+        <UnitSelect value={a.unit || "Stk"} onChange={(u) => patchA(a.id, { unit: u })} />
         <input inputMode="decimal" value={a.price ?? ""} placeholder="Preis €" onChange={(e) => patchA(a.id, { price: e.target.value.replace(",", ".") })} />
         <button className="iconbtn" title="Löschen" onClick={() => setArticles((l) => l.filter((x) => x.id !== a.id))}>✕</button>
         {!!posFields.length && <div className="itemextra artextra">{posFields.map((f) => <input key={f.id} value={a.extra?.[f.id] || ""} placeholder={f.label} onChange={(e) => patchA(a.id, { extra: { ...(a.extra || {}), [f.id]: e.target.value } })} />)}</div>}
       </div>
     ))}
     <button className="btn" onClick={() => setArticles((l) => [...l, { id: uid(), text: "", unit: "Std", price: "" }])}>＋ Artikel / Leistung</button>
+    <UnitsEditor />
   </>);
 }
 
@@ -4458,7 +4496,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
           <div className="itemrow">
             <input className="itxt" list="artlist" value={it.text} placeholder="Leistung / Artikel" onChange={(e) => pickArt(i, e.target.value)} />
             <input className="iqty" inputMode="decimal" value={it.qty} onChange={(e) => setIt(i, { qty: e.target.value.replace(",", ".") })} aria-label="Menge" />
-            <select className="iunit" value={it.unit || "Stk"} onChange={(e) => setIt(i, { unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
+            <UnitSelect className="iunit" value={it.unit || "Stk"} onChange={(u) => setIt(i, { unit: u })} />
             <input className="iprice" inputMode="decimal" value={it.price} placeholder="Preis €" onChange={(e) => setIt(i, { price: e.target.value.replace(",", ".") })} aria-label="Einzelpreis" />
             <b className="isum">{fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
             <span className="iact">
@@ -4670,6 +4708,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
 
 /* ======================= Verträge (hinterlegt, Privat & Firma) ======================= */
 const CT_CATS = { Internet: "🌐", Handy: "📱", "Strom & Gas": "⚡", Versicherung: "🛡️", Miete: "🏠", "Leasing & Kredit": "🚗", "Streaming & Abos": "🎬", Software: "💻", Fitness: "🏋️", Sonstiges: "📄" };
+const ctCats = () => ({ ...CT_CATS, ...ls.get("ctCats", {}) });
 const CT_FACTOR = { monatlich: 1, vierteljährlich: 1 / 3, halbjährlich: 1 / 6, jährlich: 1 / 12 };
 // nächstes Vertragsende und letzter Kündigungstag
 function ctDates(c) {
@@ -4709,7 +4748,12 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
           <label>Bezeichnung<input value={c.name || ""} placeholder="z. B. Internet Zuhause" onChange={(e) => set({ name: e.target.value })} /></label>
           <label>Anbieter<input value={c.provider || ""} placeholder="z. B. Magenta, A1, Drei" onChange={(e) => set({ provider: e.target.value })} /></label>
         </div>
-        <label>Art<select value={c.cat || "Sonstiges"} onChange={(e) => set({ cat: e.target.value })}>{Object.entries(CT_CATS).map(([k, i]) => <option key={k} value={k}>{i} {k}</option>)}</select></label>
+        <label>Art<select value={c.cat || "Sonstiges"} onChange={(e) => {
+          if (e.target.value !== "__new") return set({ cat: e.target.value });
+          const n = (prompt("Neue Vertragsart, z. B. „Strom PV“, „Kfz-Versicherung“:") || "").trim(); if (!n) return;
+          const em = (prompt("Symbol (Emoji) für „" + n + "“:", "📄") || "📄").trim().slice(0, 4);
+          ls.set("ctCats", { ...ls.get("ctCats", {}), [n]: em }); set({ cat: n });
+        }}>{Object.entries(ctCats()).map(([k, i]) => <option key={k} value={k}>{i} {k}</option>)}<option value="__new">＋ Neue Art …</option></select></label>
         <div className="grid2">
           <label>Betrag €<input inputMode="decimal" value={c.amount ?? ""} onChange={(e) => set({ amount: e.target.value.replace(",", ".") })} /></label>
           <label>Intervall<select value={c.interval || "monatlich"} onChange={(e) => set({ interval: e.target.value })}>{Object.keys(CT_FACTOR).map((k) => <option key={k}>{k}</option>)}</select></label>
@@ -4776,7 +4820,7 @@ function ContractsPage({ docs, me, onOpen }) {
   const soon = active.filter(inScope).map((c) => ({ c, d: ctDates(c) })).filter(({ c, d }) => !c.cancelledAt && !d.open && d.cancelBy && daysUntil(d.cancelBy) >= 0 && daysUntil(d.cancelBy) <= 60);
   const docCands = docs.filter((d) => d.contract && !list.some((c) => (c.docIds || []).includes(d.id)));
   const fromDoc = (d) => {
-    const k = d.contract, cat = Object.keys(CT_CATS).find((x) => norm(`${k.provider} ${k.name} ${d.category}`).includes(norm(x.split(" ")[0]))) || "Sonstiges";
+    const k = d.contract, cat = Object.keys(ctCats()).find((x) => norm(`${k.provider} ${k.name} ${d.category}`).includes(norm(x.split(" ")[0]))) || "Sonstiges";
     const nm = String(k.noticePeriod || "").match(/(\d+)\s*(Monat|Woche|Tag)/i);
     return { id: uid(), scope: docScope(d), name: k.name || k.provider, provider: k.provider, cat, amount: k.amount ?? "", interval: k.interval || "monatlich",
       customerNo: k.customerNumber || "", start: k.startDate || "", end: k.endDate || "", notice: nm ? nm[1] : "", noticeUnit: nm ? (/woche/i.test(nm[2]) ? "Wochen" : /tag/i.test(nm[2]) ? "Tage" : "Monate") : "Monate",
@@ -4806,7 +4850,7 @@ function ContractsPage({ docs, me, onOpen }) {
         {!shown.length && <p className="muted small">Noch keine Verträge hinterlegt. Mit „＋ Vertrag“ z. B. Internet, Handy, Strom, Versicherungen oder Miete eintragen – Fidocu rechnet den letzten Kündigungstag aus. Erkannte Abos aus deinen Kontobuchungen findest du weiterhin unter „Fixkosten & Abos“.</p>}
         {shown.map(({ c, d }) => (
           <div key={c.id} className={"frow click ctrow" + (c.cancelledAt ? " ended" : "")} onClick={() => setEdit(c)}>
-            <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{CT_CATS[c.cat] || "📄"}</span>
+            <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{ctCats()[c.cat] || "📄"}</span>
             <div className="grow">
               <b>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small>
               <small className="muted block">{[c.provider, c.customerNo && "Nr. " + c.customerNo, (c.docIds || []).length ? `📎 ${(c.docIds || []).length}` : ""].filter(Boolean).join(" · ")}</small>
@@ -5957,4 +6001,7 @@ nav.bottom>button.subtab span.tabico{font-size:16px}
 .itemextra{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px}.itemextra input{height:36px;min-height:36px;padding:6px 10px;font-size:13px}
 .artrow .artextra{grid-column:1/-1}
 .typepick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}.typepick .chip{display:inline-flex;align-items:center;gap:4px}
+
+.unitsed{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}.unitsed .chips{margin:6px 0}
+.unitchip{display:inline-flex;align-items:center;gap:4px;padding-right:4px}.unitchip button{border:0;background:none;color:var(--mut);cursor:pointer;font-size:15px;padding:0 4px}.unitchip button:hover{color:var(--red)}
 `;
