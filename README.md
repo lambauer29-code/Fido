@@ -2,6 +2,16 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.25.0
+
+- **Rechnungen mit Konten verknüpft – Zahlungseingang verbuchen**: „Als bezahlt markieren“ (Rechnungen, Mahnungen, „Bezahlt“ im Rechnungsfenster) öffnet „Zahlungseingang“:
+  - Konto wählen (Bank, Karte, Bargeld …; das zuletzt gewählte ist vorausgewählt) oder ohne Buchung.
+  - **Vorhandene Buchung verknüpfen**: passende Eingänge (gleicher Betrag, Rechnungsnummer im Verwendungszweck, Kundenname) werden vorgeschlagen.
+  - **Neue Buchung**: legt eine Einnahme mit Datum, Betrag (z. B. Teilzahlung), Kunde und Rechnungsnummer an; Bargeld-Konto → Zahlungsart Bar.
+  - Rechnungsliste zeigt „bezahlt … → Kontoname“; in der Buchung steht „Zahlungseingang zu Rechnung …“.
+  - „Offen“ (zurückstellen) löst die Verknüpfung; eine dabei angelegte Buchung kann mitgelöscht werden.
+  - Der automatisch gefundene Zahlungseingang („💡 … gefunden“) verknüpft die Buchung ebenfalls.
+
 ## v0.24.14
 
 - Bezahlte Rechnungen: Knopf zum Zurückstellen heißt jetzt „Offen“.

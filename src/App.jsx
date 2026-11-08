@@ -1499,6 +1499,19 @@ export default function App() {
   const [bizReq, setBizReq] = useState(0);
   const [imp, setImp] = useState(null);
   shareUi = setShareData;
+  // Zahlungseingang einer Rechnung auf ein Konto buchen bzw. mit vorhandener Buchung verknüpfen
+  const bizBook = {
+    accounts, txs,
+    async create({ inv, accountId, date, amount, method }) {
+      const tx = await addManualTx({ accountId, date, amount, counterparty: inv.customer?.name || "Kunde", purpose: `${inv.number}${method ? " · " + method : ""}`, category: "Einnahmen", invoiceId: inv.id, bookingText: "Rechnung" });
+      notify(`Zahlungseingang ${fmtMoney(amount)} gebucht`); return tx.id;
+    },
+    async link(txId, inv) { const t = txsRef.current.find((x) => x.id === txId); if (t) await updateTx({ ...t, invoiceId: inv.id, category: t.category && t.category !== "Sonstiges" ? t.category : "Einnahmen" }); return txId; },
+    async unlink(txId, removeCreated) {
+      const t = txsRef.current.find((x) => x.id === txId); if (!t) return;
+      if (removeCreated && t.manual && t.invoiceId) await deleteTx(t); else await updateTx({ ...t, invoiceId: undefined });
+    },
+  };
   const scanCb = useRef(null);
   const scanFor = (cb) => { scanCb.current = cb; setScanOpen(true); };
   async function saveCash(t, att) {
@@ -1708,8 +1721,8 @@ export default function App() {
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "cash" && <CashPage accounts={accounts} txs={txs} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory}
           docs={active} onOpen={setOpenId} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
-        {tab === "invoices" && <InvoicesPage req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
-        {tab === "mahnungen" && <DunningPage setTab={setTab} />}
+        {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
+        {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
         {tab === "artikel" && <ArticlesPage setTab={setTab} />}
         {tab === "kunden" && <ContactsPage setTab={setTab} req={bizReq} />}
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} />}
@@ -3321,6 +3334,7 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
 }
 
 function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, deleteTx, linkTx, attachNew, addCategory, accounts = [] }) {
+  const linkedInv = t.invoiceId ? ls.get("invoices", []).find((i) => i.id === t.invoiceId) : null;
   const [accId, setAccId] = useState(t.accountId);
   const [extraCats, setExtraCats] = useState([]);
   const [pickDoc, setPickDoc] = useState(false);
@@ -3341,6 +3355,7 @@ function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, dele
           <div className={"hero-v" + (t.amount > 0 ? " ok" : "")} style={{ color: t.amount > 0 ? "var(--ok)" : "var(--txt)" }}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</div>
           <b>{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose}</b>
         </div>
+        {linkedInv && <div className="lookbox ok">🧾 Zahlungseingang zu Rechnung <b>{linkedInv.number}</b> · {linkedInv.customer?.name} · {fmtMoney(invTotal(linkedInv))}</div>}
         {t.kind !== "broker" && (
           <fieldset>
             <legend>Kategorie & Konto</legend>
@@ -4628,7 +4643,7 @@ function MasterDataWin({ articles, setArticles, onClose }) {
 
 /* ---------- Editor ---------- */
 const PAY_METHODS = ["Überweisung", "Bar", "Bankomat/Karte", "PayPal", "Sonstiges"];
-function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, onFinalize, setArticles, onPatch }) {
+function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, onFinalize, setArticles, onPatch, onPayWin, accounts = [] }) {
   const [inv, setInv] = useState(init);
   const [fields] = useLsState("invoiceFields", []);
   const invFields = fields.filter((f) => f.scope === "rechnung"), posFields = fields.filter((f) => f.scope === "position");
@@ -4738,6 +4753,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
         const setPay = (p) => {
           const next = { paidAt: p.paidAt ?? inv.paidAt ?? todayISO(), payMethod: p.payMethod ?? inv.payMethod ?? "Überweisung" };
           const isPaid = p.paid ?? paid;
+          if (locked && isPaid && !paid && onPayWin) { onPayWin(inv); return; }
           if (locked) { const q = { status: isPaid ? "bezahlt" : "offen", paidAt: isPaid ? next.paidAt : null, payMethod: isPaid ? next.payMethod : null }; setInv((x) => ({ ...x, ...q })); onPatch?.(inv.id, q); }
           else set({ prePaid: isPaid, paidAt: isPaid ? next.paidAt : null, payMethod: isPaid ? next.payMethod : null });
         };
@@ -4752,7 +4768,8 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
               <label>Bezahlt am<input type="date" value={inv.paidAt || todayISO()} onChange={(e) => setPay({ paidAt: e.target.value })} /></label>
               <label>Zahlungsart<select value={inv.payMethod || "Überweisung"} onChange={(e) => setPay({ payMethod: e.target.value })}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select></label>
             </div>}
-            <small className="muted">{locked ? "Wird sofort gespeichert." : paid ? "Die Rechnung wird beim Ausstellen gleich als bezahlt geführt – auf dem PDF steht „Betrag dankend erhalten“ statt Zahlungsaufforderung." : "Zahlungsaufforderung mit Frist und QR-Code wird gedruckt."}</small>
+            {locked && paid && inv.paidAccount && <small className="block" style={{ marginBottom: 4 }}>🔗 Gebucht auf „{accounts.find((a) => a.id === inv.paidAccount)?.name || "Konto"}“{inv.paidAmount ? " · " + fmtMoney(inv.paidAmount) : ""}</small>}
+            <small className="muted">{locked ? (paid ? "Wird sofort gespeichert." : "„Bezahlt“ öffnet das Buchen des Zahlungseingangs.") : paid ? "Die Rechnung wird beim Ausstellen gleich als bezahlt geführt – auf dem PDF steht „Betrag dankend erhalten“ statt Zahlungsaufforderung." : "Zahlungsaufforderung mit Frist und QR-Code wird gedruckt."}</small>
           </fieldset>
         );
       })()}
@@ -4794,14 +4811,78 @@ function RemindWin({ inv, co, onDone, onClose }) {
   );
 }
 
+/* ---------- Zahlungseingang verbuchen ---------- */
+function PayWin({ inv, book, onDone, onClose }) {
+  const accs = (book?.accounts || []).filter((a) => a.kind !== "broker");
+  const total = invTotal(inv);
+  const lastAcc = ls.get("payAccount", "");
+  const [accountId, setAcc] = useState(() => (accs.find((a) => a.id === lastAcc) || accs.find((a) => a.kind === "bank") || accs[0] || {}).id || "");
+  const [date, setDate] = useState(todayISO()), [amount, setAmount] = useState(String(total).replace(".", ","));
+  const [method, setMethod] = useState("Überweisung");
+  const acc = accs.find((a) => a.id === accountId);
+  useEffect(() => { if (acc?.kind === "cash") setMethod("Bar"); else if (method === "Bar") setMethod("Überweisung"); }, [accountId]);
+  const num = (inv.number || "").toLowerCase().replace(/\s/g, "");
+  const val = Number(String(amount).replace(/\s/g, "").replace(",", ".")) || 0;
+  // passende Eingänge: gleicher Betrag oder Rechnungsnummer im Text, ab Rechnungsdatum, noch nicht verknüpft
+  const cands = (book?.txs || []).filter((t) => t.amount > 0 && !t.invoiceId && t.date >= (inv.date || "") && (!accountId || t.accountId === accountId))
+    .map((t) => ({ t, score: (Math.abs(t.amount - total) < 0.01 ? 2 : 0) + (`${t.purpose} ${t.counterparty}`.toLowerCase().replace(/\s/g, "").includes(num) ? 3 : 0) + (norm(t.counterparty).includes(norm(inv.customer?.name || "").split(" ")[0] || "§") ? 1 : 0) }))
+    .filter((x) => x.score > 0).sort((a, b) => b.score - a.score || b.t.date.localeCompare(a.t.date)).slice(0, 6);
+  const [mode, setMode] = useState(cands.length ? "link" : "create");
+  const [txId, setTxId] = useState(cands[0]?.t.id || "");
+  const done = async () => {
+    ls.set("payAccount", accountId);
+    let paidTx = null, created = false;
+    if (accountId && mode === "create" && val > 0) { paidTx = await book.create({ inv, accountId, date, amount: val, method }); created = true; }
+    if (mode === "link" && txId) { paidTx = await book.link(txId, inv); const t = book.txs.find((x) => x.id === txId); if (t) { setDate(t.date); } }
+    const t = mode === "link" ? book.txs.find((x) => x.id === txId) : null;
+    onDone({ status: "bezahlt", paidAt: t ? t.date : date, payMethod: method, paidAccount: t ? t.accountId : accountId || null, paidTx, paidTxCreated: created, paidAmount: t ? t.amount : val });
+    onClose();
+  };
+  return (
+    <Win id="paywin" onClose={onClose} small center dirty={false}>
+      <div className="panelhead"><b>Zahlungseingang {inv.number}</b><button className="btn primary" disabled={mode === "link" ? !txId : false} onClick={done}>Als bezahlt buchen</button><XBtn /></div>
+      <p className="small muted">{inv.customer?.name} · Rechnungsbetrag <b>{fmtMoney(total)}</b></p>
+      {!accs.length ? <p className="small warn">Noch kein Konto angelegt – die Rechnung wird nur als bezahlt markiert. Konten legst du im Reiter „Konten“ an.</p> : <>
+        <label>Konto<select value={accountId} onChange={(e) => setAcc(e.target.value)}>
+          {accs.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}
+          <option value="">– ohne Buchung (nur als bezahlt markieren) –</option>
+        </select></label>
+        {accountId && <div className="seg" style={{ marginTop: 10 }}>
+          <button className={mode === "link" ? "on" : ""} onClick={() => setMode("link")}>🔗 Vorhandene Buchung ({cands.length})</button>
+          <button className={mode === "create" ? "on" : ""} onClick={() => setMode("create")}>＋ Neue Buchung</button>
+        </div>}
+        {accountId && mode === "link" && (cands.length ? (
+          <div className="paycands">{cands.map(({ t }) => (
+            <label key={t.id} className={"frow click" + (txId === t.id ? " on" : "")}>
+              <input type="radio" name="paytx" checked={txId === t.id} onChange={() => setTxId(t.id)} />
+              <div className="grow"><b>{t.counterparty || "Eingang"}</b><small className="muted block">{fmtDate(t.date)} · {(t.purpose || "").slice(0, 70)}</small></div>
+              <b className="pos">{fmtMoney(t.amount)}</b>
+            </label>))}</div>
+        ) : <p className="small muted">Auf diesem Konto gibt es keinen passenden, noch nicht zugeordneten Eingang ab {fmtDate(inv.date)}. Importiere die Umsätze oder lege eine neue Buchung an.</p>)}
+        {accountId && mode === "create" && <div className="grid2">
+          <label>Datum<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+          <label>Betrag €<input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
+        </div>}
+      </>}
+      {(mode === "create" || !accountId || !accs.length) && <label>Zahlungsart<select value={method} onChange={(e) => setMethod(e.target.value)}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select></label>}
+      <p className="muted small">{accountId && mode === "create" ? `Legt auf „${acc?.name}“ eine Einnahme mit Verwendungszweck ${inv.number} an.` : accountId && mode === "link" ? "Die gewählte Buchung wird mit der Rechnung verknüpft (Kategorie Einnahmen)." : ""}</p>
+    </Win>
+  );
+}
+
 /* ---------- Seite ---------- */
-function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
+function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }) {
   const [list, setList] = useLsState("invoices", []);
   const [templates, setTemplates] = useLsState("invoiceTemplates", []);
   const [customers, setCustomers] = useLsState("customers", []);
   const [articles, setArticles] = useLsState("articles", []);
   const [co, setCo] = useLsState("company", { ...CO_DEFAULT, name: me?.company || "", owner: me?.name || "" });
   const [edit, setEdit] = useState(null), [coOpen, setCoOpen] = useState(false), [mdOpen, setMdOpen] = useState(false), [remind, setRemind] = useState(null);
+  const [payFor2, setPayFor2] = useState(null);
+  const unpay = async (x) => {
+    if (x.paidTx && book) { const created = x.paidTxCreated; if (created ? confirm("Die dabei angelegte Buchung ebenfalls löschen?") : true) await book.unlink(x.paidTx, created); else await book.unlink(x.paidTx, false); }
+    patch(x.id, { status: "offen", paidAt: null, paidTx: null, paidTxCreated: false, paidAccount: null, payMethod: null });
+  };
   const [filter, setFilter] = useState("alle"), [q, setQ] = useState("");
   const coOk = co.name && co.street && co.city;
 
@@ -4913,19 +4994,19 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
                   <small className="muted block">
                     {x.kind === "angebot" ? "Angebot " : ""}{x.number || "Entwurf"} · {fmtDate(x.date)}
                     {x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) && ` · fällig ${fmtDate(invDueEff(x))}`}
-                    {s === "bezahlt" && x.paidAt && ` · bezahlt ${fmtDate(x.paidAt)}${x.payMethod ? " (" + x.payMethod + ")" : ""}`}
+                    {s === "bezahlt" && x.paidAt && ` · bezahlt ${fmtDate(x.paidAt)}${x.payMethod ? " (" + x.payMethod + ")" : ""}${x.paidAccount && book ? " → " + (book.accounts.find((a) => a.id === x.paidAccount)?.name || "Konto") : ""}`}
                     {(x.reminders || []).length > 0 && ` · ${remindName(lastReminder(x).level)} ${fmtDate(lastReminder(x).date)}`}
                     {x.fromOffer && ` · aus ${x.fromOffer}`}{x.fromTemplate && " · 🔁"}
                   </small>
-                  {pay && <button className="link pos small" onClick={(e) => { e.stopPropagation(); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id }); }}>💡 Zahlungseingang vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}
+                  {pay && <button className="link pos small" onClick={async (e) => { e.stopPropagation(); if (book) await book.link(pay.id, x); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id, paidAccount: pay.accountId, payMethod: "Überweisung" }); }}>💡 Zahlungseingang vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}
                 </div>
                 <b className="invamt">{fmtMoney(invTotal(x))}</b>
             <span className={"stpill " + cls}>{label}</span>
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
                   {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button>}
                   {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button>}
-                  {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" title="Zahlung ist eingegangen – Rechnung als bezahlt markieren" onClick={() => patch(x.id, { status: "bezahlt", paidAt: todayISO() })}>Als bezahlt markieren</button>}
-                  {s === "bezahlt" && <button className="link small" onClick={() => patch(x.id, { status: "offen", paidAt: null })} title="Rechnung wieder als offen markieren">Offen</button>}
+                  {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" title="Zahlungseingang auf ein Konto buchen und Rechnung als bezahlt markieren" onClick={() => setPayFor2(x)}>Als bezahlt markieren</button>}
+                  {s === "bezahlt" && <button className="link small" onClick={() => unpay(x)} title="Rechnung wieder als offen markieren">Offen</button>}
                   {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>}
                   {x.kind === "angebot" && s === "offen" && <><button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button><button className="link small" onClick={() => patch(x.id, { status: "abgelehnt" })}>Abgelehnt</button></>}
                   <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
@@ -4942,10 +5023,11 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
           })}
         </section>
       )}
-      {edit && <InvoiceEditor onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
+      {edit && <InvoiceEditor accounts={book?.accounts || []} onPayWin={book ? (x) => { setEdit(null); setPayFor2(x); } : null} onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
       {coOpen && <CompanyWin co={co} setCo={setCo} onClose={() => setCoOpen(false)} />}
       {mdOpen && <MasterDataWin articles={articles} setArticles={setArticles} onClose={() => setMdOpen(false)} />}
       {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
+      {payFor2 && <PayWin inv={payFor2} book={book} onClose={() => setPayFor2(null)} onDone={(p) => patch(payFor2.id, p)} />}
     </div>
   );
 }
@@ -5595,11 +5677,11 @@ function ArticlesPage({ setTab }) {
 }
 
 /* ======================= Mahnungen (Reiter) ======================= */
-function DunningPage({ setTab }) {
+function DunningPage({ setTab, book }) {
   const [list, setList] = useLsState("invoices", []);
   const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
   const dn = dunning();
-  const [remind, setRemind] = useState(null), [other, setOther] = useState("");
+  const [remind, setRemind] = useState(null), [other, setOther] = useState(""), [payX, setPayX] = useState(null);
   const patch = (id, p) => setList((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
   const inv = list.filter((x) => x.kind === "rechnung");
   const over = inv.filter((x) => invState(x) === "überfällig").map((x) => {
@@ -5640,7 +5722,7 @@ function DunningPage({ setTab }) {
             <span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? "fällig" : `in ${(dn.waitDays || 0) - since} T.`}</span>
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
               <button className={"btn sm" + (ready ? " danger" : "")} onClick={() => setRemind(x)}>{remindName(next)} erstellen</button>
-              <button className="btn sm" title="Zahlung ist eingegangen – Rechnung als bezahlt markieren" onClick={() => patch(x.id, { status: "bezahlt", paidAt: todayISO() })}>Als bezahlt markieren</button>
+              <button className="btn sm" title="Zahlungseingang auf ein Konto buchen" onClick={() => setPayX(x)}>Als bezahlt markieren</button>
             </div>
           </div>
         ))}
@@ -5664,6 +5746,7 @@ function DunningPage({ setTab }) {
           </div>); })}
       </section>
       {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
+      {payX && <PayWin inv={payX} book={book} onClose={() => setPayX(null)} onDone={(p) => patch(payX.id, p)} />}
     </div>
   );
 }
@@ -6706,4 +6789,9 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
 .invamt{flex:none;min-width:96px;text-align:right;font-size:15px;white-space:nowrap}
 .stpill{display:inline-flex;align-items:center;justify-content:center;line-height:1;height:24px;padding:0 10px}
 @media (max-width:899px){.invamt{min-width:0}}
+
+/* v0.25.0: Zahlungseingang buchen */
+.paycands{display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:260px;overflow:auto}
+.paycands .frow{gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:8px 10px}.paycands .frow.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.paycands input{width:auto;margin:0}
 `;
