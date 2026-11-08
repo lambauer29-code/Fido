@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.48.2
+- iPhone (iOS 26, Web-App vom Home-Bildschirm): untere Leiste saß auf kurzen Seiten (z. B. Fahrtenbuch, Artikel) zu hoch. Die Seite ist jetzt immer mindestens bildschirmhoch, damit die Leiste überall gleich weit unten sitzt.
+
 ## v0.48.1
 - Symbolleiste „Nur Symbole“: Symbole gleichmäßig über die ganze Leiste verteilt und zentriert.
 

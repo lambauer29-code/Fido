@@ -9068,4 +9068,9 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
   html.fg.tbicons nav.bottom>button{min-height:52px}
   html.tbicons nav.bottom .tabico .tabsvg{width:28px;height:28px}
 }
+
+/* iOS 26 Web-App: kurze Seiten verschieben die fixe Leiste nach oben – Seite immer mind. bildschirmhoch */
+html,body{min-height:100%}
+.app{min-height:100vh}
+@supports (height:100lvh){.app{min-height:100lvh}}
 `;
