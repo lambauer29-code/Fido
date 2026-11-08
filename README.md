@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.21.2
+
+- Schwebendes ＋: **Kunden importieren** (über „Neuer Kunde“) – Handy-Kontaktauswahl (Android) bzw. vCard-Datei (iPhone/Mac), danach Vorschau im Reiter Kunden.
+
 ## v0.21.1
 
 - Einheiten-Auswahl (Positionen in Rechnungen/Angeboten, Artikel): „＋ Neue Einheit …“ direkt im Dropdown; eigene Einheiten gelten überall. Verwalten (entfernen, zurücksetzen) unter Einstellungen › Rechnungen › Artikel.

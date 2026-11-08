@@ -1474,7 +1474,7 @@ export default function App() {
   const [shareData, setShareData] = useState(null);
   const [pdfView, setPdfView] = useState(null);
   pdfUi = setPdfView;
-  const impRef = useRef(null);
+  const impRef = useRef(null), vcfApp = useRef(null);
   const [bizReq, setBizReq] = useState(0);
   const [imp, setImp] = useState(null);
   shareUi = setShareData;
@@ -1698,6 +1698,12 @@ export default function App() {
         )}
       </main>
 
+      <input ref={vcfApp} type="file" accept=".vcf,text/vcard,text/x-vcard" multiple hidden onChange={async (e) => {
+        const files = [...e.target.files]; e.target.value = ""; let all = [];
+        for (const f of files) all = all.concat(parseVcf(await f.text()));
+        if (!all.length) return notify("Keine Kontakte in der Datei gefunden");
+        ls.set("pendingContactImport", all); setTab("kunden"); setBizReq((n) => n + 1);
+      }} />
       <input ref={impRef} type="file" accept={IMPORT_ACCEPT} hidden onChange={async (e) => {
         const f = e.target.files[0]; e.target.value = ""; if (!f) return;
         try { setImp({ file: f, result: await parseFile(f, ls.get("mappings", {})) }); } catch (err) { notify("Datei nicht lesbar: " + err.message); }
@@ -1712,6 +1718,12 @@ export default function App() {
           <button role="menuitem" onClick={() => { setFabOpen(false); fileInput.current.click(); }}><span>📄</span><div><b>Datei / Foto</b><small>PDF oder Bild hochladen</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); setManualTx(tab === "accounts" && selAcc ? { accountId: selAcc } : {}); }}><span>💶</span><div><b>Buchung</b><small>Barausgabe oder Buchung erfassen</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); ls.set("pendingInvoice", { kind: "rechnung" }); setTab("invoices"); setBizReq((n) => n + 1); }}><span>🧾</span><div><b>Neue Rechnung</b><small>Rechnung für deine Firma schreiben</small></div></button>
+          <button role="menuitem" onClick={async () => {
+            setFabOpen(false);
+            const out = await pickPhoneContacts();
+            if (out === null) return vcfApp.current.click();
+            if (out.length) { ls.set("pendingContactImport", out); setTab("kunden"); setBizReq((n) => n + 1); }
+          }}><span>📱</span><div><b>Kunden importieren</b><small>Aus Handy-Kontakten oder vCard-Datei (.vcf)</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); ls.set("pendingContact", "new"); setTab("kunden"); setBizReq((n) => n + 1); }}><span>👥</span><div><b>Neuer Kunde</b><small>Kontakt anlegen oder aus dem Handy übernehmen</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); impRef.current.click(); }}><span>⬆️</span><div><b>Umsätze importieren</b><small>Kontoauszug: CSV, Excel, CAMT, PDF …</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); setTab("accounts"); setNewAccReq(true); }}><span>🏦</span><div><b>Konto anlegen</b><small>Girokonto, Karte, Sparkonto, Bargeld …</small></div></button>
@@ -4937,6 +4949,16 @@ function ContactEditor({ c: init, onSave, onDelete, onClose }) {
     </Win>
   );
 }
+/* Kontaktauswahl des Handys (Android/Chrome); null = nicht verfügbar → .vcf-Datei */
+async function pickPhoneContacts() {
+  if (!("contacts" in navigator && "select" in navigator.contacts)) return null;
+  try {
+    const props = await navigator.contacts.getProperties().catch(() => ["name", "email", "tel"]);
+    const res = await navigator.contacts.select(props.filter((x) => ["name", "email", "tel", "address"].includes(x)), { multiple: true });
+    return res.map((r) => ({ name: (r.name || [])[0] || "", email: (r.email || [])[0] || "", phone: (r.tel || [])[0] || "",
+      address: r.address?.[0] ? [(r.address[0].addressLine || []).join(" "), [r.address[0].postalCode, r.address[0].city].filter(Boolean).join(" "), r.address[0].country].filter(Boolean).join("\n") : "" })).filter((c) => c.name);
+  } catch (e) { return e.name === "AbortError" || e.name === "InvalidStateError" ? [] : null; }
+}
 /* vCard (.vcf) lesen – Export aus iPhone/Mac-Kontakten, Android, Google, Outlook */
 const cityOf = (a) => { const l = String(a || "").split("\n"); return l.find((x) => /^\d{4,5}\s/.test(x.trim())) || l[l.length - 1] || ""; };
 function parseVcf(text) {
@@ -5001,17 +5023,11 @@ function ContactsPage({ setTab, req = 0 }) {
   const [picked, setPicked] = useState(null); // Import-Vorschau
   const vcfRef = useRef();
   useEffect(() => { if (ls.get("pendingContact", null)) { ls.set("pendingContact", null); setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }); } }, [req]);
+  useEffect(() => { const l = ls.get("pendingContactImport", null); if (l) { ls.set("pendingContactImport", null); setPicked(l.map((c) => ({ ...c, on: true }))); } }, [req]);
   const fromPhone = async () => {
-    if ("contacts" in navigator && "select" in navigator.contacts) {
-      try {
-        const props = await navigator.contacts.getProperties().catch(() => ["name", "email", "tel"]);
-        const res = await navigator.contacts.select(props.filter((x) => ["name", "email", "tel", "address"].includes(x)), { multiple: true });
-        const out = res.map((r) => ({ name: (r.name || [])[0] || "", email: (r.email || [])[0] || "", phone: (r.tel || [])[0] || "",
-          address: r.address?.[0] ? [(r.address[0].addressLine || []).join(" "), [r.address[0].postalCode, r.address[0].city].filter(Boolean).join(" "), r.address[0].country].filter(Boolean).join("\n") : "" })).filter((c) => c.name);
-        if (out.length) setPicked(out.map((c) => ({ ...c, on: true }))); return;
-      } catch (e) { if (e.name === "AbortError" || e.name === "InvalidStateError") return; }
-    }
-    vcfRef.current.click();
+    const out = await pickPhoneContacts();
+    if (out === null) return vcfRef.current.click();
+    if (out.length) setPicked(out.map((c) => ({ ...c, on: true })));
   };
   const invoices = ls.get("invoices", []);
   const [edit, setEdit] = useState(null), [q, setQ] = useState(""), [type, setType] = useState("alle");
