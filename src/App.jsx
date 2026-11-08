@@ -6618,4 +6618,10 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
 }
 .sidetip{position:fixed;left:76px;transform:translateY(-50%);z-index:10000;pointer-events:none;background:var(--txt);color:var(--bg);font-size:13px;font-weight:600;padding:6px 10px;border-radius:8px;white-space:nowrap;box-shadow:0 6px 18px #0005;animation:popin .1s ease-out}
 .sidetip::before{content:"";position:absolute;left:-5px;top:50%;transform:translateY(-50%);border:5px solid transparent;border-left:0;border-right-color:var(--txt)}
+
+/* v0.24.5: Pfeil bleibt immer an derselben Stelle (Mitte der eingeklappten Leiste) */
+@media (min-width:768px){
+  nav.bottom .sidetoggle.side-only{align-self:flex-start;margin-left:4px;margin-right:0}
+  html.side-mini nav.bottom .sidetoggle.side-only{align-self:flex-start;margin-left:6px}
+}
 `;
