@@ -7473,4 +7473,14 @@ nav.bottom .tabico .tabemo{font-size:inherit!important;filter:none!important;opa
   html.fg .fabmenu b{font-size:19px}html.fg .fabmenu small{font-size:15px}
   html.fg .moremenu button{font-size:18px;padding:12px 12px}
 }
+
+/* Fixkosten-Vertragsordner: lange Texte umbrechen statt die Seite zu verbreitern */
+.cgrid,.crow,.crow .frow{min-width:0;max-width:100%}
+@media (max-width:767px){.cgrid{grid-template-columns:minmax(0,1fr)}}
+.crow .frow .grow{min-width:0}
+.crow .frow .grow small{white-space:normal;overflow-wrap:anywhere}
+.cmeta{flex-wrap:wrap;row-gap:6px;min-width:0}
+.cmeta .pill{white-space:normal;max-width:100%;overflow-wrap:anywhere;margin-left:0;border-radius:12px}
+html.fg .cmeta .pill{font-size:15px;padding:5px 12px}
+html.fg .cmeta .link{font-size:16px}
 `;

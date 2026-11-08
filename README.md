@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.39.2
+- Fixkosten & Abos (Handy): lange Texte (Vertragsnummer, Kündigungsfrist) brechen jetzt um, statt die Seite zu verbreitern – Karten wieder in voller Breite
+
 ## v0.39.1
 - Finanz-App-Stil (Testmodus): Schriftgrößen nach den Vorbild-Screenshots vergrößert – Seitentitel 46 px, Kartentitel 24 px, Listentitel & Beträge 20 px, Untertitel 17 px, Chips/Buttons 17 px, Grundschrift 17 px, Saldo 44 px, Leiste 13 px
 - Saldo-Kacheln im Finanz-App-Stil zweispaltig (Beträge nicht mehr abgeschnitten), größere Kategorie-Einträge und Symbol-Kacheln
