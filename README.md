@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.25.3
+
+- **Buchungssuche beim Zahlungseingang** (Rechnungen, Mahnungen, Rechnung schreiben mit „Bezahlt“): Eingänge des gewählten Kontos durchsuchen – nach Name, Verwendungszweck oder Betrag. Automatisch vorgefiltert auf den Rechnungsbetrag (abschaltbar), ab Rechnungsdatum (ältere zuschaltbar); Treffer mit Rechnungsnummer/Kunde zuerst (⭐). Kontowechsel aktualisiert die Liste.
+- Rechnung schreiben: bei „Bezahlt“ wahlweise „Neue Buchung“ oder „Vorhandene Buchung“ verknüpfen.
+
 ## v0.25.2
 
 - Rechnung schreiben: Bei „Zahlung: Bezahlt“ gibt es jetzt **„Auf Konto buchen“** (Bankkonto, Bargeld … oder ohne Buchung). Beim Ausstellen wird der Zahlungseingang dort als Einnahme gebucht und mit der Rechnung verknüpft. Vorausgewählt: zuletzt benutztes Konto bzw. erstes Bankkonto; Bargeld setzt die Zahlungsart auf „Bar“.

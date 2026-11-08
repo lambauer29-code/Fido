@@ -4652,7 +4652,7 @@ function MasterDataWin({ articles, setArticles, onClose }) {
 
 /* ---------- Editor ---------- */
 const PAY_METHODS = ["Überweisung", "Bar", "Bankomat/Karte", "PayPal", "Sonstiges"];
-function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, onFinalize, setArticles, onPatch, onPayWin, accounts = [] }) {
+function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, onFinalize, setArticles, onPatch, onPayWin, accounts = [], txs = [] }) {
   const [inv, setInv] = useState(init);
   const [fields] = useLsState("invoiceFields", []);
   const invFields = fields.filter((f) => f.scope === "rechnung"), posFields = fields.filter((f) => f.scope === "position");
@@ -4785,6 +4785,17 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
                 <option value="">– ohne Buchung –</option>
                 {accounts.filter((a) => a.kind !== "broker").map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}
               </select></label>)}
+            {paid && !locked && (inv.prePaidAccount ?? (ls.get("payAccount", "") || accounts.find((x) => x.kind === "bank")?.id || "")) && (() => {
+              const accId = inv.prePaidAccount ?? (ls.get("payAccount", "") || accounts.find((x) => x.kind === "bank")?.id || "");
+              return (<>
+                <div className="seg" style={{ marginTop: 10 }}>
+                  <button className={!inv.prePaidTx ? "on" : ""} onClick={() => set({ prePaidTx: null })}>＋ Neue Buchung</button>
+                  <button className={inv.prePaidTx ? "on" : ""} onClick={() => set({ prePaidTx: inv.prePaidTx || "pick" })}>🔗 Vorhandene Buchung</button>
+                </div>
+                {inv.prePaidTx && <TxPicker txs={txs} accountId={accId} amount={invTotal(inv)} number={inv.number} customer={inv.customer?.name} fromDate=""
+                  value={inv.prePaidTx === "pick" ? "" : inv.prePaidTx} onChange={(id) => { const t = txs.find((x) => x.id === id); set({ prePaidTx: id, paidAt: t?.date || inv.paidAt }); }} />}
+              </>);
+            })()}
             {locked && paid && inv.paidAccount && <small className="block" style={{ marginBottom: 4 }}>🔗 Gebucht auf „{accounts.find((a) => a.id === inv.paidAccount)?.name || "Konto"}“{inv.paidAmount ? " · " + fmtMoney(inv.paidAmount) : ""}</small>}
             <small className="muted">{locked ? (paid ? "Wird sofort gespeichert." : "„Bezahlt“ öffnet das Buchen des Zahlungseingangs.") : paid ? "Beim Ausstellen wird die Rechnung als bezahlt geführt und – falls ein Konto gewählt ist – der Zahlungseingang dort als Einnahme gebucht. Auf dem PDF steht „Betrag dankend erhalten“." : "Zahlungsaufforderung mit Frist und QR-Code wird gedruckt."}</small>
           </fieldset>
@@ -4828,6 +4839,43 @@ function RemindWin({ inv, co, onDone, onClose }) {
   );
 }
 
+/* ---------- Buchung eines Kontos suchen (Betrag automatisch vorgefiltert) ---------- */
+function TxPicker({ txs = [], accountId, amount, number = "", customer = "", fromDate = "", value, onChange }) {
+  const [q, setQ] = useState("");
+  const [onlyAmt, setOnlyAmt] = useState(true);
+  const [older, setOlder] = useState(false);
+  const num = norm(number).replace(/\s/g, ""), cust = norm(customer).split(" ")[0] || "§";
+  const base = txs.filter((t) => t.amount > 0 && (!t.invoiceId || t.id === value) && (!accountId || t.accountId === accountId));
+  const amtHits = base.filter((t) => Math.abs(t.amount - amount) < 0.01).length;
+  const useAmt = onlyAmt && amtHits > 0 && !q;
+  const qNum = Number(q.replace(/[€\s.]/g, "").replace(",", "."));
+  const list = base
+    .filter((t) => older || q || !fromDate || t.date >= addDays(fromDate, -7))
+    .filter((t) => !useAmt || Math.abs(t.amount - amount) < 0.01)
+    .filter((t) => !q || (qNum && /^[\d.,€\s]+$/.test(q) ? Math.abs(t.amount - qNum) < 0.01 || String(t.amount).startsWith(String(qNum)) : norm(`${t.counterparty} ${t.purpose} ${t.bookingText || ""}`).includes(norm(q))))
+    .map((t) => ({ t, score: (Math.abs(t.amount - amount) < 0.01 ? 4 : 0) + (norm(`${t.purpose} ${t.counterparty}`).replace(/\s/g, "").includes(num) && num ? 5 : 0) + (norm(t.counterparty).includes(cust) ? 2 : 0) }))
+    .sort((a, b) => b.score - a.score || b.t.date.localeCompare(a.t.date)).slice(0, 40);
+  return (
+    <div className="txpicker">
+      <div className="searchbar"><span>🔍</span><input type="search" value={q} placeholder="Buchung suchen – Name, Text oder Betrag" onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="txpfilter">
+        {amtHits > 0 && !q && <button className={"chip" + (onlyAmt ? " on" : "")} onClick={() => setOnlyAmt(!onlyAmt)}>Betrag {fmtMoney(amount)} ({amtHits})</button>}
+        {fromDate && !q && <button className={"chip" + (older ? " on" : "")} onClick={() => setOlder(!older)}>auch vor {fmtDate(addDays(fromDate, -7))}</button>}
+        <small className="muted">{list.length} Eingang{list.length === 1 ? "" : "e"}</small>
+      </div>
+      <div className="paycands">
+        {list.map(({ t, score }) => (
+          <label key={t.id} className={"frow click" + (value === t.id ? " on" : "")}>
+            <input type="radio" name="paytx" checked={value === t.id} onChange={() => onChange(t.id)} />
+            <div className="grow"><b>{t.counterparty || "Eingang"}{score >= 9 ? " ⭐" : ""}</b><small className="muted block">{fmtDate(t.date)} · {(t.purpose || "").slice(0, 80)}</small></div>
+            <b className="pos">{fmtMoney(t.amount)}</b>
+          </label>))}
+        {!list.length && <p className="small muted">Keine passenden Eingänge{accountId ? " auf diesem Konto" : ""}. Suchbegriff ändern, „auch vor …“ antippen oder Umsätze importieren.</p>}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Zahlungseingang verbuchen ---------- */
 function PayWin({ inv, book, onDone, onClose }) {
   const accs = (book?.accounts || []).filter((a) => a.kind !== "broker");
@@ -4846,6 +4894,7 @@ function PayWin({ inv, book, onDone, onClose }) {
     .filter((x) => x.score > 0).sort((a, b) => b.score - a.score || b.t.date.localeCompare(a.t.date)).slice(0, 6);
   const [mode, setMode] = useState(cands.length ? "link" : "create");
   const [txId, setTxId] = useState(cands[0]?.t.id || "");
+  useEffect(() => { if (!(book?.txs || []).some((t) => t.id === txId && t.accountId === accountId)) setTxId(""); }, [accountId]);
   const done = async () => {
     ls.set("payAccount", accountId);
     let paidTx = null, created = false;
@@ -4865,17 +4914,10 @@ function PayWin({ inv, book, onDone, onClose }) {
           <option value="">– ohne Buchung (nur als bezahlt markieren) –</option>
         </select></label>
         {accountId && <div className="seg" style={{ marginTop: 10 }}>
-          <button className={mode === "link" ? "on" : ""} onClick={() => setMode("link")}>🔗 Vorhandene Buchung ({cands.length})</button>
+          <button className={mode === "link" ? "on" : ""} onClick={() => setMode("link")}>🔗 Vorhandene Buchung{cands.length ? ` (${cands.length} passend)` : ""}</button>
           <button className={mode === "create" ? "on" : ""} onClick={() => setMode("create")}>＋ Neue Buchung</button>
         </div>}
-        {accountId && mode === "link" && (cands.length ? (
-          <div className="paycands">{cands.map(({ t }) => (
-            <label key={t.id} className={"frow click" + (txId === t.id ? " on" : "")}>
-              <input type="radio" name="paytx" checked={txId === t.id} onChange={() => setTxId(t.id)} />
-              <div className="grow"><b>{t.counterparty || "Eingang"}</b><small className="muted block">{fmtDate(t.date)} · {(t.purpose || "").slice(0, 70)}</small></div>
-              <b className="pos">{fmtMoney(t.amount)}</b>
-            </label>))}</div>
-        ) : <p className="small muted">Auf diesem Konto gibt es keinen passenden, noch nicht zugeordneten Eingang ab {fmtDate(inv.date)}. Importiere die Umsätze oder lege eine neue Buchung an.</p>)}
+        {accountId && mode === "link" && <TxPicker txs={book?.txs} accountId={accountId} amount={total} number={inv.number} customer={inv.customer?.name} fromDate={inv.date} value={txId} onChange={setTxId} />}
         {accountId && mode === "create" && <div className="grid2">
           <label>Datum<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
           <label>Betrag €<input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
@@ -4941,8 +4983,14 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
       setTimeout(async () => {
         const cur = ls.get("invoices", []).find((x) => x.id === inv.id) || inv;
         ls.set("payAccount", accId);
-        const txId = await book.create({ inv: cur, accountId: accId, date: cur.paidAt || cur.date, amount: invTotal(cur), method: cur.payMethod });
-        patch(inv.id, { paidTx: txId, paidTxCreated: true, paidAccount: accId, paidAmount: invTotal(cur) });
+        if (cur.prePaidTx === "pick") return;
+        if (cur.prePaidTx) {
+          const t = book.txs.find((x) => x.id === cur.prePaidTx); await book.link(cur.prePaidTx, cur);
+          patch(inv.id, { paidTx: cur.prePaidTx, paidTxCreated: false, paidAccount: t?.accountId || accId, paidAmount: t?.amount, paidAt: t?.date || cur.paidAt });
+        } else {
+          const txId = await book.create({ inv: cur, accountId: accId, date: cur.paidAt || cur.date, amount: invTotal(cur), method: cur.payMethod });
+          patch(inv.id, { paidTx: txId, paidTxCreated: true, paidAccount: accId, paidAmount: invTotal(cur) });
+        }
       }, 50);
     }
   };
@@ -5052,7 +5100,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           })}
         </section>
       )}
-      {edit && <InvoiceEditor accounts={book?.accounts || []} onPayWin={book ? (x) => { setEdit(null); setPayFor2(x); } : null} onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
+      {edit && <InvoiceEditor accounts={book?.accounts || []} txs={book?.txs || []} onPayWin={book ? (x) => { setEdit(null); setPayFor2(x); } : null} onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
       {coOpen && <CompanyWin co={co} setCo={setCo} onClose={() => setCoOpen(false)} />}
       {mdOpen && <MasterDataWin articles={articles} setArticles={setArticles} onClose={() => setMdOpen(false)} />}
       {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
@@ -6827,4 +6875,9 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
 /* v0.25.1: Einklapp-Pfeil nie in der Handy-Leiste */
 nav.bottom>button.sidetoggle{display:none}
 @media (min-width:768px){nav.bottom>button.sidetoggle.side-only{display:flex}}
+
+/* v0.25.3: Buchungssuche */
+.txpicker{margin-top:10px}.txpicker .searchbar{margin:0 0 6px}
+.txpfilter{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px}.txpfilter .chip{margin:0}.txpfilter small{margin-left:auto}
+.txpicker .paycands{max-height:300px}
 `;
