@@ -2161,33 +2161,54 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
     return out;
   };
   const basePos = layout.pos || {};
-  const place = free ? packFree(vis, drag ? { ...basePos, ...Object.fromEntries(Object.entries(packFree(vis, basePos, lastMoved)).map(([k, v]) => [k, { x: v.x, y: v.y }])), [drag.id]: { x: drag.x, y: drag.y } } : basePos, drag ? drag.id : lastMoved) : null;
+  const visP = drag?.isNew ? [...vis, drag.id] : vis;
+  const curPos = () => Object.fromEntries(Object.entries(packFree(vis, basePos, lastMoved)).map(([k, v]) => [k, { x: v.x, y: v.y }]));
+  const place = free ? (drag && drag.x != null ? packFree(visP, { ...curPos(), [drag.id]: { x: drag.x, y: drag.y } }, drag.id) : packFree(vis, basePos, lastMoved)) : null;
   const gridRef = useRef(null);
-  const startFreeDrag = (id, e) => {
+  // Ziehen: vorhandenes Widget (schwebt unter dem Finger/Mauszeiger) oder neues aus „Weitere Widgets“
+  const startFreeDrag = (id, e, opts = {}) => {
+    if (!free) return;
     e.preventDefault(); e.stopPropagation();
-    const g = gridRef.current.getBoundingClientRect(), colW = (g.width - gap * 11) / 12, ru = GRID_ROW + gap;
-    const start = place[id], sx = e.clientX, sy = e.clientY;
-    let cur = { id, x: start.x, y: start.y };
+    const g0 = gridRef.current.getBoundingClientRect(), colW = (g0.width - gap * 11) / 12, ru = GRID_ROW + gap;
+    const el = opts.isNew ? e.currentTarget : gridRef.current.querySelector(`[data-wid="${id}"]`);
+    const box = el.getBoundingClientRect();
+    const w = Math.min(12, opts.w || wOf(id)), h = opts.h || hOf(id) || rowsMap[id] || 12;
+    const ox = opts.isNew ? Math.min(40, box.width / 2) : e.clientX - box.left, oy = opts.isNew ? 20 : e.clientY - box.top;
+    const fw = opts.isNew ? Math.max(220, w * (colW + gap) - gap) : box.width, fh = opts.isNew ? 120 : box.height;
+    const sx = e.clientX, sy = e.clientY;
+    let cur = { id, isNew: !!opts.isNew, label: opts.label, x: opts.isNew ? null : place[id].x, y: opts.isNew ? null : place[id].y, px: e.clientX, py: e.clientY, ox, oy, fw, fh, moved: false };
     setDrag(cur); document.body.classList.add("rz-active");
     let scrollT = null;
-    const move = (ev) => {
-      const x = Math.max(0, Math.min(12 - start.w, start.x + Math.round((ev.clientX - sx) / (colW + gap))));
-      const y = Math.max(0, start.y + Math.round((ev.clientY - sy + (window.scrollY - sy0)) / ru));
-      if (x !== cur.x || y !== cur.y) { cur = { id, x, y }; setDrag(cur); }
-      clearInterval(scrollT);
-      if (ev.clientY > window.innerHeight - 60) scrollT = setInterval(() => window.scrollBy(0, 14), 30);
-      else if (ev.clientY < 60) scrollT = setInterval(() => window.scrollBy(0, -14), 30);
+    const calc = (cx, cy) => {
+      const g = gridRef.current.getBoundingClientRect();
+      const inside = cx >= g.left - 40 && cx <= g.right + 40 && cy >= g.top - 60 && cy <= g.bottom + 300;
+      if (!inside && opts.isNew) return { x: null, y: null };
+      const lx = cx - ox - g.left, ly = cy - oy - g.top;
+      return { x: Math.max(0, Math.min(12 - w, Math.round(lx / (colW + gap)))), y: Math.max(0, Math.round(ly / ru)) };
     };
-    const sy0 = window.scrollY;
+    const move = (ev) => {
+      const moved = cur.moved || Math.hypot(ev.clientX - sx, ev.clientY - sy) > 5;
+      const t = calc(ev.clientX, ev.clientY);
+      cur = { ...cur, ...t, px: ev.clientX, py: ev.clientY, moved }; setDrag(cur);
+      clearInterval(scrollT);
+      if (ev.clientY > window.innerHeight - 70) scrollT = setInterval(() => window.scrollBy(0, 16), 30);
+      else if (ev.clientY < 70) scrollT = setInterval(() => window.scrollBy(0, -16), 30);
+    };
     const up = () => {
       clearInterval(scrollT);
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
       document.body.classList.remove("rz-active");
-      const all = packFree(vis, { ...Object.fromEntries(Object.entries(place).map(([k, v]) => [k, { x: v.x, y: v.y }])), [id]: { x: cur.x, y: cur.y } }, id);
+      setDrag(null);
+      if (opts.isNew && !cur.moved) { opts.onClick?.(); return; }
+      if (cur.x == null) return;
+      const realId = opts.isNew && isSpacer(id) ? "spacer-" + Date.now().toString(36) : id;
+      const ids = opts.isNew ? [...vis, realId] : vis;
+      const all = packFree(ids, { ...curPos(), [realId]: { x: cur.x, y: cur.y } }, realId);
       const pos = Object.fromEntries(Object.entries(all).map(([k, v]) => [k, { x: v.x, y: v.y }]));
       const ord = Object.keys(pos).sort((a, b) => pos[a].y - pos[b].y || pos[a].x - pos[b].x);
-      setLastMoved(id); setDrag(null);
-      setLayout((l) => ({ ...l, pos, order: [...ord, ...l.order.filter((x) => !ord.includes(x) && !l.hidden.includes(x))] }));
+      setLastMoved(realId);
+      setLayout((l) => ({ ...l, pos, order: [...ord, ...l.order.filter((x) => !ord.includes(x) && !l.hidden.includes(x))], hidden: l.hidden.filter((x) => x !== realId),
+        ...(opts.isNew && isSpacer(realId) ? { h: { ...(l.h || {}), [realId]: 12 } } : {}) }));
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
   };
@@ -2221,14 +2242,22 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
           </WidgetCell>
         ))}
         {wdnd.ghost}
+        {free && drag && drag.x != null && place[drag.id] && (
+          <div className="dropslot" style={{ gridColumn: `${place[drag.id].x + 1} / span ${place[drag.id].w}`, gridRow: `${place[drag.id].y + 1} / span ${place[drag.id].h}` }} />)}
       </div>
+      {free && drag && (drag.moved || !drag.isNew) && createPortal(
+        <div className={"floatwidget" + (drag.isNew ? " isnew" : "")} style={{ left: drag.px - drag.ox, top: drag.py - drag.oy, width: drag.fw, height: drag.isNew ? undefined : drag.fh }}>
+          {drag.isNew ? <div className="tile"><b>{drag.label}</b><small className="muted block">{drag.x == null ? "ins Raster ziehen" : "loslassen zum Ablegen"}</small></div>
+            : <div className="floatclone" dangerouslySetInnerHTML={{ __html: gridRef.current?.querySelector(`[data-wid="${drag.id}"] .wbody`)?.innerHTML || "" }} />}
+        </div>, document.body)}
       {editing && (
         <section className="tile addwidgets">
-          <div className="tilehead"><b>Weitere Widgets</b><small>antippen zum Hinzufügen</small></div>
+          <div className="tilehead"><b>Weitere Widgets</b><small>{free ? "ins Raster ziehen oder antippen" : "antippen zum Hinzufügen"}</small></div>
           <div className="wadd">
-            <button className="spaceradd" onClick={addSpacer}><span>⬚</span><div><b>Leerfeld</b><small>freier Platz – beliebig oft, Größe frei ziehbar</small></div><i>＋</i></button>
+            <button className="spaceradd" onClick={free ? undefined : addSpacer} onPointerDown={free ? (e) => startFreeDrag("spacer-new", e, { isNew: true, w: 4, h: 12, label: "⬚ Leerfeld", onClick: addSpacer }) : undefined}><span>⬚</span><div><b>Leerfeld</b><small>freier Platz – beliebig oft, Größe frei ziehbar</small></div><i>＋</i></button>
             {hiddenIds.map((id) => (
-              <button key={id} onClick={() => setLayout((l) => ({ ...l, order: [...shown, id], hidden: l.hidden.filter((x) => x !== id) }))}>
+              <button key={id} onClick={free ? undefined : () => setLayout((l) => ({ ...l, order: [...shown, id], hidden: l.hidden.filter((x) => x !== id) }))}
+                onPointerDown={free ? (e) => startFreeDrag(id, e, { isNew: true, w: HOME_WIDGETS[id][1], label: HOME_WIDGETS[id][2] + " " + HOME_WIDGETS[id][0], onClick: () => setLayout((l) => ({ ...l, order: [...shown, id], hidden: l.hidden.filter((x) => x !== id) })) }) : undefined}>
                 <span>{HOME_WIDGETS[id][2]}</span><div><b>{HOME_WIDGETS[id][0]}</b><small>{HOME_WIDGETS[id][3]}</small></div><i>＋</i>
               </button>
             ))}
@@ -2269,7 +2298,7 @@ function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore,
     const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); document.body.classList.remove("rz-active"); };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   }
-  const cls = "widget" + (dnd.isDragging("wid", "w", idx) || dragging ? " dragging" : "") + (dropBefore ? " dropbefore" : "") + (dropAfter ? " dropafter" : "") + (span >= cols ? " wfull" : "");
+  const cls = "widget" + (dnd.isDragging("wid", "w", idx) ? " dragging" : "") + (dragging ? " floatsrc" : "") + (dropBefore ? " dropbefore" : "") + (dropAfter ? " dropafter" : "") + (span >= cols ? " wfull" : "");
   return (
     <div ref={ref} className={cls} style={style} data-wid-item={"w|" + idx} data-grid="1" data-wid={id}>
       <div ref={inner} className={"winner" + (fixed ? " fixed" : "")}>
@@ -6535,4 +6564,13 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
 .dash.freegrid.editing{background-image:linear-gradient(to right,color-mix(in srgb,var(--acc) 10%,transparent) 1px,transparent 1px);background-size:calc((100% + var(--gap)) / 12) 100%;border-radius:12px}
 .dash.freedrag .widget{transition:grid-column .12s,grid-row .12s}
 .widget.dragging{outline:2px dashed var(--acc);outline-offset:2px;opacity:.85;z-index:3}
+
+/* v0.24.2: schwebendes Widget beim Ziehen, Hinzufügen per Ziehen */
+.dropslot{align-self:stretch;justify-self:stretch;min-height:40px;border:2px dashed var(--acc);border-radius:16px;background:color-mix(in srgb,var(--acc) 12%,transparent);z-index:1;pointer-events:none}
+.widget.floatsrc{visibility:hidden}
+.floatwidget{position:fixed;z-index:9999;pointer-events:none;transform:rotate(1deg) scale(1.02);filter:drop-shadow(0 18px 40px #0008);opacity:.95;border-radius:16px;overflow:hidden}
+.floatwidget .floatclone{height:100%}.floatwidget .floatclone>*{height:100%;margin:0}
+.floatwidget.isnew .tile{margin:0;border:2px solid var(--acc)}
+.dash.freedrag .widget{transition:none}
+.addwidgets .wadd button{touch-action:none;cursor:grab}
 `;

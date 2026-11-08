@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.24.2
+
+- Übersicht anpassen: Das gezogene Widget **schwebt** unter dem Mauszeiger/Finger mit, eine gestrichelte Fläche zeigt den Zielplatz im Raster; andere Widgets weichen live aus. Automatisches Scrollen am oberen/unteren Rand.
+- **Weitere Widgets und Leerfeld per Ziehen hinzufügen**: direkt an die gewünschte Stelle ins Raster ziehen (Antippen fügt wie bisher am ersten freien Platz ein).
+
 ## v0.24.1
 
 - Übersicht anpassen (Mac/iPad quer, ab 1024 px): Widgets **frei platzieren** – am Griff ⠿ in jede Spalte und Höhe ziehen (links, rechts, oben, unten). Andere Widgets weichen nach unten aus, Lücken bleiben erhalten. Hilfslinien zeigen die 12 Spalten. „Nach oben rücken“ (aus = Standard) schiebt Widgets bei Bedarf automatisch nach oben. Am Handy und schmalen Tablets bleibt die Reihenfolge-Ansicht.
