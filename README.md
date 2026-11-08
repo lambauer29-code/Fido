@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.53.2
+- Fix: Export-Menü im Fahrtenbuch (und in Konten/Vermögen/Analyse-Leisten) öffnete sich unsichtbar, weil die Leiste es abgeschnitten hat. Das Menü schwebt jetzt frei unter dem Knopf (am Handy unten als Blatt) und ist in allen Reitern sichtbar.
+
 ## v0.53.1
 - Fahrtenbuch: Hinweis „Erinnerungen fällig“ bleibt auch im Bereich Erinnerungen stehen – die Leiste springt beim Umschalten nicht mehr nach oben.
 

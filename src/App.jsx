@@ -3144,11 +3144,21 @@ function RangeCalendar({ from, to, max, onChange }) {
 }
 /* ---------- Export-Menü (Chip mit Auswahl) ---------- */
 function ExportMenu({ items, label = "⬇︎ Export", className = "chip", title = "Exportieren" }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false), [pos, setPos] = useState(null);
+  const ref = useRef(null);
+  // Menü schwebend (fixed) unter dem Knopf – wird so von keiner Leiste abgeschnitten
+  const place = () => { const r = ref.current?.querySelector("summary")?.getBoundingClientRect(); if (!r) return;
+    const w = 270; setPos({ top: Math.round(r.bottom + 6), left: Math.round(Math.max(12, Math.min(r.left, innerWidth - w - 12))) }); };
+  useEffect(() => {
+    const d = ref.current; if (!d) return;
+    const onT = () => { if (d.open) place(); };
+    d.addEventListener("toggle", onT); addEventListener("resize", onT); addEventListener("scroll", onT, true);
+    return () => { d.removeEventListener("toggle", onT); removeEventListener("resize", onT); removeEventListener("scroll", onT, true); };
+  }, []);
   return (
-    <details className="more expmenu" onClick={(e) => e.stopPropagation()}>
+    <details ref={ref} className="more expmenu" onClick={(e) => e.stopPropagation()}>
       <summary className={className + (busy ? " on" : "")} title={title}>{busy ? "Exportiert …" : label}</summary>
-      <div className="moremenu">
+      <div className="moremenu" style={pos ? { position: "fixed", top: pos.top, left: pos.left, right: "auto" } : undefined}>
         {items.filter(Boolean).map((it, i) => it.head ? <small key={i} className="muted exphead">{it.head}</small> : (
           <button key={i} disabled={busy || it.disabled} onClick={async (e) => {
             e.currentTarget.closest("details").open = false; setBusy(true);
@@ -9499,4 +9509,7 @@ html,body{min-height:100%}
 .seg.segbar>.segset{flex:0 0 auto;background:none;border:0;color:var(--mut);font:inherit;font-size:14px;padding:6px 12px;border-radius:12px;cursor:pointer}
 .seg.segbar>.segset.on{background:var(--card2);color:var(--acc);font-weight:600}
 .seg.segbar.chipedit{padding:8px;gap:8px}.seg.segbar.chipedit>.chipcfg{flex:0 0 auto}.seg.segbar>.chiphint{width:100%;padding:2px 6px}
+
+@media (max-width:600px){.expmenu .moremenu{position:fixed!important;left:12px!important;right:12px!important;top:auto!important;bottom:calc(env(safe-area-inset-bottom) + 96px)!important;z-index:200}}
+.expmenu .moremenu{z-index:200;max-height:70vh;overflow:auto}
 `;
