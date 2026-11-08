@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.52.0
+- Analyse, eigener Zeitraum: großer eigener Kalender statt der kleinen Browser-Datumsauswahl – Start- und Enddatum antippen, Bereich farbig markiert, Monat/Jahr per Auswahl, Felder „von/bis“. Anzeige oben nur noch das gewählte Datum (ohne Pfeile).
+
 ## v0.51.3
 - Analyse, eigener Zeitraum: Anzeige im gleichen Stil wie die anderen Zeiträume („01. Jän. 26 – 08. Nov. 26“) mit ‹ › zum Blättern um die gleiche Anzahl Tage; Klick auf das Datum öffnet die Auswahl.
 

@@ -3070,6 +3070,51 @@ function PwInput({ show, setShow, ...rest }) {
   );
 }
 
+
+/* ---------- Zeitraum-Kalender (groß, Von–Bis) ---------- */
+const MONTHS_LONG = ["Jänner", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+function RangeCalendar({ from, to, max, onChange }) {
+  const [view, setView] = useState(() => (to || max).slice(0, 7));
+  const [pickEnd, setPickEnd] = useState(false), [hover, setHover] = useState(null);
+  useEffect(() => { if (!pickEnd && to && to.slice(0, 7) !== view) setView(to.slice(0, 7)); }, [from, to]);
+  const [y, m] = view.split("-").map(Number);
+  const first = new Date(y, m - 1, 1), offset = (first.getDay() + 6) % 7, dim = new Date(y, m, 0).getDate();
+  const cells = Array.from({ length: 42 }, (_, i) => { const d = new Date(y, m - 1, 1 - offset + i); return { iso: d.toLocaleDateString("sv-SE"), day: d.getDate(), out: d.getMonth() !== m - 1 }; });
+  const rows = cells.slice(35).every((c) => c.out) ? cells.slice(0, 35) : cells;
+  const go = (n) => { const d = new Date(y, m - 1 + n, 1); setView(d.toLocaleDateString("sv-SE").slice(0, 7)); };
+  const endPrev = pickEnd && hover ? (hover < from ? [hover, from] : [from, hover]) : [from, to];
+  const click = (iso) => {
+    if (iso > max) return;
+    if (!pickEnd) { onChange(iso, iso); setPickEnd(true); }
+    else { onChange(iso < from ? iso : from, iso < from ? from : iso); setPickEnd(false); setHover(null); }
+  };
+  const years = []; for (let yy = +max.slice(0, 4); yy >= +max.slice(0, 4) - 15; yy--) years.push(yy);
+  const fmt = (d) => d ? new Date(d + "T12:00:00").toLocaleDateString("de-AT", { day: "2-digit", month: "2-digit", year: "numeric" }) : "–";
+  return (
+    <div className="rcal">
+      <div className="rcalsel">
+        <button className={!pickEnd ? "on" : ""} onClick={() => setPickEnd(false)}><small>von</small><b>{fmt(from)}</b></button>
+        <span aria-hidden="true">→</span>
+        <button className={pickEnd ? "on" : ""} onClick={() => setPickEnd(true)}><small>bis</small><b>{fmt(to)}</b></button>
+      </div>
+      <div className="rcalhead">
+        <button className="iconbtn" aria-label="Voriger Monat" onClick={() => go(-1)}>‹</button>
+        <select value={m} onChange={(e) => setView(`${y}-${String(e.target.value).padStart(2, "0")}`)}>{MONTHS_LONG.map((n, i) => <option key={n} value={i + 1}>{n}</option>)}</select>
+        <select value={y} onChange={(e) => setView(`${e.target.value}-${String(m).padStart(2, "0")}`)}>{years.map((yy) => <option key={yy}>{yy}</option>)}</select>
+        <button className="iconbtn" aria-label="Nächster Monat" disabled={view >= max.slice(0, 7)} onClick={() => go(1)}>›</button>
+      </div>
+      <div className="rcalgrid" onMouseLeave={() => setHover(null)}>
+        {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => <span key={d} className="rcalwd">{d}</span>)}
+        {rows.map((c) => {
+          const [a, b] = endPrev, inR = a && b && c.iso >= a && c.iso <= b, edge = c.iso === a || c.iso === b;
+          return <button key={c.iso} disabled={c.iso > max} className={"rcald" + (c.out ? " out" : "") + (inR ? " in" : "") + (edge ? " edge" : "") + (c.iso === a ? " start" : "") + (c.iso === b ? " end" : "") + (c.iso === max ? " today" : "")}
+            onMouseEnter={() => pickEnd && setHover(c.iso)} onClick={() => click(c.iso)}>{c.day}</button>;
+        })}
+      </div>
+      <small className="muted rcalhint">{pickEnd ? "Jetzt das Enddatum antippen" : "Startdatum antippen, dann Enddatum"}</small>
+    </div>
+  );
+}
 /* ---------- Export-Menü (Chip mit Auswahl) ---------- */
 function ExportMenu({ items, label = "⬇︎ Export", className = "chip", title = "Exportieren" }) {
   const [busy, setBusy] = useState(false);
@@ -3349,8 +3394,7 @@ function Analysis({ txs, accounts, hasCash }) {
           onClick={() => { if (k === "custom") { if (custom) setCOpen(!cOpen); else { setMode("custom"); setCOpen(true); } } else { setMode(k); setCOpen(false); } }}>{l}{k === "custom" && <span className="anacaret" aria-hidden="true">{custom && cOpen ? "▴" : "▾"}</span>}</button>)}</div>
         {custom && cOpen && (
           <div className="anacustom" ref={cPanel} style={{ left: cLeft }} role="dialog" aria-label="Eigener Zeitraum">
-            <label>von<input type="date" value={cRange.from} max={todayISO()} onChange={(e) => e.target.value && setCRange({ ...cRange, from: e.target.value })} /></label>
-            <label>bis<input type="date" value={cRange.to} max={todayISO()} onChange={(e) => e.target.value && setCRange({ ...cRange, to: e.target.value })} /></label>
+            <RangeCalendar from={cFrom} to={cTo} max={todayISO()} onChange={(f, t) => setCRange({ from: f, to: t })} />
             <div className="chips anapresets">{[["Dieses Jahr", thisMonth.slice(0, 4) + "-01-01", todayISO()], ["Letzte 30 Tage", dayShift(todayISO(), -29), todayISO()], ["Letzte 90 Tage", dayShift(todayISO(), -89), todayISO()],
               ["Letztes Jahr", (+thisMonth.slice(0, 4) - 1) + "-01-01", (+thisMonth.slice(0, 4) - 1) + "-12-31"]].map(([l, f, t]) => <button key={l} className={"chip" + (cRange.from === f && cRange.to === t ? " on" : "")} onClick={() => setCRange({ from: f, to: t })}>{l}</button>)}</div>
             <small className="muted">{cDays} Tage · Vergleich mit den {cDays} Tagen davor</small>
@@ -3358,9 +3402,7 @@ function Analysis({ txs, accounts, hasCash }) {
         )}
         </div>
         {custom ? <div className="anaper">
-            <button className="iconbtn" aria-label="Zeitraum zurück" onClick={() => setCRange({ from: dayShift(cFrom, -cDays), to: dayShift(cTo, -cDays) })}>‹</button>
             <b className="anarange" role="button" tabIndex={0} title="Zeitraum ändern" onClick={() => setCOpen(!cOpen)}>{periodLabel}</b>
-            <button className="iconbtn" aria-label="Zeitraum weiter" disabled={cTo >= todayISO()} onClick={() => { const t = dayShift(cTo, cDays) > todayISO() ? todayISO() : dayShift(cTo, cDays); setCRange({ from: dayShift(t, -(cDays - 1)), to: t }); }}>›</button>
           </div> : <div className="anaper"><button className="iconbtn" aria-label="Zurück" onClick={() => step(-1)}>‹</button><b>{periodLabel}</b><button className="iconbtn" aria-label="Weiter" disabled={cur >= thisMonth} onClick={() => step(1)}>›</button></div>}
       </div>
       {accounts.length > 1 && (
@@ -9396,4 +9438,22 @@ html,body{min-height:100%}
 .anarange{cursor:pointer;white-space:nowrap}
 
 .anacustom .anapresets{display:flex;flex-wrap:wrap!important;overflow:visible!important}
+
+.anacustom{width:min(400px,calc(100vw - 24px))}
+.rcal{width:100%}
+.rcalsel{display:flex;align-items:center;gap:8px;margin-bottom:10px}.rcalsel>span{color:var(--mut)}
+.rcalsel button{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card2);color:var(--txt);font:inherit;cursor:pointer}
+.rcalsel button.on{border-color:var(--acc)}.rcalsel small{font-size:11px;color:var(--mut)}.rcalsel b{font-size:16px}
+.rcalhead{display:flex;align-items:center;gap:6px;margin-bottom:6px}.rcalhead select{flex:1;margin:0;padding:7px 10px;font-size:15px;font-weight:600}
+.rcalhead select:last-of-type{flex:0 0 96px}
+.rcalgrid{display:grid;grid-template-columns:repeat(7,1fr);row-gap:3px}
+.rcalwd{text-align:center;font-size:12px;color:var(--mut);padding:4px 0 6px;font-weight:600}
+.rcald{height:44px;border:0;background:none;color:var(--txt);font:inherit;font-size:16px;font-weight:500;cursor:pointer;border-radius:0;position:relative}
+.rcald.out{color:var(--mut);opacity:.55}.rcald:disabled{opacity:.25;cursor:default}
+.rcald.in{background:color-mix(in srgb,var(--acc) 20%,transparent)}
+.rcald.start{border-radius:22px 0 0 22px}.rcald.end{border-radius:0 22px 22px 0}.rcald.start.end{border-radius:22px}
+.rcald.edge{background:var(--acc);color:#04201b;font-weight:700}
+.rcald.today:not(.edge)::after{content:"";position:absolute;left:50%;bottom:6px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--acc)}
+.rcald:not(.edge):not(:disabled):hover{background:color-mix(in srgb,var(--acc) 30%,transparent)}
+.rcalhint{display:block;margin-top:6px}
 `;
