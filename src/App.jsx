@@ -3260,11 +3260,18 @@ function Analysis({ txs, accounts, hasCash }) {
   const base = useMemo(() => txs.filter((t) => t.kind !== "broker" && t.category !== "Umbuchung" && !(hasCash && t.category === "Bargeld") && (t.currency || "EUR") === "EUR"
     && (!valid.length || valid.includes(t.accountId))), [txs, valid.join(","), hasCash]);
   const year = cur.slice(0, 4);
-  const [from, to] = mode === "year" ? [year + "-01", year + "-12"] : mode === "12m" ? [addMon(cur, -11), cur] : [cur, cur];
+  // eigener Zeitraum (tagesgenau)
+  const [cRange, setCRange] = useLsState("anaCustom", { from: thisMonth.slice(0, 4) + "-01-01", to: todayISO() });
+  const cFrom = cRange.from <= cRange.to ? cRange.from : cRange.to, cTo = cRange.from <= cRange.to ? cRange.to : cRange.from;
+  const custom = mode === "custom";
+  const dayShift = (d, n) => { const x = new Date(d + "T12:00:00"); x.setDate(x.getDate() + n); return x.toLocaleDateString("sv-SE"); };
+  const cDays = Math.round((new Date(cTo + "T12:00:00") - new Date(cFrom + "T12:00:00")) / 864e5) + 1;
+  const [from, to] = custom ? [cFrom.slice(0, 7), cTo.slice(0, 7)] : mode === "year" ? [year + "-01", year + "-12"] : mode === "12m" ? [addMon(cur, -11), cur] : [cur, cur];
   const span = monthsRange(from, to).length;
   const [pFrom, pTo] = [addMon(from, -span), addMon(to, -span)];
   const inR = (t, a, b) => { const m = t.date.slice(0, 7); return m >= a && m <= b; };
-  const list = base.filter((t) => inR(t, from, to)), prev = base.filter((t) => inR(t, pFrom, pTo));
+  const list = custom ? base.filter((t) => t.date >= cFrom && t.date <= cTo) : base.filter((t) => inR(t, from, to));
+  const prev = custom ? base.filter((t) => t.date >= dayShift(cFrom, -cDays) && t.date <= dayShift(cFrom, -1)) : base.filter((t) => inR(t, pFrom, pTo));
   const sum = (l, s) => l.filter((t) => (s > 0 ? t.amount > 0 : t.amount < 0)).reduce((x, t) => x + Math.abs(t.amount), 0);
   const inc = sum(list, 1), out = sum(list, -1), pInc = sum(prev, 1), pOut = sum(prev, -1);
   const sel = list.filter((t) => (kind === "out" ? t.amount < 0 : t.amount > 0));
@@ -3273,8 +3280,8 @@ function Analysis({ txs, accounts, hasCash }) {
   const parts = Object.entries(byCat).map(([c, v]) => ({ c, v })).sort((a, b) => b.v - a.v);
   const selTotal = kind === "out" ? out : inc;
   // Verlauf: 12 Monate bis zum Ende des Zeitraums
-  const chartTo = mode === "year" ? (year === thisMonth.slice(0, 4) ? thisMonth : year + "-12") : cur;
-  const chartMonths = monthsRange(addMon(chartTo, -11), chartTo);
+  const chartTo = custom ? to : mode === "year" ? (year === thisMonth.slice(0, 4) ? thisMonth : year + "-12") : cur;
+  const chartMonths = custom && span > 1 ? monthsRange(span > 36 ? addMon(to, -35) : from, to) : monthsRange(addMon(chartTo, -11), chartTo);
   const chart = chartMonths.map((m) => { const l = base.filter((t) => t.date.startsWith(m)); return { k: m, label: monthLabel(m).split(" ")[0], a: sum(l, 1), b: sum(l, -1) }; });
   const avgOut = chart.reduce((s, x) => s + x.b, 0) / Math.max(1, chart.filter((x) => x.a || x.b).length);
   // Händler
@@ -3291,7 +3298,7 @@ function Analysis({ txs, accounts, hasCash }) {
   const wd = Array(7).fill(0); list.filter((t) => t.amount < 0).forEach((t) => { wd[(new Date(t.date).getDay() + 6) % 7] += -t.amount; });
   const wdMax = Math.max(1, ...wd);
   const biggest = list.filter((t) => t.amount < 0).sort((a, b) => a.amount - b.amount).slice(0, 5);
-  const periodLabel = mode === "year" ? year : mode === "12m" ? `${monthLabel(from)} – ${monthLabel(to)}` : new Date(cur + "-15").toLocaleDateString("de-AT", { month: "long", year: "numeric" });
+  const periodLabel = custom ? `${fmtDate(cFrom)} – ${fmtDate(cTo)}` : mode === "year" ? year : mode === "12m" ? `${monthLabel(from)} – ${monthLabel(to)}` : new Date(cur + "-15").toLocaleDateString("de-AT", { month: "long", year: "numeric" });
   const step = (n) => setCur((c) => { const m = mode === "year" ? addMon(c, 12 * n) : addMon(c, n); return m > thisMonth ? thisMonth : m; });
   const delta = (a, b) => { if (!b) return null; const d = Math.round(((a - b) / b) * 100); return d; };
   const Delta = ({ a, b, good = "down" }) => { const d = delta(a, b); if (d == null || !isFinite(d)) return null; const up = d > 0; const bad = good === "down" ? up : !up;
@@ -3326,8 +3333,16 @@ function Analysis({ txs, accounts, hasCash }) {
   return (
     <div className="anapage">
       <div className="anahead">
-        <div className="seg sm">{[["month", "Monat"], ["year", "Jahr"], ["12m", "12 Monate"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => setMode(k)}>{l}</button>)}</div>
-        <div className="anaper"><button className="iconbtn" aria-label="Zurück" onClick={() => step(-1)}>‹</button><b>{periodLabel}</b><button className="iconbtn" aria-label="Weiter" disabled={cur >= thisMonth} onClick={() => step(1)}>›</button></div>
+        <div className="seg sm">{[["month", "Monat"], ["year", "Jahr"], ["12m", "12 Monate"], ["custom", "Eigener Zeitraum"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => setMode(k)}>{l}</button>)}</div>
+        {custom ? (
+          <div className="anaper anacustom">
+            <label>von<input type="date" value={cRange.from} max={todayISO()} onChange={(e) => e.target.value && setCRange({ ...cRange, from: e.target.value })} /></label>
+            <label>bis<input type="date" value={cRange.to} max={todayISO()} onChange={(e) => e.target.value && setCRange({ ...cRange, to: e.target.value })} /></label>
+            <div className="chips anapresets">{[["Dieses Jahr", thisMonth.slice(0, 4) + "-01-01", todayISO()], ["Letzte 30 Tage", dayShift(todayISO(), -29), todayISO()], ["Letzte 90 Tage", dayShift(todayISO(), -89), todayISO()],
+              ["Letztes Jahr", (+thisMonth.slice(0, 4) - 1) + "-01-01", (+thisMonth.slice(0, 4) - 1) + "-12-31"]].map(([l, f, t]) => <button key={l} className={"chip" + (cRange.from === f && cRange.to === t ? " on" : "")} onClick={() => setCRange({ from: f, to: t })}>{l}</button>)}</div>
+            <small className="muted">{cDays} Tage · Vergleich mit den {cDays} Tagen davor</small>
+          </div>
+        ) : <div className="anaper"><button className="iconbtn" aria-label="Zurück" onClick={() => step(-1)}>‹</button><b>{periodLabel}</b><button className="iconbtn" aria-label="Weiter" disabled={cur >= thisMonth} onClick={() => step(1)}>›</button></div>}
       </div>
       {accounts.length > 1 && (
         <div className="chips anaaccs">
@@ -9351,4 +9366,11 @@ html,body{min-height:100%}
 .expmenu .moremenu button small{font-size:11.5px;margin-top:1px}.expmenu .exphead{padding:6px 10px 4px;font-size:11.5px}
 .chips.chipbar>.expmenu{flex:1 1 auto}.chips.chipbar>.expmenu>summary{width:100%;height:43px;justify-content:center;display:flex;align-items:center}
 @media (max-width:600px){.expmenu .moremenu{position:fixed;left:12px;right:12px;top:auto;bottom:calc(env(safe-area-inset-bottom) + 96px);min-width:0}}
+
+.anacustom{flex-wrap:wrap;gap:8px 10px;margin-left:auto;justify-content:flex-end;align-items:flex-end}
+.anacustom label{margin:0;font-size:12px;display:flex;flex-direction:column;gap:3px}.anacustom input{margin:0;padding:7px 10px;min-width:150px}
+.anacustom .anapresets{width:100%;justify-content:flex-end;gap:6px}.anacustom .anapresets .chip{padding:5px 11px;font-size:12.5px}
+.anacustom>small{width:100%;text-align:right}
+@media (max-width:620px){.anacustom{margin-left:0;justify-content:flex-start;width:100%}.anacustom label{flex:1 1 40%}.anacustom input{min-width:0;width:100%}.anacustom .anapresets{justify-content:flex-start}.anacustom>small{text-align:left}}
+.anacustom .anapresets{display:flex;flex-wrap:wrap!important;overflow:visible!important}
 `;

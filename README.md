@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.51.0
+- Analyse: neuer Zeitraum „Eigener Zeitraum“ mit Von/Bis-Datum (tagesgenau) und Schnellwahl (Dieses Jahr, Letzte 30 Tage, Letzte 90 Tage, Letztes Jahr). Der Vergleich läuft gegen gleich viele Tage direkt davor; der Verlauf zeigt die Monate des Zeitraums (max. 36).
+
 ## v0.50.0 – Exporte
 Neuer Knopf „⬇︎ Export“ in vielen Reitern (Excel = echte .xlsx-Datei, CSV mit Semikolon für Excel, PDF zum Drucken):
 - **Konten**: Umsätze der gewählten Konten/Monate als Excel (inkl. Blatt Kategorien), CSV oder PDF (je Konto mit Summen).
