@@ -90,7 +90,7 @@ export default async function handler(req, res) {
   if (token && req.headers["x-app-token"] !== token) {
     return res.status(401).json({ error: "Falscher App-Token (Einstellungen prüfen)" });
   }
-  if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY fehlt in Vercel" });
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY fehlt in Vercel – unter Settings → Environment Variables eintragen und danach neu deployen" });
 
   const { data, mediaType, categories, today, groups } = req.body || {};
   if (!data || !mediaType) return res.status(400).json({ error: "data und mediaType erforderlich" });

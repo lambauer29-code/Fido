@@ -4,7 +4,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Nur POST" });
   const token = process.env.APP_TOKEN;
   if (token && req.headers["x-app-token"] !== token) return res.status(401).json({ error: "Falscher App-Token" });
-  if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY fehlt in Vercel" });
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY fehlt in Vercel – unter Settings → Environment Variables eintragen und danach neu deployen" });
 
   const { data, mediaType, text } = req.body || {};
   if (!data && !text) return res.status(400).json({ error: "data oder text erforderlich" });

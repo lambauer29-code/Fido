@@ -670,6 +670,11 @@ export default function App() {
   const [docAreaSel, setDocAreaSel] = useState(() => ls.get("docArea", "alle"));
   const [manualTx, setManualTx] = useState(null);
   const [fabOpen, setFabOpen] = useState(false);
+  useEffect(() => {
+    if (!fabOpen) return;
+    const h = (e) => e.key === "Escape" && setFabOpen(false);
+    window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
+  }, [fabOpen]);
   const [rules, setRules] = useState(() => ls.get("rules", []));
   const [subs, setSubs] = useState(() => ls.get("subs", { confirmed: [], dismissed: [] }));
   const fileInput = useRef();
@@ -881,9 +886,7 @@ export default function App() {
       <header className="top">
         <h1>{tabLabel(nav, tab)}</h1>
         <div className="addbtn">
-          <button className="btn" onClick={() => setManualTx({})}>💶 Barausgabe</button>
-          <button className="btn" onClick={() => setScanOpen(true)}>📷 Scannen</button>
-          <button className="btn primary" onClick={() => fileInput.current.click()}>＋ Dokument hinzufügen</button>
+          <button className={"btn primary addplus" + (fabOpen ? " open" : "")} onClick={() => setFabOpen(!fabOpen)} aria-label="Hinzufügen" aria-expanded={fabOpen} title="Hinzufügen">＋</button>
         </div>
       </header>
 
@@ -908,10 +911,10 @@ export default function App() {
         onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
       {fabOpen && <div className="fabmenu-bg" onClick={() => setFabOpen(false)} />}
       {fabOpen && (
-        <div className="fabmenu">
-          <button onClick={() => { setFabOpen(false); setScanOpen(true); }}><span>📷</span>Scannen</button>
-          <button onClick={() => { setFabOpen(false); fileInput.current.click(); }}><span>📄</span>Datei / Foto</button>
-          <button onClick={() => { setFabOpen(false); setManualTx({}); }}><span>💶</span>Barausgabe</button>
+        <div className="fabmenu" role="menu">
+          <button role="menuitem" onClick={() => { setFabOpen(false); setScanOpen(true); }}><span>📷</span><div><b>Scannen</b><small>Bon oder Rechnung fotografieren</small></div></button>
+          <button role="menuitem" onClick={() => { setFabOpen(false); fileInput.current.click(); }}><span>📄</span><div><b>Datei / Foto</b><small>PDF oder Bild hochladen</small></div></button>
+          <button role="menuitem" onClick={() => { setFabOpen(false); setManualTx({}); }}><span>💶</span><div><b>Barausgabe</b><small>Bargeld-Buchung erfassen</small></div></button>
         </div>
       )}
       <button className={"fab" + (fabOpen ? " open" : "")} onClick={() => setFabOpen(!fabOpen)} aria-label="Hinzufügen">＋</button>
@@ -2107,6 +2110,7 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
 
 /* ---------- Einstellungen, Budgets, Papierkorb, Backup ---------- */
 function Settings({ nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+  const [health, setHealth] = useState(null);
   const [usage, setUsage] = useState("");
   const [busy, setBusy] = useState(false);
   const importRef = useRef();
@@ -2214,6 +2218,22 @@ function Settings({ nav, setNav, deleteAccount, renameCategory, deleteCategory, 
         <label>App-Token (wie APP_TOKEN in Vercel)
           <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="geheimes Passwort" />
         </label>
+        <button className="btn" onClick={async () => {
+          try {
+            const r = await fetch("/api/health", { headers: { "x-app-token": token } });
+            const j = await r.json();
+            setHealth(j);
+          } catch (e) { setHealth({ error: "Server nicht erreichbar (" + e.message + ")" }); }
+        }}>🔌 Verbindung prüfen</button>
+        {health && (
+          <div className="healthbox">
+            {health.error ? <p className="red">✕ {health.error}</p> : <>
+              <p className={health.key ? "ok" : "red"}>{health.key ? "✓ Claude-API-Key ist in Vercel hinterlegt" : "✕ ANTHROPIC_API_KEY fehlt in Vercel"}</p>
+              <p className={health.tokenOk ? "ok" : "red"}>{!health.tokenRequired ? "⚠︎ Kein APP_TOKEN gesetzt – jeder mit der URL könnte deinen Key nutzen" : health.tokenOk ? "✓ App-Token stimmt" : "✕ App-Token stimmt nicht mit APP_TOKEN in Vercel überein"}</p>
+              {(!health.key || (health.tokenRequired && !health.tokenOk)) && <p className="muted small">Vercel → Projekt → Settings → Environment Variables eintragen, danach unter Deployments → ⋯ → Redeploy (neue Variablen gelten erst nach einem neuen Deployment).</p>}
+            </>}
+          </div>
+        )}
       </fieldset>
     </div>
   );
@@ -2412,7 +2432,6 @@ img{max-width:100%}
 @media (min-width:768px) and (max-width:1023px){
   .dash{grid-template-columns:1fr}
   .split{grid-template-columns:1fr}.split>.side{order:0;position:static}
-  .addbtn .btn:not(.primary){display:none}
 }
 @media (min-width:1024px){
   :root{--side:252px}
@@ -2446,10 +2465,18 @@ img{max-width:100%}
 .addbtn{gap:8px}
 .twobtn{display:flex;gap:8px;margin:-4px 0 12px}.twobtn .btn{flex:1}
 .fab{transition:transform .2s}.fab.open{transform:rotate(45deg)}
-.fabmenu-bg{position:fixed;inset:0;z-index:5;background:#0f1b2d33}
-.fabmenu{position:fixed;right:20px;bottom:calc(env(safe-area-inset-bottom) + 148px);z-index:6;display:flex;flex-direction:column;gap:8px;align-items:flex-end;animation:popin .15s ease-out}
-.fabmenu button{display:flex;align-items:center;gap:10px;background:var(--card);color:var(--txt);border:0;border-radius:14px;padding:12px 16px;font:inherit;font-weight:600;box-shadow:0 8px 24px #0003;min-height:48px}
-.fabmenu span{font-size:20px}
+.fabmenu-bg{position:fixed;inset:0;z-index:5;background:#0f1b2d59}
+.fabmenu{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom) + 146px);z-index:6;display:flex;flex-direction:column;gap:2px;width:min(300px,calc(100vw - 32px));
+  background:var(--card);opacity:1;border:1px solid var(--line);border-radius:18px;padding:6px;box-shadow:0 18px 50px #0f1b2d66;animation:menuin .16s ease-out;isolation:isolate}
+@media (prefers-color-scheme:dark){.fabmenu{background:#1c222c;border-color:#323a47}}
+.fabmenu button{display:flex;align-items:center;gap:12px;width:100%;background:transparent;color:var(--txt);border:0;border-radius:12px;padding:10px 12px;font:inherit;text-align:left;min-height:56px;cursor:pointer}
+.fabmenu button:hover,.fabmenu button:focus-visible{background:var(--card2)}
+.fabmenu button+button{border-top:1px solid var(--line);border-radius:0 0 12px 12px}.fabmenu button:nth-child(2){border-radius:0}
+.fabmenu span{font-size:22px;width:38px;height:38px;border-radius:12px;background:var(--card2);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.fabmenu b{display:block;font-size:15px}.fabmenu small{display:block;color:var(--mut);font-size:12px;margin-top:1px}
+@keyframes menuin{from{transform:translateY(6px) scale(.98)}to{transform:none}}
+.addplus{width:44px;height:44px;padding:0;border-radius:50%;font-size:26px;line-height:1;display:inline-flex;align-items:center;justify-content:center;transition:transform .2s}
+.addplus.open{transform:rotate(45deg)}
 .scanstart{text-align:center;padding:30px 10px;display:flex;flex-direction:column;gap:12px;align-items:center}.scanstart p{color:var(--mut);max-width:420px}
 .btn.big{width:100%;max-width:360px;padding:14px;font-size:16px;font-weight:600}
 .crop{position:relative;margin:10px auto;max-width:100%;touch-action:none;user-select:none;-webkit-user-select:none}
@@ -2464,7 +2491,9 @@ img{max-width:100%}
 .spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .bigamount{font-size:34px;font-weight:700;text-align:center;border:0;background:none;margin:14px 0 4px;padding:8px}
-@media (min-width:700px){.small-panel{max-width:520px}.fabmenu{bottom:calc(env(safe-area-inset-bottom) + 148px)}}
+@media (min-width:700px){.small-panel{max-width:520px}}
+@media (min-width:768px){.fabmenu-bg{background:transparent}.fabmenu{top:76px;right:28px;bottom:auto}}
+@media (min-width:1024px){.fabmenu{right:40px}}
 
 /* Fido: Seitenleiste-Unterpunkte, Kontengruppen, Bereiche */
 .side-only{display:none}
@@ -2528,4 +2557,8 @@ body.dnd-active,body.dnd-active *{cursor:grabbing!important;user-select:none!imp
   .catrow .edittext.dirty{flex-basis:100%}
   .navcfg .mini{margin-left:36px}
 }
+
+input[type=date]{min-width:0;max-width:100%;display:block;-webkit-appearance:none;appearance:none;min-height:44px}
+input[type=date]::-webkit-date-and-time-value{text-align:left}
+.healthbox{background:var(--card2);border-radius:12px;padding:8px 12px;margin-top:10px}.healthbox p{margin:4px 0;font-size:14px;font-weight:500}
 `;
