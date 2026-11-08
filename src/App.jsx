@@ -37,13 +37,16 @@ const CatIcon = ({ c, size = 40 }) => {
 const Label = ({ c }) => { const m = catMeta(c); return <span className="label" style={{ color: m.color, background: m.color + "1f" }}>{c}</span>; };
 
 /* ---------- Vorschaubilder (Docutain-Look) ---------- */
+async function loadPdfjs() {
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+  return pdfjs;
+}
 async function makeThumb(blob) {
   const W = 300;
   const canvas = document.createElement("canvas");
   if (blob.type === "application/pdf") {
-    const pdfjs = await import("pdfjs-dist");
-    const worker = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
-    pdfjs.GlobalWorkerOptions.workerSrc = worker;
+    const pdfjs = await loadPdfjs();
     const pdf = await pdfjs.getDocument({ data: await blob.arrayBuffer() }).promise;
     const page = await pdf.getPage(1);
     const vp1 = page.getViewport({ scale: 1 });
@@ -59,6 +62,49 @@ async function makeThumb(blob) {
   }
   return canvas.toDataURL("image/jpeg", 0.7);
 }
+/* Ausklappbare Vorschau in der Dokumentliste */
+function DocPreview({ d, onOpen }) {
+  const [pages, setPages] = useState([]), [total, setTotal] = useState(0), [want, setWant] = useState(3), [err, setErr] = useState("");
+  const pdfRef = useRef(null);
+  useEffect(() => {
+    let dead = false, url;
+    (async () => {
+      try {
+        const b = await db.getFile(d.id); if (!b) throw new Error("Originaldatei nicht gefunden");
+        if (b.type !== "application/pdf") { url = URL.createObjectURL(b); if (!dead) { setPages([url]); setTotal(1); } return; }
+        if (!pdfRef.current) pdfRef.current = await (await loadPdfjs()).getDocument({ data: await b.arrayBuffer() }).promise;
+        const pdf = pdfRef.current; if (dead) return; setTotal(pdf.numPages);
+        const W = Math.min(1600, Math.round(820 * (window.devicePixelRatio || 1)));
+        for (let i = pages.length + 1; i <= Math.min(want, pdf.numPages); i++) {
+          const page = await pdf.getPage(i), v1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: W / v1.width });
+          const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+          await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+          const src = c.toDataURL("image/jpeg", 0.82); if (dead) return;
+          setPages((p) => (p.length >= i ? p : [...p, src]));
+        }
+      } catch (e) { if (!dead) setErr(e.message || String(e)); }
+    })();
+    return () => { dead = true; if (url) URL.revokeObjectURL(url); };
+  }, [d.id, want]);
+  useEffect(() => () => { pdfRef.current?.destroy(); }, []);
+  return (
+    <div className="dprev" onClick={(e) => e.stopPropagation()}>
+      {err ? <p className="muted small">Vorschau nicht möglich: {err}</p> : <>
+        <div className="dpages">
+          {pages.map((src, i) => <img key={i} src={src} alt={`Seite ${i + 1}`} loading="lazy" />)}
+          {(!pages.length || pages.length < Math.min(want, total || 1)) && <div className="dpload">Seite wird geladen …</div>}
+        </div>
+        <div className="dprevbar">
+          <small className="muted">{total > 1 ? `${pages.length} von ${total} Seiten` : "1 Seite"}</small>
+          <span className="grow" />
+          {total > pages.length && pages.length >= want && <button className="btn sm" onClick={() => setWant(want + 5)}>Weitere Seiten</button>}
+          <button className="btn sm primary" onClick={onOpen}>Öffnen</button>
+        </div>
+      </>}
+    </div>
+  );
+}
+
 const Thumb = ({ d, className = "thumb" }) => (
   <div className={className}>{d.thumb ? <img src={d.thumb} alt="" /> : <span>{d.mimeType === "application/pdf" ? "PDF" : "🖼"}</span>}</div>
 );
@@ -119,6 +165,26 @@ const monthLabel = (k) => new Date(k + "-15").toLocaleDateString("de-AT", { mont
 const norm = (s) => String(s || "").toLowerCase();
 const isEUR = (d) => (d.amount?.currency || "EUR") === "EUR";
 const monthlyCost = (c) => (c?.amount && INTERVAL_FACTOR[c.interval] ? c.amount * INTERVAL_FACTOR[c.interval] : 0);
+const Ico = ({ d, size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>);
+const IcoEye = () => <Ico d={<><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>} />;
+const IcoEyeOff = () => <Ico d={<><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.5M6.6 6.6C3.8 8.3 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="M3 3l18 18" /></>} />;
+const IcoSun = () => <Ico d={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} />;
+const IcoMoon = () => <Ico d={<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z" />} />;
+const IcoChev = ({ open }) => <span className={"pchev" + (open ? " open" : "")}><Ico size={16} d={<path d="M6 9l6 6 6-6" />} /></span>;
+
+/* Tag/Nacht: auto = System, zeit = nach Uhrzeit (Tag 7–19 Uhr), light, dark */
+const DAY_FROM = 7, DAY_TO = 19;
+function effectiveTheme(mode) {
+  if (mode === "light" || mode === "dark") return mode;
+  if (mode === "zeit") { const h = new Date().getHours(); return h >= DAY_FROM && h < DAY_TO ? "light" : "dark"; }
+  return typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = t === "dark" ? "#0d1117" : "#f3f5f9";
+}
+
 const ls = {
   get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
@@ -269,9 +335,13 @@ function resolveGroups(nav, accounts) {
 // Zählt eine Buchung zum Kontostand? (nur was nach dem Erfassen des Startbestands passiert ist)
 const afterOpening = (t, acc) => !acc.openingDate || t.date > acc.openingDate ||
   (t.date === acc.openingDate && (!acc.openingAt || (t.createdAt || t.importedAt || "") > acc.openingAt));
+const balEstimated = (acc) => acc.kind !== "cash" && (acc.opening == null || acc.opening === "");
 function accountBalance(acc, txs) {
   if (acc.kind === "cash") return cashBalance(acc, txs);
-  if (acc.opening == null || acc.opening === "") return null;
+  if (acc.opening == null || acc.opening === "") {
+    const l = txs.filter((t) => t.accountId === acc.id);
+    return l.length ? l.reduce((s, t) => s + t.amount, 0) : null; // geschätzt: Summe aller Umsätze
+  }
   return acc.opening + txs.filter((t) => t.accountId === acc.id && afterOpening(t, acc)).reduce((s, t) => s + t.amount, 0);
 }
 
@@ -714,7 +784,7 @@ function AccountTree({ groups, txs, selected, onSelect, onToggleGroup, variant =
             return (
               <button key={a.id} className={"accitem" + (selected === a.id ? " on" : "")} onClick={() => onSelect(selected === a.id ? "" : a.id)}>
                 <span className="ki">{kindIcon(a.kind)}</span><span className="an">{a.name}</span>
-                {bal != null ? <span className={"ab" + (bal < 0 ? " red" : "")}>{fmtMoney(bal)}</span>
+                {bal != null ? <span className={"ab" + (bal < 0 ? " red" : "")} title={balEstimated(a) ? "Aus Umsätzen berechnet – für den genauen Stand Kontostand eintragen oder Import mit Saldo-Spalte" : undefined}>{balEstimated(a) && <i className="est">≈</i>}{fmtMoney(bal)}</span>
                   : <span className="ab muted" title="Kontostand unbekannt – im Konto eintragen oder per Import mit Saldo übernehmen">—</span>}
               </button>
             );
@@ -756,6 +826,17 @@ export default function App() {
   const [manualTx, setManualTx] = useState(null);
   const [fabOpen, setFabOpen] = useState(false);
   const [hideAmounts, setHideAmounts] = useState(() => ls.get("hideAmounts", false));
+  const [themeMode, setThemeMode] = useState(() => ls.get("theme", "auto"));
+  const [theme, setTheme] = useState(() => effectiveTheme(ls.get("theme", "auto")));
+  const [newAccReq, setNewAccReq] = useState(false);
+  useEffect(() => {
+    ls.set("theme", themeMode);
+    const upd = () => setTheme(effectiveTheme(themeMode)); upd();
+    const mq = matchMedia("(prefers-color-scheme: dark)"); mq.addEventListener?.("change", upd);
+    const iv = setInterval(upd, 60000);
+    return () => { mq.removeEventListener?.("change", upd); clearInterval(iv); };
+  }, [themeMode]);
+  useEffect(() => applyTheme(theme), [theme]);
   HIDE_AMOUNTS = hideAmounts;
   useEffect(() => ls.set("hideAmounts", hideAmounts), [hideAmounts]);
   useEffect(() => {
@@ -980,7 +1061,10 @@ export default function App() {
       <style>{CSS}</style>
       <header className="top">
         <h1>{tabLabel(nav, tab)}</h1>
-        <button className="eyebtn" onClick={() => setHideAmounts(!hideAmounts)} aria-label={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"} title={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"}>{hideAmounts ? "🙈" : "👁️"}</button>
+        <div className="topicons">
+          <button className="eyebtn" onClick={() => setHideAmounts(!hideAmounts)} aria-label={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"} title={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"}>{hideAmounts ? <IcoEyeOff /> : <IcoEye />}</button>
+          <button className="eyebtn" onClick={() => setThemeMode(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Tagmodus" : "Nachtmodus"} title={theme === "dark" ? "Tagmodus" : "Nachtmodus"}>{theme === "dark" ? <IcoSun /> : <IcoMoon />}</button>
+        </div>
         <div className="addbtn">
           <button className={"btn primary addplus" + (fabOpen ? " open" : "")} onClick={() => setFabOpen(!fabOpen)} aria-label="Hinzufügen" aria-expanded={fabOpen} title="Hinzufügen">＋</button>
         </div>
@@ -992,13 +1076,13 @@ export default function App() {
         {tab === "accounts" && <Accounts txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
-          acc={selAcc} setAcc={setSelAcc} groups={groups} toggleGroup={toggleGroup} />}
-        {tab === "docs" && <DocList docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
+          acc={selAcc} setAcc={setSelAcc} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
+        {tab === "docs" && <DocList reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} />}
         {tab === "settings" && (
-          <Settings importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
+          <Settings themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
             docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} notify={notify} />
         )}
@@ -1011,7 +1095,8 @@ export default function App() {
         <div className="fabmenu" role="menu">
           <button role="menuitem" onClick={() => { setFabOpen(false); setScanOpen(true); }}><span>📷</span><div><b>Scannen</b><small>Bon oder Rechnung fotografieren</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); fileInput.current.click(); }}><span>📄</span><div><b>Datei / Foto</b><small>PDF oder Bild hochladen</small></div></button>
-          <button role="menuitem" onClick={() => { setFabOpen(false); setManualTx({}); }}><span>💶</span><div><b>Barausgabe</b><small>Bargeld-Buchung erfassen</small></div></button>
+          <button role="menuitem" onClick={() => { setFabOpen(false); setManualTx(tab === "accounts" && selAcc ? { accountId: selAcc } : {}); }}><span>💶</span><div><b>Buchung</b><small>Barausgabe oder Buchung erfassen</small></div></button>
+          <button role="menuitem" onClick={() => { setFabOpen(false); setTab("accounts"); setNewAccReq(true); }}><span>🏦</span><div><b>Konto anlegen</b><small>Girokonto, Karte, Sparkonto, Bargeld …</small></div></button>
         </div>
       )}
       <button className={"fab" + (fabOpen ? " open" : "")} onClick={() => setFabOpen(!fabOpen)} aria-label="Hinzufügen">＋</button>
@@ -1089,6 +1174,9 @@ function Donut({ parts, total }) {
   );
 }
 function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount }) {
+  const bankAccs = accounts.filter((a) => a.kind !== "cash");
+  const bankBals = bankAccs.map((a) => accountBalance(a, txs)).filter((x) => x != null);
+  const bankTotal = bankBals.length ? bankBals.reduce((x, y) => x + y, 0) : null;
   const cashAccs = accounts.filter((a) => a.kind === "cash");
   const thisMonth = todayISO().slice(0, 7);
   const money = docs.filter((d) => d.amount?.total && isEUR(d) && inAnalysis(d));
@@ -1147,6 +1235,18 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
           <div className="grow"><b>{openInv.length} offene Rechnung{openInv.length > 1 ? "en" : ""}</b><small>Jetzt prüfen und per QR bezahlen</small></div>
           <b>{fmtMoney(openInv.reduce((s, d) => s + d.amount.total, 0))}</b>
         </div>
+      )}
+
+      {!!bankAccs.length && (
+        <section className="tile">
+          <div className="tilehead"><b>Konten</b><small>{bankTotal != null ? (bankAccs.some(balEstimated) ? "≈ " : "") + fmtMoney(bankTotal) : ""}</small></div>
+          {bankAccs.map((a) => { const bal = accountBalance(a, txs); return (
+            <div key={a.id} className="frow click" onClick={() => openAccount(a.id)}>
+              <span className="caticon" style={{ width: 40, height: 40, background: "#0b63f622", fontSize: 20 }}>{kindIcon(a.kind)}</span>
+              <div className="grow"><b>{a.name}</b><small className="muted block">{balEstimated(a) ? "aus Umsätzen berechnet" : a.openingDate ? "Stand " + fmtDate(a.openingDate) + " + neuere Buchungen" : "Kontostand"}</small></div>
+              <div className="right"><b className={bal < 0 ? "red" : ""}>{bal != null ? (balEstimated(a) ? "≈ " : "") + fmtMoney(bal) : "—"}</b></div>
+            </div>); })}
+        </section>
       )}
 
       {!!cashAccs.length && (
@@ -1228,8 +1328,9 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
 }
 
 /* ---------- Dokumente (Docutain-Look) ---------- */
-function DocList({ docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup }) {
+function DocList({ reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup }) {
   const [q, setQ] = useState("");
+  const [prevId, setPrevId] = useState(null);
   const [tag, setTag] = useState("");
   const [year, setYear] = useState("");
   const [sort, setSort] = useState("date");
@@ -1254,7 +1355,7 @@ function DocList({ docs, categories, onOpen, area = "alle", setArea, cat, setCat
   const counts = useMemo(() => Object.fromEntries(categories.map((c) => [c, docs.filter((d) => d.category === c).length])), [docs, categories]);
   const amt = (d) => d.amount?.total != null && (
     <span className={"amt" + (d.direction === "einnahme" ? " ok" : d.paid ? " paid" : "")}>{d.direction === "einnahme" ? "+" : ""}{fmtMoney(d.amount.total, d.amount.currency)}</span>);
-  const status = (d) => d.status === "processing" ? <span className="muted small">⏳ wird analysiert …</span> : d.status === "error" ? <span className="err">⚠️ {d.error}</span> : null;
+  const status = (d) => d.status === "processing" ? <span className="muted small">⏳ wird analysiert …</span> : d.status === "error" ? <span className="err">⚠️ {d.error}{reanalyze && <button className="retry" onClick={(e) => { e.stopPropagation(); reanalyze(d); }}>↻ Neu analysieren</button>}</span> : null;
 
   return (
     <>
@@ -1308,7 +1409,8 @@ function DocList({ docs, categories, onOpen, area = "alle", setArea, cat, setCat
       ) : (
         <div className="dlist">
           {list.map((d) => (
-            <div key={d.id} className="ditem" onClick={() => onOpen(d.id)}>
+            <div key={d.id} className={"dwrap" + (prevId === d.id ? " open" : "")}>
+            <div className="ditem" onClick={() => onOpen(d.id)}>
               <Thumb d={d} />
               <div className="grow">
                 <div className="row1"><b className="clamp">{d.title}</b>{amt(d)}</div>
@@ -1321,6 +1423,10 @@ function DocList({ docs, categories, onOpen, area = "alle", setArea, cat, setCat
                 </div>
                 {status(d)}
               </div>
+              <button className={"prevbtn" + (prevId === d.id ? " on" : "")} title={prevId === d.id ? "Vorschau schließen" : "Vorschau anzeigen"} aria-expanded={prevId === d.id}
+                onClick={(e) => { e.stopPropagation(); setPrevId(prevId === d.id ? null : d.id); }}><IcoChev open={prevId === d.id} /></button>
+            </div>
+            {prevId === d.id && <DocPreview d={d} onOpen={() => onOpen(d.id)} />}
             </div>
           ))}
         </div>
@@ -1481,8 +1587,9 @@ const shortD = (iso) => (iso ? new Date(iso + "T12:00").toLocaleDateString("de-A
 const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json,.xlsx,.xlsm,.xls,.pdf,image/*";
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
-function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc, setAcc, groups, toggleGroup }) {
+function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc, setAcc, groups, toggleGroup, newAccReq, clearNewAccReq }) {
   const [newAcc, setNewAcc] = useState(false);
+  useEffect(() => { if (newAccReq) { setNewAcc(true); clearNewAccReq(); } }, [newAccReq]);
   const cashAccs = accounts.filter((a) => a.kind === "cash");
   const [q, setQ] = useState("");
   const [month, setMonth] = useState("");
@@ -1522,10 +1629,6 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
   return (
     <div className="split">
       <aside className="side">
-      <div className="twobtn">
-        <button className="btn" onClick={() => onManual({ accountId: acc || undefined })}>＋ Buchung</button>
-        <button className="btn" onClick={() => setNewAcc(true)}>＋ Konto</button>
-      </div>
 
       {!!pending.length && (
         <section className="tile">
@@ -1565,11 +1668,11 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
       <div className="hero">
         {selA ? <>
           <small>Kontostand · {selA.name}</small>
-          <div className="hero-v">{selBal != null ? fmtMoney(selBal) : "—"}</div>
-          {selBal == null && <button className="herolink" onClick={() => setEditAcc(selA)}>Kontostand eintragen ›</button>}
+          <div className="hero-v">{selBal != null ? (balEstimated(selA) ? "≈ " : "") + fmtMoney(selBal) : "—"}</div>
+          {balEstimated(selA) && <button className="herolink" onClick={() => setEditAcc(selA)}>{selBal != null ? "aus Umsätzen berechnet · Kontostand eintragen ›" : "Kontostand eintragen ›"}</button>}
         </> : <>
           <small>Gesamtstand · {knownBal.length} von {accounts.length} Konten</small>
-          <div className="hero-v">{knownBal.length ? fmtMoney(knownBal.reduce((s, x) => s + x, 0)) : "—"}</div>
+          <div className="hero-v">{knownBal.length ? (accounts.some(balEstimated) ? "≈ " : "") + fmtMoney(knownBal.reduce((s, x) => s + x, 0)) : "—"}</div>
         </>}
         <div className="hero-row">
           <div><small>Eingänge{month ? " " + monthLabel(month) : ""}</small><b>↑ {fmtMoney(inc)}</b></div>
@@ -2203,7 +2306,7 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
 }
 
 /* ---------- Einstellungen, Budgets, Papierkorb, Backup ---------- */
-function Settings({ importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const impRef = useRef();
   const [imp, setImp] = useState(null);
   const [health, setHealth] = useState(null);
@@ -2248,9 +2351,20 @@ function Settings({ importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteA
       </div>
 
       <fieldset className="span2">
+        <legend>Darstellung</legend>
+        <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
+          {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
+            <button key={k} role="radio" aria-checked={themeMode === k} className={themeMode === k ? "on" : ""} onClick={() => setThemeMode(k)}>
+              <span>{i}</span><b>{t}</b><small>{sub}</small>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset className="span2">
         <legend>Datenschutz</legend>
         <label className="switchrow">
-          <span><b>Geldbeträge anzeigen</b><small className="muted block">Aus = alle Beträge werden als „€ •••“ verdeckt (z. B. wenn jemand mitschaut). Schnell umschalten auch mit 👁️ oben rechts.</small></span>
+          <span><b>Geldbeträge anzeigen</b><small className="muted block">Aus = alle Beträge werden als „€ •••“ verdeckt (z. B. wenn jemand mitschaut). Schnell umschalten auch mit dem Augen-Symbol oben rechts.</small></span>
           <input type="checkbox" className="switch" checked={!hideAmounts} onChange={(e) => setHideAmounts(!e.target.checked)} />
         </label>
       </fieldset>
@@ -2356,9 +2470,9 @@ function Settings({ importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteA
 
 /* ---------- Styles ---------- */
 const CSS = `
-:root{--bg:#f3f5f9;--card:#ffffff;--card2:#f6f8fb;--line:#e6e9ef;--txt:#0f1b2d;--mut:#6b7686;--acc:#0b63f6;--acc2:#00b3a4;--red:#e5484d;--warn:#e88a00;--ok:#16a34a;
+:root{color-scheme:light;--bg:#f3f5f9;--card:#ffffff;--card2:#f6f8fb;--line:#e6e9ef;--txt:#0f1b2d;--mut:#6b7686;--acc:#0b63f6;--acc2:#00b3a4;--red:#e5484d;--warn:#e88a00;--ok:#16a34a;
   --shadow:0 1px 2px #0f1b2d0d,0 4px 14px #0f1b2d0f;--hero:linear-gradient(135deg,#0b3d91 0%,#0b63f6 55%,#00b3a4 100%)}
-@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#161b23;--card2:#1c222c;--line:#262d38;--txt:#e8ecf2;--mut:#8b95a5;--acc:#4f8cff;--acc2:#2dd4bf;--red:#ff6b6b;--warn:#ffb648;--ok:#3ecf8e;
+@media all{:root[data-theme=dark]{color-scheme:dark;--bg:#0d1117;--card:#161b23;--card2:#1c222c;--line:#262d38;--txt:#e8ecf2;--mut:#8b95a5;--acc:#4f8cff;--acc2:#2dd4bf;--red:#ff6b6b;--warn:#ffb648;--ok:#3ecf8e;
   --shadow:0 1px 2px #0006;--hero:linear-gradient(135deg,#123a7a 0%,#1d4fd8 55%,#0f9488 100%)}}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
 .app{max-width:760px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 8px) 16px calc(env(safe-area-inset-bottom) + 96px)}
@@ -2583,7 +2697,7 @@ img{max-width:100%}
 .fabmenu-bg{position:fixed;inset:0;z-index:5;background:#0f1b2d59}
 .fabmenu{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom) + 146px);z-index:6;display:flex;flex-direction:column;gap:2px;width:min(300px,calc(100vw - 32px));
   background:var(--card);opacity:1;border:1px solid var(--line);border-radius:18px;padding:6px;box-shadow:0 18px 50px #0f1b2d66;animation:menuin .16s ease-out;isolation:isolate}
-@media (prefers-color-scheme:dark){.fabmenu{background:#1c222c;border-color:#323a47}}
+:root[data-theme=dark] .fabmenu{background:#1c222c;border-color:#323a47}
 .fabmenu button{display:flex;align-items:center;gap:12px;width:100%;background:transparent;color:var(--txt);border:0;border-radius:12px;padding:10px 12px;font:inherit;text-align:left;min-height:56px;cursor:pointer}
 .fabmenu button:hover,.fabmenu button:focus-visible{background:var(--card2)}
 .fabmenu button+button{border-top:1px solid var(--line);border-radius:0 0 12px 12px}.fabmenu button:nth-child(2){border-radius:0}
@@ -2706,4 +2820,28 @@ body.win-moving,body.win-moving *{user-select:none!important;-webkit-user-select
 .switch{appearance:none;-webkit-appearance:none;width:52px;height:32px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;flex:none;transition:background .2s;margin:0;padding:0;border:0}
 .switch::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0004;transition:transform .2s}
 .switch:checked{background:var(--ok)}.switch:checked::after{transform:translateX(20px)}
+
+/* v0.9.1 */
+.topicons{margin-left:auto;display:flex;gap:4px}
+.eyebtn{margin-left:0;background:transparent;border:0;color:var(--mut);width:38px;height:38px;border-radius:10px;font-size:0}
+.eyebtn:hover{background:var(--card2);color:var(--txt)}
+.accitem .ab .est,.est{font-style:normal;opacity:.6;margin-right:2px}
+.dwrap+.dwrap{border-top:1px solid var(--line)}.dwrap .ditem{border:0}
+@media (min-width:1024px){.tab-docs .dlist .dwrap.open{grid-column:1/-1}}
+.prevbtn{align-self:center;flex:none;width:34px;height:34px;border-radius:10px;border:0;background:transparent;color:var(--mut);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.prevbtn:hover,.prevbtn.on{background:var(--card2);color:var(--txt)}
+.pchev{display:inline-flex;transition:transform .18s}.pchev.open{transform:rotate(180deg)}
+.dprev{padding:0 12px 14px;cursor:default}
+.dpages{max-height:72vh;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px}
+.dpages img{width:100%;max-width:820px;height:auto;background:#fff;border-radius:6px;box-shadow:0 1px 6px #0003}
+.dpload{color:var(--mut);font-size:13px;padding:30px}
+.dprevbar{display:flex;align-items:center;gap:8px;margin-top:8px}
+.btn.sm{padding:6px 12px;font-size:13px;min-height:0}
+.retry{margin-left:8px;background:transparent;border:1px solid currentColor;color:inherit;border-radius:999px;padding:1px 10px;font:inherit;font-size:12px;cursor:pointer}
+.themeopts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+@media (max-width:520px){.themeopts{grid-template-columns:repeat(2,1fr)}}
+.themeopts button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 6px;border-radius:14px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font:inherit;cursor:pointer}
+.themeopts button span{font-size:22px}.themeopts button small{color:var(--mut);font-size:12px}
+.themeopts button.on{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 30%,transparent)}
+.fabmenu button:not(:first-child):not(:last-child){border-radius:0}
 `;
