@@ -2111,8 +2111,9 @@ const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargel
 
 function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc: accProp, setAcc, sel: selProp = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
   const [pick, setPick] = useState(false);
-  // Konto-Karte anklicken = nur dieses Konto zeigen, solange die Maus darauf bleibt
+  // Maus auf einer Konto-Karte = Vorschau nur dieses Kontos (alles andere ausgeblendet)
   const [peek, setPeek] = useState("");
+  const peekT = useRef(null), lastPtr = useRef("mouse");
   const sel = peek ? [peek] : selProp, acc = peek || accProp;
   const cardAccounts = visAccounts.filter((a) => selProp.includes(a.id));
   const [newAcc, setNewAcc] = useState(false);
@@ -2231,9 +2232,15 @@ function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, 
       {selProp.length > 1 && (
         <div className={"selcards" + (peek ? " peeking" : "")}>
           {cardAccounts.map((a) => { const b = accountBalance(a, txs); return (
-            <div key={a.id} className={"selcard" + (peek === a.id ? " peek" : "")} title="Klicken: nur dieses Konto anzeigen, solange die Maus darauf bleibt · Doppelklick: Konto auswählen"
-              onClick={() => setPeek(peek === a.id ? "" : a.id)} onMouseLeave={() => peek === a.id && setPeek("")}
-              onDoubleClick={() => { setPeek(""); setAcc(a.id); }}>
+            <div key={a.id} className={"selcard" + (peek === a.id ? " peek" : "")} title="Maus darauf = Vorschau nur dieses Kontos · Klick = Konto auswählen"
+              onPointerEnter={(e) => { if (e.pointerType !== "mouse") return; clearTimeout(peekT.current); peekT.current = setTimeout(() => setPeek(a.id), 250); }}
+              onPointerLeave={(e) => { if (e.pointerType !== "mouse") return; clearTimeout(peekT.current); setPeek(""); }}
+              onPointerDown={(e) => { lastPtr.current = e.pointerType; }}
+              onClick={() => {
+                // Touch: 1. Tippen = Vorschau, 2. Tippen = fest auswählen · Maus: Klick = fest auswählen
+                if (lastPtr.current !== "mouse" && peek !== a.id) return setPeek(a.id);
+                clearTimeout(peekT.current); setPeek(""); setAcc(a.id);
+              }}>
               <div className="row1"><small className="muted">{kindIcon(a.kind)} {groups.find((g) => g.accounts.some((x) => x.id === a.id))?.title || ""}</small>
                 <button className="x" title="Aus Auswahl entfernen" onClick={(e) => { e.stopPropagation(); accActions.onToggle(a.id); }}>×</button></div>
               <b className="one">{a.name}</b>
@@ -3959,4 +3966,7 @@ nav .acctree .accitem .ab{font-size:11.5px}
 
 .selcard.peek{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 35%,transparent)}
 .selcards.peeking .selcard:not(.peek){opacity:.55}
+
+.selcards.peeking .selcard:not(.peek){opacity:.4}
+.maincol:has(.selcards.peeking) .hero{box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 45%,transparent),0 8px 24px #0003}
 `;
