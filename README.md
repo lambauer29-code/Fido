@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.28.0
+- Dokument-Gruppen: Untergruppen (eine Ebene) – „＋ Untergruppe“ je Hauptgruppe, Zuordnung über „gehört zu“; Anzeige eingerückt in Seitenleiste und Dokumenten
+- Neue Gruppe „Firma“ mit Kategorie „Ausgangsrechnung“; Rechnungsbelege landen dort (bestehende werden einmalig verschoben)
+- Button „＋ Gruppe / Überschrift“ heißt jetzt „＋ Gruppe“
+
 ## v0.27.4
 - Status-Menü: neue Option „Überfällig“ (setzt eine Rechnung manuell auf überfällig, unabhängig vom Fälligkeitsdatum); „Offen“ hebt das wieder auf
 - Beleg-Kachel in der Rechnung: Klick bzw. „Ansehen“ öffnet direkt das Rechnungs-PDF, „Dokument“ öffnet den Eintrag in Dokumente
