@@ -31,7 +31,7 @@ export default async function handler(req, res) {
     const txt = await readBlob(path);
     if (txt) {
       res.setHeader("content-type", "text/calendar; charset=utf-8");
-      res.setHeader("content-disposition", 'inline; filename="fido-fristen.ics"');
+      res.setHeader("content-disposition", 'inline; filename="fidocu-fristen.ics"');
       res.setHeader("cache-control", "no-cache, max-age=0");
       return res.status(200).send(txt);
     }

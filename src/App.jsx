@@ -361,6 +361,73 @@ function cancelLetter(c, me) {
 const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Fristen"], accounts: ["🏦", "Konten"], contracts: ["📑", "Verträge"], settings: ["⚙️", "Einstellungen"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
+/* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
+const accHasIcon = (a) => !!(a.iconImg || (a.icon && a.icon !== "none"));
+function AccIcon({ a, className = "ki", force = false }) {
+  if (a.iconImg) return <span className={className + " custom"}><img src={a.iconImg} alt="" /></span>;
+  if (a.icon === "none") return force ? <span className={className} /> : null;
+  if (a.icon) return <span className={className + " custom"}>{a.icon}</span>;
+  return <span className={className}>{kindIcon(a.kind)}</span>;
+}
+const accStyle = (a) => (a.color ? { color: a.color } : undefined);
+const ACC_COLORS = ["#4f8cff", "#0b63f6", "#00b3a4", "#16a34a", "#84cc16", "#eab308", "#f59e0b", "#ef4444", "#e8384f", "#ec4899", "#a855f7", "#64748b"];
+const ACC_EMOJIS = ["🏦", "💳", "💶", "🐷", "📈", "🌐", "🏠", "🚗", "💼", "🏢", "🎓", "💰", "🪙", "💎", "🧾", "🛒", "✈️", "❤️", "⭐", "🔒", "🅿️", "📱", "⚡", "🍀"];
+async function iconFromFile(file) {
+  const bmp = await createImageBitmap(file);
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const s = Math.max(64 / bmp.width, 64 / bmp.height), w = bmp.width * s, h = bmp.height * s;
+  c.getContext("2d").drawImage(bmp, (64 - w) / 2, (64 - h) / 2, w, h);
+  return c.toDataURL("image/png");
+}
+function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
+  const fileRef = useRef();
+  const [txt, setTxt] = useState("");
+  const set = (patch) => onChange({ ...a, ...patch });
+  const addLib = (it) => setLib?.([...lib.filter((x) => (it.src ? x.src !== it.src : x.emoji !== it.emoji)), { id: uid(), ...it }]);
+  const delLib = (it) => { if (!confirm("Dieses eigene Symbol aus der Sammlung löschen?")) return; setLib?.(lib.filter((x) => x.id !== it.id)); };
+  return (
+    <div className="accstyle">
+      <div className="asrow"><small className="muted">Textfarbe</small>
+        <div className="swatches">
+          <button className={"sw def" + (!a.color ? " on" : "")} title="Standard" onClick={() => set({ color: undefined })} style={{ background: "var(--txt)" }}>A</button>
+          {ACC_COLORS.map((c) => <button key={c} className={"sw" + (a.color === c ? " on" : "")} style={{ background: c }} title={c} onClick={() => set({ color: c })} />)}
+          <ColorDot className={"sw custom" + (a.color && !ACC_COLORS.includes(a.color) ? " on" : "")} title="Eigene Farbe" value={a.color || "#4f8cff"} onInput={(c) => set({ color: c })}>＋</ColorDot>
+        </div>
+      </div>
+      <div className="asrow"><small className="muted">Symbol vor dem Namen</small>
+        <div className="emojigrid">
+          <button className={!a.icon && !a.iconImg ? "on" : ""} title="Standard je Kontoart" onClick={() => set({ icon: undefined, iconImg: undefined })}>{kindIcon(a.kind)}<i>Std</i></button>
+          <button className={a.icon === "none" && !a.iconImg ? "on" : ""} title="Kein Symbol" onClick={() => set({ icon: "none", iconImg: undefined })}>∅</button>
+          {ACC_EMOJIS.map((e) => <button key={e} className={a.icon === e && !a.iconImg ? "on" : ""} onClick={() => set({ icon: e, iconImg: undefined })}>{e}</button>)}
+        </div>
+      </div>
+      <div className="asrow"><small className="muted">Eigene Symbole <span className="muted">– für alle Konten verfügbar</span></small>
+        <div className="emojigrid">
+          {lib.map((it) => (
+            <span key={it.id} className="libwrap">
+              <button className={(it.src ? a.iconImg === it.src : a.icon === it.emoji && !a.iconImg) ? "on" : ""} title="Eigenes Symbol"
+                onClick={() => set(it.src ? { iconImg: it.src, icon: undefined } : { icon: it.emoji, iconImg: undefined })}>{it.src ? <img src={it.src} alt="" /> : it.emoji}</button>
+              <button className="libdel" title="Aus Sammlung löschen" onClick={() => delLib(it)}>×</button>
+            </span>
+          ))}
+          {a.iconImg && !lib.some((x) => x.src === a.iconImg) && <button className="on" title="Eigenes Bild"><img src={a.iconImg} alt="" /></button>}
+          <button className="upl" title="Bild hochladen (PNG, JPG, SVG) – wird zur Sammlung hinzugefügt" onClick={() => fileRef.current.click()}>＋</button>
+          <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={async (e) => {
+            const files = [...e.target.files]; e.target.value = ""; let last = null; const add = [];
+            for (const f of files) { try { last = await iconFromFile(f); add.push({ id: uid(), src: last }); } catch {} }
+            if (!add.length) return alert("Bild konnte nicht gelesen werden");
+            setLib?.([...lib, ...add]); set({ iconImg: last, icon: undefined });
+          }} />
+        </div>
+        <div className="libadd">
+          <input value={txt} maxLength={4} placeholder="Eigenes Emoji / Zeichen, z. B. 🦊 oder B" onChange={(e) => setTxt(e.target.value)} />
+          <button className="btn sm" disabled={!txt.trim()} onClick={() => { const e2 = txt.trim(); addLib({ emoji: e2 }); set({ icon: e2, iconImg: undefined }); setTxt(""); }}>Hinzufügen</button>
+        </div>
+      </div>
+      <div className="asfoot"><span className="aspreview"><AccIcon a={a} force /><b style={accStyle(a)}>{a.name}</b></span><button className="btn sm" onClick={onClose}>Fertig</button></div>
+    </div>
+  );
+}
 const DEFAULT_NAV = {
   tabs: [
     { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: false },
@@ -653,6 +720,7 @@ function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, not
 
 function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAccount, notify }) {
   const [edit, setEdit] = useState(null);
+  const [styleFor, setStyleFor] = useState(null);
   const resolved = resolveGroups(nav, accounts);
   const real = resolved.filter((g) => !g.auto);
   const saveGroups = (gs) => setNav((n) => ({ ...n, groups: gs.filter((g) => !g.auto).map(({ accounts: _a, ...g }) => ({ ...g, ids: g.ids })) }));
@@ -718,10 +786,12 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
                     {!g.auto && dnd.lineAt("acc", g.id, ai) && <div className="dropline" />}
                     <div className={"acccfg accrow" + (dnd.isDragging("acc", g.id, ai) ? " dragging" : "")} {...(g.auto ? {} : { "data-acc-item": `${g.id}|${ai}` })}>
                       <Handle onDown={(e) => dnd.start(e, { kind: "acc", list: g.id, index: ai, label: `${kindIcon(a.kind)} ${a.name}` })} />
-                      <span className="ki">{kindIcon(a.kind)}</span>
-                      <button className="link grow left" onClick={() => setEdit(a)}>{a.name}{bal != null && <small className="muted"> · {fmtMoney(bal)}</small>}</button>
+                      <button className="iconbtn acciconbtn" onClick={() => setStyleFor(styleFor === a.id ? null : a.id)} title="Symbol & Farbe"><AccIcon a={a} force /></button>
+                      <button className="link grow left" onClick={() => setEdit(a)}><span style={accStyle(a)}>{a.name}</span>{bal != null && <small className="muted"> · {fmtMoney(bal)}</small>}</button>
+                      <button className={"iconbtn" + (styleFor === a.id ? " on" : "")} onClick={() => setStyleFor(styleFor === a.id ? null : a.id)} aria-label="Symbol und Farbe" title="Symbol & Farbe">🎨</button>
                       <button className="iconbtn" onClick={() => setEdit(a)} aria-label="Konto bearbeiten" title="Bearbeiten">✎</button>
                     </div>
+                    {styleFor === a.id && <AccStyleEditor a={a} lib={nav.accIcons || []} setLib={(l) => setNav((n) => ({ ...n, accIcons: l }))} onClose={() => setStyleFor(null)} onChange={(n) => setAccounts((l) => l.map((x) => (x.id === a.id ? n : x)))} />}
                   </React.Fragment>
                 );
               })}
@@ -918,7 +988,7 @@ function AccountTree({ onToggleChecks, onAll, showChecks = true, groups, txs, se
                 <div key={a.id} className={"accitem" + (on ? " on" : "")}>
                   <Box state={on ? "all" : ""} onClick={() => onToggle(a.id)} label={`${a.name} auswählen`} />
                   <button className="aname" onClick={() => (showChecks ? onOnly(a.id) : sel.length === 1 && sel[0] === a.id && onAll ? onAll() : onOnly(a.id))} title={`Nur ${a.name} anzeigen`}>
-                    <span className="ki">{kindIcon(a.kind)}</span><span className="an">{a.name}</span>
+                    <AccIcon a={a} /><span className="an" style={accStyle(a)}>{a.name}</span>
                   </button>
                   {bal != null ? <span className={"ab " + (bal < 0 ? "neg" : "pos")} title={balEstimated(a) ? "Aus Umsätzen berechnet – für den genauen Stand Kontostand eintragen oder Import mit Saldo-Spalte" : undefined}>{fmtMoney(bal)}</span>
                     : <span className="ab muted" title="Kontostand unbekannt">—</span>}
@@ -934,7 +1004,7 @@ function AccountTree({ onToggleChecks, onAll, showChecks = true, groups, txs, se
           <div className="acctitle muted"><span className="grow">Ausgeblendet ({hidden.length})</span></div>
           {hidden.map((a) => (
             <div key={a.id} className="accitem hid">
-              <span className="ki">{kindIcon(a.kind)}</span><span className="an">{a.name}</span>
+              <AccIcon a={a} /><span className="an">{a.name}</span>
               <button className="unhide" onClick={() => onUnhide(a.id)}>Einblenden</button>
             </div>
           ))}
@@ -974,7 +1044,7 @@ function AccountPicker({ groups, txs, sel, onApply, onClose }) {
               {g.accounts.map((a) => (
                 <button key={a.id} className="pickitem" onClick={() => tog(a.id)}>
                   <span className={"cbox" + (s.includes(a.id) ? " on" : "")}>{s.includes(a.id) ? "✓" : ""}</span>
-                  <span className="grow">{a.name}</span>
+                  <AccIcon a={a} className="acci" /><span className="grow" style={accStyle(a)}>{a.name}</span>
                   <b className={(bal(a) || 0) < 0 ? "neg" : "pos"}>{bal(a) != null ? fmtMoney(bal(a)) : "—"}</b>
                 </button>
               ))}
@@ -1364,7 +1434,7 @@ export default function App() {
         onSave={async (t) => { await addManualTx(t); setManualTx(null); notify("Buchung gespeichert"); }} />}
 
       <nav className="bottom">
-        <div className="brand"><img src="/icon.svg" alt="" /><div><b>Fido</b><small>Finanzen & Dokumente</small></div></div>
+        <div className="brand"><img src="/icon.svg" alt="" /><div><b>Fidocu</b><small>Finanzen & Dokumente</small></div></div>
         {nav.tabs.filter((t) => t.side || t.phone).map((t) => {
           const sub = (t.key === "accounts" && accounts.length) || (t.key === "docs" && active.length);
           const open = t.key === "accounts" ? nav.accOpen : nav.docsOpen;
@@ -1520,8 +1590,8 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
           <div className="tilehead"><b>Konten</b><small>{bankTotal != null ? fmtMoney(bankTotal) : ""}</small></div>
           {bankAccs.map((a) => { const bal = accountBalance(a, txs); return (
             <div key={a.id} className="frow click" onClick={() => openAccount(a.id)}>
-              <span className="caticon" style={{ width: 40, height: 40, background: "#0b63f622", fontSize: 20 }}>{kindIcon(a.kind)}</span>
-              <div className="grow"><b>{a.name}</b><small className="muted block">{balEstimated(a) ? "aus Umsätzen berechnet" : a.openingDate ? "Stand " + fmtDate(a.openingDate) + " + neuere Buchungen" : "Kontostand"}</small></div>
+              <span className="caticon" style={{ width: 40, height: 40, background: "#0b63f622", fontSize: 20 }}><AccIcon a={a} className="acci" force /></span>
+              <div className="grow"><b style={accStyle(a)}>{a.name}</b><small className="muted block">{balEstimated(a) ? "aus Umsätzen berechnet" : a.openingDate ? "Stand " + fmtDate(a.openingDate) + " + neuere Buchungen" : "Kontostand"}</small></div>
               <div className="right"><b className={bal == null ? "" : bal < 0 ? "neg" : "pos"}>{bal != null ? fmtMoney(bal) : "—"}</b></div>
             </div>); })}
         </section>
@@ -1970,8 +2040,8 @@ function Deadlines({ docs, onOpen, saveDoc, calSync, setCalSync, token, notify }
 
 /* ---------- Kalender-Abo (Apple Kalender, Google, Outlook) ---------- */
 function buildIcs(items) {
-  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Fido//Fristen//DE", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
-    "X-WR-CALNAME:Fido – Fristen", "X-WR-TIMEZONE:Europe/Vienna", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H",
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Fidocu//Fristen//DE", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "X-WR-CALNAME:Fidocu – Fristen", "X-WR-TIMEZONE:Europe/Vienna", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H",
     ...items.map(([dl, doc]) => icsEvent(dl, doc)), "END:VCALENDAR"].join("\r\n");
 }
 const calKeyNew = () => Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -2002,7 +2072,7 @@ function CalSyncSheet({ sync, setSync, items, token, onClose, notify }) {
     <Win id="calsync" onClose={onClose} small dirty={false}>
       <div className="panelhead"><b>Mit Apple Kalender verbinden</b><XBtn /></div>
       {!sync.on ? <>
-        <p>Fido stellt deine Fristen als <b>Kalender-Abo</b> bereit. Apple Kalender (iPhone, iPad, Mac) holt Änderungen dann selbst ab – neue Bons, Zahlungsfristen, Garantie- und Kündigungstermine erscheinen automatisch.</p>
+        <p>Fidocu stellt deine Fristen als <b>Kalender-Abo</b> bereit. Apple Kalender (iPhone, iPad, Mac) holt Änderungen dann selbst ab – neue Bons, Zahlungsfristen, Garantie- und Kündigungstermine erscheinen automatisch.</p>
         <p className="muted small">Die Fristen werden dafür verschlüsselt übertragen und in deinem Vercel-Speicher unter einem geheimen Link abgelegt. Wer den Link kennt, kann die Termine sehen – nicht weitergeben.</p>
         {err && <div className="healthbox"><p className="red">✕ {err}</p>
           {/Blob/.test(err) && <ol className="small steps">
@@ -2502,9 +2572,9 @@ function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, 
                 if (lastPtr.current !== "mouse" && peek !== a.id) return setPeek(a.id);
                 clearTimeout(peekT.current); setPeek(""); setAcc(a.id);
               }}>
-              <div className="row1"><small className="muted">{kindIcon(a.kind)} {groups.find((g) => g.accounts.some((x) => x.id === a.id))?.title || ""}</small>
+              <div className="row1"><small className="muted"><AccIcon a={a} className="acci" /> {groups.find((g) => g.accounts.some((x) => x.id === a.id))?.title || ""}</small>
                 <button className="x" title="Aus Auswahl entfernen" onClick={(e) => { e.stopPropagation(); accActions.onToggle(a.id); }}>×</button></div>
-              <b className="one">{a.name}</b>
+              <b className="one" style={accStyle(a)}>{a.name}</b>
               <b className={"big " + (b == null ? "" : b < 0 ? "neg" : "pos")}>{b != null ? fmtMoney(b) : "—"}</b>
             </div>); })}
         </div>
@@ -3278,7 +3348,7 @@ function mergeOrder(cur, ids) {
 
 /* ---------- Design: Voreinstellungen (angelehnt an bekannte Finanz- & Dokumenten-Apps) ---------- */
 const DESIGN_PRESETS = [
-  { id: "fido", name: "Fido Blau", note: "Standard", acc: "#0b63f6", acc2: "#00b3a4", hero: ["#0b3d91", "#0b63f6", "#00b3a4"] },
+  { id: "fido", name: "Fidocu Blau", note: "Standard", acc: "#0b63f6", acc2: "#00b3a4", hero: ["#0b3d91", "#0b63f6", "#00b3a4"] },
   { id: "petrol", name: "Petrol", note: "inspiriert von N26", acc: "#088177", acc2: "#36a18b", hero: ["#00413e", "#088177", "#36a18b"] },
   { id: "koralle", name: "Koralle", note: "inspiriert von Monzo", acc: "#e8384f", acc2: "#007a8b", hero: ["#001e3a", "#007a8b", "#fe4b60"] },
   { id: "violett", name: "Midnight Violett", note: "inspiriert von Revolut", acc: "#494fdf", acc2: "#00a87e", hero: ["#191c1f", "#2d318f", "#494fdf"] },
@@ -3818,7 +3888,7 @@ img{max-width:100%}
 @media (min-width:768px){.fabmenu-bg{background:transparent}.fabmenu{top:76px;right:28px;bottom:auto}}
 @media (min-width:1024px){.fabmenu{right:40px}}
 
-/* Fido: Seitenleiste-Unterpunkte, Kontengruppen, Bereiche */
+/* Fidocu: Seitenleiste-Unterpunkte, Kontengruppen, Bereiche */
 .side-only{display:none}
 @media (max-width:767px){.ph-hide{display:none!important}}
 @media (min-width:768px){.subnav.side-only{display:block}.subtog.side-only{display:inline-flex}}
@@ -4325,4 +4395,26 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .winguard{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:10px 12px;border-radius:14px;
   background:color-mix(in srgb,var(--warn) 18%,var(--card));border:1px solid color-mix(in srgb,var(--warn) 55%,transparent);box-shadow:0 6px 20px #0004;animation:menuin .15s ease-out}
 .winguard .btn{margin:0}
+
+/* Konto-Symbole & Farben */
+.ki.custom img,.acci img,.acciconbtn img,.emojigrid img{width:18px;height:18px;border-radius:5px;object-fit:cover;display:block}
+nav .acctree .accitem .ki:not(.custom){display:none}
+nav .acctree .accitem .ki.custom{display:inline-flex;width:18px;justify-content:center;font-size:14px}
+.acci{display:inline-flex;vertical-align:middle;font-size:inherit}
+.acciconbtn{font-size:17px}
+.accstyle{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:4px 0 10px 36px;display:flex;flex-direction:column;gap:10px}
+.asrow{display:flex;flex-direction:column;gap:4px}
+.emojigrid{display:flex;flex-wrap:wrap;gap:4px}
+.emojigrid button{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--card);font-size:17px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;position:relative;color:var(--txt);padding:0}
+.emojigrid button.on{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 35%,transparent)}
+.emojigrid button i{position:absolute;bottom:-1px;right:1px;font-size:8px;font-style:normal;color:var(--mut)}
+.emojigrid .upl{font-size:15px;color:var(--acc)}
+.asfoot{display:flex;align-items:center;justify-content:space-between}.asfoot .btn{margin:0}
+.aspreview{display:flex;align-items:center;gap:8px;font-size:15px}.aspreview .ki{font-size:17px}
+
+.libwrap{position:relative;display:inline-flex}
+.libdel{position:absolute!important;top:-6px;right:-6px;width:17px!important;height:17px!important;border-radius:50%!important;border:0!important;background:var(--txt)!important;color:var(--bg)!important;font-size:11px!important;line-height:17px;padding:0;display:none!important}
+.libwrap:hover .libdel{display:inline-flex!important}
+@media (hover:none){.libdel{display:inline-flex!important}}
+.libadd{display:flex;gap:6px;margin-top:6px;max-width:420px}.libadd input{padding:6px 10px;font-size:14px}.libadd .btn{margin:0;white-space:nowrap}
 `;

@@ -1,6 +1,16 @@
-# Fido – Finanzen und Dokumente (PWA)
+# Fidocu – Finanzen und Dokumente (PWA)
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
+
+## v0.16.4
+
+- App umbenannt in **Fidocu** (Titel, Seitenleiste, Home-Bildschirm-Name, Manifest, Kalender-Abo-Name). Interne IDs (gespeichertes Design, Kalender-Speicherpfad) bleiben gleich, damit Einstellungen und bestehende Kalender-Abos weiter funktionieren.
+
+## v0.16.3
+- Eigene Symbole: hochgeladene Bilder (auch mehrere auf einmal) und eigene Emojis/Zeichen landen in einer Sammlung „Eigene Symbole“, die für alle Konten verfügbar ist; mit × löschbar. Wird im Backup mitgesichert.
+
+## v0.16.2
+- Einstellungen › Konten & Gruppen: pro Konto 🎨 Textfarbe (Palette oder eigene) und Symbol vor dem Namen (Standard, keins, Emoji-Auswahl oder eigenes Bild hochladen). Gilt in Seitenleiste, Konto-Karten, Kontenauswahl und Übersicht.
 
 ## v0.16.1
 - Alle schwebenden Fenster: Klick daneben (oder Esc / ✕) schließt sie. Bei ungespeicherten Änderungen erscheint oben „Speichern · Verwerfen · Weiter bearbeiten“ (beim Import „Importieren“, im Scanner „Fertig“).
@@ -49,7 +59,7 @@ Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags,
 
 ## v0.14.0 – Kalender & Apple-Kalender-Abo
 - Fristen: interaktiver Monatskalender (Standard) oder Liste. Fristen aus Bons/Rechnungen erscheinen automatisch; per Ziehen auf einen anderen Tag verschieben, Tag antippen = Details, abhaken, Datum ändern.
-- „Mit Apple Kalender verbinden“: Kalender-Abo (webcal) – Fido lädt Änderungen automatisch hoch, Apple Kalender holt sie selbst ab. Benötigt einen kostenlosen Vercel-Blob-Speicher (Storage › Blob › mit Projekt verbinden, dann Redeploy). Funktioniert auch mit Google Kalender/Outlook.
+- „Mit Apple Kalender verbinden“: Kalender-Abo (webcal) – Fidocu lädt Änderungen automatisch hoch, Apple Kalender holt sie selbst ab. Benötigt einen kostenlosen Vercel-Blob-Speicher (Storage › Blob › mit Projekt verbinden, dann Redeploy). Funktioniert auch mit Google Kalender/Outlook.
 - „⬇︎ .ics“ für den einmaligen Export bleibt.
 
 ## v0.13.0
