@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.16.8
+
+- Dokument bearbeiten: In der Kategorie-Auswahl gibt es „＋ Neue Kategorie …“ – Fenster mit Name, Gruppe (bestimmt Finanzen/Verträge/Sonstiges), Symbol und Farbe; die neue Kategorie wird gleich zugewiesen.
+- Einstellungen › Dokumente – Gruppen & Kategorien: Tipp aufs Symbol einer Kategorie öffnet Symbol- und Farbauswahl (inkl. eigenem Emoji/Zeichen und eigener Farbe, „Standard“ setzt zurück).
+
 ## v0.16.7
 
 - Kacheln: Symbole zentriert, Druckersymbol in der Schwebeleiste.

@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrinkPdf } from "./scan.js";
@@ -670,12 +671,59 @@ function EditText({ value = "", onSave, placeholder, className = "", validate, r
   );
 }
 
+/* Kategorie: Symbol & Farbe (Einstellungen und „Neue Kategorie“) */
+const CAT_EMOJIS = ["📁", "🏠", "⚡", "🚗", "⛽", "🛒", "🍽️", "🏥", "💊", "🛡️", "📱", "🌐", "🎓", "👶", "🐾", "✈️", "🎁", "👕", "🔧", "🏋️", "🎮", "📚", "💼", "🏢", "🧾", "💶", "📈", "🏦", "🧸", "🌱", "🔒", "⭐"];
+function CatStylePicker({ icon, color, onChange }) {
+  const [txt, setTxt] = useState("");
+  return (
+    <div className="accstyle catstyle">
+      <div className="asrow"><small className="muted">Farbe</small>
+        <div className="swatches">
+          {ACC_COLORS.map((c) => <button type="button" key={c} className={"sw" + (color === c ? " on" : "")} style={{ background: c }} title={c} onClick={() => onChange({ icon, color: c })} />)}
+          <ColorDot className={"sw custom" + (color && !ACC_COLORS.includes(color) ? " on" : "")} title="Eigene Farbe" value={color || "#4f8cff"} onInput={(c) => onChange({ icon, color: c })}>＋</ColorDot>
+        </div>
+      </div>
+      <div className="asrow"><small className="muted">Symbol</small>
+        <div className="emojigrid">
+          {[...new Set([...CAT_EMOJIS, icon].filter(Boolean))].map((e) => <button type="button" key={e} className={icon === e ? "on" : ""} onClick={() => onChange({ icon: e, color })}>{e}</button>)}
+        </div>
+        <div className="libadd">
+          <input value={txt} maxLength={4} placeholder="Eigenes Emoji / Zeichen" onChange={(e) => setTxt(e.target.value)} />
+          <button type="button" className="btn sm" disabled={!txt.trim()} onClick={() => { onChange({ icon: txt.trim(), color }); setTxt(""); }}>Übernehmen</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function NewCategoryWin({ groups, defGroup, existing, onCreate, onClose }) {
+  const [name, setName] = useState(""), [gid, setGid] = useState(defGroup || groups[0]?.id);
+  const auto = catMeta(name || "x");
+  const [st, setSt] = useState({ icon: "📁", color: auto.color });
+  const n = name.trim(), dup = n && existing.some((c) => c.toLowerCase() === n.toLowerCase());
+  return (
+    <Win id="newcat" onClose={onClose} small center dirty={!!n} saveLabel="Anlegen">
+      <div className="panelhead"><b>Neue Kategorie</b>
+        <button className="btn primary" disabled={!n || dup} onClick={() => { onCreate(n, gid, st); onClose(); }}>Anlegen</button><XBtn /></div>
+      <label>Name<input autoFocus value={name} placeholder="z. B. KFZ, Haustier, Hobby" onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter" && n && !dup) { onCreate(n, gid, st); onClose(); } }} /></label>
+      {dup && <p className="red small">Diese Kategorie gibt es schon.</p>}
+      <label>Gruppe<select value={gid} onChange={(e) => setGid(e.target.value)}>
+        {groups.map((g) => <option key={g.id} value={g.id}>{g.title || "(ohne Überschrift)"} · {AREAS[g.area]?.[1] || ""}</option>)}
+      </select></label>
+      <CatStylePicker icon={st.icon} color={st.color} onChange={setSt} />
+      <div className="asfoot"><span className="aspreview"><span className="label" style={{ color: st.color, background: st.color + "22" }}>{st.icon} {n || "Vorschau"}</span></span></div>
+      <p className="muted small">Später änderbar unter Einstellungen › Dokumente – Gruppen &amp; Kategorien.</p>
+    </Win>
+  );
+}
+
 function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, notify }) {
   const groups = nav.docGroups;
   const all = flattenCats(groups);
   const save = (g) => setNav((n) => ({ ...n, docGroups: g }));
   const patch = (gi, p) => save(groups.map((g, k) => (k === gi ? { ...g, ...p } : g)));
   const count = (c) => docs.filter((d) => d.category === c).length;
+  const [styleCat, setStyleCat] = useState(null);
   const dnd = useDnd((d, over) => {
     if (d.kind === "dcat") {
       const m = moveBetween(Object.fromEntries(groups.map((g) => [g.id, g.cats])), d.list, d.index, over.list, over.index);
@@ -696,7 +744,7 @@ function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, not
 
   return (
     <SetSec id="docgroups" title="Dokumente – Gruppen & Kategorien">
-      <p className="muted small">Am Griff <b>⠿</b> ziehen, um Kategorien zu sortieren oder in eine andere Gruppe zu verschieben – auch ganze Gruppen. Die Gruppe legt fest, ob ihre Dokumente als Finanzen, Verträge oder Sonstiges zählen („Sonstiges“ fließt nicht in Übersicht und Budgets).</p>
+      <p className="muted small">Auf das Symbol einer Kategorie tippen, um Symbol &amp; Farbe zu ändern. Am Griff <b>⠿</b> ziehen, um Kategorien zu sortieren oder in eine andere Gruppe zu verschieben – auch ganze Gruppen. Die Gruppe legt fest, ob ihre Dokumente als Finanzen, Verträge oder Sonstiges zählen („Sonstiges“ fließt nicht in Übersicht und Budgets).</p>
       {groups.map((g, gi) => (
         <React.Fragment key={g.id}>
           {dnd.lineAt("dgrp", "g", gi) && <div className="dropline" />}
@@ -716,7 +764,8 @@ function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, not
                 {dnd.lineAt("dcat", g.id, ci) && <div className="dropline" />}
                 <div className={"acccfg catrow" + (dnd.isDragging("dcat", g.id, ci) ? " dragging" : "")} data-dcat-item={`${g.id}|${ci}`}>
                   <Handle onDown={(e) => dnd.start(e, { kind: "dcat", list: g.id, index: ci, label: `${catMeta(c).icon} ${c}` })} />
-                  <span className="ki">{catMeta(c).icon}</span>
+                  <button className="ki catki" title="Symbol & Farbe" aria-label="Symbol & Farbe" style={{ background: catMeta(c).color + "22", color: catMeta(c).color }}
+                    onClick={() => setStyleCat(styleCat === c ? null : c)}>{catMeta(c).icon}</button>
                   <EditText className="grow" inputClass="catname" value={c} validate={check(c)} onSave={(t) => t !== c && renameCategory(c, t)} />
                   <small className="muted cnt" title="Dokumente">{count(c)}</small>
                   {c !== "Sonstiges"
@@ -724,6 +773,12 @@ function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, not
                         onClick={() => confirm(`Kategorie „${c}“ löschen?${count(c) ? ` ${count(c)} Dokument(e) wandern nach „Sonstiges“.` : ""}`) && deleteCategory(c)}>🗑</button>
                     : <span className="iconbtn-spacer" />}
                 </div>
+                {styleCat === c && <div className="catstylebox">
+                  <CatStylePicker icon={catMeta(c).icon} color={catMeta(c).color} onChange={(m) => setNav((n) => ({ ...n, catStyle: { ...(n.catStyle || {}), [c]: [m.icon, m.color] } }))} />
+                  <div className="asfoot"><span className="aspreview"><Label c={c} /></span>
+                    <button className="link" onClick={() => setNav((n) => { const cs = { ...(n.catStyle || {}) }; delete cs[c]; return { ...n, catStyle: cs }; })}>Standard</button>
+                    <button className="btn sm" onClick={() => setStyleCat(null)}>Fertig</button></div>
+                </div>}
               </React.Fragment>
             ))}
             {dnd.lineAt("dcat", g.id, g.cats.length) && <div className="dropline" />}
@@ -910,7 +965,9 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
       <button className="btn sm" onClick={() => setAsk(false)}>Weiter bearbeiten</button>
     </div>
   );
-  const touchProps = { onInput: () => setTouched(true), onChange: () => setTouched(true) };
+  // Ereignisse aus eingebetteten (per Portal geöffneten) Fenstern ignorieren
+  const own = (e) => (e.target.closest?.(".win,.sheet .panel") || null) === e.currentTarget || e.currentTarget.contains?.(e.target);
+  const touchProps = { onInput: (e) => own(e) && setTouched(true), onChange: (e) => own(e) && setTouched(true) };
   const [rect, setRect] = useState(() => {
     const r = ls.get("win:" + id, null) || defaultRect(defW, small);
     // center: gemerkte Größe, aber immer mittig öffnen
@@ -939,6 +996,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
     window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
   };
   const onHead = (e) => {
+    if (!e.currentTarget.contains(e.target)) return;
     setZ(++winZ);
     if (!e.target.closest(".panelhead") || e.target.closest("button,input,select,a,textarea,label")) return;
     track(e, (s, dx, dy) => ({ ...s, x: s.x + dx, y: s.y + dy }));
@@ -1121,6 +1179,12 @@ export default function App() {
     let done = false;
     const docGroups = n.docGroups.map((g) => (!done && g.area === "finanzen" ? ((done = true), { ...g, cats: [...g.cats, name] }) : g));
     return { ...n, docGroups: done ? docGroups : [...docGroups, { id: "d-" + uid(), title: "Weitere", area: "finanzen", cats: [name] }] };
+  });
+  const addCategoryEx = (name, gid, st) => setNav((n) => {
+    if (n.docGroups.some((g) => g.cats.includes(name))) return n;
+    const has = n.docGroups.some((g) => g.id === gid);
+    const docGroups = n.docGroups.map((g, i) => ((has ? g.id === gid : i === 0) ? { ...g, cats: [...g.cats, name] } : g));
+    return { ...n, docGroups, catStyle: st ? { ...(n.catStyle || {}), [name]: [st.icon, st.color] } : n.catStyle };
   });
   const toggleDocGroup = (id) => setNav((n) => ({ ...n, docGroups: n.docGroups.map((g) => (g.id === id ? { ...g, collapsed: !g.collapsed } : g)) }));
   const [selAccs, setSelAccsRaw] = useState(() => ls.get("selAccs", []));
@@ -1505,7 +1569,7 @@ export default function App() {
 
       <SideResizer />
       {openDoc && (
-        <Detail doc={openDoc} categories={categories} onClose={() => setOpenId(null)} bookCash={bookCash} txs={txs} accounts={accounts} linkTx={linkTx}
+        <Detail doc={openDoc} categories={categories} docGroups={nav.docGroups} addCategoryEx={addCategoryEx} onClose={() => setOpenId(null)} bookCash={bookCash} txs={txs} accounts={accounts} linkTx={linkTx}
           saveDoc={saveDoc} trashDoc={trashDoc} reanalyze={reanalyze} notify={notify} />
       )}
       {toast && <div className="toast">{toast}</div>}
@@ -3163,8 +3227,9 @@ function PayQR({ doc, notify }) {
     </div>
   );
 }
-function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash, txs = [], accounts = [], linkTx }) {
+function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash, txs = [], accounts = [], linkTx }) {
   const [linkOpen, setLinkOpen] = useState(false);
+  const [newCat, setNewCat] = useState(false);
   const [lq, setLq] = useState("");
   const [url, setUrl] = useState(null);
   const [blob, setBlob] = useState(null);
@@ -3212,10 +3277,13 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
         <label>Titel<input value={d.title || ""} onChange={(e) => set({ title: e.target.value })} /></label>
         <div className="grid2">
           <label>Kategorie
-            <select value={d.category} onChange={(e) => set({ category: e.target.value })}>
+            <select value={d.category} onChange={(e) => (e.target.value === "__new" ? setNewCat(true) : set({ category: e.target.value }))}>
               {[...new Set([...categories, d.category])].map((c) => <option key={c}>{c}</option>)}
+              {addCategoryEx && <option value="__new">＋ Neue Kategorie …</option>}
             </select>
           </label>
+          {newCat && createPortal(<NewCategoryWin groups={docGroups} existing={categories} defGroup={docGroups.find((g) => g.cats.includes(d.category))?.id}
+            onClose={() => setNewCat(false)} onCreate={(n, gid, st) => { addCategoryEx(n, gid, st); set({ category: n }); }} />, document.querySelector(".app") || document.body)}
           <label>Typ<input value={d.docType || ""} onChange={(e) => set({ docType: e.target.value })} /></label>
           <label>Absender<input value={d.sender || ""} onChange={(e) => set({ sender: e.target.value })} /></label>
           <label>Datum<input type="date" value={d.documentDate || ""} onChange={(e) => set({ documentDate: e.target.value })} /></label>
@@ -4480,4 +4548,11 @@ nav .acctree .accitem .ki.custom{display:inline-flex;width:18px;justify-content:
 @container (max-width:170px){.gbar .orig{display:none}}
 .gbody>.dactions{align-self:center;margin:-4px 0 0}
 .docprevwin .dprev{padding:0}.docprevwin .dpages{max-height:calc(100vh - 180px)}.docprevwin .panelhead{gap:6px}.docprevwin .panelhead b{flex:1;min-width:0}
+
+/* v0.16.8: Kategorien – Symbol & Farbe, neue Kategorie */
+.catki{border:0;border-radius:8px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;flex:none}
+.catki:hover{outline:2px solid var(--acc)}
+.catstylebox{margin:4px 0 10px 34px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--card2)}
+.catstylebox .accstyle,.catstyle{padding:0;border:0;background:none;margin:0}
+.catstylebox .asfoot{display:flex;align-items:center;gap:10px;margin-top:8px}.catstylebox .asfoot .aspreview{flex:1}
 `;
