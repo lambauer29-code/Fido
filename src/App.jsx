@@ -1032,10 +1032,11 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
                   <Handle onDown={(e) => dnd.start(e, { kind: "tab", list: "t", index: i, label: `${TAB_DEFS[t.key]?.[0] || ""} ${tabLabel(nav, t.key)}` })} />
                   <button className="ki catki" title="Symbol & Textfarbe" style={t.color ? { background: t.color + "22" } : undefined} onClick={() => setTabStyle(tabStyle === t.key ? null : t.key)}><TabIcon t={t} /></button>
                   <EditText className="grow" value={t.label || ""} placeholder={TAB_DEFS[t.key]?.[1]} onSave={(v) => patchTab(i, { label: v })} />
-                  {t.key !== "settings" && t.key !== "home" && <select className="chip parentsel" title="Ebene" value={t.parent || ""} onChange={(e) => patchTab(i, { parent: e.target.value || undefined })}>
+                  {(() => { const fixed = t.key === "settings" || t.key === "home" || nav.tabs.some((c) => c.parent === t.key); return (
+                  <select className="chip parentsel" title={fixed ? "Bleibt Hauptreiter (hat Unterreiter bzw. muss immer erreichbar sein)" : "Ebene"} disabled={fixed} value={fixed ? "" : t.parent || ""} onChange={(e) => patchTab(i, { parent: e.target.value || undefined })}>
                     <option value="">Hauptreiter</option>
-                    {nav.tabs.filter((p) => !isNavDeco(p) && p.key !== t.key && !p.parent && p.key !== "settings").map((p) => <option key={p.key} value={p.key}>unter {tabLabel(nav, p.key)}</option>)}
-                  </select>}
+                    {!fixed && nav.tabs.filter((p) => !isNavDeco(p) && p.key !== t.key && !p.parent).map((p) => <option key={p.key} value={p.key}>unter {tabLabel(nav, p.key)}</option>)}
+                  </select>); })()}
                   <label className="mini"><input type="checkbox" checked={t.side} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { side: e.target.checked })} />Leiste</label>
                   <label className="mini"><input type="checkbox" checked={t.phone} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { phone: e.target.checked })} />Handy</label>
                 </div>
@@ -7699,4 +7700,12 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 .lockbox .btn{width:100%;min-height:52px;font-size:18px}
 .shake{animation:shake .35s}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+@media (min-width:768px){
+  html.fg nav.bottom button span.tabico{filter:none!important;opacity:1!important;color:inherit}
+  html.fg nav.bottom .subtab{color:var(--txt);font-size:17px;min-height:46px;padding:9px 14px 9px 46px!important;border-radius:16px;gap:14px}
+  html.fg nav.bottom .subtab .tabico .tabsvg{width:22px;height:22px;stroke-width:2}
+  html.fg nav.bottom .subtab.on{background:var(--card);color:var(--acc)}
+  html.fg nav.bottom .subtab:hover{background:var(--card)}
+}
+.navcfg .parentsel{width:auto;min-width:180px;max-width:220px}.navcfg .parentsel:disabled{opacity:.6}
 `;

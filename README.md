@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.43.2
+- Einstellungen → Seitenleiste: „Backup“ zeigt korrekt „unter Einstellungen“ (Einstellungen ist jetzt als Elternreiter wählbar)
+- „Einstellungen“, „Übersicht“ und Reiter mit Unterreitern zeigen fest „Hauptreiter“; Ebenen-Auswahl breiter, Text nicht mehr abgeschnitten
+
+## v0.43.1
+- Seitenleiste: Unterreiter (z. B. „Backup“, „Umtauschfrist“) im gleichen Stil wie die Hauptreiter – Symbol nicht mehr grau, passende Größe, aktiver Unterreiter als Kachel in Akzentfarbe
+
 ## v0.43.0
 - Optionale App-Sperre (Standard: aus): Einstellungen → App-Sperre → „Passwort beim Öffnen verlangen“
   - Anmeldebildschirm beim Start, falsches Passwort wird abgewiesen; „Jetzt sperren“ und „Passwort ändern“; Ausschalten nur mit aktuellem Passwort
