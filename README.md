@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.56.2
+- **Konten: fester Kopfbereich.** Kontostand, Leiste, Suche und die Spaltenüberschrift (Datum, Empfänger, Kategorie, Betrag) bleiben stehen, nur die Umsatzliste scrollt. Das gilt für alle Konten und Auswahlen. Weitere Buchungen werden beim Scrollen automatisch nachgeladen. Reicht der Platz nicht (z. B. „Alle Konten“ mit Kontokarten oder am Handy), scrollt die Seite normal, die Spaltenüberschrift bleibt dabei oben haften.
+- In schmalen Tabellen, etwa mit Seitenspalte, wird die Kategorie-Spalte ausgeblendet, statt den Empfänger auf null zusammenzudrücken.
+
 ## v0.56.1
 - Übersicht: Das Widget „Barausgabe erfassen“ wurde durch das vollständige Formular „Ausgabe erfassen“ aus dem Reiter Ausgabe ersetzt. Es bietet Beleg scannen (KI), Registrierkassen-QR, Foto/PDF, Ausgabe/Einnahme, Firma, Betrag, Datum, alle Konten, Kategorie, Positionen und Notiz und verknüpft den Beleg. In schmalen Kacheln wird es automatisch kompakt dargestellt.
 

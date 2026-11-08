@@ -4889,6 +4889,10 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
   const [imp, setImp] = useState(null);
   const [txOpen, setTxOpen] = useState(null);
   const [limit, setLimit] = useState(150);
+  // Kopfbereich bleibt stehen, nur die Umsatzliste scrollt (wenn genug Platz ist)
+  const scrollRef = useRef(null);
+  const fitH = useFitHeight(scrollRef);
+  const onListScroll = (e) => { const el = e.currentTarget; if (el.scrollTop + el.clientHeight > el.scrollHeight - 400 && list.length > limit) setLimit((n) => n + 300); };
   const fileRef = useRef();
 
   const selKey = sel.join(",");
@@ -5053,6 +5057,7 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
 
       {wideTx ? (
         <div className={"txtable" + (!acc && sel.length > 1 ? " withacc" : "")}>
+          <div className={"txscroll" + (fitH ? " fit" : "")} ref={scrollRef} style={fitH ? { maxHeight: fitH } : undefined} onScroll={onListScroll}>
           <div className="txhead"><span>Datum</span><span>Empfänger</span><span>Kategorie</span>{!acc && sel.length > 1 && <span>Konto</span>}<span className="r">Betrag</span><span /></div>
           {list.slice(0, limit).map((t) => (
             <React.Fragment key={t.id}>
@@ -5073,8 +5078,10 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
             </React.Fragment>
           ))}
           {!list.length && <p className="muted small" style={{ padding: 16 }}>Keine Buchungen.</p>}
+          {list.length > limit && <button className="btn txmore" onClick={() => setLimit(limit + 300)}>Mehr laden ({list.length - limit})</button>}
+          </div>
         </div>
-      ) : dayGroups.map((g) => (
+      ) : <div className={"txscroll" + (fitH ? " fit" : "")} ref={scrollRef} style={fitH ? { maxHeight: fitH } : undefined} onScroll={onListScroll}>{dayGroups.map((g) => (
         <section key={g.date}>
           <h3>{new Date(g.date + "T12:00").toLocaleDateString("de-AT", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}</h3>
           <div className="dlist">
@@ -5095,7 +5102,8 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
           </div>
         </section>
       ))}
-      {list.length > limit && <button className="btn" style={{ width: "100%", marginTop: 12 }} onClick={() => setLimit(limit + 300)}>Mehr laden ({list.length - limit})</button>}
+      {list.length > limit && <button className="btn txmore" onClick={() => setLimit(limit + 300)}>Mehr laden ({list.length - limit})</button>}
+      </div>}
       {acc && <button className="link red" style={{ marginTop: 16 }} onClick={() => confirm(`Konto „${accName(acc)}“ samt Umsätzen löschen?`) && (deleteAccount(acc), setAcc(""))}>Konto löschen</button>}
 
       </div>
@@ -6316,6 +6324,26 @@ function nextInvNumber(list, kind, co, date) {
   const pre = (kind === "angebot" ? co.prefixA || "AN" : co.prefixR || "RE") + "-" + (date || todayISO()).slice(0, 4) + "-";
   const max = list.filter((x) => (x.number || "").startsWith(pre)).reduce((m, x) => Math.max(m, parseInt(x.number.slice(pre.length), 10) || 0), 0);
   return pre + String(max + 1).padStart(3, "0");
+}
+function useFitHeight(ref, min = 200) {
+  const [h, setH] = useState(null);
+  useEffect(() => {
+    let raf = 0;
+    const calc = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
+      const el = ref.current; if (!el) return setH(null);
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const bar = [...document.querySelectorAll("nav.bottom")].find((b) => b.offsetParent && b.getBoundingClientRect().top < innerHeight - 1);
+      const bottom = bar ? innerHeight - bar.getBoundingClientRect().top + 8 : 0;
+      const avail = Math.floor(innerHeight - top - bottom - 20);
+      setH((o) => { const n = avail >= min ? avail : null; return o === n ? o : n; });
+    }); };
+    calc();
+    addEventListener("resize", calc);
+    const ro = new ResizeObserver(calc); const root = document.querySelector(".app") || document.body;
+    [...root.querySelectorAll(".maincol > :not(.txtable):not(.txscroll)")].forEach((x) => ro.observe(x)); ro.observe(root);
+    return () => { cancelAnimationFrame(raf); removeEventListener("resize", calc); ro.disconnect(); };
+  }, []);
+  return h;
 }
 function useLsState(key, def) {
   const [v, setV] = useState(() => ls.get(key, def));
@@ -9622,5 +9650,20 @@ html,body{min-height:100%}
  .expform .expbig small{display:none}.expform .expbig b{font-size:13px;line-height:1.15}.expform .expico{font-size:22px}
  .expform .grid2{grid-template-columns:minmax(0,1fr)!important}
  .expform .bigamount{font-size:26px!important}
+}
+.txscroll.fit{overflow-y:auto;overscroll-behavior:contain}
+.txmore{width:100%;margin-top:12px}.txtable .txmore{width:calc(100% - 24px);margin:12px}
+.txtable{overflow:clip}
+.txtable .txhead{position:sticky;top:0;z-index:3;background:var(--card)}
+.txscroll.fit{overflow-y:auto}
+.txtable{container-type:inline-size}
+@container (max-width:820px){
+ .txhead,.txrow,.txtable.withacc .txhead,.txtable.withacc .txrow{grid-template-columns:100px minmax(0,1fr) 110px 150px!important}
+ .txhead>span:nth-child(3),.txrow>span:nth-child(3){display:none}
+ .txtable.withacc .txhead>span:nth-child(4),.txtable.withacc .txrow>span:nth-child(4){display:none}
+}
+@container (max-width:560px){
+ .txhead,.txrow,.txtable.withacc .txhead,.txtable.withacc .txrow{grid-template-columns:96px minmax(0,1fr) 100px!important}
+ .txhead>span:last-child,.txrow>.txacts{display:none}
 }
 `;
