@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.39.0
+- Zweites Handy-Testdesign „Finanz-App-Stil“ (Testmodus, standardmäßig aus): Einstellungen → Darstellung → Handy-Design „Finanz-App-Stil“ oder Link `?fg=1` (aus: `?fg=0`)
+  - tiefschwarzer Hintergrund (bzw. weiß im Tagmodus), Mint als Akzentfarbe, grüne Plus-Beträge
+  - geometrische Schrift „Outfit“, sehr große Seitentitel, Symbole oben rechts in Mint ohne Rahmen
+  - stark gerundete flache Karten, Hero-Karte ohne Farbverlauf, große Listenschrift, Logos in weißen Kacheln, graue Tagesbalken
+  - schwebende dunkle Leiste, aktiver Reiter als dunkle Kapsel mit Mint-Symbol; ＋-Button in Mint
+- Einstellung „Handy-Design“ jetzt mit Auswahl Standard / iOS-Stil / Finanz-App-Stil
+- Geplant: eigener Reiter „Analysen“
+
 ## v0.38.0
 - Neues Handy-Design im iOS-Stil als **Testmodus** (standardmäßig aus): Einstellungen → Darstellung → „📱 Neues Handy-Design (Test)“ oder Link mit `?ios=1` (aus: `?ios=0`)
   - schwebende Glas-Tableiste mit Linien-Symbolen und hervorgehobenem aktiven Reiter

@@ -1545,9 +1545,15 @@ export default function App() {
   const [sideTip, setSideTip] = useState(null);
   const setSideMini = (v) => { setSideMiniRaw(v); ls.set("sideMini", v); };
   useEffect(() => { document.documentElement.classList.toggle("side-mini", !!sideMini); }, [sideMini]);
-  const [iosDesign, setIosDesignRaw] = useState(() => { const q = new URLSearchParams(location.search).get("ios"); if (q != null) ls.set("iosDesign", q === "1"); return ls.get("iosDesign", false); });
-  const setIosDesign = (v) => { setIosDesignRaw(v); ls.set("iosDesign", v); };
-  useEffect(() => { document.documentElement.classList.toggle("ios", !!iosDesign); }, [iosDesign]);
+  // Handy-Testdesign: "" = Standard, "ios" = iOS-Stil, "fg" = Finanz-App-Stil (dunkel, Mint)
+  const [mobDesign, setMobDesignRaw] = useState(() => {
+    const q = new URLSearchParams(location.search);
+    if (q.get("fg") != null) ls.set("mobileDesign", q.get("fg") === "1" ? "fg" : "");
+    else if (q.get("ios") != null) ls.set("mobileDesign", q.get("ios") === "1" ? "ios" : "");
+    return ls.get("mobileDesign", ls.get("iosDesign", false) ? "ios" : "");
+  });
+  const setMobDesign = (v) => { setMobDesignRaw(v); ls.set("mobileDesign", v); };
+  useEffect(() => { const c = document.documentElement.classList; c.toggle("ios", mobDesign === "ios" || mobDesign === "fg"); c.toggle("fg", mobDesign === "fg"); }, [mobDesign]);
   useEffect(() => {
     const k = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); setSideMiniRaw((v) => { ls.set("sideMini", !v); return !v; }); } };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
@@ -1888,7 +1894,7 @@ export default function App() {
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} onFiles={onFiles} docBusy={docBusy} notify={notify} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
         {tab === "settings" && (
-          <Settings iosDesign={iosDesign} setIosDesign={setIosDesign} theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
+          <Settings mobDesign={mobDesign} setMobDesign={setMobDesign} theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
             docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} notify={notify} />
         )}
@@ -4310,7 +4316,7 @@ function DesignSettings({ design, setDesign, theme }) {
   );
 }
 
-function Settings({ iosDesign, setIosDesign = () => {}, theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+function Settings({ mobDesign = "", setMobDesign = () => {}, theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
   const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
   useEffect(() => {
@@ -4374,10 +4380,11 @@ function Settings({ iosDesign, setIosDesign = () => {}, theme, design, setDesign
             </button>
           ))}
         </div>
-        <label className="switchrow" style={{ marginTop: 12 }}>
-          <span><b>📱 Neues Handy-Design (Test)</b><small className="muted block">Modernes iOS-Design fürs Handy: schwebende Glas-Leiste mit Linien-Symbolen, iOS-Schrift, Listen und Bedienelemente im iOS-Stil. Nur auf diesem Gerät, jederzeit wieder ausschaltbar. Auch per Link: …/?ios=1 (an) bzw. ?ios=0 (aus).</small></span>
-          <input type="checkbox" className="switch" checked={!!iosDesign} onChange={(e) => setIosDesign(e.target.checked)} />
-        </label>
+<div style={{ marginTop: 14 }}>
+          <b>📱 Handy-Design (Testmodus)</b>
+          <small className="muted block" style={{ margin: "2px 0 8px" }}>Gilt nur auf diesem Gerät und nur am Handy (unter 768 px). Auch per Link: …/?ios=1 bzw. …/?fg=1 – mit =0 wieder aus.</small>
+          <div className="seg">{[["", "Standard"], ["ios", "iOS-Stil"], ["fg", "Finanz-App-Stil"]].map(([k, l]) => <button key={k} className={mobDesign === k ? "on" : ""} onClick={() => setMobDesign(k)}>{l}</button>)}</div>
+        </div>
       </SetSec></>,
     "design": <><SetSec id="design" title="Design"><DesignSettings design={design} setDesign={setDesign} theme={theme} /></SetSec></>,
     "datenschutz": <><SetSec id="datenschutz" title="Datenschutz">
@@ -7370,4 +7377,64 @@ html.side-mini .sidebusy,html.side-mini .busytab small{display:none}
   html.ios .importbar{border:0;border-radius:16px}
 }
 nav.bottom .tabico .tabemo{font-size:inherit!important;filter:none!important;opacity:1!important}
+
+/* ===== Handy-Testdesign „Finanz-App-Stil“ (html.fg, baut auf .ios auf) ===== */
+@media (max-width:767px){
+  html.fg[data-theme=dark]{--bg:#000;--card:#1f1f1f;--card2:#2b2b2b;--line:#2e2e2e;--txt:#fff;--mut:#9b9b9f;--acc:#5ee6cf;--ok:#6fd36b;--red:#ff6b6b;--warn:#f5a524;--fg-pur:#a35cff;--fg-ind:#5b5be6;--ios-glass:rgba(46,46,48,.82);--ios-sep:#2e2e2e;color-scheme:dark}
+  html.fg:not([data-theme=dark]){--bg:#fff;--card:#f3f3f5;--card2:#e8e8ec;--line:#e2e2e6;--txt:#0b0b0d;--mut:#6c6c72;--acc:#0fb39a;--ok:#2f9e3a;--fg-pur:#8a3ffc;--fg-ind:#4f46e5;--ios-glass:rgba(250,250,252,.85);--ios-sep:#e2e2e6}
+  html.fg body,html.fg button,html.fg input,html.fg select,html.fg textarea{font-family:"Outfit Variable","Outfit",-apple-system,system-ui,sans-serif;letter-spacing:0}
+  html.fg body,html.fg .app{background:var(--bg)}
+  /* Kopf: großer Titel, Symbole oben rechts in Mint ohne Rahmen */
+  html.fg header.top{padding-top:calc(env(safe-area-inset-top) + 54px)}
+  html.fg header.top h1{font-size:44px;font-weight:600;letter-spacing:-.01em;line-height:1.05}
+  html.fg .topactions{background:none!important;border:0!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;top:calc(env(safe-area-inset-top) + 10px)!important;right:14px!important}
+  html.fg .topicons button,html.fg .eyebtn{color:var(--acc)!important;background:none!important}
+  html.fg .topicons svg{width:24px;height:24px;stroke-width:2.2}
+  /* Karten: großzügig gerundet, flach */
+  html.fg .tile{background:var(--card);border-radius:26px;padding:18px}
+  html.fg .tilehead b{font-size:19px;font-weight:600}
+  html.fg .tilehead small,html.fg .tilehead a,html.fg .tilehead .link{color:var(--acc)}
+  /* Hero ohne Farbverlauf: dunkle Karte, große Zahl, Mint-Fortschritt */
+  html.fg .hero{background:var(--card)!important;color:var(--txt)!important;box-shadow:none!important;border-radius:26px}
+  html.fg .hero small{color:var(--mut)}
+  html.fg .hero .hero-v,html.fg .hero b{color:var(--txt)}
+  html.fg .hero .hsub>div,html.fg .hero .stats>div{background:var(--card2)!important;color:var(--txt)}
+  /* Zahlen */
+  html.fg .pos,html.fg .ok{color:var(--ok)!important}
+  html.fg b,html.fg strong{font-weight:600}
+  /* Listen: große Schrift, Trennlinien über die ganze Breite */
+  html.fg .frow,html.fg .ditem,html.fg .invrow{padding-top:14px;padding-bottom:14px;border-color:var(--line)}
+  html.fg .frow b,html.fg .ditem .dtitle,html.fg .invrow .row1 b{font-size:18px;font-weight:500}
+  html.fg .frow small,html.fg .ditem small{font-size:14px}
+  html.fg .thumb,html.fg .caticon{border-radius:12px}
+  html.fg .caticon{background:#fff!important}
+  /* Tagesüberschriften wie graue Balken */
+  html.fg main section>h3{margin:14px -16px 0;padding:9px 16px;background:var(--card2);font-size:15px;font-weight:600;color:var(--txt);border-radius:0}
+  /* Chips, Suchfeld, Segmente */
+  html.fg .chip{background:var(--card2);border-radius:14px;font-weight:500;min-height:38px;padding:0 14px}
+  html.fg .chip.on{background:color-mix(in srgb,var(--acc) 22%,var(--card));color:var(--acc)}
+  html.fg .searchbar{background:var(--card2);border-radius:16px}
+  html.fg .seg{background:var(--card);border-radius:16px;padding:4px}
+  html.fg .seg>button{border-radius:12px}
+  html.fg .seg>button.on{background:var(--card2)!important;color:var(--txt);box-shadow:none}
+  /* Buttons: Primär in Mint mit dunkler Schrift, Links in Mint */
+  html.fg .btn{border-radius:16px;background:var(--card2);border:0;color:var(--txt)}
+  html.fg .btn.primary{background:var(--acc);color:#04201b}
+  html.fg .link{color:var(--acc)}
+  html.fg input:not([type=checkbox]):not([type=radio]):not([type=range]),html.fg select,html.fg textarea{background:var(--card2);border-radius:16px}
+  /* schwebende Leiste wie im Vorbild: dunkle Glas-Kapsel, aktiver Reiter als dunkle Kapsel in Mint */
+  html.fg nav.bottom{border-radius:34px;padding:6px;background:var(--ios-glass);border:1px solid color-mix(in srgb,var(--txt) 10%,transparent);box-shadow:0 12px 34px #000a}
+  html.fg nav.bottom>button{border-radius:28px;min-height:58px;color:var(--txt)}
+  html.fg nav.bottom>button.on{background:color-mix(in srgb,#000 70%,var(--card));color:var(--acc)}
+  html.fg:not([data-theme=dark]) nav.bottom>button.on{background:#fff;box-shadow:0 2px 8px #0001}
+  html.fg nav.bottom>button span.tl{font-size:12px;font-weight:500}
+  html.fg nav.bottom .tabico .tabsvg{width:27px;height:27px;stroke-width:2.1}
+  /* ＋-Button in Mint */
+  html.fg .fab{background:var(--acc);color:#04201b;box-shadow:0 8px 24px color-mix(in srgb,var(--acc) 40%,transparent)}
+  /* Fenster */
+  html.fg .win{background:var(--bg)}
+  html.fg .fabmenu{background:var(--card)!important}
+  html.fg .stpill.st-paid{background:color-mix(in srgb,var(--ok) 20%,transparent);color:var(--ok)}
+  html.fg .docdrop{border-color:var(--card2)}
+}
 `;
