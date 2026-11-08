@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.46.3
+- Fahrtenbuch: Button „＋ Fahrzeug“ ist jetzt nur ein „＋“ (Tooltip „Fahrzeug hinzufügen“).
+
 ## v0.46.2
 - Fahrtenbuch: jede Zeile hat die Aktionsleiste wie bei den Konten (Bearbeiten, Beleg drucken, Beleg teilen, Löschen). Klick auf einen Eintrag mit Beleg öffnet die Beleg-Vorschau direkt darunter (ohne Beleg öffnet sich der Eintrag zum Bearbeiten). Fehlender km-Stand wird nicht mehr als „—“ angezeigt.
 

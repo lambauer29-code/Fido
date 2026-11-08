@@ -2843,7 +2843,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
     <div className="fbpage">
       <div className="chips anaaccs">
         {vehicles.map((x) => <button key={x.id} className={"chip" + (x.id === v.id ? " on" : "")} onClick={() => setVid(x.id)} onDoubleClick={() => setVEdit(x)}>{x.icon || "🚗"} {x.name}</button>)}
-        <button className="chip" onClick={() => setVEdit({})}>＋ Fahrzeug</button>
+        <button className="chip fbaddveh" title="Fahrzeug hinzufügen" aria-label="Fahrzeug hinzufügen" onClick={() => setVEdit({})}>＋</button>
       </div>
       <section className="tile fbcar">
         <div className="fbcarhead">
@@ -8928,4 +8928,6 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 .fbentry+.fbentry{border-top:1px solid var(--line)}.fbentry .fbrow{border:0}
 .fbrow .txacts{flex:none}.fbentry .txprev{padding:0 4px 12px;border:0}
 @media (max-width:767px){.fbrow{flex-wrap:wrap}.fbrow .txacts{width:100%!important;justify-content:flex-end;margin-top:-4px!important}}
+
+.chip.fbaddveh{min-width:40px;padding-left:12px;padding-right:12px;font-size:16px;font-weight:600}
 `;
