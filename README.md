@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.55.0
+- **Widget-Raster wie in der Übersicht** jetzt auch in Analyse, Vermögen und Firmenauswertung. Am Desktop lassen sich die Kacheln frei platzieren und an der Ecke ◢ in Breite und Höhe ziehen. Dazu kommen Abstand-Regler, „Nach oben rücken“, Leerfelder und die Liste „Weitere Widgets“ zum Ein- und Ausblenden. Technisch nutzen alle Reiter dieselbe Raster-Komponente (`DashGrid`). Die Anordnung aus v0.54.0 wird übernommen (Schlüssel `anaGrid`, `wealthGrid`, `bizGrid`).
+- **Depot-Positionen** stehen nicht mehr rechts im Reiter Konten, sondern als eigenes Widget im Reiter Vermögen. Sie richten sich nach der Kontenauswahl dort.
+
 ## v0.54.2
 - Dokumente, Kachelansicht: Die schwebende Leiste „Drucken / Original öffnen“ auf den Kacheln wurde in allen Kategorien entfernt. Drucken bleibt über das Drucker-Symbol auf der Karte, das Original lässt sich in der Detailansicht öffnen.
 

@@ -2451,7 +2451,7 @@ function BizReport({ docs, setTab, editing = false, setEditing = () => {} }) {
             { label: "📒 Rechnungsausgangsbuch Excel", run: () => downloadXlsx(`Rechnungsausgangsbuch-${year}.xlsx`, [{ name: "Rechnungen", head: INV_HEAD, rows: list.filter((x) => x.kind === "rechnung" && x.number && inY(x.date)).map(invRow) }]) },
             { label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) }]} /></div>
       </div>
-      <WidgetBoard storeKey="bizBoard" title="Firmenauswertung" editing={editing} setEditing={setEditing}>
+      <WidgetBoard storeKey="bizGrid" title="Firmenauswertung" editing={editing} setEditing={setEditing}>
       <W k="kennzahlen" label="Kennzahlen"><div className="anakpis">
         <div className="tile kpi"><small className="muted">Fakturiert</small><div className="kpiv">{fmtMoney(billed)}</div><small className="muted">{yInv.length} Rechnungen</small></div>
         <div className="tile kpi"><small className="muted">Eingegangen</small><div className="kpiv pos">{fmtMoney(received)}</div><small className="muted">{paidL.length} bezahlt</small></div>
@@ -3460,7 +3460,7 @@ function Analysis({ txs, accounts, hasCash, editing = false, setEditing = () => 
           {accounts.map((a) => <button key={a.id} className={"chip" + (valid.includes(a.id) ? " on" : "")} onClick={() => setAccSel(valid.includes(a.id) ? valid.filter((x) => x !== a.id) : [...valid, a.id])}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</button>)}
         </div>
       )}
-      <WidgetBoard storeKey="anaBoard" title="Analyse" editing={editing} setEditing={setEditing}>
+      <WidgetBoard storeKey="anaGrid" title="Analyse" editing={editing} setEditing={setEditing}>
       <W k="kennzahlen" label="Kennzahlen"><div className="anakpis">
         <div className="tile kpi"><small className="muted">Einnahmen</small><div className="kpiv pos">{fmtMoney(inc)}</div><Delta a={inc} b={pInc} good="up" /></div>
         <div className="tile kpi"><small className="muted">Ausgaben</small><div className="kpiv neg">{fmtMoney(out)}</div><Delta a={out} b={pOut} /></div>
@@ -3530,48 +3530,16 @@ function Analysis({ txs, accounts, hasCash, editing = false, setEditing = () => 
 const W = ({ children }) => children;
 function WidgetBoard({ storeKey, title, editing = false, setEditing = () => {}, children }) {
   const items = React.Children.toArray(children).filter((c) => c && c.props && c.props.k)
-    .map((c) => ({ k: c.props.k, label: c.props.label, w: c.props.w || "full", el: c.props.children }));
-  const [cfg, setCfg] = useLsState(storeKey, { order: [], hidden: [], w: {} });
-  const byK = Object.fromEntries(items.map((x) => [x.k, x]));
-  const keys = items.map((x) => x.k), hid = cfg.hidden || [];
-  const order = [...(cfg.order || []).filter((k) => keys.includes(k)), ...keys.filter((k) => !(cfg.order || []).includes(k))];
-  const shown = order.filter((k) => !hid.includes(k)), hidden = order.filter((k) => hid.includes(k));
-  const wOf = (k) => cfg.w?.[k] || byK[k].w;
-  const dnd = useDnd((d, over) => setCfg((c) => ({ ...c, order: [...moveBetween({ s: shown }, "s", d.index, "s", over.index).s, ...hidden] })));
-  const setHide = (k, h) => setCfg((c) => ({ ...c, order, hidden: h ? [...hid.filter((x) => x !== k), k] : hid.filter((x) => x !== k) }));
-  const vis = editing ? shown : shown.filter((k) => byK[k].el);
-  return (<>
-    {editing && (
-      <div className="editbar">
-        <div className="grow"><b>{title} anpassen</b><small className="muted block">⠿ ziehen oder ▲▼ zum Verschieben<span className="wbwide"> · ◧/▭ halbe oder ganze Breite</span> · ✕ ausblenden</small></div>
-        <button className="link" onClick={() => confirm(title + " auf Standard zurücksetzen?") && setCfg({ order: [], hidden: [], w: {} })}>Zurücksetzen</button>
-        <button className="btn primary" onClick={() => setEditing(false)}>Fertig</button>
-      </div>)}
-    <div className={"wboard" + (editing ? " editing" : "")} data-wb-list={`s|${vis.length}`}>
-      {vis.map((k, i) => (
-        <div key={k} className={"wbitem " + wOf(k) + (dnd.isDragging("wb", "s", i) ? " dragging" : "")} data-wb-item={`s|${i}`} data-grid={wOf(k) === "half" ? "1" : undefined} data-wbk={k}>
-          {dnd.lineAt("wb", "s", i) && <div className="dropline" />}
-          {editing && (
-            <div className="wbbar">
-              <Handle onDown={(e) => dnd.start(e, { kind: "wb", list: "s", index: i, label: byK[k].label })} />
-              <b className="grow">{byK[k].label}</b>
-              <button className="iconbtn" title="Nach oben" aria-label="Nach oben" disabled={!i} onClick={() => setCfg((c) => ({ ...c, order: [...moveBetween({ s: shown }, "s", shown.indexOf(k), "s", Math.max(0, shown.indexOf(k) - 1)).s, ...hidden] }))}>▲</button>
-              <button className="iconbtn" title="Nach unten" aria-label="Nach unten" disabled={i === vis.length - 1} onClick={() => setCfg((c) => ({ ...c, order: [...moveBetween({ s: shown }, "s", shown.indexOf(k), "s", shown.indexOf(k) + 2).s, ...hidden] }))}>▼</button>
-              <button className="iconbtn wbwide" title={wOf(k) === "half" ? "Ganze Breite" : "Halbe Breite"} aria-label="Breite ändern"
-                onClick={() => setCfg((c) => ({ ...c, w: { ...(c.w || {}), [k]: wOf(k) === "half" ? "full" : "half" } }))}>{wOf(k) === "half" ? "▭" : "◧"}</button>
-              <button className="iconbtn" title="Ausblenden" aria-label="Ausblenden" onClick={() => setHide(k, true)}>✕</button>
-            </div>)}
-          <div className="wbbody">{byK[k].el || <section className="tile"><small className="muted">derzeit keine Daten</small></section>}</div>
-          {i === vis.length - 1 && dnd.lineAt("wb", "s", vis.length) && <div className="dropline" />}
-        </div>))}
-      {dnd.ghost}
-    </div>
-    {editing && hidden.length > 0 && (
-      <section className="tile addwidgets">
-        <div className="tilehead"><b>Ausgeblendete Widgets</b><small>antippen zum Einblenden</small></div>
-        <div className="wadd">{hidden.map((k) => <button key={k} onClick={() => setHide(k, false)}><span>▦</span><div><b>{byK[k].label}</b></div><i>＋</i></button>)}</div>
-      </section>)}
-  </>);
+    .map((c) => ({ k: c.props.k, label: c.props.label, w: c.props.w || "full", icon: c.props.icon, desc: c.props.desc, el: c.props.children }));
+  const widgets = Object.fromEntries(items.map((x) => [x.k, [x.label, x.w === "half" ? 6 : x.w === "third" ? 4 : 12, x.icon || "▦", x.desc || ""]]));
+  const els = Object.fromEntries(items.map((x) => [x.k, x.el || null]));
+  const migrate = (l) => {
+    if (l) return { gap: 16, h: {}, w: {}, ...l };
+    const old = ls.get(storeKey.replace(/Grid$/, "Board"), null); // Anordnung aus v0.54.0 übernehmen
+    return { order: old?.order?.length ? old.order : items.map((x) => x.k), hidden: old?.hidden || [], gap: 16, h: {}, compact: true,
+      w: Object.fromEntries(Object.entries(old?.w || {}).map(([k, v]) => [k, v === "half" ? 6 : 12])) };
+  };
+  return <DashGrid storeKey={storeKey} widgets={widgets} migrate={migrate} els={els} editing={editing} setEditing={setEditing} title={title} />;
 }
 
 /* ======================= Vermögen ======================= */
@@ -3633,6 +3601,7 @@ function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () =
   const wValid = wSel.filter((id) => accounts.some((a) => a.id === id));
   const allAccs = accounts.map((a) => ({ a, now: accountBalance(a, txs) })).filter((x) => x.now != null);
   const accs = allAccs.filter((x) => !wValid.length || wValid.includes(x.a.id));
+  const pf = useMemo(() => portfolio(wValid.length ? txs.filter((t) => wValid.includes(t.accountId)) : txs), [txs, wValid.join()]);
   const firstTx = txs.reduce((m, t) => (t.date < m ? t.date : m), thisMonth + "-31").slice(0, 7);
   const firstM = [firstTx, ...assets.map((x) => (x.since || thisMonth).slice(0, 7))].sort()[0];
   const start = range === 0 ? (firstM < thisMonth ? firstM : addMon(thisMonth, -1)) : addMon(thisMonth, -(range - 1));
@@ -3667,7 +3636,7 @@ function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () =
           <WealthExport accs={accs} assets={wAssets ? assets : []} points={points} assetVal={assetVal} />
         </div>
       )}
-      <WidgetBoard storeKey="wealthBoard" title="Vermögen" editing={editing} setEditing={setEditing}>
+      <WidgetBoard storeKey="wealthGrid" title="Vermögen" editing={editing} setEditing={setEditing}>
       <W k="vermoegensverlauf" label="Vermögensverlauf"><section className="tile wealthhero">
         <small className="muted">{wValid.length ? `Vermögen · ${wValid.length} von ${allAccs.length} Konten` : "Nettovermögen"}</small>
         <div className="kpiv big">{fmtMoney(now)}</div>
@@ -3708,6 +3677,24 @@ function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () =
             <div className="right"><b className={x.now < 0 ? "neg" : ""}>{fmtMoney(x.now)}</b><small className={"block " + (d >= 0 ? "pos" : "neg")}>{d >= 0 ? "+" : ""}{fmtMoney(d)}</small></div>
           </div>); })}
       </section></W>
+      <W k="depot" label="Depot-Positionen" w="half" icon="📈" desc="Wertpapiere, Dividenden, Gebühren">{pf.count > 0 && (
+        <section className="tile">
+          <div className="tilehead"><b>Depot-Positionen</b><small>{pf.positions.length} Positionen</small></div>
+          <div className="stats">
+            <div><small>Investiert (netto)</small><b>{fmtMoney(pf.invested)}</b></div>
+            <div><small>Dividenden & Zinsen</small><b className="ok">{fmtMoney(pf.income)}</b></div>
+            <div><small>Gebühren & Steuern</small><b>{fmtMoney(pf.costs)}</b></div>
+          </div>
+          {pf.positions.map((p) => (
+            <div key={p.key} className="frow">
+              <span className="caticon" style={{ width: 40, height: 40, background: "#14b8a622", fontSize: 18 }}>📈</span>
+              <div className="grow"><b className="clamp">{p.name || p.isin}</b><small className="muted block">{p.isin} · {p.shares.toLocaleString("de-AT", { maximumFractionDigits: 4 })} Stk.</small></div>
+              <div className="right"><b>{fmtMoney(p.cost)}</b><small className="muted block">Einstand</small></div>
+            </div>
+          ))}
+          <p className="muted small">Ohne Live-Kurse – Einstandswerte aus deinen Käufen/Verkäufen.</p>
+        </section>
+      )}</W>
       <W k="weitere-vermoegenswerte-und-schulden" label="Weitere Vermögenswerte & Schulden"><section className="tile">
         <div className="tilehead"><b>Weitere Vermögenswerte & Schulden</b><button className="link" onClick={() => setEdit({ id: uid(), name: "", kind: "immo", value: "", since: todayISO() })}>＋ Hinzufügen</button></div>
         {!assets.length && !edit && <p className="muted small">Immobilie, Auto, Gold, Depot oder Kredite manuell erfassen – sie fließen ins Nettovermögen ein.</p>}
@@ -3957,14 +3944,24 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
   const w_ablage = uniDrop ? <section className="tile uniwidget"><div className="tilehead"><b>Universal-Ablage</b><small>wird automatisch einsortiert</small></div>{uniDrop}</section> : null;
   const els = { ablage: w_ablage, barerfassung: w_barerfassung, hero: w_hero, alerts: w_alerts, konten: w_konten, bargeld: w_bargeld, kategorien: w_kategorien, verlauf: w_verlauf,
     budgets: w_budgets, fristen: w_fristen, docs: w_docs, contracts: w_contracts, tx: w_tx, tax: w_tax, quick: w_quick };
-  const [layout, setLayoutRaw] = useState(() => migrateLayout(ls.get("homeLayout", null)));
-  const setLayout = (f) => setLayoutRaw((l) => { const n = typeof f === "function" ? f(l) : f; ls.set("homeLayout", n); return n; });
+  return (
+    <>
+      <DashGrid storeKey="homeLayout" widgets={HOME_WIDGETS} migrate={migrateLayout} els={els} editing={editing} setEditing={setEditing} title="Übersicht" />
+      {!docs.length && <div className="empty"><div style={{ fontSize: 48 }}>📥</div><p>Tippe auf <b>＋</b> und füge dein erstes Dokument hinzu.</p></div>}
+    </>
+  );
+}
+
+/* Widget-Raster (Übersicht, Analyse, Vermögen, Firmenauswertung): frei platzierbar, Breite/Höhe ziehbar, ein-/ausblendbar */
+function DashGrid({ storeKey, widgets, migrate, els, editing = false, setEditing = () => {}, title = "Übersicht" }) {
+  const [layout, setLayoutRaw] = useState(() => migrate(ls.get(storeKey, null)));
+  const setLayout = (f) => setLayoutRaw((l) => { const n = typeof f === "function" ? f(l) : f; ls.set(storeKey, n); return n; });
   const spacers = layout.order.filter(isSpacer);
-  const ids = [...Object.keys(HOME_WIDGETS), ...spacers];
+  const ids = [...Object.keys(widgets), ...spacers];
   const order = [...layout.order.filter((x) => ids.includes(x)), ...ids.filter((x) => !layout.order.includes(x) && !layout.hidden.includes(x))];
   const shown = order.filter((x) => !layout.hidden.includes(x));
   const hiddenIds = ids.filter((x) => !shown.includes(x) && !isSpacer(x));
-  const meta = (id) => HOME_WIDGETS[id] || ["Leerfeld", 4, "⬚", "Freier Platz"];
+  const meta = (id) => widgets[id] || ["Leerfeld", 4, "⬚", "Freier Platz"];
   for (const sp of spacers) els[sp] = <div className={"spacer" + (editing ? " show" : "")}>{editing && <span>Leerfeld – bleibt in der Ansicht leer</span>}</div>;
   const wOf = (id) => layout.w?.[id] || meta(id)[1];
   const hOf = (id) => layout.h?.[id] || (isSpacer(id) ? 12 : null);
@@ -4062,7 +4059,7 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
     <>
       {editing && (
         <div className="editbar">
-          <div className="grow"><b>Übersicht anpassen</b><small className="muted block">{free ? "⠿ ziehen und frei platzieren – links, rechts, oben oder unten" : "⠿ ziehen zum Verschieben"} · Ecke ◢ ziehen für Breite & Höhe · ✕ blendet aus</small></div>
+          <div className="grow"><b>{title} anpassen</b><small className="muted block">{free ? "⠿ ziehen und frei platzieren – links, rechts, oben oder unten" : "⠿ ziehen zum Verschieben"} · Ecke ◢ ziehen für Breite & Höhe · ✕ blendet aus</small></div>
           {cols > 1 && <label className="gapctl" title="Abstand zwischen den Widgets">Abstand
             <input type="range" min="0" max="40" step="2" value={gap} onChange={(e) => setLayout((l) => ({ ...l, gap: +e.target.value }))} /><small>{gap}px</small></label>}
           {cols > 1 && (free
@@ -4070,7 +4067,7 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
               <input type="checkbox" checked={compact} onChange={(e) => setLayout((l) => ({ ...l, compact: e.target.checked }))} />Nach oben rücken</label>
             : <label className="densectl" title="Ein: kleine Widgets füllen Lücken automatisch. Aus: Reihenfolge bleibt strikt, Lücken bleiben frei.">
               <input type="checkbox" checked={dense} onChange={(e) => setLayout((l) => ({ ...l, dense: e.target.checked }))} />Lücken füllen</label>)}
-          <button className="link" onClick={() => confirm("Übersicht auf Standard zurücksetzen?") && setLayout(migrateLayout(null))}>Zurücksetzen</button>
+          <button className="link" onClick={() => confirm(title + " auf Standard zurücksetzen?") && setLayout(migrate(null))}>Zurücksetzen</button>
           <button className="btn primary" onClick={() => setEditing(false)}>Fertig</button>
         </div>
       )}
@@ -4101,17 +4098,17 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
             <button className="spaceradd" onClick={free ? undefined : addSpacer} onPointerDown={free ? (e) => startFreeDrag("spacer-new", e, { isNew: true, w: 4, h: 12, label: "⬚ Leerfeld", onClick: addSpacer }) : undefined}><span>⬚</span><div><b>Leerfeld</b><small>freier Platz – beliebig oft, Größe frei ziehbar</small></div><i>＋</i></button>
             {hiddenIds.map((id) => (
               <button key={id} onClick={free ? undefined : () => setLayout((l) => ({ ...l, order: [...shown, id], hidden: l.hidden.filter((x) => x !== id) }))}
-                onPointerDown={free ? (e) => startFreeDrag(id, e, { isNew: true, w: HOME_WIDGETS[id][1], label: HOME_WIDGETS[id][2] + " " + HOME_WIDGETS[id][0], onClick: () => setLayout((l) => ({ ...l, order: [...shown, id], hidden: l.hidden.filter((x) => x !== id) })) }) : undefined}>
-                <span>{HOME_WIDGETS[id][2]}</span><div><b>{HOME_WIDGETS[id][0]}</b><small>{HOME_WIDGETS[id][3]}</small></div><i>＋</i>
+                onPointerDown={free ? (e) => startFreeDrag(id, e, { isNew: true, w: widgets[id][1], label: widgets[id][2] + " " + widgets[id][0], onClick: () => setLayout((l) => ({ ...l, order: [...shown, id], hidden: l.hidden.filter((x) => x !== id) })) }) : undefined}>
+                <span>{widgets[id][2]}</span><div><b>{widgets[id][0]}</b><small>{widgets[id][3]}</small></div><i>＋</i>
               </button>
             ))}
           </div>
         </section>
       )}
-      {!docs.length && <div className="empty"><div style={{ fontSize: 48 }}>📥</div><p>Tippe auf <b>＋</b> und füge dein erstes Dokument hinzu.</p></div>}
     </>
   );
 }
+
 
 /* Ein Widget im Raster: Breite in 12tel, Höhe in Rasterzeilen (oder automatisch nach Inhalt) */
 const GRID_ROW = 8;
@@ -4886,7 +4883,6 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
 
   const selKey = sel.join(",");
   const scoped = useMemo(() => { const set = new Set(sel); return txs.filter((t) => set.has(t.accountId) || (!t.accountId && allSel)); }, [txs, selKey, allSel]);
-  const pf = useMemo(() => portfolio(scoped), [scoped]);
   const months = useMemo(() => [...new Set(scoped.map((t) => t.date.slice(0, 7)))].sort().reverse(), [scoped]);
   const list = useMemo(() => {
     const terms = norm(q).split(/\s+/).filter(Boolean);
@@ -4937,7 +4933,7 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
   for (const t of list.slice(0, limit)) { const g = dayGroups[dayGroups.length - 1]; if (g && g.date === t.date) g.items.push(t); else dayGroups.push({ date: t.date, items: [t] }); }
 
   return (
-    <div className={"split" + (!pending.length && !(pf.count > 0) ? " noside" : "")}>
+    <div className={"split" + (!pending.length ? " noside" : "")}>
       <aside className="side">
 
       {!!pending.length && (
@@ -4954,24 +4950,6 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
         </section>
       )}
 
-      {pf.count > 0 && (
-        <section className="tile">
-          <div className="tilehead"><b>Depot</b><small>{pf.positions.length} Positionen</small></div>
-          <div className="stats">
-            <div><small>Investiert (netto)</small><b>{fmtMoney(pf.invested)}</b></div>
-            <div><small>Dividenden & Zinsen</small><b className="ok">{fmtMoney(pf.income)}</b></div>
-            <div><small>Gebühren & Steuern</small><b>{fmtMoney(pf.costs)}</b></div>
-          </div>
-          {pf.positions.map((p) => (
-            <div key={p.key} className="frow">
-              <span className="caticon" style={{ width: 40, height: 40, background: "#14b8a622", fontSize: 18 }}>📈</span>
-              <div className="grow"><b className="clamp">{p.name || p.isin}</b><small className="muted block">{p.isin} · {p.shares.toLocaleString("de-AT", { maximumFractionDigits: 4 })} Stk.</small></div>
-              <div className="right"><b>{fmtMoney(p.cost)}</b><small className="muted block">Einstand</small></div>
-            </div>
-          ))}
-          <p className="muted small">Ohne Live-Kurse – Einstandswerte aus deinen Käufen/Verkäufen.</p>
-        </section>
-      )}
 
       </aside>
       <div className="maincol">
