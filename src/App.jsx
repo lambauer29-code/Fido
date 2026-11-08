@@ -334,6 +334,7 @@ let HIDE_AMOUNTS = false; // Einstellungen → Datenschutz
 const fmtMoney = (v, cur = "EUR") => HIDE_AMOUNTS && v != null && !isNaN(v) ? "€ •••" :
   v == null || isNaN(v) ? "" : new Intl.NumberFormat("de-AT", { style: "currency", currency: cur || "EUR" }).format(v);
 const daysUntil = (iso) => Math.round((new Date(iso + "T12:00:00") - new Date(todayISO() + "T12:00:00")) / 864e5);
+const MONTHS_DE = ["Jänner", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 const monthKey = (d) => (d.documentDate || d.createdAt || "").slice(0, 7);
 const monthLabel = (k) => new Date(k + "-15").toLocaleDateString("de-AT", { month: "short", year: "2-digit" });
 const norm = (s) => String(s || "").toLowerCase();
@@ -2469,7 +2470,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
   const [pick, setPick] = useState(null); // Set der ausgewählten IDs (null = Auswahl aus)
   const togglePick = (id) => setPick((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [tag, setTag] = useState("");
-  const [year, setYear] = useState("");
+  const [year, setYear] = useState(""), [month, setMonth] = useState("");
   const [sort, setSort] = useState("date");
   const [taxOnly, setTaxOnly] = useState(false);
   const [scope, setScope] = useState(() => ls.get("docScope", "alle"));
@@ -2479,17 +2480,17 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
   useEffect(() => ls.set("view", view), [view]);
 
   const tags = useMemo(() => [...new Set(docs.flatMap((d) => d.tags || []))].sort(), [docs]);
-  const years = useMemo(() => [...new Set(docs.map((d) => monthKey(d).slice(0, 4)).filter(Boolean))].sort().reverse(), [docs]);
+  const years = useMemo(() => [...new Set(docs.map((d) => monthKey(d).slice(0, 4)).filter(Boolean))].sort(), [docs]);
 
   const list = useMemo(() => {
     const terms = norm(q).split(/\s+/).filter(Boolean);
     return docs
-      .filter((d) => (scope === "alle" || docScope(d) === scope) && (area === "alle" || docArea(d) === area) && (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) &&
+      .filter((d) => (scope === "alle" || docScope(d) === scope) && (area === "alle" || docArea(d) === area) && (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) && (!month || monthKey(d).slice(5, 7) === month) &&
         (!taxOnly || d.taxRelevant) && (!unpaid || (d.direction === "ausgabe" && d.amount?.total && !d.paid)))
       .filter((d) => { if (!terms.length) return true; const h = haystack(d); return terms.every((t) => h.includes(t)); })
       .sort((a, b) => sort === "amount" ? (payAmt(b) || 0) - (payAmt(a) || 0)
         : (b.documentDate || b.createdAt).localeCompare(a.documentDate || a.createdAt));
-  }, [docs, q, cat, tag, year, sort, taxOnly, unpaid, area, scope]);
+  }, [docs, q, cat, tag, year, month, sort, taxOnly, unpaid, area, scope]);
 
   const counts = useMemo(() => Object.fromEntries(categories.map((c) => [c, docs.filter((d) => d.category === c).length])), [docs, categories]);
   const amt = (d) => d.amount?.total != null && (
@@ -2525,11 +2526,12 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         {cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>}
         <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button>
         <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button>
-        <select className="chip" value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</select>
+        <select className={"chip" + (month ? " on" : "")} value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{MONTHS_DE.map((m, i) => <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>)}</select>
+        <select className={"chip" + (year ? " on" : "")} value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</select>
         <select className="chip" value={tag} onChange={(e) => setTag(e.target.value)}><option value="">Alle Tags</option>{tags.map((t) => <option key={t}>{t}</option>)}</select>
         <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></select>
         <button className={pick ? "chip on" : "chip"} disabled={!list.length} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑︎ Auswählen"}</button>
-        <button className="chip" disabled={!list.length} onClick={() => exportCsv(list, `dokumente${year ? "-" + year : ""}${taxOnly ? "-steuer" : ""}.csv`)}>⬇︎ CSV</button>
+        <button className="chip" disabled={!list.length} onClick={() => exportCsv(list, `dokumente${year ? "-" + year : ""}${month ? "-" + month : ""}${taxOnly ? "-steuer" : ""}.csv`)}>⬇︎ CSV</button>
         {onFiles && <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>}
       </div>
       {onFiles && showDrop && <DocDrop onFiles={onFiles} onHide={() => setShowDrop(false)} />}
