@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.26.1
+- Zahlungseingang: Buchungen lassen sich zuverlässiger auswählen (ganze Zeile antippbar, deutliche Markierung)
+- Neue Leiste unten im Fenster zeigt die gewählte Buchung und den Button „Verknüpfen & als bezahlt buchen“
+- Doppelklick auf eine Buchung verknüpft und bucht sofort
+
 ## v0.26.0
 
 - **Rechnung/Mahnung als Beleg an der Buchung**: Wird eine Rechnung mit einer Kontobuchung verknüpft oder ihr Zahlungseingang gebucht (Rechnungen, Mahnungen, beim Ausstellen), legt FinDocu das Rechnungs-PDF – inkl. aller Mahnungen als weitere Seiten – unter Dokumente ab (Firma, Einnahme, bezahlt) und hängt es als Beleg an die Buchung. Wird die Zahlung zurückgenommen, wird der Beleg von der Buchung gelöst.

@@ -4873,7 +4873,7 @@ function RemindWin({ inv, co, onDone, onClose }) {
 }
 
 /* ---------- Buchung eines Kontos suchen (Betrag automatisch vorgefiltert) ---------- */
-function TxPicker({ txs = [], accountId, amount, number = "", customer = "", fromDate = "", value, onChange }) {
+function TxPicker({ txs = [], accountId, amount, number = "", customer = "", fromDate = "", value, onChange, onConfirm }) {
   const [q, setQ] = useState("");
   const [onlyAmt, setOnlyAmt] = useState(true);
   const [older, setOlder] = useState(false);
@@ -4898,11 +4898,12 @@ function TxPicker({ txs = [], accountId, amount, number = "", customer = "", fro
       </div>
       <div className="paycands">
         {list.map(({ t, score }) => (
-          <label key={t.id} className={"frow click" + (value === t.id ? " on" : "")}>
-            <input type="radio" name="paytx" checked={value === t.id} onChange={() => onChange(t.id)} />
+          <div key={t.id} role="radio" aria-checked={value === t.id} tabIndex={0} className={"frow click" + (value === t.id ? " on" : "")}
+            onClick={() => onChange(t.id)} onDoubleClick={() => { onChange(t.id); onConfirm?.(t.id); }} onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); onChange(t.id); } }}>
+            <span className={"txradio" + (value === t.id ? " on" : "")} />
             <div className="grow"><b>{t.counterparty || "Eingang"}{score >= 9 ? " ⭐" : ""}</b><small className="muted block">{fmtDate(t.date)} · {(t.purpose || "").slice(0, 80)}</small></div>
             <b className="pos">{fmtMoney(t.amount)}</b>
-          </label>))}
+          </div>))}
         {!list.length && <p className="small muted">Keine passenden Eingänge{accountId ? " auf diesem Konto" : ""}. Suchbegriff ändern, „auch vor …“ antippen oder Umsätze importieren.</p>}
       </div>
     </div>
@@ -4926,9 +4927,10 @@ function PayWin({ inv, book, onDone, onClose }) {
     .map((t) => ({ t, score: (Math.abs(t.amount - total) < 0.01 ? 2 : 0) + (`${t.purpose} ${t.counterparty}`.toLowerCase().replace(/\s/g, "").includes(num) ? 3 : 0) + (norm(t.counterparty).includes(norm(inv.customer?.name || "").split(" ")[0] || "§") ? 1 : 0) }))
     .filter((x) => x.score > 0).sort((a, b) => b.score - a.score || b.t.date.localeCompare(a.t.date)).slice(0, 6);
   const [mode, setMode] = useState(cands.length ? "link" : "create");
-  const [txId, setTxId] = useState(cands[0]?.t.id || "");
+  let [txId, setTxId] = useState(cands[0]?.t.id || "");
   useEffect(() => { if (!(book?.txs || []).some((t) => t.id === txId && t.accountId === accountId)) setTxId(""); }, [accountId]);
-  const done = async () => {
+  const done = async (pick) => {
+    if (typeof pick === "string") { txId = pick; }
     ls.set("payAccount", accountId);
     let paidTx = null, created = false;
     if (accountId && mode === "create" && val > 0) { paidTx = await book.create({ inv, accountId, date, amount: val, method }); created = true; }
@@ -4939,7 +4941,7 @@ function PayWin({ inv, book, onDone, onClose }) {
   };
   return (
     <Win id="paywin" onClose={onClose} small center dirty={false}>
-      <div className="panelhead"><b>Zahlungseingang {inv.number}</b><button className="btn primary" disabled={mode === "link" ? !txId : false} onClick={done}>Als bezahlt buchen</button><XBtn /></div>
+      <div className="panelhead"><b>Zahlungseingang {inv.number}</b><button className="btn primary" disabled={mode === "link" && accountId ? !txId : false} onClick={() => done()}>Als bezahlt buchen</button><XBtn /></div>
       <p className="small muted">{inv.customer?.name} · Rechnungsbetrag <b>{fmtMoney(total)}</b></p>
       {!accs.length ? <p className="small warn">Noch kein Konto angelegt – die Rechnung wird nur als bezahlt markiert. Konten legst du im Reiter „Konten“ an.</p> : <>
         <label>Konto<select value={accountId} onChange={(e) => setAcc(e.target.value)}>
@@ -4950,13 +4952,18 @@ function PayWin({ inv, book, onDone, onClose }) {
           <button className={mode === "link" ? "on" : ""} onClick={() => setMode("link")}>🔗 Vorhandene Buchung{cands.length ? ` (${cands.length} passend)` : ""}</button>
           <button className={mode === "create" ? "on" : ""} onClick={() => setMode("create")}>＋ Neue Buchung</button>
         </div>}
-        {accountId && mode === "link" && <TxPicker txs={book?.txs} accountId={accountId} amount={total} number={inv.number} customer={inv.customer?.name} fromDate={inv.date} value={txId} onChange={setTxId} />}
+        {accountId && mode === "link" && <TxPicker txs={book?.txs} accountId={accountId} amount={total} number={inv.number} customer={inv.customer?.name} fromDate={inv.date} value={txId} onChange={setTxId} onConfirm={done} />}
         {accountId && mode === "create" && <div className="grid2">
           <label>Datum<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
           <label>Betrag €<input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
         </div>}
       </>}
       {(mode === "create" || !accountId || !accs.length) && <label>Zahlungsart<select value={method} onChange={(e) => setMethod(e.target.value)}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select></label>}
+      {(() => { const st = mode === "link" && accountId ? (book?.txs || []).find((x) => x.id === txId) : null; return (
+        <div className="payfoot">
+          {mode === "link" && accountId ? (st ? <span className="small"><b>✓ {st.counterparty || "Eingang"}</b> · {fmtDate(st.date)} · <b className="pos">{fmtMoney(st.amount)}</b></span> : <span className="small muted">Buchung oben antippen (Doppelklick bucht sofort)</span>) : <span />}
+          <button className="btn primary" disabled={mode === "link" && accountId ? !txId : false} onClick={() => done()}>{mode === "link" && accountId ? "🔗 Verknüpfen & als bezahlt buchen" : "✓ Als bezahlt buchen"}</button>
+        </div>); })()}
       <p className="muted small">{accountId && mode === "create" ? `Legt auf „${acc?.name}“ eine Einnahme mit Verwendungszweck ${inv.number} an.` : accountId && mode === "link" ? "Die gewählte Buchung wird mit der Rechnung verknüpft (Kategorie Einnahmen)." : ""}</p>
     </Win>
   );
@@ -6913,4 +6920,11 @@ nav.bottom>button.sidetoggle{display:none}
 .txpicker{margin-top:10px}.txpicker .searchbar{margin:0 0 6px}
 .txpfilter{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px}.txpfilter .chip{margin:0}.txpfilter small{margin-left:auto}
 .txpicker .paycands{max-height:300px}
+
+.paycands .frow.click{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+.paycands .frow.on{background:color-mix(in srgb,var(--acc) 16%,transparent);outline:2px solid var(--acc);outline-offset:-2px}
+.txradio{flex:none;width:20px;height:20px;border-radius:50%;border:2px solid var(--mut);box-sizing:border-box;display:inline-block}
+.txradio.on{border-color:var(--acc);background:radial-gradient(circle,var(--acc) 0 5px,transparent 6px)}
+.payfoot{position:sticky;bottom:-1px;display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;margin:12px -4px 0;padding:10px 4px;background:var(--bg);border-top:1px solid var(--line)}
+.payfoot .btn{margin-left:auto}
 `;
