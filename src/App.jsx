@@ -1476,6 +1476,7 @@ export default function App() {
   pdfUi = setPdfView;
   const impRef = useRef(null), vcfApp = useRef(null);
   const [sideMini, setSideMiniRaw] = useState(() => ls.get("sideMini", false));
+  const [sideTip, setSideTip] = useState(null);
   const setSideMini = (v) => { setSideMiniRaw(v); ls.set("sideMini", v); };
   useEffect(() => { document.documentElement.classList.toggle("side-mini", !!sideMini); }, [sideMini]);
   useEffect(() => {
@@ -1745,7 +1746,13 @@ export default function App() {
       {manualTx && <ManualTxSheet init={manualTx} accounts={accounts} categories={TX_CATS(categories)} onClose={() => setManualTx(null)}
         onSave={saveCash} onScan={scanFor} addCategory={addCategory} />}
 
-      <nav className="bottom">
+      <nav className="bottom" onPointerOver={(e) => {
+        if (!sideMini || e.pointerType === "touch") return;
+        const b = e.target.closest?.("button,.brand"); if (!b) return setSideTip(null);
+        const r = b.getBoundingClientRect();
+        const text = b.classList.contains("brand") ? "FinDocu" : b.getAttribute("aria-label");
+        setSideTip(text ? { text, top: r.top + r.height / 2 } : null);
+      }} onPointerLeave={() => setSideTip(null)}>
         <div className="brand"><img src="/icon.svg" alt="" /><div><b>FinDocu</b><small>Finanzen & Dokumente</small></div></div>
         {nav.tabs.map((t) => {
           if (t.sep) return <hr key={t.key} className="navsep side-only" />;
@@ -1774,14 +1781,14 @@ export default function App() {
                     });
                   }
                   setTab(t.key); if (t.key === "docs") { setDocAreaSel("alle"); setDocCat(""); }
-                }} aria-label={tabLabel(nav, t.key)} title={sideMini ? tabLabel(nav, t.key) : undefined}>
+                }} aria-label={tabLabel(nav, t.key)}>
                 <TabIcon t={t} /><span className="tl" style={t.color ? { color: t.color } : undefined}>{tabLabel(nav, t.key)}</span>
                 {t.key === "home" && <Badge docs={active} />}
                 {!!sub && <i className={"subtog side-only" + (open ? " open" : "")} role="button" aria-label="ein-/ausklappen"
                   onClick={(e) => { e.stopPropagation(); setNav((n) => ({ ...n, [flag]: !n[flag] })); }}>›</i>}
               </button>
               {t.side && kids.map((c) => (
-                <button key={c.key} className={"subtab side-only" + (tab === c.key ? " on" : "")} onClick={() => setTab(c.key)} aria-label={tabLabel(nav, c.key)} title={sideMini ? tabLabel(nav, c.key) : undefined}>
+                <button key={c.key} className={"subtab side-only" + (tab === c.key ? " on" : "")} onClick={() => setTab(c.key)} aria-label={tabLabel(nav, c.key)}>
                   <TabIcon t={c} /><span className="tl" style={c.color ? { color: c.color } : undefined}>{tabLabel(nav, c.key)}</span>
                   {c.key === "deadlines" && <DeadlineBadge docs={active} />}
                 </button>
@@ -1800,10 +1807,11 @@ export default function App() {
             </React.Fragment>
           );
         })}
-        <button className="sidetoggle side-only" onClick={() => setSideMini(!sideMini)} title={sideMini ? "Seitenleiste ausklappen (⌘\\)" : "Seitenleiste einklappen (⌘\\)"} aria-label={sideMini ? "Seitenleiste ausklappen" : "Seitenleiste einklappen"}>
-          <span className="tabico">{sideMini ? "»" : "«"}</span><span className="tl">Einklappen</span>
+        <button className="sidetoggle side-only" onClick={() => setSideMini(!sideMini)} title={sideMini ? undefined : "Seitenleiste einklappen (⌘\\)"} aria-label={sideMini ? "Seitenleiste ausklappen (⌘\\)" : "Seitenleiste einklappen"}>
+          <span className="tabico">{sideMini ? "»" : "«"}</span>
         </button>
       </nav>
+      {sideMini && sideTip && <div className="sidetip" style={{ top: sideTip.top }}>{sideTip.text}</div>}
 
       <SideResizer />
       {openDoc && (
@@ -6601,4 +6609,13 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
   html.side-mini nav.bottom .navsep{margin:6px 4px}
   html.side-mini .sideresize{display:none}
 }
+
+/* v0.24.4: nur Pfeil, Hover-Beschriftung im eingeklappten Zustand */
+@media (min-width:768px){
+  nav.bottom .sidetoggle.side-only{justify-content:center;width:40px;height:40px;padding:0;align-self:flex-end;margin-right:4px}
+  html.side-mini nav.bottom .sidetoggle.side-only{align-self:center;margin-right:0}
+  nav.bottom .sidetoggle .tabico{width:auto;font-size:20px}
+}
+.sidetip{position:fixed;left:76px;transform:translateY(-50%);z-index:10000;pointer-events:none;background:var(--txt);color:var(--bg);font-size:13px;font-weight:600;padding:6px 10px;border-radius:8px;white-space:nowrap;box-shadow:0 6px 18px #0005;animation:popin .1s ease-out}
+.sidetip::before{content:"";position:absolute;left:-5px;top:50%;transform:translateY(-50%);border:5px solid transparent;border-left:0;border-right-color:var(--txt)}
 `;

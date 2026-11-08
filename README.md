@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.24.4
+
+- Seitenleiste: Ein-/Ausklappen nur noch als Pfeil (« / »). Eingeklappt erscheint beim Darüberfahren sofort ein Hinweis mit dem Namen des Reiters.
+
 ## v0.24.3
 
 - Seitenleiste **ein-/ausklappbar** (Mac/iPad): unten „« Einklappen“ bzw. „»“, oder ⌘\ (Strg+\ unter Windows). Eingeklappt nur Symbole (Name beim Darüberfahren), Inhalt nutzt die volle Breite; Zustand bleibt gespeichert.
