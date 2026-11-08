@@ -93,11 +93,8 @@ async function shareDocs(list) {
   const files = await docFiles(list);
   if (!files.length) return alert("Originaldatei nicht gefunden");
   const title = list.length === 1 ? list[0].title : `${list.length} Dokumente`;
-  if (navigator.canShare?.({ files })) {
-    try { await navigator.share({ files, title }); return; }
-    catch (e) { if (e.name === "AbortError") return; }
-  }
-  shareUi?.({ files, title, docs: list });
+  if (shareUi) return shareUi({ files, title, docs: list });
+  if (navigator.canShare?.({ files })) { try { await navigator.share({ files, title }); } catch {} } else downloadFiles(files);
 }
 function downloadFiles(files) {
   files.forEach((f, i) => setTimeout(() => {
@@ -106,25 +103,41 @@ function downloadFiles(files) {
     setTimeout(() => URL.revokeObjectURL(u), 30000);
   }, i * 350));
 }
+// letzte Klickposition – das Teilen-Menü erscheint dort (wie das macOS-Menü)
+let lastPtr = { x: innerWidth / 2, y: 120 };
+if (typeof window !== "undefined") window.addEventListener("pointerdown", (e) => { lastPtr = { x: e.clientX, y: e.clientY }; }, true);
 function ShareWin({ data, onClose }) {
-  const { files, title, docs } = data;
+  const { files, title, docs, to = "" } = data;
   const summary = docs.map((d) => `• ${d.title}${d.documentDate ? " (" + fmtDate(d.documentDate) + ")" : ""}`).join("\n");
   const size = files.reduce((s, f) => s + f.size, 0);
-  const via = (url) => { downloadFiles(files); setTimeout(() => window.open(url, "_blank"), 400); };
-  return (
-    <Win id="share" onClose={onClose} small center dirty={false}>
-      <div className="panelhead"><b>Teilen</b><XBtn /></div>
-      <p className="muted small">{files.length} Datei{files.length === 1 ? "" : "en"} · {(size / 1048576).toFixed(1).replace(".", ",")} MB – {title}</p>
-      <p className="small">Dieser Browser kann Dateien nicht direkt an andere Apps geben. Die Dateien werden heruntergeladen und die App geöffnet – dort die Dateien anhängen bzw. hineinziehen.</p>
-      <div className="sharegrid">
-        <button onClick={() => via(`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent("Im Anhang:\n" + summary + "\n")}`)}><span>✉️</span>E-Mail</button>
-        <button onClick={() => via(`https://wa.me/?text=${encodeURIComponent(title)}`)}><span>💬</span>WhatsApp</button>
-        <button onClick={() => via(`https://t.me/share/url?url=${encodeURIComponent(" ")}&text=${encodeURIComponent(title)}`)}><span>✈️</span>Telegram</button>
-        <button onClick={() => downloadFiles(files)}><span>⬇️</span>Herunterladen</button>
-      </div>
-      <p className="muted small">Tipp: Am iPhone, iPad und Mac (Safari) öffnet „Teilen“ direkt das System-Menü mit Nachrichten, WhatsApp, Mail, AirDrop usw.</p>
-    </Win>
-  );
+  const sys = !!navigator.canShare?.({ files });
+  const [msg, setMsg] = useState("");
+  const ref = useRef(null);
+  const [pos] = useState(() => { const w = 300, x = Math.min(Math.max(12, lastPtr.x - w / 2), innerWidth - w - 12); const below = lastPtr.y + 14; return { left: x, top: below + 360 > innerHeight ? Math.max(12, lastPtr.y - 370) : below, arrowX: Math.min(w - 20, Math.max(20, lastPtr.x - x)), up: below + 360 <= innerHeight }; });
+  useEffect(() => {
+    const down = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const key = (e) => e.key === "Escape" && onClose();
+    setTimeout(() => document.addEventListener("pointerdown", down, true), 0); window.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key); };
+  }, []);
+  const via = (url, app) => { downloadFiles(files); setMsg(`Heruntergeladen – in ${app} anhängen.`); setTimeout(() => window.open(url, "_blank"), 400); };
+  const system = async () => { try { await navigator.share({ files, title }); onClose(); } catch (e) { if (e.name !== "AbortError") setMsg("Nicht verfügbar: " + e.message); } };
+  const kb = size < 1048576 ? Math.max(1, Math.round(size / 1024)) + " KB" : (size / 1048576).toFixed(1).replace(".", ",") + " MB";
+  const kind = files.length > 1 ? `${files.length} Dateien` : files[0]?.type === "application/pdf" ? "PDF-Dokument" : files[0]?.type?.startsWith("image/") ? "Bild" : "Datei";
+  return createPortal(
+    <div ref={ref} className={"sharepop" + (pos.up ? " up" : " down")} style={{ left: pos.left, top: pos.top, "--ax": pos.arrowX + "px" }} role="menu">
+      <div className="sphead"><span className="spfile">{files.length > 1 ? "🗂" : files[0]?.type?.startsWith("image/") ? "🖼" : "📄"}</span>
+        <div><b className="clamp">{title}</b><small>{kind} · {kb}</small></div></div>
+      <div className="spsep" />
+      <button role="menuitem" onClick={() => via(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(title)}&body=${encodeURIComponent("Guten Tag,\n\nim Anhang:\n" + summary + "\n\nMit freundlichen Grüßen")}`, "der Mail")}><span>✉️</span>E-Mail</button>
+      <button role="menuitem" onClick={() => (sys ? system() : via(`sms:&body=${encodeURIComponent(title)}`, "Nachrichten"))}><span>🗨️</span>Nachrichten</button>
+      <button role="menuitem" onClick={() => via(`https://wa.me/?text=${encodeURIComponent(title)}`, "WhatsApp")}><span>💬</span>WhatsApp</button>
+      <button role="menuitem" onClick={() => (sys ? system() : (downloadFiles(files), setMsg("Heruntergeladen – im Finder mit AirDrop senden.")))}><span>📡</span>AirDrop</button>
+      <button role="menuitem" onClick={() => via(`https://t.me/share/url?url=${encodeURIComponent(" ")}&text=${encodeURIComponent(title)}`, "Telegram")}><span>✈️</span>Telegram</button>
+      <div className="spsep" />
+      <button role="menuitem" onClick={() => { downloadFiles(files); setMsg("Im Ordner „Downloads“ gespeichert."); }}><span>⬇️</span>Herunterladen</button>
+      {msg && <div className="spmsg">{msg}</div>}
+    </div>, document.body);
 }
 /* Drucken: Seiten als Bilder in einen unsichtbaren Rahmen legen und den Druckdialog öffnen (klappt auch in Safari) */
 async function blobToImages(b, width = 1700, max = 60) {
@@ -166,7 +179,7 @@ function PdfViewWin({ data, onClose }) {
     <Win id="pdfview" defW={760} onClose={onClose} dirty={false} className="pdfviewwin">
       <div className="panelhead"><b className="clamp">{data.title || data.name}</b>
         <button className="btn" title="Drucken" onClick={() => pages && printImages(pages, data.title)}><IcoPrint /></button>
-        <button className="btn" title="Teilen / Sichern" onClick={() => sharePdf(data.blob, data.name, data.title)}><IcoShare /></button>
+        <button className="btn" title="Teilen / Sichern" onClick={() => sharePdf(data.blob, data.name, data.title, data.to)}><IcoShare /></button>
         <XBtn /></div>
       <div className="dpages">
         {!pages && <div className="dpload">PDF wird geladen …</div>}
@@ -1108,7 +1121,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
     let block = false;
     const down = (e) => {
       const el = rootRef.current; if (!el || el.contains(e.target)) return;
-      if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost")) return;
+      if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost,.sharepop,.sidetip")) return;
       if (dirtyRef.current) block = true; // Klick nicht weiterreichen, sonst gehen Eingaben verloren
       reqRef.current();
     };
@@ -4451,14 +4464,14 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   return new Blob([await pdf.save()], { type: "application/pdf" });
 }
 const invFileName = (inv, remind) => safeName(`${remind ? remindName(remind.level) : inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"} ${inv.customer?.name || ""}`) + ".pdf";
-async function openPdf(blob, name = "Dokument.pdf", title = "") {
-  if (pdfUi) return pdfUi({ blob, name, title: title || name.replace(/\.pdf$/, "") });
+async function openPdf(blob, name = "Dokument.pdf", title = "", to = "") {
+  if (pdfUi) return pdfUi({ blob, name, title: title || name.replace(/\.pdf$/, ""), to });
   const u = URL.createObjectURL(blob); const w = window.open(u, "_blank"); if (!w) location.href = u; setTimeout(() => URL.revokeObjectURL(u), 120000);
 }
-async function sharePdf(blob, name, title) {
+async function sharePdf(blob, name, title, to = "") {
   const f = new File([blob], name, { type: "application/pdf" });
-  if (navigator.canShare?.({ files: [f] })) { try { await navigator.share({ files: [f], title }); return; } catch (e) { if (e.name === "AbortError") return; } }
-  shareUi ? shareUi({ files: [f], title, docs: [{ title }] }) : downloadFiles([f]);
+  if (shareUi) return shareUi({ files: [f], title, docs: [{ title }], to });
+  if (navigator.canShare?.({ files: [f] })) { try { await navigator.share({ files: [f], title }); } catch {} } else downloadFiles([f]);
 }
 
 /* ---------- Firmendaten ---------- */
@@ -4660,7 +4673,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
   return (
     <Win id="invedit" defW={760} onClose={onClose} dirty={!locked && JSON.stringify(inv) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{isA ? "Angebot" : "Rechnung"} {inv.number || "(Entwurf)"}</b>
-        <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(inv, co), invFileName(inv))}>Vorschau</button>
+        <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(inv, co), invFileName(inv), "", inv.customer?.email)}>Vorschau</button>
         {!locked && <button className="btn primary" onClick={() => doSave(false)}>Speichern</button>}
         <XBtn /></div>
       {locked && <p className="warn small">Diese {isA ? "Angebot" : "Rechnung"} ist ausgestellt und kann nicht mehr geändert werden (Rechnungen dürfen nachträglich nicht verändert werden – bei Fehlern stornieren und neu ausstellen).</p>}
@@ -4774,7 +4787,7 @@ function RemindWin({ inv, co, onDone, onClose }) {
       </div>
       <div className="actions">
         <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(next, co, r), invFileName(inv, r))}>Vorschau</button>
-        <button className="btn primary" onClick={async () => { const pdf = await buildInvoicePdf(next, co, r); onDone(next); onClose(); sharePdf(pdf, invFileName(inv, r), remindName(level) + " " + inv.number); }}>Erstellen & senden</button>
+        <button className="btn primary" onClick={async () => { const pdf = await buildInvoicePdf(next, co, r); onDone(next); onClose(); sharePdf(pdf, invFileName(inv, r), remindName(level) + " " + inv.number, inv.customer?.email); }}>Erstellen & senden</button>
       </div>
       <p className="muted small">Wird im Verlauf der Rechnung vermerkt. Das PDF kannst du per Mail, WhatsApp usw. teilen.</p>
     </Win>
@@ -4908,8 +4921,8 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
                 </div>
                 <span className={"stpill " + cls}>{label}</span>
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
-                  {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x))}>📄</button>}
-                  {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`)}><IcoShare /></button>}
+                  {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}>📄</button>}
+                  {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button>}
                   {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" onClick={() => patch(x.id, { status: "bezahlt", paidAt: todayISO() })}>✓ Bezahlt</button>}
                   {s === "bezahlt" && <button className="link small" onClick={() => patch(x.id, { status: "offen", paidAt: null })}>Doch offen</button>}
                   {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>}
@@ -5642,7 +5655,7 @@ function DunningPage({ setTab }) {
             <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
               <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>📄</button>
-              <button className="iconbtn" title="Teilen" onClick={async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number)}><IcoShare /></button>
+              <button className="iconbtn" title="Teilen" onClick={async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email)}><IcoShare /></button>
               {i === x.reminders.length - 1 && s !== "bezahlt" && <button className="link small red" onClick={() => confirm("Diese Mahnung aus dem Verlauf entfernen?") && patch(x.id, { reminders: x.reminders.slice(0, -1) })}>Zurücknehmen</button>}
             </div>
           </div>); })}
@@ -6660,4 +6673,22 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
 .itemsfs>*:not(legend){clear:both}
 .posbtns{width:100%;margin-top:4px}.posbtns .btn{white-space:nowrap;flex:none}
 .payfs .seg{margin:0 0 6px}
+
+/* v0.24.7: eigenes Teilen-Fenster als Standard */
+.sharegrid .wide2{grid-column:1/-1;flex-direction:row;justify-content:center;gap:10px}.sharegrid .wide2 small{color:var(--mut);font-size:12px}
+.sharegrid .wide2 span{font-size:20px}
+.okmsg{background:#16a34a1f;padding:8px 10px;border-radius:10px}
+
+/* v0.24.8: kompaktes Teilen-Menü wie macOS */
+.sharepop{position:fixed;z-index:10001;width:300px;padding:8px;border-radius:16px;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);
+  border:1px solid color-mix(in srgb,var(--txt) 18%,transparent);box-shadow:0 18px 50px #0007;animation:popin .12s ease-out;color:var(--txt)}
+.sharepop::before{content:"";position:absolute;left:calc(var(--ax) - 9px);width:16px;height:16px;background:inherit;border:inherit;transform:rotate(45deg);backdrop-filter:none}
+.sharepop.up::before{top:-9px;border-right:0;border-bottom:0}.sharepop.down::before{bottom:-9px;border-left:0;border-top:0}
+.sphead{display:flex;align-items:center;gap:12px;padding:6px 8px 8px;position:relative}.sphead div{min-width:0}.sphead b{display:block;font-size:14px}.sphead small{color:var(--mut);font-size:12px}
+.spfile{font-size:30px;width:40px;height:46px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:6px;box-shadow:0 1px 4px #0003;flex:none}
+.spsep{height:1px;background:var(--line);margin:4px 6px}
+.sharepop button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--txt);font:inherit;font-size:14px;padding:7px 10px;border-radius:8px;cursor:pointer;text-align:left;position:relative}
+.sharepop button:hover{background:var(--acc);color:#fff}.sharepop button:hover small{color:#fffc}
+.sharepop button span{width:20px;text-align:center;font-size:16px}.sharepop button small{color:var(--mut);font-size:11px;margin-left:auto}
+.spmsg{font-size:12px;color:var(--mut);padding:6px 10px 2px}
 `;

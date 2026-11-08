@@ -2,6 +2,23 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.24.10
+
+- Teilen-Menü: WhatsApp an 3. Stelle (E-Mail, Nachrichten, WhatsApp, AirDrop, Telegram, Herunterladen).
+
+## v0.24.9
+
+- Teilen-Menü: neue Einträge **Nachrichten** und **AirDrop** (Datei wird direkt angehängt); „Mehr …“ entfällt.
+
+## v0.24.8
+
+- Teilen-Menü kompakt wie unter macOS: kleines Menü direkt beim Teilen-Knopf (Datei-Kopf mit Name/Größe, E-Mail, WhatsApp, Telegram, Herunterladen, Mehr …). Schließt per Klick daneben oder Esc.
+
+## v0.24.7
+
+- Teilen: Es öffnet sich jetzt **immer das FinDocu-Teilen-Fenster** (E-Mail, WhatsApp, Telegram, Herunterladen) – vorher kam je nach Situation einmal dieses Fenster, einmal das System-Menü. Neu darin: „📤 Mehr …“ öffnet das System-Teilen-Menü (Mail, Nachrichten, AirDrop mit Datei als Anhang).
+- E-Mail bei Rechnungen/Mahnungen: Empfänger (E-Mail des Kunden), Betreff und Text sind vorausgefüllt.
+
 ## v0.24.6
 
 - Fix: Knöpfe „＋ Position“ / „📷 Artikel scannen“ rutschten in schmalen Fenstern an den rechten Rand und waren abgeschnitten.
