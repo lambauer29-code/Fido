@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.32.2
+- Konten: „📥 Ablagefeld“ an erster Stelle der Zeile; bei Kunden standardmäßig ebenfalls vorne
+
+## v0.32.1
+- Konten: Ablagefeld-Schalter „📥 Ablagefeld“ in der Zeile neben „Alle Konten“ / „Alle Monate“
+- Kunden: Ablagefeld-Schalter in der Kontaktarten-Leiste (wie bei Dokumenten)
+
 ## v0.32.0
 - Seitenleiste: laufender Import wird beim jeweiligen Reiter angezeigt (Lade-Kreis + Anzahl, Fortschrittszeile unter dem Reiter)
 - Konten: Ablagefeld für Kontoauszüge (CSV, PDF, CAMT, MT940, Excel …) inkl. Ordner – mehrere Dateien werden nacheinander importiert, mit Fortschritt

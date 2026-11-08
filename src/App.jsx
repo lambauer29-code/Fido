@@ -3275,6 +3275,7 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
       )}
       {!!accounts.length && (
         <div className="chips">
+          <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>
           <button className="chip on chipdrop" onClick={() => setPick(true)}>{allSel ? "Alle Konten" : acc ? accName(acc) : `${sel.length} Konten`} <span aria-hidden="true">▾</span></button>
           {!allSel && <button className="chip" onClick={() => setSel([])}>✕ Alle anzeigen</button>}
           {selA && !peek && <button className="chip" onClick={() => setEditAcc(selA)}>✎ Konto bearbeiten</button>}
@@ -3302,7 +3303,7 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
       )}
       {showDrop ? <DropField onFiles={dropFiles} onHide={() => setShowDrop(false)} busy={!!busy} title="Kontoauszüge oder Ordner hierher ziehen" what="CSV, PDF, CAMT, MT940, Excel …"
         accept={IMPORT_ACCEPT} isOk={(f) => /\.(csv|txt|tsv|xml|sta|mt940|940|ofx|qfx|qif|json|xlsx|xlsm|xls|pdf|jpe?g|png|heic|webp)$/i.test(f.name) || /^image\//.test(f.type)} emptyMsg="Keine Kontoauszug-Dateien gefunden." />
-        : <button className="chip ddshow" onClick={() => setShowDrop(true)}>📥 Ablagefeld einblenden</button>}
+        : !accounts.length && <button className="chip ddshow" onClick={() => setShowDrop(true)}>📥 Ablagefeld einblenden</button>}
       {busy && <ImportBar {...busy} />}
       {pick && <AccountPicker groups={groups} txs={txs} sel={allSel ? [] : sel} onClose={() => setPick(false)} onApply={(l) => { setSel(l); setPick(false); }} />}
       {!txs.length && (
@@ -5678,13 +5679,14 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       {!("contacts" in navigator && "select" in (navigator.contacts || {})) && <p className="muted small hint">📱 <b>iPhone – direkt aus dem Adressbuch:</b> Einstellungen → Apps → Safari → Erweitert → Feature Flags → „Contact Picker API“ einschalten, dann FinDocu neu öffnen. Danach öffnet „Aus Handy-Kontakten“ die Kontaktauswahl des iPhones. <b>Ohne diese Einstellung:</b> Kontakte-App → Kontakte markieren → Teilen → „In Dateien sichern“ und die .vcf-Datei hier wählen. <b>Mac:</b> Kontakte → Ablage → Exportieren → vCard. <b>Android/Chrome:</b> funktioniert direkt.</p>}
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Name, E-Mail, Telefon, Ort suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <ChipBar storeKey="ctChips" className="invfilter" items={[
+        { k: "drop", label: "📥 Ablagefeld", el: <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button> },
         { k: "alle", label: "Alle", el: <button className={"chip" + (type === "alle" ? " on" : "")} onClick={() => setType("alle")}>Alle <small>({list.length})</small></button> },
         ...types.map((t) => ({ k: "t:" + t.id, label: <><TypeGlyph t={t} /> {t.name}</>, el: <button className={"chip" + (type === t.name ? " on" : "")} style={type === t.name ? undefined : { color: t.color }} onClick={() => setType(t.name)}><TypeGlyph t={t} /> {t.name} <small>({list.filter((c) => (c.type || "Kunde") === t.name).length})</small></button> })),
         setTab && { k: "set", label: "⚙︎ Arten bearbeiten", el: <button className="chip" title="Kontaktarten bearbeiten" onClick={() => { ls.set("openSettingsSec", "kontaktarten"); setTab("settings"); }}>⚙︎</button> },
       ]} />
       {showDrop ? <DropField onFiles={dropVcf} onHide={() => setShowDrop(false)} busy={!!busy} title="Kontaktdateien (.vcf) oder Ordner hierher ziehen" what="vCard (.vcf)"
         accept=".vcf,text/vcard,text/x-vcard" isOk={(f) => /\.vcf$/i.test(f.name) || /vcard/i.test(f.type)} emptyMsg="Keine .vcf-Kontaktdateien gefunden." />
-        : <button className="chip ddshow" onClick={() => setShowDrop(true)}>📥 Ablagefeld einblenden</button>}
+        : null}
       {busy && <ImportBar {...busy} />}
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📱 Aus Handy-Kontakten“ übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
