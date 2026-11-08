@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.27.3
+- Rechnung (bezahlt, mit Buchung): angehängter Beleg wird im Bereich „Zahlung“ angezeigt und öffnet das Dokument
+- Fehlt der Beleg (z. B. bei älteren Buchungen): Button „Rechnung als Beleg an die Buchung hängen“
+- Zahlungseingang öffnet immer zuerst „Vorhandene Buchung“
+
 ## v0.27.2
 - Button „Als bezahlt markieren“ in der Rechnungsliste entfernt – geht jetzt nur noch über die Status-Pill
 - Häkchen im Status-Menü entfernt (aktueller Status bleibt farbig hervorgehoben)

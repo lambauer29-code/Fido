@@ -1531,6 +1531,9 @@ export default function App() {
   // Zahlungseingang einer Rechnung auf ein Konto buchen bzw. mit vorhandener Buchung verknüpfen
   const bizBook = {
     accounts, txs,
+    belegOf: (invId) => docs.find((d) => d.invoiceId === invId && !d.deletedAt),
+    openDoc: (id) => setOpenId(id),
+    attach: (invId, txId) => attachInvoiceBeleg(invId, txId).then(() => notify("Beleg angehängt")),
     async create({ inv, accountId, date, amount, method }) {
       const tx = await addManualTx({ accountId, date, amount, counterparty: inv.customer?.name || "Kunde", purpose: `${inv.number}${method ? " · " + method : ""}`, category: "Einnahmen", invoiceId: inv.id, bookingText: "Rechnung" });
       notify(`Zahlungseingang ${fmtMoney(amount)} gebucht – Rechnung als Beleg angehängt`); setTimeout(() => attachInvoiceBeleg(inv.id, tx.id), 100); return tx.id;
@@ -4686,7 +4689,7 @@ function MasterDataWin({ articles, setArticles, onClose }) {
 
 /* ---------- Editor ---------- */
 const PAY_METHODS = ["Überweisung", "Bar", "Bankomat/Karte", "PayPal", "Sonstiges"];
-function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, onFinalize, setArticles, onPatch, onPayWin, accounts = [], txs = [] }) {
+function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, onFinalize, setArticles, onPatch, onPayWin, accounts = [], txs = [], book }) {
   const [inv, setInv] = useState(init);
   const [fields] = useLsState("invoiceFields", []);
   const invFields = fields.filter((f) => f.scope === "rechnung"), posFields = fields.filter((f) => f.scope === "position");
@@ -4832,6 +4835,9 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
             })()}
             {locked && paid && !inv.paidTx && onPayWin && accounts.length > 0 && <button className="btn" style={{ margin: "4px 0 8px" }} onClick={() => onPayWin(inv)}>🔗 Kontobuchung nachträglich zuordnen</button>}
             {locked && paid && inv.paidAccount && <small className="block" style={{ marginBottom: 4 }}>🔗 Gebucht auf „{accounts.find((a) => a.id === inv.paidAccount)?.name || "Konto"}“{inv.paidAmount ? " · " + fmtMoney(inv.paidAmount) : ""}</small>}
+            {locked && paid && inv.paidTx && book && (() => { const bd = book.belegOf?.(inv.id); return bd
+              ? <button className="belegchip" onClick={() => book.openDoc(bd.id)} title="Beleg öffnen">{bd.thumb ? <img src={bd.thumb} alt="" /> : <span>📄</span>}<span className="grow"><b>📎 Beleg angehängt</b><small className="muted block">{bd.fileName || bd.title}</small></span><span className="muted">›</span></button>
+              : <button className="btn" style={{ margin: "4px 0 8px" }} onClick={() => book.attach(inv.id, inv.paidTx)}>📎 Rechnung als Beleg an die Buchung hängen</button>; })()}
             <small className="muted">{locked ? (paid ? "Wird sofort gespeichert." : "„Bezahlt“ öffnet das Buchen des Zahlungseingangs.") : paid ? "Beim Ausstellen wird die Rechnung als bezahlt geführt und – falls ein Konto gewählt ist – der Zahlungseingang dort als Einnahme gebucht. Auf dem PDF steht „Betrag dankend erhalten“." : "Zahlungsaufforderung mit Frist und QR-Code wird gedruckt."}</small>
           </fieldset>
         );
@@ -4928,7 +4934,7 @@ function PayWin({ inv, book, onDone, onClose }) {
   const cands = (book?.txs || []).filter((t) => t.amount > 0 && !t.invoiceId && t.date >= (inv.date || "") && (!accountId || t.accountId === accountId))
     .map((t) => ({ t, score: (Math.abs(t.amount - total) < 0.01 ? 2 : 0) + (`${t.purpose} ${t.counterparty}`.toLowerCase().replace(/\s/g, "").includes(num) ? 3 : 0) + (norm(t.counterparty).includes(norm(inv.customer?.name || "").split(" ")[0] || "§") ? 1 : 0) }))
     .filter((x) => x.score > 0).sort((a, b) => b.score - a.score || b.t.date.localeCompare(a.t.date)).slice(0, 6);
-  const [mode, setMode] = useState(cands.length ? "link" : "create");
+  const [mode, setMode] = useState("link");
   let [txId, setTxId] = useState(cands[0]?.t.id || "");
   useEffect(() => { if (!(book?.txs || []).some((t) => t.id === txId && t.accountId === accountId)) setTxId(""); }, [accountId]);
   const done = async (pick) => {
@@ -5161,7 +5167,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           })}
         </section>
       )}
-      {edit && <InvoiceEditor accounts={book?.accounts || []} txs={book?.txs || []} onPayWin={book ? (x) => { setEdit(null); setPayFor2(x); } : null} onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
+      {edit && <InvoiceEditor book={book} accounts={book?.accounts || []} txs={book?.txs || []} onPayWin={book ? (x) => { setEdit(null); setPayFor2(x); } : null} onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
       {coOpen && <CompanyWin co={co} setCo={setCo} onClose={() => setCoOpen(false)} />}
       {mdOpen && <MasterDataWin articles={articles} setArticles={setArticles} onClose={() => setMdOpen(false)} />}
       {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
@@ -6955,4 +6961,8 @@ nav.bottom>button.sidetoggle{display:none}
 .stmenu .moremenu{min-width:200px;top:calc(100% + 6px);right:0;left:auto;z-index:60}
 .stmenu .moremenu .cur{color:var(--acc);font-weight:600}
 .stmenu[open]>summary.stpill{box-shadow:0 0 0 2px var(--line)}
+
+.belegchip{display:flex;align-items:center;gap:10px;width:100%;margin:6px 0 8px;padding:8px 10px;background:var(--card2);border:1px solid var(--line);border-radius:12px;color:var(--txt);text-align:left;font:inherit;cursor:pointer}
+.belegchip img{width:38px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--line);flex:none}
+.belegchip:hover{border-color:var(--acc)}
 `;
