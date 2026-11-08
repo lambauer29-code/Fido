@@ -377,6 +377,7 @@ const ls = {
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
 
+if (typeof document !== "undefined" && ls.get("tabbarIcons", false)) document.documentElement.classList.add("tbicons");
 const BACKUP_SKIP = /^(appToken|appLock|pending|openSettingsSec|win:|scanFilter)/;
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
@@ -2436,7 +2437,8 @@ function BizReport({ docs, setTab }) {
         <small className="muted">Nur eine Übersicht aus den Daten der App – keine Steuerberatung. Ausgaben zählen, wenn das Dokument als „Firma“ markiert ist.</small>
       </section>
       <section className="tile">
-        <div className="tilehead"><b>Umsatz pro Monat</b><small>Kleinunternehmer {kuYear}: {fmtMoney(kuRev)} / {fmtMoney(KU_LIMIT)}</small></div>
+        <div className="tilehead"><b>Umsatz pro Monat</b></div>
+        <div className="kuhead"><small className="muted">Kleinunternehmergrenze {kuYear}</small><small><b>{fmtMoney(kuRev)}</b> / {fmtMoney(KU_LIMIT)} · {Math.round(kuPct)} %</small></div>
         <div className="kubar"><div style={{ width: kuPct + "%", background: kuPct > 90 ? "var(--red)" : kuPct > 75 ? "var(--warn)" : "var(--acc)" }} /></div>
         <MiniBars data={chart} h={140} />
         <div className="legend"><span className="dot inc" />Zahlungseingang <span className="dot out" />fakturiert</div>
@@ -2972,6 +2974,34 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
 }
 
 
+
+
+/* Symbolleiste am Handy: mit Text oder nur Symbole */
+function TabbarSetting() {
+  const [icons, setIcons] = useLsState("tabbarIcons", false);
+  useEffect(() => { document.documentElement.classList.toggle("tbicons", !!icons); }, [icons]);
+  return (<>
+    <small className="muted block tbsethead">Symbolleiste unten (Handy)</small>
+    <div className="themeopts tbset" role="radiogroup" aria-label="Symbolleiste">
+      {[[false, "🔤", "Symbole & Text", "Name unter jedem Symbol"], [true, "▫️", "Nur Symbole", "kompakter, mehr Reiter sichtbar"]].map(([k, i, t, sub]) => (
+        <button key={String(k)} role="radio" aria-checked={icons === k} className={icons === k ? "on" : ""} onClick={() => setIcons(k)}>
+          <span>{i}</span><b>{t}</b><small>{sub}</small>
+        </button>))}
+    </div>
+    <small className="muted block tbsethead">Tag- und Nachtmodus</small>
+  </>);
+}
+/* Passwortfeld mit Auge (anzeigen / verbergen) */
+function PwInput({ show, setShow, ...rest }) {
+  const [own, setOwn] = useState(false);
+  const vis = show ?? own, toggle = () => (setShow ? setShow(!vis) : setOwn(!vis));
+  return (
+    <span className="pwinput">
+      <input {...rest} type={vis ? "text" : "password"} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+      <button type="button" className="pweye" tabIndex={-1} title={vis ? "Passwort verbergen" : "Passwort anzeigen"} aria-label={vis ? "Passwort verbergen" : "Passwort anzeigen"} onClick={toggle}>{vis ? <IcoEyeOff /> : <IcoEye />}</button>
+    </span>
+  );
+}
 /* ---------- Alle Daten löschen (Backup-Bereich) ---------- */
 const WIPE_WORD = "ALLES LÖSCHEN";
 async function wipeAllData() {
@@ -5657,7 +5687,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
 
   useEffect(() => { navigator.storage?.estimate?.().then((e) => setUsage(`${(e.usage / 1048576).toFixed(1)} MB belegt`)); }, [docs.length]);
 
-  const [bkPw, setBkPw] = useState(""), [bkPw2, setBkPw2] = useState(""), [bkPlain, setBkPlain] = useState(false);
+  const [bkPw, setBkPw] = useState(""), [bkPw2, setBkPw2] = useState(""), [bkPlain, setBkPlain] = useState(false), [bkShow, setBkShow] = useState(false);
   const [bkFile, setBkFile] = useState(null), [bkImpPw, setBkImpPw] = useState("");
   const bkOk = bkPlain || (bkPw.length >= 8 && bkPw === bkPw2);
   async function exportBackup() {
@@ -5704,6 +5734,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
 
   const sections = {
     "darstellung": <><SetSec id="darstellung" title="Darstellung">
+        <TabbarSetting />
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
             <button key={k} role="radio" aria-checked={themeMode === k} className={themeMode === k ? "on" : ""} onClick={() => setThemeMode(k)}>
@@ -5795,10 +5826,11 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         <h4 className="bkh">🔒 Verschlüsselt exportieren</h4>
         <p className="muted small">AES-256-GCM, Schlüssel per PBKDF2 mit SHA-256 ({BK_ITER.toLocaleString("de-AT")} Durchläufe) aus deinem Passwort. Ohne Passwort kann niemand – auch nicht FinDocu – das Backup öffnen. <b>Passwort nicht vergessen!</b></p>
         {!bkPlain && <div className="grid2">
-          <label>Passwort (mind. 8 Zeichen)<input type="password" autoComplete="new-password" value={bkPw} onChange={(e) => setBkPw(e.target.value)} /></label>
-          <label>Passwort wiederholen<input type="password" autoComplete="new-password" value={bkPw2} onChange={(e) => setBkPw2(e.target.value)} /></label>
+          <label>Passwort (mind. 8 Zeichen)<PwInput show={bkShow} setShow={setBkShow} autoComplete="new-password" value={bkPw} onChange={(e) => setBkPw(e.target.value)} /></label>
+          <label>Passwort wiederholen<PwInput show={bkShow} setShow={setBkShow} autoComplete="new-password" value={bkPw2} onChange={(e) => setBkPw2(e.target.value)} /></label>
         </div>}
         {!bkPlain && bkPw2 && bkPw !== bkPw2 && <small className="red block">Passwörter stimmen nicht überein</small>}
+        {!bkPlain && bkPw2 && bkPw === bkPw2 && <small className={"block " + (bkPw.length >= 8 ? "ok" : "warnc")}>{bkPw.length >= 8 ? "✓ Passwörter stimmen überein" : "Passwörter gleich – aber mindestens 8 Zeichen nötig"}</small>}
         <label className="check"><input type="checkbox" checked={bkPlain} onChange={(e) => setBkPlain(e.target.checked)} /> Ohne Verschlüsselung exportieren (nicht empfohlen)</label>
         <div className="actions">
           <button className="btn primary" disabled={busy || !bkOk} onClick={exportBackup}>⬇︎ Backup exportieren</button>
@@ -5806,7 +5838,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         </div>
         {bkFile && <div className="bkimp">
           <b>🔒 „{bkFile.name}“ ist verschlüsselt</b>
-          <label>Passwort<input type="password" autoFocus value={bkImpPw} onChange={(e) => setBkImpPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && bkImpPw && importBackup(bkFile, bkImpPw)} /></label>
+          <label>Passwort<PwInput show={bkShow} setShow={setBkShow} autoFocus value={bkImpPw} onChange={(e) => setBkImpPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && bkImpPw && importBackup(bkFile, bkImpPw)} /></label>
           <div className="actions"><button className="btn primary" disabled={busy || !bkImpPw} onClick={() => importBackup(bkFile, bkImpPw)}>Entschlüsseln &amp; importieren</button><button className="link" onClick={() => { setBkFile(null); setBkImpPw(""); }}>Abbrechen</button></div>
         </div>}
         <input ref={importRef} type="file" accept="application/json,.json" hidden onChange={(e) => { e.target.files[0] && importBackup(e.target.files[0]); e.target.value = ""; }} />
@@ -9018,4 +9050,22 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 .wipeword{color:var(--red);letter-spacing:.04em}.wipebox input:disabled{opacity:.5}
 .wipebox .btn.danger:not(:disabled){background:var(--red);color:#fff;border-color:var(--red)}
 .wipezone>.btn.danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 50%,transparent)}
+
+.pwinput{position:relative;display:block;margin-top:4px}.pwinput input{width:100%;padding-right:44px;margin:0;box-sizing:border-box}
+.pweye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:0;background:none;color:var(--mut);display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:8px;padding:0}
+.pweye:hover{color:var(--txt);background:var(--card2)}.pweye svg{width:20px;height:20px}
+
+@media (max-width:767px){.dprevbar.gbar{display:none!important}}
+
+.tilehead{flex-wrap:wrap;gap:4px 12px}
+@media (max-width:767px){html.fg .tilehead small,html.fg .tilehead .link{white-space:normal}}
+.kuhead{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:-2px 0 6px}
+.tbsethead{margin:4px 0 8px}.tbset{margin-bottom:16px}
+@media (max-width:767px){
+  html.tbicons nav.bottom>button span.tl{display:none}
+  html.tbicons nav.bottom>button{flex:1 0 56px;min-height:52px;min-width:56px;padding:6px 4px;justify-content:center;align-items:center}
+  html.tbicons nav.bottom>button .tabico{margin:0 auto}
+  html.fg.tbicons nav.bottom>button{min-height:52px}
+  html.tbicons nav.bottom .tabico .tabsvg{width:28px;height:28px}
+}
 `;

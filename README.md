@@ -2,6 +2,19 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.48.1
+- Symbolleiste „Nur Symbole“: Symbole gleichmäßig über die ganze Leiste verteilt und zentriert.
+
+## v0.48.0
+- Einstellungen › Darstellung: Symbolleiste unten am Handy wählbar „Symbole & Text“ oder „Nur Symbole“ (kompakter).
+- Kachel-Überschriften brechen am Handy sauber um statt über den Rand zu laufen; Firmenauswertung: Kleinunternehmergrenze als eigene Zeile über dem Balken.
+
+## v0.47.2
+- Dokumente (Kachelansicht) im Handy-Modus: schwebende Leiste „Drucken / Original öffnen“ über den Vorschaubildern entfernt – Drucken bleibt in der Aktionsleiste darunter.
+
+## v0.47.1
+- Backup: Passwortfelder mit Auge zum Anzeigen/Verbergen (beide Felder gemeinsam, zum Vergleichen) und Hinweis „✓ Passwörter stimmen überein“. Auch beim Importieren eines verschlüsselten Backups.
+
 ## v0.47.0
 - Backup: neue „Gefahrenzone“ mit „Alle Daten löschen“. Warnung mit Übersicht, was gelöscht wird, Bestätigungs-Häkchen und Eingabe von „ALLES LÖSCHEN“ (genau so, in Großbuchstaben). Löscht Dokumente, Dateien, Umsätze und alle gespeicherten Daten/Einstellungen auf diesem Gerät und lädt die App neu.
 
