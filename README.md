@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.30.2
+- Mahnungen: Auswahlfeld durch Button „＋ Mahnung“ ersetzt – öffnet eine Liste der offenen/überfälligen Rechnungen (Hinweis, wenn keine offen ist)
+- Buttons „Rechnungen“ und ⚙︎ in Mahnungen in derselben Größe wie bei den Rechnungen
+
+## v0.30.1
+- Filterleiste bearbeiten: schlichtes Linien-Augensymbol (wie „Beträge ausblenden“), durchgestrichen bei ausgeblendeten Feldern
+
 ## v0.30.0
 - Dokumente: Filterleiste anpassbar – über ⚙︎ Bearbeiten-Modus, Felder am Griff ⠿ seitlich verschieben und mit 👁 ein-/ausblenden (wird gemerkt)
 - Auswahlfelder in der Filterleiste maximal 170 px breit (z. B. „Alle Tags“)

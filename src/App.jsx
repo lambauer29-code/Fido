@@ -2558,11 +2558,11 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
             {order.map((k) => chipEdit
               ? <span key={k} data-chipk={k} className={"chipcfg" + (hidden.has(k) ? " off" : "") + (dragK === k ? " drag" : "")} onPointerDown={(e) => !e.target.closest("button") && startDrag(e, k)}>
                   <span className="chh" aria-hidden="true">⠿</span>{defs[k][0]}
-                  <button className="chipeye" title={hidden.has(k) ? "Einblenden" : "Ausblenden"} onClick={() => setChipCfg((c) => ({ ...c, hidden: hidden.has(k) ? c.hidden.filter((x) => x !== k) : [...c.hidden, k] }))}>{hidden.has(k) ? "◌" : "👁"}</button>
+                  <button className="chipeye" title={hidden.has(k) ? "Einblenden" : "Ausblenden"} onClick={() => setChipCfg((c) => ({ ...c, hidden: hidden.has(k) ? c.hidden.filter((x) => x !== k) : [...c.hidden, k] }))}>{hidden.has(k) ? <IcoEyeOff /> : <IcoEye />}</button>
                 </span>
               : !hidden.has(k) && <React.Fragment key={k}>{defs[k][1]}</React.Fragment>)}
             <button className={"chip chipset" + (chipEdit ? " on" : "")} title="Filter anordnen und ein-/ausblenden" onClick={() => setChipEdit(!chipEdit)}>{chipEdit ? "✓ Fertig" : "⚙︎"}</button>
-            {chipEdit && <small className="muted chiphint">Am Griff ⠿ seitlich ziehen · 👁 ein-/ausblenden</small>}
+            {chipEdit && <small className="muted chiphint">Am Griff ⠿ seitlich ziehen · Auge zum Ein-/Ausblenden</small>}
           </div>
         );
       })()}
@@ -5944,13 +5944,17 @@ function DunningPage({ setTab, book }) {
         <div className="tile"><small className="muted">Mahnspesen {year}</small><b>{fmtMoney(history.filter((h) => (h.r.date || "").startsWith(year)).reduce((s, h) => s + (Number(h.r.fee) || 0), 0))}</b><small className="muted">verrechnet</small></div>
       </div>
       <div className="invbar">
-        <select className="chip" value={other} onChange={(e) => { const x = inv.find((i) => i.id === e.target.value); if (x) setRemind(x); setOther(""); }}>
-          <option value="">＋ Mahnung für eine offene Rechnung …</option>
-          {[...over.map((o) => o.x), ...openNotOver].map((x) => <option key={x.id} value={x.id}>{x.number} · {x.customer?.name} · {fmtMoney(invTotal(x))}</option>)}
-        </select>
+        {(() => { const cand = [...over.map((o) => o.x), ...openNotOver]; return (
+          <details className="more newdun">
+            <summary className="btn primary">＋ Mahnung</summary>
+            <div className="moremenu" onClick={(e) => { if (e.target.closest("button")) e.currentTarget.closest("details").open = false; }}>
+              {!cand.length && <p className="muted small" style={{ margin: 8 }}>Keine offenen Rechnungen – alles bezahlt 🎉</p>}
+              {cand.map((x) => <button key={x.id} onClick={() => setRemind(x)}><b>{x.number}</b> · {x.customer?.name || "Ohne Kunde"} <span className="muted">· {fmtMoney(invTotal(x))}{invState(x) === "überfällig" ? " · überfällig" : ""}</span></button>)}
+            </div>
+          </details>); })()}
         <span className="grow" />
-        {setTab && <button className="chip" onClick={() => setTab("invoices")}>🧾 Rechnungen</button>}
-        {setTab && <button className="chip" title="Mahnwesen einstellen" onClick={() => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); }}>⚙︎</button>}
+        {setTab && <button className="btn" onClick={() => setTab("invoices")}>🧾 Rechnungen</button>}
+        {setTab && <button className="btn" title="Mahnwesen einstellen" onClick={() => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); }}>⚙︎</button>}
       </div>
       <section className="tile invlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b></div>
@@ -7093,4 +7097,7 @@ nav.bottom>button.sidetoggle{display:none}
 .chiphint{align-self:center;font-size:12px}
 .chips.chipedit{flex-wrap:wrap;overflow:visible;row-gap:8px}
 .chipset,.chiphint{flex:none;white-space:nowrap}
+.chipeye{display:inline-flex;align-items:center;justify-content:center;color:var(--mut)}.chipeye svg{width:16px;height:16px}.chipcfg.off .chipeye{color:var(--txt)}
+.newdun>summary.btn{list-style:none;display:inline-flex;align-items:center}.newdun>summary::-webkit-details-marker{display:none}
+.newdun .moremenu{left:0;right:auto;min-width:280px;top:calc(100% + 6px)}
 `;
