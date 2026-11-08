@@ -2,6 +2,19 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.43.0
+- Optionale App-Sperre (Standard: aus): Einstellungen → App-Sperre → „Passwort beim Öffnen verlangen“
+  - Anmeldebildschirm beim Start, falsches Passwort wird abgewiesen; „Jetzt sperren“ und „Passwort ändern“; Ausschalten nur mit aktuellem Passwort
+  - gespeichert wird nur ein PBKDF2-SHA-256-Prüfwert mit Salt, nicht das Passwort; wird nicht ins Backup übernommen
+
+## v0.42.0
+- Backup verschlüsselt: AES-256-GCM, Schlüssel per PBKDF2 mit SHA-256 (310.000 Durchläufe, zufälliges Salt) aus einem Passwort (mind. 8 Zeichen, doppelte Eingabe)
+- Import erkennt verschlüsselte Backups und fragt nach dem Passwort; alte unverschlüsselte Backups lassen sich weiter importieren
+- Unverschlüsselter Export nur noch mit ausdrücklichem Haken; Dateiname jetzt „findocu-backup-…“
+
+## v0.41.1
+- Backup aus den Einstellungen in einen eigenen Reiter „Backup“ verschoben – in der Seitenleiste direkt unter „Einstellungen“ (am Handy über Einstellungen → Seitenleiste einblendbar)
+
 ## v0.41.0
 - Kontobuchungen: Klick auf eine Buchung mit Beleg klappt die Beleg-Vorschau darunter auf (wie bei Dokumente, mit Seitenanzahl, Drucken, „Original öffnen“); nochmal klicken schließt sie
 - Kontobuchungen: Aktionsleiste hinter dem Betrag – Bearbeiten, Beleg drucken, Beleg teilen, Buchung löschen (Drucken/Teilen nur mit Beleg)

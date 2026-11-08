@@ -376,7 +376,7 @@ const ls = {
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
 
-const BACKUP_SKIP = /^(appToken|pending|openSettingsSec|win:|scanFilter)/;
+const BACKUP_SKIP = /^(appToken|appLock|pending|openSettingsSec|win:|scanFilter)/;
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -479,7 +479,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Barausgabe"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Barausgabe"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -552,7 +552,7 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 const DEFAULT_NAV = {
   tabs: [
     { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: false, parent: "docs" },
-    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "kunden", side: true, phone: false }, { key: "mahnungen", side: true, phone: false }, { key: "artikel", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }
+    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "kunden", side: true, phone: false }, { key: "mahnungen", side: true, phone: false }, { key: "artikel", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: false, parent: "settings" }
   ],
   groups: [
     { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
@@ -577,9 +577,10 @@ function loadNav() {
   if (!n.v19) { n.tabs = n.tabs.map((t) => (t.key === "deadlines" && !t.parent ? { ...t, parent: "docs" } : t)); n.v19 = true; }
   const keys = n.tabs.map((t) => t.key);
   // fehlende (neue) Reiter vor „Einstellungen“ einfügen
-  const missing = DEFAULT_NAV.tabs.filter((t) => !keys.includes(t.key));
+  const missing = DEFAULT_NAV.tabs.filter((t) => !keys.includes(t.key) && t.parent !== "settings");
+  const after = DEFAULT_NAV.tabs.filter((t) => !keys.includes(t.key) && t.parent === "settings");
   const si = n.tabs.findIndex((t) => t.key === "settings");
-  const tabs = si < 0 ? [...n.tabs, ...missing] : [...n.tabs.slice(0, si), ...missing, ...n.tabs.slice(si)];
+  const tabs = si < 0 ? [...n.tabs, ...missing, ...after] : [...n.tabs.slice(0, si), ...missing, n.tabs[si], ...after, ...n.tabs.slice(si + 1)];
   return { ...DEFAULT_NAV, ...n, tabs };
 }
 const tabLabel = (nav, key) => nav.tabs.find((t) => t.key === key)?.label?.trim() || TAB_DEFS[key]?.[1] || "";
@@ -597,6 +598,7 @@ const TAB_SVG = {
   artikel: <><path d="M12 3 3.5 7.5v9L12 21l8.5-4.5v-9z" /><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9" /></>,
   vertraege: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M8.5 17c1.2-1.6 2-1.6 2.6 0 .6 1.4 1.3 1.4 2.4 0" /></>,
   contracts: <><path d="M4 11a8 8 0 0 1 14-5.3L20 8" /><path d="M20 3v5h-5" /><path d="M20 13a8 8 0 0 1-14 5.3L4 16" /><path d="M4 21v-5h5" /></>,
+  backup: <><path d="M5 4h11l3 3v13H5z" /><path d="M8 4v5h7V4" /><rect x="8" y="13" width="8" height="5" rx="1" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>,
 };
 function TabIcon({ t }) {
@@ -1381,7 +1383,48 @@ function AccountPicker({ groups, txs, sel, onApply, onClose }) {
 /* ---------- Einstellungen: Seitenleiste & Kontengruppen ---------- */
 /* ============================================================ */
 
+/* ======================= App-Sperre (optional, Standard: aus) ======================= */
+// Passwort wird nie gespeichert – nur ein PBKDF2-SHA-256-Hash mit zufälligem Salt (localStorage „appLock“)
+async function lockHash(pw, saltB64, iter = 200000) {
+  const salt = saltB64 ? Uint8Array.from(atob(saltB64), (c) => c.charCodeAt(0)) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveBits"]);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, key, 256));
+  const b64 = (u) => btoa(String.fromCharCode(...u));
+  return { salt: b64(salt), hash: b64(bits), iter };
+}
+async function lockCheck(pw) {
+  const l = ls.get("appLock", null); if (!l) return true;
+  const h = await lockHash(pw, l.salt, l.iter); return h.hash === l.hash;
+}
+const lockActive = () => !!ls.get("appLock", null);
+function LockScreen({ onUnlock }) {
+  const [pw, setPw] = useState(""), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+  const go = async (e) => {
+    e?.preventDefault(); if (!pw || busy) return; setBusy(true);
+    if (await lockCheck(pw)) { try { sessionStorage.setItem("findocuUnlocked", "1"); } catch {} onUnlock(); }
+    else { setErr("Falsches Passwort"); setPw(""); }
+    setBusy(false);
+  };
+  return (
+    <div className="lockscreen">
+      <form className="lockbox" onSubmit={go}>
+        <img src="/icon.svg" alt="" className="lockicon" />
+        <h1>FinDocu</h1>
+        <p className="muted">Finanzen &amp; Dokumente · gesperrt</p>
+        <input type="password" autoFocus autoComplete="current-password" placeholder="Passwort" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} className={err ? "shake" : ""} />
+        {err && <small className="red block">{err}</small>}
+        <button className="btn primary big" disabled={!pw || busy}>{busy ? "Prüfe …" : "Entsperren"}</button>
+      </form>
+    </div>
+  );
+}
 export default function App() {
+  const [unlocked, setUnlocked] = useState(() => { try { return !lockActive() || sessionStorage.getItem("findocuUnlocked") === "1"; } catch { return !lockActive(); } });
+  useEffect(() => { const h = () => setUnlocked(false); window.addEventListener("findocu-lock", h); return () => window.removeEventListener("findocu-lock", h); }, []);
+  if (!unlocked) { applyTheme(effectiveTheme(ls.get("theme", "auto"))); return <><style>{CSS}</style><LockScreen onUnlock={() => setUnlocked(true)} /></>; }
+  return <AppMain />;
+}
+function AppMain() {
   const [docs, setDocs] = useState([]);
   const [tab, setTab] = useState("home");
   const [openId, setOpenId] = useState(null);
@@ -1890,8 +1933,8 @@ export default function App() {
         {tab === "kunden" && <ContactsPage setTab={setTab} req={bizReq} busy={ctBusy} setBusy={setCtBusy} />}
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} onFiles={onFiles} docBusy={docBusy} notify={notify} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
-        {tab === "settings" && (
-          <Settings theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
+        {(tab === "settings" || tab === "backup") && (
+          <Settings key={tab} only={tab === "backup" ? "backup" : ""} theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
             docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} notify={notify} />
         )}
@@ -4223,7 +4266,7 @@ function SetSec({ id, title, children }) {
   );
 }
 
-const SET_IDS = ["darstellung", "design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"];
+const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -4349,7 +4392,62 @@ function DesignSettings({ design, setDesign, theme }) {
   );
 }
 
-function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+function AppLockSettings({ notify }) {
+  const [on, setOn] = useState(lockActive());
+  const [mode, setMode] = useState(""); // "set" | "change" | "off"
+  const [cur, setCur] = useState(""), [pw, setPw] = useState(""), [pw2, setPw2] = useState(""), [err, setErr] = useState("");
+  const reset = () => { setMode(""); setCur(""); setPw(""); setPw2(""); setErr(""); };
+  const save = async () => {
+    if (mode !== "set" && !(await lockCheck(cur))) return setErr("Aktuelles Passwort stimmt nicht");
+    if (mode === "off") { localStorage.removeItem("appLock"); setOn(false); reset(); return notify("App-Sperre ausgeschaltet"); }
+    if (pw.length < 4) return setErr("Mindestens 4 Zeichen");
+    if (pw !== pw2) return setErr("Passwörter stimmen nicht überein");
+    ls.set("appLock", await lockHash(pw)); try { sessionStorage.setItem("findocuUnlocked", "1"); } catch {}
+    setOn(true); reset(); notify(mode === "set" ? "App-Sperre eingeschaltet" : "Passwort geändert");
+  };
+  return (<>
+    <label className="switchrow">
+      <span><b>Passwort beim Öffnen verlangen</b><small className="muted block">Beim Start der App (und nach „Jetzt sperren“) erscheint ein Anmeldebildschirm. Standard: aus.</small></span>
+      <input type="checkbox" className="switch" checked={on || mode === "set"} onChange={(e) => { reset(); setMode(e.target.checked ? "set" : on ? "off" : ""); }} />
+    </label>
+    {mode && <div className="bkimp">
+      {mode !== "set" && <label>Aktuelles Passwort<input type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} /></label>}
+      {mode !== "off" && <div className="grid2">
+        <label>{mode === "change" ? "Neues Passwort" : "Passwort"} (mind. 4 Zeichen)<input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} /></label>
+        <label>Wiederholen<input type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} /></label>
+      </div>}
+      {err && <small className="red block">{err}</small>}
+      <div className="actions"><button className="btn primary" onClick={save}>{mode === "off" ? "Sperre ausschalten" : mode === "change" ? "Passwort ändern" : "Sperre einschalten"}</button><button className="link" onClick={reset}>Abbrechen</button></div>
+    </div>}
+    {on && !mode && <div className="actions">
+      <button className="btn" onClick={() => { try { sessionStorage.removeItem("findocuUnlocked"); } catch {} window.dispatchEvent(new Event("findocu-lock")); }}>🔒 Jetzt sperren</button>
+      <button className="btn" onClick={() => { reset(); setMode("change"); }}>Passwort ändern</button>
+    </div>}
+    <p className="muted small">Hinweis: Die Sperre schützt vor neugierigen Blicken auf diesem Gerät. Gespeichert wird nur ein Prüfwert (PBKDF2-SHA-256), nicht das Passwort. Passwort vergessen? Dann die Website-Daten im Browser löschen und ein Backup zurückspielen.</p>
+  </>);
+}
+
+/* ---------- Backup-Verschlüsselung: AES-256-GCM, Schlüssel per PBKDF2-SHA-256 aus dem Passwort ---------- */
+const BK_ITER = 310000;
+const u8ToB64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+const b64ToU8 = (b) => { const s = atob(b), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
+async function bkKey(pw, salt, iter) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function encryptBackup(text, pw) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await bkKey(pw, salt, BK_ITER), new TextEncoder().encode(text)));
+  return JSON.stringify({ findocu: "backup-enc-v1", cipher: "AES-256-GCM", kdf: "PBKDF2-SHA-256", iter: BK_ITER, salt: u8ToB64(salt), iv: u8ToB64(iv), data: u8ToB64(ct) });
+}
+async function decryptBackup(j, pw) {
+  try {
+    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64ToU8(j.iv) }, await bkKey(pw, b64ToU8(j.salt), j.iter || BK_ITER), b64ToU8(j.data));
+    return new TextDecoder().decode(pt);
+  } catch { throw new Error("Passwort falsch oder Datei beschädigt"); }
+}
+
+function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
   const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
   useEffect(() => {
@@ -4370,6 +4468,9 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
 
   useEffect(() => { navigator.storage?.estimate?.().then((e) => setUsage(`${(e.usage / 1048576).toFixed(1)} MB belegt`)); }, [docs.length]);
 
+  const [bkPw, setBkPw] = useState(""), [bkPw2, setBkPw2] = useState(""), [bkPlain, setBkPlain] = useState(false);
+  const [bkFile, setBkFile] = useState(null), [bkImpPw, setBkImpPw] = useState("");
+  const bkOk = bkPlain || (bkPw.length >= 8 && bkPw === bkPw2);
   async function exportBackup() {
     setBusy(true);
     try {
@@ -4378,14 +4479,22 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
       // alle App-Einstellungen und Firmendaten (Rechnungen, Kunden, Artikel, Verträge, Design …) – ohne Zugangscode und Zwischenstände
       const store = {};
       for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!BACKUP_SKIP.test(k)) store[k] = localStorage.getItem(k); }
-      download(new Blob([JSON.stringify({ version: 5, exported: new Date().toISOString(), categories, nav, budgets, accounts, rules, txs, store, items: out })], { type: "application/json" }),
-        `dokumente-backup-${todayISO()}.json`);
-    } finally { setBusy(false); }
+      const plain = JSON.stringify({ version: 5, exported: new Date().toISOString(), categories, nav, budgets, accounts, rules, txs, store, items: out });
+      const enc = !bkPlain;
+      download(new Blob([enc ? await encryptBackup(plain, bkPw) : plain], { type: "application/json" }),
+        `findocu-backup-${todayISO()}${enc ? "-verschluesselt" : ""}.json`);
+      if (enc) { setBkPw(""); setBkPw2(""); notify("Verschlüsseltes Backup erstellt – Passwort gut aufbewahren, ohne es ist das Backup nicht lesbar"); }
+    } catch (e) { notify("Backup fehlgeschlagen: " + e.message); }
+    finally { setBusy(false); }
   }
-  async function importBackup(file) {
+  async function importBackup(file, pw) {
     setBusy(true);
     try {
-      const j = JSON.parse(await file.text());
+      let j = JSON.parse(await file.text());
+      if (j.findocu === "backup-enc-v1") {
+        if (!pw) { setBkFile(file); setBusy(false); return; }
+        j = JSON.parse(await decryptBackup(j, pw)); setBkFile(null); setBkImpPw("");
+      }
       let n = 0;
       for (const { doc, file: f } of j.items || []) { if (f) await db.putFile(doc.id, base64ToBlob(f, doc.mimeType)); await db.putDoc(doc); n++; }
       if (j.nav) setNav(j.nav); else if (j.categories) setCategories(j.categories);
@@ -4416,6 +4525,9 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
 
       </SetSec></>,
     "design": <><SetSec id="design" title="Design"><DesignSettings design={design} setDesign={setDesign} theme={theme} /></SetSec></>,
+    "applock": <><SetSec id="applock" title="App-Sperre">
+        <AppLockSettings notify={notify} />
+      </SetSec></>,
     "datenschutz": <><SetSec id="datenschutz" title="Datenschutz">
         <label className="switchrow">
           <span><b>Geldbeträge anzeigen</b><small className="muted block">Aus = alle Beträge werden als „€ •••“ verdeckt (z. B. wenn jemand mitschaut). Schnell umschalten auch mit dem Augen-Symbol oben rechts.</small></span>
@@ -4491,11 +4603,24 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
       </SetSec></>,
     "backup": <><SetSec id="backup" title="Backup">
         <p className="muted small">Das Backup enthält Dokumente, Umsätze, Konten sowie Rechnungen, Kunden, Artikel, Verträge, Firmendaten und alle Einstellungen. Die Daten liegen nur in diesem Browser auf diesem Gerät. Regelmäßig sichern (z. B. in iCloud Drive) – darüber auch auf ein anderes Gerät übertragen.</p>
+        <h4 className="bkh">🔒 Verschlüsselt exportieren</h4>
+        <p className="muted small">AES-256-GCM, Schlüssel per PBKDF2 mit SHA-256 ({BK_ITER.toLocaleString("de-AT")} Durchläufe) aus deinem Passwort. Ohne Passwort kann niemand – auch nicht FinDocu – das Backup öffnen. <b>Passwort nicht vergessen!</b></p>
+        {!bkPlain && <div className="grid2">
+          <label>Passwort (mind. 8 Zeichen)<input type="password" autoComplete="new-password" value={bkPw} onChange={(e) => setBkPw(e.target.value)} /></label>
+          <label>Passwort wiederholen<input type="password" autoComplete="new-password" value={bkPw2} onChange={(e) => setBkPw2(e.target.value)} /></label>
+        </div>}
+        {!bkPlain && bkPw2 && bkPw !== bkPw2 && <small className="red block">Passwörter stimmen nicht überein</small>}
+        <label className="check"><input type="checkbox" checked={bkPlain} onChange={(e) => setBkPlain(e.target.checked)} /> Ohne Verschlüsselung exportieren (nicht empfohlen)</label>
         <div className="actions">
-          <button className="btn" disabled={busy} onClick={exportBackup}>⬇︎ Backup exportieren</button>
+          <button className="btn primary" disabled={busy || !bkOk} onClick={exportBackup}>⬇︎ Backup exportieren</button>
           <button className="btn" disabled={busy} onClick={() => importRef.current.click()}>⬆︎ Backup importieren</button>
         </div>
-        <input ref={importRef} type="file" accept="application/json" hidden onChange={(e) => { e.target.files[0] && importBackup(e.target.files[0]); e.target.value = ""; }} />
+        {bkFile && <div className="bkimp">
+          <b>🔒 „{bkFile.name}“ ist verschlüsselt</b>
+          <label>Passwort<input type="password" autoFocus value={bkImpPw} onChange={(e) => setBkImpPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && bkImpPw && importBackup(bkFile, bkImpPw)} /></label>
+          <div className="actions"><button className="btn primary" disabled={busy || !bkImpPw} onClick={() => importBackup(bkFile, bkImpPw)}>Entschlüsseln &amp; importieren</button><button className="link" onClick={() => { setBkFile(null); setBkImpPw(""); }}>Abbrechen</button></div>
+        </div>}
+        <input ref={importRef} type="file" accept="application/json,.json" hidden onChange={(e) => { e.target.files[0] && importBackup(e.target.files[0]); e.target.value = ""; }} />
         <p className="muted small">{docs.length} Dokumente · {txs.length} Umsätze · {usage}</p>
       </SetSec></>,
     "verbindung": <><SetSec id="verbindung" title="Verbindung">
@@ -4520,7 +4645,8 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
         )}
       </SetSec></>
   };
-  const order = mergeOrder(secOrder, SET_IDS);
+  if (only) return <div className="settings onlysec">{sections[only]}</div>;
+  const order = mergeOrder(secOrder, SET_IDS).filter((id) => id !== "backup");
   const ctx = { order, collapsed: secClosed, dnd: secDnd,
     toggle: (id) => setSecClosed((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id])) };
   const allClosed = order.every((id) => secClosed.includes(id));
@@ -7562,4 +7688,15 @@ html.fg .kv>:first-child{font-size:16px;color:var(--mut)}
 html.fg .win .btn.danger{font-size:17px}
 /* Kategorie-Kacheln in der Buchungstabelle: 1px kleiner, Symbol mittig */
 html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;height:47px!important;display:inline-flex!important;align-items:center;justify-content:center;font-size:23px!important;line-height:1;padding:0}
+.bkh{margin:16px 0 4px;font-size:18px}.bkimp{margin-top:14px;padding:14px;border-radius:16px;background:var(--card2)}
+
+.lockscreen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:24px;z-index:100}
+.lockbox{width:100%;max-width:360px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.lockbox .lockicon{width:84px;height:84px;border-radius:22px;margin-bottom:6px}
+.lockbox h1{margin:0;font-size:36px;font-weight:600}
+.lockbox p{margin:0 0 12px}
+.lockbox input{width:100%;text-align:center;font-size:20px;height:56px;border-radius:18px;border:0;background:var(--card2);color:var(--txt);padding:0 16px;box-sizing:border-box}
+.lockbox .btn{width:100%;min-height:52px;font-size:18px}
+.shake{animation:shake .35s}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
 `;
