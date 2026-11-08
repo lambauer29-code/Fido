@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.24.14
+
+- Bezahlte Rechnungen: Knopf zum Zurückstellen heißt jetzt „Offen“.
+
 ## v0.24.13
 
 - Rechnungs- und Mahnliste: Betrag, Status und Knöpfe stehen jetzt vertikal mittig in einer Linie; Status-Text exakt zentriert.
