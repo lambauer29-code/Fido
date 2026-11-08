@@ -9131,4 +9131,6 @@ html,body{min-height:100%}
 .chips.chipbar>.chip,.chips.chipbar>select.chip{flex:1 1 auto;justify-content:center;text-align:center;min-width:0}
 .chips.chipbar>.chipset{flex:0 0 auto}
 .chips.chipbar.chipedit>.chipcfg{flex:0 0 auto}
+
+.chips.chipbar>.chip,.chips.chipbar>select.chip,.chips.chipbar>.chipcfg{height:43px!important;min-height:43px!important}
 `;

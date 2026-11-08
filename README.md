@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.49.2
+- Filterleisten: Felder 3 px niedriger (46 → 43 px).
+
 ## v0.49.1
 - Dokumente: Filterleiste (Umtauschfrist, Steuerrelevant, Unbezahlt, Monat, Jahr, Tags, Sortierung, Auswählen, CSV, Ablagefeld) passt sich der Breite an und bricht um statt abgeschnitten zu werden. Über ⇄ lassen sich alle Einträge sortieren und ein-/ausblenden – jetzt auch die Leisten „Privat / Firma“ und „Bereiche“.
 
