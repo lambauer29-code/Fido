@@ -4829,6 +4829,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
                   value={inv.prePaidTx === "pick" ? "" : inv.prePaidTx} onChange={(id) => { const t = txs.find((x) => x.id === id); set({ prePaidTx: id, paidAt: t?.date || inv.paidAt }); }} />}
               </>);
             })()}
+            {locked && paid && !inv.paidTx && onPayWin && accounts.length > 0 && <button className="btn" style={{ margin: "4px 0 8px" }} onClick={() => onPayWin(inv)}>🔗 Kontobuchung nachträglich zuordnen</button>}
             {locked && paid && inv.paidAccount && <small className="block" style={{ marginBottom: 4 }}>🔗 Gebucht auf „{accounts.find((a) => a.id === inv.paidAccount)?.name || "Konto"}“{inv.paidAmount ? " · " + fmtMoney(inv.paidAmount) : ""}</small>}
             <small className="muted">{locked ? (paid ? "Wird sofort gespeichert." : "„Bezahlt“ öffnet das Buchen des Zahlungseingangs.") : paid ? "Beim Ausstellen wird die Rechnung als bezahlt geführt und – falls ein Konto gewählt ist – der Zahlungseingang dort als Einnahme gebucht. Auf dem PDF steht „Betrag dankend erhalten“." : "Zahlungsaufforderung mit Frist und QR-Code wird gedruckt."}</small>
           </fieldset>
@@ -4916,7 +4917,7 @@ function PayWin({ inv, book, onDone, onClose }) {
   const total = invTotal(inv);
   const lastAcc = ls.get("payAccount", "");
   const [accountId, setAcc] = useState(() => (accs.find((a) => a.id === lastAcc) || accs.find((a) => a.kind === "bank") || accs[0] || {}).id || "");
-  const [date, setDate] = useState(todayISO()), [amount, setAmount] = useState(String(total).replace(".", ","));
+  const [date, setDate] = useState(inv.paidAt || todayISO()), [amount, setAmount] = useState(String(total).replace(".", ","));
   const [method, setMethod] = useState("Überweisung");
   const acc = accs.find((a) => a.id === accountId);
   useEffect(() => { if (acc?.kind === "cash") setMethod("Bar"); else if (method === "Bar") setMethod("Überweisung"); }, [accountId]);
@@ -4941,7 +4942,7 @@ function PayWin({ inv, book, onDone, onClose }) {
   };
   return (
     <Win id="paywin" onClose={onClose} small center dirty={false}>
-      <div className="panelhead"><b>Zahlungseingang {inv.number}</b><button className="btn primary" disabled={mode === "link" && accountId ? !txId : false} onClick={() => done()}>Als bezahlt buchen</button><XBtn /></div>
+      <div className="panelhead"><b>Zahlungseingang {inv.number}</b><button className="btn primary" disabled={mode === "link" && accountId ? !txId : false} onClick={() => done()}>{inv.status === "bezahlt" ? "Zuordnen" : "Als bezahlt buchen"}</button><XBtn /></div>
       <p className="small muted">{inv.customer?.name} · Rechnungsbetrag <b>{fmtMoney(total)}</b></p>
       {!accs.length ? <p className="small warn">Noch kein Konto angelegt – die Rechnung wird nur als bezahlt markiert. Konten legst du im Reiter „Konten“ an.</p> : <>
         <label>Konto<select value={accountId} onChange={(e) => setAcc(e.target.value)}>
@@ -4962,7 +4963,7 @@ function PayWin({ inv, book, onDone, onClose }) {
       {(() => { const st = mode === "link" && accountId ? (book?.txs || []).find((x) => x.id === txId) : null; return (
         <div className="payfoot">
           {mode === "link" && accountId ? (st ? <span className="small"><b>✓ {st.counterparty || "Eingang"}</b> · {fmtDate(st.date)} · <b className="pos">{fmtMoney(st.amount)}</b></span> : <span className="small muted">Buchung oben antippen (Doppelklick bucht sofort)</span>) : <span />}
-          <button className="btn primary" disabled={mode === "link" && accountId ? !txId : false} onClick={() => done()}>{mode === "link" && accountId ? "🔗 Verknüpfen & als bezahlt buchen" : "✓ Als bezahlt buchen"}</button>
+          <button className="btn primary" disabled={mode === "link" && accountId ? !txId : false} onClick={() => done()}>{mode === "link" && accountId ? (inv.status === "bezahlt" ? "🔗 Buchung verknüpfen" : "🔗 Verknüpfen & als bezahlt buchen") : "✓ Als bezahlt buchen"}</button>
         </div>); })()}
       <p className="muted small">{accountId && mode === "create" ? `Legt auf „${acc?.name}“ eine Einnahme mit Verwendungszweck ${inv.number} an.` : accountId && mode === "link" ? "Die gewählte Buchung wird mit der Rechnung verknüpft (Kategorie Einnahmen)." : ""}</p>
     </Win>
@@ -5123,6 +5124,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                   {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button>}
                   {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button>}
                   {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" title="Zahlungseingang auf ein Konto buchen und Rechnung als bezahlt markieren" onClick={() => setPayFor2(x)}>Als bezahlt markieren</button>}
+                  {s === "bezahlt" && !x.paidTx && book?.accounts?.length > 0 && <button className="btn sm" title="Bereits bezahlte Rechnung nachträglich mit einer Kontobuchung verknüpfen" onClick={() => setPayFor2(x)}>🔗 Buchung zuordnen</button>}
                   {s === "bezahlt" && <button className="link small" onClick={() => unpay(x)} title="Rechnung wieder als offen markieren">Offen</button>}
                   {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>}
                   {x.kind === "angebot" && s === "offen" && <><button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button><button className="link small" onClick={() => patch(x.id, { status: "abgelehnt" })}>Abgelehnt</button></>}
@@ -5858,6 +5860,8 @@ function DunningPage({ setTab, book }) {
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
               <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}><IcoEye /></button>
               <button className="iconbtn" title="Teilen" onClick={async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email)}><IcoShare /></button>
+              {i === x.reminders.length - 1 && ["offen", "überfällig"].includes(s) && book && <button className="btn sm" title="Zahlungseingang auf ein Konto buchen" onClick={() => setPayX(x)}>Als bezahlt markieren</button>}
+              {i === x.reminders.length - 1 && s === "bezahlt" && !x.paidTx && book?.accounts?.length > 0 && <button className="btn sm" title="Bereits bezahlte Rechnung nachträglich mit einer Kontobuchung verknüpfen" onClick={() => setPayX(x)}>🔗 Buchung zuordnen</button>}
               {i === x.reminders.length - 1 && s !== "bezahlt" && <button className="link small red" onClick={() => confirm("Diese Mahnung aus dem Verlauf entfernen?") && patch(x.id, { reminders: x.reminders.slice(0, -1) })}>Zurücknehmen</button>}
             </div>
           </div>); })}

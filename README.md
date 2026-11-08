@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.26.3
+- Mahnungen → Mahnverlauf: „🔗 Buchung zuordnen“ für bezahlte Rechnungen ohne Kontobuchung, „Als bezahlt markieren“ für noch offene
+
+## v0.26.2
+- Bereits bezahlte Rechnungen ohne Kontobuchung lassen sich nachträglich verknüpfen: Button „🔗 Buchung zuordnen“ in der Liste bzw. „Kontobuchung nachträglich zuordnen“ in der Rechnung
+- Beim nachträglichen Anlegen einer neuen Buchung wird das bisherige Bezahlt-Datum übernommen
+
 ## v0.26.1
 - Zahlungseingang: Buchungen lassen sich zuverlässiger auswählen (ganze Zeile antippbar, deutliche Markierung)
 - Neue Leiste unten im Fenster zeigt die gewählte Buchung und den Button „Verknüpfen & als bezahlt buchen“
