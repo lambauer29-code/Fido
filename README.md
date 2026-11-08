@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.54.2
+- Dokumente, Kachelansicht: Die schwebende Leiste „Drucken / Original öffnen“ auf den Kacheln wurde in allen Kategorien entfernt. Drucken bleibt über das Drucker-Symbol auf der Karte, das Original lässt sich in der Detailansicht öffnen.
+
+## v0.54.1
+- **Kündigungstermine aus „Verträge“ im Reiter Umtauschfrist:** Für jeden laufenden Vertrag mit Kündigungsfrist erscheint der Termin „Kündigung bis“ im Kalender, in der Liste, im Fristen-Widget der Übersicht, im Zähler, im .ics-Export und im Apple-Kalender-Abo. Ein Klick öffnet den Vertrag, abhaken markiert den Termin als erledigt. Bei Verträgen mit Verlängerung erscheint automatisch der nächste Termin. Nicht aufgenommen: gekündigte und abgelaufene Verträge sowie unbefristete Verträge („jederzeit kündbar“). Gibt es dieselbe Frist schon im verknüpften Dokument, erscheint sie nur einmal.
+
 ## v0.54.0
 - **Verschiebbare Widgets** in den Reitern Analyse, Vermögen und Firmenauswertung: Über das Layout-Symbol oben rechts lässt sich jede Kachel verschieben (⠿ ziehen oder ▲▼), auf halbe oder ganze Breite stellen (am Desktop) und aus- oder wieder einblenden. Die Anordnung wird pro Reiter gespeichert (`anaBoard`, `wealthBoard`, `bizBoard`). Die Übersicht hat das bereits über „Übersicht anpassen“.
 - **Export-Prüfung:** Alle 38 Exportfunktionen in 11 Reitern wurden mit den Demodaten ausgelöst und die Dateien geprüft (Excel, PDF, ZIP, CSV, vCard, ICS).

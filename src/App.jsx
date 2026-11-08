@@ -1885,14 +1885,26 @@ function AppMain() {
       sub: upl ? upl.name : proc.slice(0, 3).map((d) => d.fileName || d.title).join(", ") + (procN > 3 ? ` und ${procN - 3} weitere` : ""), done: total - left, total, n: left }; })() : null;
   const busyTab = { docs: docBusy, accounts: accBusy, kunden: ctBusy };
   const openDoc = docs.find((d) => d.id === openId);
+  // Kündigungstermine aus dem Reiter „Verträge“ als zusätzliche Fristen
+  const [ctVer, setCtVer] = useState(0);
+  const ctDocs = useMemo(() => contractDlDocs(ls.get("contractList", []), active), [tab, ctVer, active]);
+  const dlDocs = useMemo(() => [...active, ...ctDocs], [active, ctDocs]);
+  const saveDl = async (d) => {
+    if (!d.isContract) return saveDoc(d);
+    const dl = d.deadlines[0], orig = ctDocs.find((x) => x.id === d.id)?.deadlines[0];
+    if (orig && dl.date !== orig.date) { notify("Vertragsfristen bitte im Reiter „Verträge“ ändern"); setCtVer((v) => v + 1); return; }
+    ls.set("contractList", ls.get("contractList", []).map((c) => (c.id === d.ctId ? { ...c, dlDone: dl.done ? [...new Set([...(c.dlDone || []), dl.date])] : (c.dlDone || []).filter((x) => x !== dl.date) } : c)));
+    setCtVer((v) => v + 1);
+  };
+  const openDl = (id) => { if (String(id).startsWith("ct:")) { ls.set("ctOpenReq", String(id).slice(3)); setTab("vertraege"); } else setOpenId(id); };
   // Kalender-Abo: bei jeder Änderung der Fristen (verzögert) neu hochladen
-  const calSig = useMemo(() => JSON.stringify(active.flatMap((d) => (d.deadlines || []).filter((x) => !x.done).map((x) => [x.id, x.date, x.label, d.title, payAmt(d)]))), [active]);
+  const calSig = useMemo(() => JSON.stringify(dlDocs.flatMap((d) => (d.deadlines || []).filter((x) => !x.done).map((x) => [x.id, x.date, x.label, d.title, payAmt(d)]))), [dlDocs]);
   const calFirst = useRef(true);
   useEffect(() => {
     if (!calSync.on || !calSync.key) return;
     if (calFirst.current) { calFirst.current = false; if (calSync.at && Date.now() - new Date(calSync.at) < 6e5) return; }
     const t = setTimeout(async () => {
-      const items = active.flatMap((doc) => (doc.deadlines || []).filter((x) => !x.done).map((dl) => [dl, doc]));
+      const items = dlDocs.flatMap((doc) => (doc.deadlines || []).filter((x) => !x.done).map((dl) => [dl, doc]));
       try { const at = await pushCalendar(calSync.key, items, token); setCalSync({ ...calSync, at }); } catch {}
     }, 3000);
     return () => clearTimeout(t);
@@ -1937,7 +1949,7 @@ function AppMain() {
       </header>
 
       <main>
-        {tab === "home" && <Home docs={active} txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={visAccounts.some((a) => a.kind === "cash")}
+        {tab === "home" && <Home docs={active} dlDocs={dlDocs} txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={visAccounts.some((a) => a.kind === "cash")}
           accounts={visAccounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
           uniDrop={<>
             <DropField onFiles={smartImport} busy={!!(docBusy || accBusy)} title="Beliebige Dateien oder Ordner hierher ziehen" what="Dokumente, Kontoauszüge, vCards" isOk={() => true} accept="" />
@@ -1953,7 +1965,7 @@ function AppMain() {
         {tab === "docs" && <DocList onFiles={onFiles} docBusy={docBusy} trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup}
           deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null} />}
-        {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
+        {tab === "deadlines" && <Deadlines docs={dlDocs} onOpen={openDl} saveDoc={saveDl} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "cash" && <ExpensePage accounts={visAccounts} txs={txs} categories={TX_CATS(categories)} onSave={saveExpense} onScan={scanFor} addCategory={addCategory} notify={notify}
           onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
           suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")}
@@ -2054,7 +2066,7 @@ function AppMain() {
                   setTab(t.key); if (t.key === "docs") { setDocAreaSel("alle"); setDocCat(""); }
                 }} aria-label={tabLabel(nav, t.key)}>
                 <TabIcon t={t} /><span className="tl" style={t.color ? { color: t.color } : undefined}>{tabLabel(nav, t.key)}</span>
-                {t.key === "home" && <Badge docs={active} />}
+                {t.key === "home" && <Badge docs={dlDocs} />}
                 {busyTab[t.key] && <span className="busytab" title={busyTab[t.key].title}><span className="spin" />{busyTab[t.key].n > 0 && <small>{busyTab[t.key].n}</small>}</span>}
                 {!!sub && <i className={"subtog side-only" + (open ? " open" : "")} role="button" aria-label="ein-/ausklappen"
                   onClick={(e) => { e.stopPropagation(); setNav((n) => ({ ...n, [flag]: !n[flag] })); }}>›</i>}
@@ -2063,7 +2075,7 @@ function AppMain() {
               {t.side && kids.map((c) => (
                 <button key={c.key} className={"subtab side-only" + (tab === c.key ? " on" : "")} onClick={() => setTab(c.key)} aria-label={tabLabel(nav, c.key)}>
                   <TabIcon t={c} /><span className="tl" style={c.color ? { color: c.color } : undefined}>{tabLabel(nav, c.key)}</span>
-                  {c.key === "deadlines" && <DeadlineBadge docs={active} />}
+                  {c.key === "deadlines" && <DeadlineBadge docs={dlDocs} />}
                 </button>
               ))}
               {t.key === "accounts" && t.side && nav.accOpen && accounts.length > 0 && (
@@ -3725,7 +3737,7 @@ function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () =
     </div>
   );
 }
-function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount, cashForm, uniDrop, editing = false, setEditing = () => {}, actions }) {
+function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount, cashForm, uniDrop, editing = false, setEditing = () => {}, actions }) {
   const bankAccs = accounts.filter((a) => a.kind !== "cash");
   const bankBals = bankAccs.map((a) => accountBalance(a, txs)).filter((x) => x != null);
   const bankTotal = bankBals.length ? bankBals.reduce((x, y) => x + y, 0) : null;
@@ -3764,7 +3776,7 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
   const fix = contracts.reduce((s, c) => s + monthlyCost(c.contract), 0) + (fixExtra || 0);
   const openInv = docs.filter((d) => inAnalysis(d) && d.direction === "ausgabe" && !d.paid && d.amount?.total &&
     (d.payment?.iban || (d.deadlines || []).some((x) => !x.done && /zahl|fällig/i.test(x.label))));
-  const upcoming = docs.flatMap((doc) => (doc.deadlines || []).filter((x) => !x.done).map((dl) => [dl, doc]))
+  const upcoming = (dlDocs || docs).flatMap((doc) => (doc.deadlines || []).filter((x) => !x.done).map((dl) => [dl, doc]))
     .sort((a, b) => a[0].date.localeCompare(b[0].date)).slice(0, 4);
   const out = sumBy(thisMonth, "ausgabe"), inc = sumBy(thisMonth, "einnahme");
   const monthName = new Date(thisMonth + "-15").toLocaleDateString("de-AT", { month: "long" });
@@ -4341,7 +4353,6 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
               {pick && <span className={"pickbox" + (pick.has(d.id) ? " on" : "")}>✓</span>}
               <div className="gthumbwrap">
                 <Thumb d={d} className="gthumb" />
-                <CardBar d={d} />
               </div>
               <div className="gbody">
                 <DocActions d={d} prevOpen={false} onPreview={() => openOriginal(d)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
@@ -7191,6 +7202,15 @@ const CT_CATS = { Internet: "🌐", Handy: "📱", "Strom & Gas": "⚡", Versich
 const ctCats = () => ({ ...CT_CATS, ...ls.get("ctCats", {}) });
 const CT_FACTOR = { monatlich: 1, vierteljährlich: 1 / 3, halbjährlich: 1 / 6, jährlich: 1 / 12 };
 // nächstes Vertragsende und letzter Kündigungstag
+function contractDlDocs(list, docs) {
+  const today = todayISO();
+  return (list || []).filter((c) => !c.cancelledAt).map((c) => ({ c, d: ctDates(c) }))
+    .filter(({ d }) => d.cancelBy && !d.open && !(d.end && d.end < today))
+    .filter(({ c, d }) => !docs.some((x) => (c.docIds || []).includes(x.id) && (x.deadlines || []).some((y) => y.date === d.cancelBy)))
+    .map(({ c, d }) => ({ id: "ct:" + c.id, isContract: true, ctId: c.id, title: "Vertrag " + (c.name || c.provider || "") + (c.provider && c.name && c.provider !== c.name ? " · " + c.provider : ""),
+      sender: c.provider || "", category: "Verträge", docType: "Vertrag", direction: "keine", amount: null,
+      deadlines: [{ id: "ctdl-" + c.id + "-" + d.cancelBy, date: d.cancelBy, label: "Kündigung bis" + (d.end ? " (Ende " + fmtDate(d.end) + ")" : ""), done: (c.dlDone || []).includes(d.cancelBy) }] }));
+}
 function ctDates(c) {
   if (c.cancelledAt) return { end: c.cancelledEnd || "", cancelBy: "" };
   if (!c.start) return { end: c.end || "", cancelBy: c.end && c.notice ? addMonthsOrWeeks(c.end, -c.notice, c.noticeUnit) : "" };
@@ -7294,6 +7314,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
   useEffect(() => ls.set("ctScope", scope), [scope]);
   const [edit, setEdit] = useState(null), [showOld, setShowOld] = useState(false), [imp, setImp] = useState(false);
   const save = (c) => setList((l) => (l.some((x) => x.id === c.id) ? l.map((x) => (x.id === c.id ? c : x)) : [...l, c]));
+  useEffect(() => { const id = ls.get("ctOpenReq", null); if (!id) return; ls.set("ctOpenReq", null); const c = list.find((x) => x.id === id); if (c) setEdit(c); }, []);
   const monthly = (c) => (Number(c.amount) || 0) * (CT_FACTOR[c.interval || "monatlich"] || 1);
   const active = list.filter((c) => !c.cancelledAt || (c.cancelledEnd && c.cancelledEnd >= todayISO()));
   const counting = active.filter((c) => !c.inactive);
