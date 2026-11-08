@@ -2719,13 +2719,38 @@ function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onD
   );
 }
 
+function VehIcon({ v }) { return v?.iconImg ? <img className="vehimg" src={v.iconImg} alt="" /> : <>{v?.icon || "🚗"}</>; }
 function VehicleWin({ init, onSave, onDelete, onClose }) {
+  const [lib, setLib] = useLsState("vehIcons", []);
+  const [addOpen, setAddOpen] = useState(false), [txt, setTxt] = useState("");
+  const fileRef = useRef();
+  const addEmoji = () => { const e2 = txt.trim(); if (!e2) return; if (!lib.some((x) => x.emoji === e2)) setLib((l) => [...l, { id: uid(), emoji: e2 }]); set({ icon: e2, iconImg: undefined }); setTxt(""); setAddOpen(false); };
   const [v, setV] = useState(() => ({ icon: "🚗", fuel: "Super 95", ...init }));
   const set = (p) => setV((o) => ({ ...o, ...p }));
   return (
     <Win id="fb-veh" onClose={onClose} small>
       <div className="panelhead"><b>{init.id ? "Fahrzeug bearbeiten" : "Fahrzeug hinzufügen"}</b><XBtn /></div>
-      <div className="fbcats">{VEH_ICONS.map((i) => <button key={i} className={"chip" + (v.icon === i ? " on" : "")} onClick={() => set({ icon: i })}>{i}</button>)}</div>
+      <div className="fbcats vehicons">
+        {VEH_ICONS.map((i) => <button key={i} className={"chip" + (v.icon === i && !v.iconImg ? " on" : "")} onClick={() => set({ icon: i, iconImg: undefined })}>{i}</button>)}
+        {lib.map((it) => (
+          <span key={it.id} className="libwrap">
+            <button className={"chip" + ((it.src ? v.iconImg === it.src : v.icon === it.emoji && !v.iconImg) ? " on" : "")} title="Eigenes Symbol"
+              onClick={() => set(it.src ? { iconImg: it.src, icon: undefined } : { icon: it.emoji, iconImg: undefined })}>{it.src ? <img src={it.src} alt="" /> : it.emoji}</button>
+            <button className="libdel" title="Aus Sammlung löschen" aria-label="Symbol löschen" onClick={() => setLib((l) => l.filter((x) => x.id !== it.id))}>×</button>
+          </span>))}
+        <button className={"chip" + (addOpen ? " on" : "")} title="Eigenes Symbol hinzufügen" aria-label="Eigenes Symbol hinzufügen" onClick={() => setAddOpen(!addOpen)}>＋</button>
+      </div>
+      {addOpen && (
+        <div className="libadd vehadd">
+          <input value={txt} maxLength={4} placeholder="Emoji, z. B. 🚜 🏎️ 🚲" onChange={(e) => setTxt(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addEmoji()} />
+          <button className="btn sm" disabled={!txt.trim()} onClick={addEmoji}>Hinzufügen</button>
+          <button className="btn sm" onClick={() => fileRef.current.click()}>🖼 Bild</button>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={async (e) => {
+            const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+            try { const src = await iconFromFile(f); setLib((l) => [...l, { id: uid(), src }]); set({ iconImg: src, icon: undefined }); setAddOpen(false); } catch { alert("Bild konnte nicht gelesen werden"); }
+          }} />
+        </div>
+      )}
       <label>Name<input value={v.name || ""} autoFocus placeholder="z. B. Golf, Firmenauto" onChange={(e) => set({ name: e.target.value })} /></label>
       <div className="grid2">
         <label>Marke & Modell<input value={v.model || ""} placeholder="VW Golf 8" onChange={(e) => set({ model: e.target.value })} /></label>
@@ -2842,12 +2867,12 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
   return (
     <div className="fbpage">
       <div className="chips anaaccs">
-        {vehicles.map((x) => <button key={x.id} className={"chip" + (x.id === v.id ? " on" : "")} onClick={() => setVid(x.id)} onDoubleClick={() => setVEdit(x)}>{x.icon || "🚗"} {x.name}</button>)}
+        {vehicles.map((x) => <button key={x.id} className={"chip" + (x.id === v.id ? " on" : "")} onClick={() => setVid(x.id)} onDoubleClick={() => setVEdit(x)}><VehIcon v={x} /> {x.name}</button>)}
         <button className="chip fbaddveh" title="Fahrzeug hinzufügen" aria-label="Fahrzeug hinzufügen" onClick={() => setVEdit({})}>＋</button>
       </div>
       <section className="tile fbcar">
         <div className="fbcarhead">
-          <span className="fbcaric">{v.icon || "🚗"}</span>
+          <span className="fbcaric"><VehIcon v={v} /></span>
           <div className="grow"><b>{v.name}</b><small className="muted block">{[v.model, v.plate, v.fuel].filter(Boolean).join(" · ")}</small>
             {(v.tank || v.battery) && <div className="fbspecs">
               {vehHasFuel(v) && v.tank && <span>⛽ {String(v.tank).replace(".", ",")} l{st.avg ? ` · ~${Math.round((v.tank / st.avg) * 100)} km` : ""}</span>}
@@ -8930,4 +8955,10 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 @media (max-width:767px){.fbrow{flex-wrap:wrap}.fbrow .txacts{width:100%!important;justify-content:flex-end;margin-top:-4px!important}}
 
 .chip.fbaddveh{min-width:40px;padding-left:12px;padding-right:12px;font-size:16px;font-weight:600}
+
+.vehicons .libwrap{position:relative;display:inline-flex}.vehicons .libwrap .libdel{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:0;background:var(--red);color:#fff;font-size:12px;line-height:18px;padding:0;cursor:pointer;opacity:0;transition:opacity .15s}
+.vehicons .libwrap:hover .libdel,.vehicons .libwrap:focus-within .libdel{opacity:1}@media (hover:none){.vehicons .libwrap .libdel{opacity:.85}}
+.vehicons .chip img{width:22px;height:22px;object-fit:contain;vertical-align:middle}
+.vehadd{margin-top:8px}
+.vehimg{width:1.2em;height:1.2em;object-fit:contain;vertical-align:-.25em}.fbcaric .vehimg{width:34px;height:34px}
 `;

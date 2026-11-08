@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.46.4
+- Fahrtenbuch: eigene Fahrzeug-Symbole über „＋“ – Emoji eintippen oder Bild hochladen. Eigene Symbole bleiben für alle Fahrzeuge verfügbar und lassen sich über „×“ wieder löschen.
+
 ## v0.46.3
 - Fahrtenbuch: Button „＋ Fahrzeug“ ist jetzt nur ein „＋“ (Tooltip „Fahrzeug hinzufügen“).
 
