@@ -3267,13 +3267,20 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
   const plusBal = knownBal.filter((x) => x > 0).reduce((t, x) => t + x, 0), minusBal = knownBal.filter((x) => x < 0).reduce((t, x) => t + x, 0);
   const multi = !acc;
 
-  // Buchung mit Beleg: direkt den Beleg zeigen, sonst Bearbeiten-Fenster
-  async function openTx(t) {
-    if (!t.docId) return setTxOpen(t);
-    const d = docs.find((x) => x.id === t.docId), b = await db.getFile(t.docId);
-    if (!b) return setTxOpen(t);
-    openPdf(b, d?.fileName || "Beleg.pdf", d?.title || d?.fileName || "Beleg");
+  // Buchung mit Beleg: Beleg-Vorschau unter der Zeile auf-/zuklappen (wie bei Dokumente), sonst Bearbeiten-Fenster
+  const [prevTx, setPrevTx] = useState(null);
+  const docOf = (t) => (t.docId ? docs.find((x) => x.id === t.docId) : null);
+  function openTx(t) {
+    if (!docOf(t)) return setTxOpen(t);
+    setPrevTx((p) => (p === t.id ? null : t.id));
   }
+  const TxActs = ({ t }) => { const d = docOf(t); const st = (f) => (e) => { e.stopPropagation(); f(); }; return (
+    <div className="dactions txacts" onClick={(e) => e.stopPropagation()}>
+      <button title="Buchung bearbeiten" aria-label="Bearbeiten" onClick={st(() => setTxOpen(t))}><IcoEdit /></button>
+      <button title={d ? "Beleg drucken" : "Kein Beleg angehängt"} aria-label="Drucken" disabled={!d} onClick={st(() => d && printDoc(d))}><IcoPrint /></button>
+      <button title={d ? "Beleg teilen" : "Kein Beleg angehängt"} aria-label="Teilen" disabled={!d} onClick={st(() => d && shareDocs([d]))}><IcoShare /></button>
+      <button title="Buchung löschen" aria-label="Löschen" className="del" onClick={st(() => confirm(`Buchung „${t.counterparty || t.purpose || "Buchung"}“ (${fmtMoney(t.amount, t.currency)}) löschen?`) && deleteTx(t))}><IcoTrash /></button>
+    </div>); };
   async function onPick(file) {
     if (!file) return;
     try { setImp({ file, result: await parseFile(file, ls.get("mappings", {})) }); }
@@ -3398,20 +3405,24 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
 
       {wideTx ? (
         <div className={"txtable" + (!acc && sel.length > 1 ? " withacc" : "")}>
-          <div className="txhead"><span>Datum</span><span>Empfänger</span><span>Kategorie</span>{!acc && sel.length > 1 && <span>Konto</span>}<span className="r">Betrag</span></div>
+          <div className="txhead"><span>Datum</span><span>Empfänger</span><span>Kategorie</span>{!acc && sel.length > 1 && <span>Konto</span>}<span className="r">Betrag</span><span /></div>
           {list.slice(0, limit).map((t) => (
-            <div key={t.id} className="txrow" onClick={() => openTx(t)}>
+            <React.Fragment key={t.id}>
+            <div className={"txrow" + (prevTx === t.id ? " open" : "")} onClick={() => openTx(t)}>
               <span className="muted">{fmtDate(t.date)}</span>
               <span className="txdesc">
                 {t.kind === "broker" ? <span className="caticon" style={{ width: 30, height: 30, background: "#14b8a622", fontSize: 14 }}>📈</span> : <CatIcon c={t.category} size={30} />}
                 <span className="grow"><b className="one">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
                   {t.kind !== "broker" && t.counterparty && t.purpose && <small className="muted one block">{t.purpose}</small>}</span>
-                {t.docId && <><span title="Beleg verknüpft – Klick auf die Zeile öffnet ihn">📎</span><button className="iconbtn txedit" title="Buchung bearbeiten" aria-label="Buchung bearbeiten" onClick={(e) => { e.stopPropagation(); setTxOpen(t); }}><IcoEdit /></button></>}
+                {t.docId && <span title="Beleg verknüpft – Klick auf die Zeile zeigt ihn">📎</span>}
               </span>
               <span className="one muted">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}</span>
               {!acc && sel.length > 1 && <span className="one muted">{accName(t.accountId)}</span>}
               <b className={"r amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
+              <TxActs t={t} />
             </div>
+            {prevTx === t.id && docOf(t) && <div className="txprev"><DocPreview d={docOf(t)} onOpen={() => onOpen(docOf(t).id)} /></div>}
+            </React.Fragment>
           ))}
           {!list.length && <p className="muted small" style={{ padding: 16 }}>Keine Buchungen.</p>}
         </div>
@@ -3420,15 +3431,18 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
           <h3>{new Date(g.date + "T12:00").toLocaleDateString("de-AT", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}</h3>
           <div className="dlist">
             {g.items.map((t) => (
-              <div key={t.id} className="ditem center" onClick={() => openTx(t)}>
+              <React.Fragment key={t.id}>
+              <div className={"ditem center" + (prevTx === t.id ? " open" : "")} onClick={() => openTx(t)}>
                 {t.kind === "broker" ? <span className="caticon" style={{ width: 40, height: 40, background: "#14b8a622", fontSize: 18 }}>📈</span> : <CatIcon c={t.category} />}
                 <div className="grow">
                   <b className="clamp">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
                   <small className="muted block one">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}{t.docId ? " · 📎 Beleg" : ""}{!acc && sel.length > 1 ? " · " + accName(t.accountId) : ""}</small>
                 </div>
                 <b className={"amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
-                {t.docId && <button className="iconbtn txedit" title="Buchung bearbeiten" aria-label="Buchung bearbeiten" onClick={(ev) => { ev.stopPropagation(); setTxOpen(t); }}><IcoEdit /></button>}
+                <TxActs t={t} />
               </div>
+              {prevTx === t.id && docOf(t) && <DocPreview d={docOf(t)} onOpen={() => onOpen(docOf(t).id)} />}
+              </React.Fragment>
             ))}
           </div>
         </section>
@@ -7530,4 +7544,22 @@ html.fg .switch:checked{background:var(--acc)}
 @media (min-width:1024px){html.fg{--side:300px}}
 html.fg .txrow{font-size:16px}html.fg .txrow b{font-size:17px;font-weight:500}html.fg .txrow small{font-size:15px}html.fg .txhead{font-size:12.5px}
 html.fg nav.bottom .acctree .accitem .ab{font-size:13.5px}
+
+/* Kontobuchungen: Aktionsleiste hinter dem Betrag, Beleg-Vorschau darunter */
+.txrow{grid-template-columns:92px minmax(0,1fr) 190px 130px 164px}
+.txtable.withacc .txhead,.txtable.withacc .txrow{grid-template-columns:92px minmax(0,1fr) 170px 150px 130px 164px}
+.txhead{grid-template-columns:92px minmax(0,1fr) 190px 130px 164px}
+.txacts{flex-direction:row!important;justify-content:flex-end;gap:2px;width:auto!important;margin:0!important}
+.txacts button:disabled{opacity:.25;cursor:default}
+.txrow.open{background:var(--card2)}
+.txprev{padding:0 16px 14px;border-bottom:1px solid var(--line)}
+.txprev .dprev{margin:10px 0 0}
+.ditem.center .txacts{flex:none}
+@media (max-width:767px){.ditem.center{flex-wrap:wrap}.ditem.center .txacts{width:100%!important;justify-content:flex-end}}
+/* Buchungs-Details: Felder in passender Größe */
+html.fg .kv{font-size:17px;padding:12px 0;align-items:baseline}
+html.fg .kv>:first-child{font-size:16px;color:var(--mut)}
+html.fg .win .btn.danger{font-size:17px}
+/* Kategorie-Kacheln in der Buchungstabelle: 1px kleiner, Symbol mittig */
+html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;height:47px!important;display:inline-flex!important;align-items:center;justify-content:center;font-size:23px!important;line-height:1;padding:0}
 `;

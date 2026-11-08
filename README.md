@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.41.0
+- Kontobuchungen: Klick auf eine Buchung mit Beleg klappt die Beleg-Vorschau darunter auf (wie bei Dokumente, mit Seitenanzahl, Drucken, „Original öffnen“); nochmal klicken schließt sie
+- Kontobuchungen: Aktionsleiste hinter dem Betrag – Bearbeiten, Beleg drucken, Beleg teilen, Buchung löschen (Drucken/Teilen nur mit Beleg)
+- Buchungs-Details: Beschriftungen und Werte in einheitlicher, größerer Schrift
+- Kategorie-Kacheln in den Buchungen 1 px kleiner, Symbol mittig
+
 ## v0.40.1
 - Seitenleiste (iPad/Desktop) größer und im Verhältnis zum Inhalt: breiter, größere Schrift und Symbole, größere Konto-/Kategorie-Einträge
 - Buchung mit angehängtem Beleg (📎): Klick auf die Zeile öffnet direkt den Beleg; Bearbeiten über den Stift in der Zeile
