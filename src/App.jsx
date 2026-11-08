@@ -127,31 +127,53 @@ function ShareWin({ data, onClose }) {
   );
 }
 /* Drucken: Seiten als Bilder in einen unsichtbaren Rahmen legen und den Druckdialog öffnen (klappt auch in Safari) */
-async function printDoc(d, notify) {
-  const b = await db.getFile(d.id);
-  if (!b) return notify?.("Originaldatei nicht gefunden");
-  notify?.("Druck wird vorbereitet …");
-  const srcs = [];
-  if (b.type === "application/pdf") {
-    const pdf = await (await loadPdfjs()).getDocument({ data: await b.arrayBuffer() }).promise;
-    for (let i = 1; i <= Math.min(pdf.numPages, 60); i++) {
-      const page = await pdf.getPage(i), v1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: 1700 / v1.width });
-      const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
-      await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
-      srcs.push(c.toDataURL("image/jpeg", 0.9));
-    }
-    pdf.destroy();
-  } else srcs.push(URL.createObjectURL(b));
+async function blobToImages(b, width = 1700, max = 60) {
+  if (b.type !== "application/pdf") return [URL.createObjectURL(b)];
+  const srcs = [], pdf = await (await loadPdfjs()).getDocument({ data: await b.arrayBuffer() }).promise;
+  for (let i = 1; i <= Math.min(pdf.numPages, max); i++) {
+    const page = await pdf.getPage(i), v1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: width / v1.width });
+    const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+    await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+    srcs.push(c.toDataURL("image/jpeg", 0.9));
+  }
+  pdf.destroy();
+  return srcs;
+}
+async function printImages(srcs, title = "Dokument") {
   const f = document.createElement("iframe");
   f.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
   document.body.appendChild(f);
   const w = f.contentWindow, docu = w.document;
   docu.open();
-  docu.write(`<!doctype html><html><head><title>${(d.title || "Dokument").replace(/</g, "&lt;")}</title><style>@page{margin:8mm}html,body{margin:0}img{display:block;width:100%;height:auto;page-break-after:always;break-after:page}img:last-child{page-break-after:auto;break-after:auto}</style></head><body>${srcs.map((s) => `<img src="${s}">`).join("")}</body></html>`);
+  docu.write(`<!doctype html><html><head><title>${String(title).replace(/</g, "&lt;")}</title><style>@page{margin:8mm}html,body{margin:0}img{display:block;width:100%;height:auto;page-break-after:always;break-after:page}img:last-child{page-break-after:auto;break-after:auto}</style></head><body>${srcs.map((s) => `<img src="${s}">`).join("")}</body></html>`);
   docu.close();
   await Promise.all([...docu.images].map((im) => (im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; }))));
   w.focus(); w.print();
   setTimeout(() => { f.remove(); srcs.forEach((u) => u.startsWith("blob:") && URL.revokeObjectURL(u)); }, 60000);
+}
+async function printDoc(d, notify) {
+  const b = await db.getFile(d.id);
+  if (!b) return notify?.("Originaldatei nicht gefunden");
+  notify?.("Druck wird vorbereitet …");
+  await printImages(await blobToImages(b), d.title);
+}
+/* PDF in der App anzeigen (statt neuem Fenster – am iPhone kommt man sonst nicht zurück) */
+let pdfUi = null;
+function PdfViewWin({ data, onClose }) {
+  const [pages, setPages] = useState(null);
+  useEffect(() => { let dead = false; blobToImages(data.blob, Math.min(1600, Math.round(900 * (window.devicePixelRatio || 1)))).then((p) => !dead && setPages(p)).catch(() => setPages([])); return () => { dead = true; }; }, [data]);
+  return (
+    <Win id="pdfview" defW={760} onClose={onClose} dirty={false} className="pdfviewwin">
+      <div className="panelhead"><b className="clamp">{data.title || data.name}</b>
+        <button className="btn" title="Drucken" onClick={() => pages && printImages(pages, data.title)}><IcoPrint /></button>
+        <button className="btn" title="Teilen / Sichern" onClick={() => sharePdf(data.blob, data.name, data.title)}><IcoShare /></button>
+        <XBtn /></div>
+      <div className="dpages">
+        {!pages && <div className="dpload">PDF wird geladen …</div>}
+        {pages?.map((src, i) => <img key={i} src={src} alt={`Seite ${i + 1}`} />)}
+      </div>
+    </Win>
+  );
 }
 
 function DocActions({ d, prevOpen, onPreview, onEdit, onTrash }) {
@@ -1450,7 +1472,10 @@ export default function App() {
     }));
   }
   const [shareData, setShareData] = useState(null);
+  const [pdfView, setPdfView] = useState(null);
+  pdfUi = setPdfView;
   const impRef = useRef(null);
+  const [bizReq, setBizReq] = useState(0);
   const [imp, setImp] = useState(null);
   shareUi = setShareData;
   const scanCb = useRef(null);
@@ -1662,8 +1687,8 @@ export default function App() {
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "cash" && <CashPage accounts={accounts} txs={txs} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory}
           docs={active} onOpen={setOpenId} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
-        {tab === "invoices" && <InvoicesPage setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
-        {tab === "kunden" && <ContactsPage setTab={setTab} />}
+        {tab === "invoices" && <InvoicesPage req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
+        {tab === "kunden" && <ContactsPage setTab={setTab} req={bizReq} />}
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
         {tab === "settings" && (
@@ -1686,6 +1711,8 @@ export default function App() {
           <button role="menuitem" onClick={() => { setFabOpen(false); setScanOpen(true); }}><span>📷</span><div><b>Scannen</b><small>Bon oder Rechnung fotografieren</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); fileInput.current.click(); }}><span>📄</span><div><b>Datei / Foto</b><small>PDF oder Bild hochladen</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); setManualTx(tab === "accounts" && selAcc ? { accountId: selAcc } : {}); }}><span>💶</span><div><b>Buchung</b><small>Barausgabe oder Buchung erfassen</small></div></button>
+          <button role="menuitem" onClick={() => { setFabOpen(false); ls.set("pendingInvoice", { kind: "rechnung" }); setTab("invoices"); setBizReq((n) => n + 1); }}><span>🧾</span><div><b>Neue Rechnung</b><small>Rechnung für deine Firma schreiben</small></div></button>
+          <button role="menuitem" onClick={() => { setFabOpen(false); ls.set("pendingContact", "new"); setTab("kunden"); setBizReq((n) => n + 1); }}><span>👥</span><div><b>Neuer Kunde</b><small>Kontakt anlegen oder aus dem Handy übernehmen</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); impRef.current.click(); }}><span>⬆️</span><div><b>Umsätze importieren</b><small>Kontoauszug: CSV, Excel, CAMT, PDF …</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); setTab("accounts"); setNewAccReq(true); }}><span>🏦</span><div><b>Konto anlegen</b><small>Girokonto, Karte, Sparkonto, Bargeld …</small></div></button>
         </div>
@@ -1760,6 +1787,7 @@ export default function App() {
           saveDoc={saveDoc} trashDoc={trashDoc} reanalyze={reanalyze} notify={notify} />
       )}
       {shareData && <ShareWin data={shareData} onClose={() => setShareData(null)} />}
+      {pdfView && <PdfViewWin data={pdfView} onClose={() => setPdfView(null)} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
     </IconLibCtx.Provider>
@@ -3731,7 +3759,7 @@ function SetSec({ id, title, children }) {
   return (
     <>
       {c.dnd.lineAt("sec", "s", idx) && <div className="dropline" />}
-      <fieldset className={"ssec" + (open ? " open" : "") + (c.dnd.isDragging("sec", "s", idx) ? " dragging" : "")} data-sec-item={"s|" + idx}>
+      <fieldset id={"sec-" + id} className={"ssec" + (open ? " open" : "") + (c.dnd.isDragging("sec", "s", idx) ? " dragging" : "")} data-sec-item={"s|" + idx}>
         <div className="ssechead">
           <Handle onDown={(e) => c.dnd.start(e, { kind: "sec", list: "s", index: idx, label: title })} label="Bereich verschieben" />
           <button type="button" className="ssectitle" onClick={() => c.toggle(id)} aria-expanded={open}>
@@ -3744,7 +3772,7 @@ function SetSec({ id, title, children }) {
   );
 }
 
-const SET_IDS = ["darstellung", "design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"];
+const SET_IDS = ["darstellung", "design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -3873,6 +3901,11 @@ function DesignSettings({ design, setDesign, theme }) {
 function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
   const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
+  useEffect(() => {
+    const id = ls.get("openSettingsSec", null); if (!id) return; ls.set("openSettingsSec", null);
+    setSecClosed((l) => l.filter((x) => x !== id));
+    setTimeout(() => document.getElementById("sec-" + id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+  }, []);
   useEffect(() => ls.set("settingsOrder", secOrder), [secOrder]);
   useEffect(() => ls.set("settingsClosed", secClosed), [secClosed]);
   const secDnd = useDnd((d, over) => setSecOrder((cur) => moveBetween({ s: mergeOrder(cur, SET_IDS) }, "s", d.index, "s", over.index).s));
@@ -3958,6 +3991,7 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
         <label>Ort<input value={me.city} onChange={(e) => setMe({ ...me, city: e.target.value })} /></label>
       </SetSec></>,
     "rechnungen": <><SetSec id="rechnungen" title="Rechnungen"><InvoiceSettings me={me} /></SetSec></>,
+    "kontaktarten": <><SetSec id="kontaktarten" title="Kunden – Kategorien"><ContactTypeSettings /></SetSec></>,
     "doccats": <><DocNavSettings part="cats" nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} /></>,
     "docgroups": <><DocNavSettings nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} /></>,
     "rules": <>{!!rules.length && (
@@ -4148,12 +4182,13 @@ async function buildInvoicePdf(inv, co, remind = null) {
 
   // Infoblock rechts
   const kindName = remind ? REMIND[remind.level] : inv.kind === "angebot" ? "Angebot" : "Rechnung";
+  const flds = ls.get("invoiceFields", []), invF = flds.filter((f) => f.scope === "rechnung" && inv.extra?.[f.id]), posF = flds.filter((f) => f.scope === "position");
   const info = remind
     ? [["Datum", fmtDate(remind.date)], ["Rechnung Nr.", inv.number], ["Rechnungsdatum", fmtDate(inv.date)], ["Zahlbar bis", fmtDate(remind.due)]]
     : [[kindName + " Nr.", inv.number || "ENTWURF"], [inv.kind === "angebot" ? "Datum" : "Rechnungsdatum", fmtDate(inv.date)],
        ...(inv.kind === "angebot" ? [["Gültig bis", fmtDate(addDays(inv.date, inv.validDays ?? co.validDays ?? 30))]]
          : [["Leistung", inv.serviceTo ? `${fmtDate(inv.serviceFrom)} – ${fmtDate(inv.serviceTo)}` : fmtDate(inv.serviceFrom || inv.date)], ["Zahlbar bis", fmtDate(invDue(inv))]]),
-       ...(c.number ? [["Kundennr.", c.number]] : [])];
+       ...(c.number ? [["Kundennr.", c.number]] : []), ...invF.map((f) => [f.label, inv.extra[f.id]])];
   info.forEach(([k, v], i) => { txt(k, W - M - 190, H - 158 - i * 14, { size: 9, color: grey }); right(v, W - M, H - 158 - i * 14, { size: 9.5, bold: i === 0 }); });
 
   y = H - 270;
@@ -4185,12 +4220,14 @@ async function buildInvoicePdf(inv, co, remind = null) {
     : (inv.items || []).filter((it) => it.text || it.price);
   rows.forEach((it, i) => {
     const lines = wrap(it.text || "", (remind ? X.price : X.qty - 40) - X.txt, { size: 9.5 });
-    newPageIfNeeded(lines.length * 12 + 8);
+    const ex = remind ? [] : posF.filter((f) => it.extra?.[f.id]).flatMap((f) => wrap(`${f.label}: ${it.extra[f.id]}`, X.qty - 40 - X.txt, { size: 8 }));
+    newPageIfNeeded(lines.length * 12 + ex.length * 10 + 8);
     txt(String(i + 1), X.pos + 4, y, { size: 9.5 });
     lines.forEach((l, k) => txt(l, X.txt, y - k * 12, { size: 9.5 }));
     if (!remind) { right(String(it.qty ?? "").replace(".", ","), X.qty + 20, y, { size: 9.5 }); txt(it.unit || "", X.unit, y, { size: 9.5 }); right(money(it.price), X.price, y, { size: 9.5 }); }
     right(money((Number(it.qty) || 0) * (Number(it.price) || 0)), X.sum, y, { size: 9.5 });
-    y -= lines.length * 12 + 6;
+    ex.forEach((l, k) => txt(l, X.txt, y - lines.length * 12 - k * 10 + 1, { size: 8, color: grey }));
+    y -= lines.length * 12 + ex.length * 10 + 6;
     hr(y + 2); y -= 10;
   });
   newPageIfNeeded(90);
@@ -4228,7 +4265,8 @@ async function buildInvoicePdf(inv, co, remind = null) {
   return new Blob([await pdf.save()], { type: "application/pdf" });
 }
 const invFileName = (inv, remind) => safeName(`${remind ? REMIND[remind.level] : inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"} ${inv.customer?.name || ""}`) + ".pdf";
-async function openPdf(blob) {
+async function openPdf(blob, name = "Dokument.pdf", title = "") {
+  if (pdfUi) return pdfUi({ blob, name, title: title || name.replace(/\.pdf$/, "") });
   const u = URL.createObjectURL(blob); const w = window.open(u, "_blank"); if (!w) location.href = u; setTimeout(() => URL.revokeObjectURL(u), 120000);
 }
 async function sharePdf(blob, name, title) {
@@ -4290,11 +4328,40 @@ function InvoiceSettings({ me }) {
   const [part, setPart] = useState("firma");
   return (<>
     <p className="muted small">Firmendaten, Nummernkreise und Texte für Rechnungen &amp; Angebote (Kleinunternehmer – ohne USt). Änderungen werden sofort gespeichert.</p>
-    <div className="seg"><button className={part === "firma" ? "on" : ""} onClick={() => setPart("firma")}>🏢 Firmendaten &amp; Vorgaben</button><button className={part === "artikel" ? "on" : ""} onClick={() => setPart("artikel")}>📦 Artikel &amp; Leistungen ({articles.length})</button></div>
-    {part === "firma" ? <CompanyFields v={{ ...CO_DEFAULT, ...co }} setV={setCo} /> : <ArticlesEditor articles={articles} setArticles={setArticles} />}
+    <div className="seg"><button className={part === "firma" ? "on" : ""} onClick={() => setPart("firma")}>🏢 Firmendaten</button><button className={part === "felder" ? "on" : ""} onClick={() => setPart("felder")}>🧩 Eigene Felder</button><button className={part === "artikel" ? "on" : ""} onClick={() => setPart("artikel")}>📦 Artikel ({articles.length})</button></div>
+    {part === "firma" ? <CompanyFields v={{ ...CO_DEFAULT, ...co }} setV={setCo} /> : part === "felder" ? <InvoiceFieldsEditor /> : <ArticlesEditor articles={articles} setArticles={setArticles} />}
+  </>);
+}
+function InvoiceFieldsEditor() {
+  const [fields, setFields] = useLsState("invoiceFields", []);
+  const patch = (id, p) => setFields((l) => l.map((f) => (f.id === id ? { ...f, ...p } : f)));
+  const dnd = useDnd((d, over) => setFields((l) => moveBetween({ f: l }, "f", d.index, "f", over.index).f));
+  return (<>
+    <p className="muted small"><b>Rechnung:</b> zusätzliche Angabe im Kopf der Rechnung (z. B. „Projekt“, „Bestellnummer“, „Objekt / Baustelle“). <b>Position:</b> eigenes Feld bei jeder Position und jedem Artikel (z. B. „Artikelnr.“, „Seriennummer“, „Farbe“) – erscheint klein unter der Bezeichnung. Leere Felder werden nicht gedruckt.</p>
+    <div data-ifld-list={`f|${fields.length}`}>
+      {fields.map((f, i) => (
+        <React.Fragment key={f.id}>
+          {dnd.lineAt("ifld", "f", i) && <div className="dropline" />}
+          <div className={"acccfg catrow" + (dnd.isDragging("ifld", "f", i) ? " dragging" : "")} data-ifld-item={`f|${i}`}>
+            <Handle onDown={(e) => dnd.start(e, { kind: "ifld", list: "f", index: i, label: f.label })} />
+            <EditText className="grow" value={f.label} onSave={(v) => v && patch(f.id, { label: v })} />
+            <select className="chip" value={f.scope} onChange={(e) => patch(f.id, { scope: e.target.value })}><option value="rechnung">Rechnung</option><option value="position">Position</option></select>
+            <button className="iconbtn" title="Löschen" onClick={() => confirm(`Feld „${f.label}“ löschen? Bereits eingetragene Werte werden nicht mehr gedruckt.`) && setFields((l) => l.filter((x) => x.id !== f.id))}>🗑</button>
+          </div>
+        </React.Fragment>
+      ))}
+      {dnd.lineAt("ifld", "f", fields.length) && <div className="dropline" />}
+    </div>
+    <div className="actions">
+      <button className="btn" onClick={() => setFields((l) => [...l, { id: "f-" + uid(), label: "Neues Feld", scope: "rechnung" }])}>＋ Feld für Rechnung</button>
+      <button className="btn" onClick={() => setFields((l) => [...l, { id: "f-" + uid(), label: "Artikelnr.", scope: "position" }])}>＋ Feld für Positionen</button>
+    </div>
+    {dnd.ghost}
   </>);
 }
 function ArticlesEditor({ articles, setArticles }) {
+  const [fields] = useLsState("invoiceFields", []);
+  const posFields = fields.filter((f) => f.scope === "position");
   const patchA = (id, p) => setArticles((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
   return (<>
     {!articles.length && <p className="muted small">Noch keine Artikel. Häufige Leistungen hier anlegen oder beim Schreiben einer Rechnung mit ☆ merken.</p>}
@@ -4304,6 +4371,7 @@ function ArticlesEditor({ articles, setArticles }) {
         <select value={a.unit || "Stk"} onChange={(e) => patchA(a.id, { unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
         <input inputMode="decimal" value={a.price ?? ""} placeholder="Preis €" onChange={(e) => patchA(a.id, { price: e.target.value.replace(",", ".") })} />
         <button className="iconbtn" title="Löschen" onClick={() => setArticles((l) => l.filter((x) => x.id !== a.id))}>✕</button>
+        {!!posFields.length && <div className="itemextra artextra">{posFields.map((f) => <input key={f.id} value={a.extra?.[f.id] || ""} placeholder={f.label} onChange={(e) => patchA(a.id, { extra: { ...(a.extra || {}), [f.id]: e.target.value } })} />)}</div>}
       </div>
     ))}
     <button className="btn" onClick={() => setArticles((l) => [...l, { id: uid(), text: "", unit: "Std", price: "" }])}>＋ Artikel / Leistung</button>
@@ -4324,6 +4392,10 @@ function MasterDataWin({ articles, setArticles, onClose }) {
 /* ---------- Editor ---------- */
 function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, onFinalize, setArticles }) {
   const [inv, setInv] = useState(init);
+  const [fields] = useLsState("invoiceFields", []);
+  const invFields = fields.filter((f) => f.scope === "rechnung"), posFields = fields.filter((f) => f.scope === "position");
+  const setEx = (p) => setInv((x) => ({ ...x, extra: { ...(x.extra || {}), ...p } }));
+  const setItEx = (i, p) => setInv((x) => ({ ...x, items: x.items.map((it, k) => (k === i ? { ...it, extra: { ...(it.extra || {}), ...p } } : it)) }));
   const [saveCust, setSaveCust] = useState(!customers.some((c) => c.name === init.customer?.name));
   const locked = init.status !== "entwurf";
   const set = (p) => setInv((x) => ({ ...x, ...p }));
@@ -4340,7 +4412,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
   const blocking = warn.filter((w) => !/IBAN|UID/.test(w));
   const isA = inv.kind === "angebot";
   const pick = (name) => { const c = customers.find((x) => x.name === name); if (c) { setC({ name: c.name, address: c.address, uid: c.uid, email: c.email, number: c.number }); setSaveCust(false); } else setC({ name }); };
-  const pickArt = (i, text) => { const a = articles.find((x) => x.text === text); setIt(i, a ? { text, unit: a.unit, price: a.price } : { text }); };
+  const pickArt = (i, text) => { const a = articles.find((x) => x.text === text); setIt(i, a ? { text, unit: a.unit, price: a.price, ...(a.extra ? { extra: { ...a.extra } } : {}) } : { text }); };
   const doSave = (final) => {
     const out = { ...inv, items: inv.items.filter((it) => it.text || it.price), updatedAt: new Date().toISOString() };
     onSave(out, saveCust);
@@ -4350,7 +4422,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
   return (
     <Win id="invedit" defW={760} onClose={onClose} dirty={!locked && JSON.stringify(inv) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{isA ? "Angebot" : "Rechnung"} {inv.number || "(Entwurf)"}</b>
-        <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(inv, co))}>Vorschau</button>
+        <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(inv, co), invFileName(inv))}>Vorschau</button>
         {!locked && <button className="btn primary" onClick={() => doSave(false)}>Speichern</button>}
         <XBtn /></div>
       {locked && <p className="warn small">Diese {isA ? "Angebot" : "Rechnung"} ist ausgestellt und kann nicht mehr geändert werden (Rechnungen dürfen nachträglich nicht verändert werden – bei Fehlern stornieren und neu ausstellen).</p>}
@@ -4376,21 +4448,25 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
           <label>Leistung am / ab<input type="date" value={inv.serviceFrom || ""} onChange={(e) => set({ serviceFrom: e.target.value })} /></label>
           <label>Leistung bis (optional)<input type="date" value={inv.serviceTo || ""} onChange={(e) => set({ serviceTo: e.target.value })} /></label>
         </div>}
+        {!!invFields.length && <div className="grid2">{invFields.map((f) => <label key={f.id}>{f.label}<input value={inv.extra?.[f.id] || ""} onChange={(e) => setEx({ [f.id]: e.target.value })} /></label>)}</div>}
       </fieldset>
       <fieldset disabled={locked} className="itemsfs">
         <legend>Positionen</legend>
         <datalist id="artlist">{articles.map((a) => <option key={a.id} value={a.text} />)}</datalist>
         {inv.items.map((it, i) => (
-          <div key={i} className="itemrow">
+          <div key={i} className="itemwrap">
+          <div className="itemrow">
             <input className="itxt" list="artlist" value={it.text} placeholder="Leistung / Artikel" onChange={(e) => pickArt(i, e.target.value)} />
             <input className="iqty" inputMode="decimal" value={it.qty} onChange={(e) => setIt(i, { qty: e.target.value.replace(",", ".") })} aria-label="Menge" />
             <select className="iunit" value={it.unit || "Stk"} onChange={(e) => setIt(i, { unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
             <input className="iprice" inputMode="decimal" value={it.price} placeholder="Preis €" onChange={(e) => setIt(i, { price: e.target.value.replace(",", ".") })} aria-label="Einzelpreis" />
             <b className="isum">{fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
             <span className="iact">
-              {it.text && !articles.some((a) => a.text === it.text) && <button type="button" className="iconbtn" title="Als Artikel merken" onClick={() => setArticles((l) => [...l, { id: uid(), text: it.text, unit: it.unit, price: it.price }])}>☆</button>}
+              {it.text && !articles.some((a) => a.text === it.text) && <button type="button" className="iconbtn" title="Als Artikel merken" onClick={() => setArticles((l) => [...l, { id: uid(), text: it.text, unit: it.unit, price: it.price, extra: it.extra }])}>☆</button>}
               <button type="button" className="iconbtn" title="Position löschen" onClick={() => set({ items: inv.items.filter((_, k) => k !== i) })}>✕</button>
             </span>
+          </div>
+          {!!posFields.length && <div className="itemextra">{posFields.map((f) => <input key={f.id} value={it.extra?.[f.id] || ""} placeholder={f.label} aria-label={f.label} onChange={(e) => setItEx(i, { [f.id]: e.target.value })} />)}</div>}
           </div>
         ))}
         <button type="button" className="btn sm" onClick={() => set({ items: [...inv.items, { text: "", qty: 1, unit: "Stk", price: "" }] })}>＋ Position</button>
@@ -4430,7 +4506,7 @@ function RemindWin({ inv, co, onDone, onClose }) {
         <label>Mahnspesen € (optional)<input inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="0" /></label>
       </div>
       <div className="actions">
-        <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(next, co, r))}>Vorschau</button>
+        <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(next, co, r), invFileName(inv, r))}>Vorschau</button>
         <button className="btn primary" onClick={async () => { const pdf = await buildInvoicePdf(next, co, r); onDone(next); onClose(); sharePdf(pdf, invFileName(inv, r), REMIND[level] + " " + inv.number); }}>Erstellen & senden</button>
       </div>
       <p className="muted small">Wird im Verlauf der Rechnung vermerkt. Das PDF kannst du per Mail, WhatsApp usw. teilen.</p>
@@ -4439,7 +4515,7 @@ function RemindWin({ inv, co, onDone, onClose }) {
 }
 
 /* ---------- Seite ---------- */
-function InvoicesPage({ me, txs = [], notify, onArchive, setTab }) {
+function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
   const [list, setList] = useLsState("invoices", []);
   const [templates, setTemplates] = useLsState("invoiceTemplates", []);
   const [customers, setCustomers] = useLsState("customers", []);
@@ -4467,7 +4543,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab }) {
   useEffect(() => {
     const pc = ls.get("pendingInvoice", null); if (!pc) return; ls.set("pendingInvoice", null);
     newDoc(pc.kind || "rechnung", pc.customer);
-  }, []);
+  }, [req]);
   const newDoc = (kind, cust) => setEdit({ id: uid(), kind, status: "entwurf", number: "", date: todayISO(), serviceFrom: todayISO(), dueDays: co.dueDays, validDays: co.validDays,
     customer: cust ? { name: cust.name, address: cust.address || "", uid: cust.uid || "", email: cust.email || "", number: cust.number || "", contact: cust.contact || "" } : { name: "", address: "" }, items: [{ text: "", qty: 1, unit: kind === "angebot" ? "Pausch." : "Std", price: "" }], reminders: [], createdAt: new Date().toISOString() });
   const save = (inv, saveCust) => {
@@ -4564,7 +4640,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab }) {
                 </div>
                 <span className={"stpill " + cls}>{label}</span>
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
-                  {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co))}>📄</button>}
+                  {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x))}>📄</button>}
                   {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`)}><IcoShare /></button>}
                   {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" onClick={() => patch(x.id, { status: "bezahlt", paidAt: todayISO() })}>✓ Bezahlt</button>}
                   {s === "bezahlt" && <button className="link small" onClick={() => patch(x.id, { status: "offen", paidAt: null })}>Doch offen</button>}
@@ -4750,15 +4826,58 @@ function ContractsPage({ docs, me, onOpen }) {
 
 
 /* ======================= Kunden / Kontakte ======================= */
-const CONTACT_TYPES = { Kunde: "🧑‍💼", Lieferant: "🚚", Partner: "🤝", Privat: "👤", Behörde: "🏛️" };
+const CONTACT_TYPES_DEF = [["Kunde", "🧑‍💼", "#4f8cff"], ["Lieferant", "🚚", "#f59e0b"], ["Partner", "🤝", "#00b3a4"], ["Privat", "👤", "#a855f7"], ["Behörde", "🏛️", "#64748b"]]
+  .map(([name, icon, color]) => ({ id: "ct-" + name, name, icon, color }));
+const useContactTypes = () => useLsState("contactTypes", CONTACT_TYPES_DEF);
+const TypeGlyph = ({ t }) => (t?.img ? <img className="catimg" src={t.img} alt="" /> : <>{t?.icon || "👤"}</>);
+function ContactTypeSettings() {
+  const [types, setTypes] = useContactTypes();
+  const [list, setList] = useLsState("customers", []);
+  const [styleId, setStyleId] = useState(null), [nn, setNn] = useState("");
+  const patch = (id, p) => setTypes((l) => l.map((t) => (t.id === id ? { ...t, ...p } : t)));
+  const rename = (t, name) => { if (!name || name === t.name) return; patch(t.id, { name }); setList((l) => l.map((c) => ((c.type || "Kunde") === t.name ? { ...c, type: name } : c))); };
+  const count = (t) => list.filter((c) => (c.type || "Kunde") === t.name).length;
+  const dnd = useDnd((d, over) => setTypes((l) => moveBetween({ t: l }, "t", d.index, "t", over.index).t));
+  return (<>
+    <p className="muted small">Kategorien für deine Kontakte im Reiter „Kunden“. Auf das Symbol tippen für Symbol &amp; Textfarbe (auch eigenes Bild). Am Griff <b>⠿</b> sortieren.</p>
+    <div data-ctt-list={`t|${types.length}`}>
+      {types.map((t, i) => (
+        <React.Fragment key={t.id}>
+          {dnd.lineAt("ctt", "t", i) && <div className="dropline" />}
+          <div className={"acccfg catrow" + (dnd.isDragging("ctt", "t", i) ? " dragging" : "")} data-ctt-item={`t|${i}`}>
+            <Handle onDown={(e) => dnd.start(e, { kind: "ctt", list: "t", index: i, label: `${t.icon || ""} ${t.name}` })} />
+            <button className="ki catki" title="Symbol & Textfarbe" style={{ background: (t.color || "#888") + "22", color: t.color }} onClick={() => setStyleId(styleId === t.id ? null : t.id)}><TypeGlyph t={t} /></button>
+            <EditText className="grow" inputClass="catname" value={t.name} validate={(v) => (!v ? "leer" : v !== t.name && types.some((x) => x.name.toLowerCase() === v.toLowerCase()) ? "doppelt" : undefined)} onSave={(v) => rename(t, v)} />
+            <small className="muted cnt">{count(t)}</small>
+            <button className="iconbtn" title="Löschen" onClick={() => { if (types.length <= 1) return; if (!confirm(`Kategorie „${t.name}“ löschen?${count(t) ? ` ${count(t)} Kontakt(e) wandern nach „${types.find((x) => x.id !== t.id).name}“.` : ""}`)) return;
+              const to = types.find((x) => x.id !== t.id).name; setList((l) => l.map((c) => ((c.type || "Kunde") === t.name ? { ...c, type: to } : c))); setTypes((l) => l.filter((x) => x.id !== t.id)); }}>🗑</button>
+          </div>
+          {styleId === t.id && <div className="catstylebox">
+            <CatStylePicker icon={t.icon} color={t.color} img={t.img} onChange={(m) => patch(t.id, { icon: m.icon, color: m.color, img: m.img })} />
+            <div className="asfoot"><span className="aspreview"><span className="label" style={{ color: t.color, background: (t.color || "#888") + "1f" }}><TypeGlyph t={t} /> {t.name}</span></span>
+              <button className="btn sm" onClick={() => setStyleId(null)}>Fertig</button></div>
+          </div>}
+        </React.Fragment>
+      ))}
+      {dnd.lineAt("ctt", "t", types.length) && <div className="dropline" />}
+    </div>
+    <div className="acccfg addcat"><span className="ki">＋</span>
+      <input className="grow" value={nn} placeholder="Neue Kategorie, z. B. „Handwerker“, „Stammkunde“" onChange={(e) => setNn(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter" && nn.trim() && !types.some((x) => x.name.toLowerCase() === nn.trim().toLowerCase())) { setTypes((l) => [...l, { id: "ct-" + uid(), name: nn.trim(), icon: "🏷️", color: ACC_COLORS[l.length % ACC_COLORS.length] }]); setNn(""); } }} />
+      <button className="btn sm" disabled={!nn.trim()} onClick={() => { if (types.some((x) => x.name.toLowerCase() === nn.trim().toLowerCase())) return; setTypes((l) => [...l, { id: "ct-" + uid(), name: nn.trim(), icon: "🏷️", color: ACC_COLORS[l.length % ACC_COLORS.length] }]); setNn(""); }}>Hinzufügen</button>
+    </div>
+    {dnd.ghost}
+  </>);
+}
 function ContactEditor({ c: init, onSave, onDelete, onClose }) {
+  const [types] = useContactTypes();
   const [c, setC] = useState(init);
   const set = (p) => setC((x) => ({ ...x, ...p }));
   const f = (k, label, ph = "", type = "text") => <label>{label}<input type={type} value={c[k] || ""} placeholder={ph} onChange={(e) => set({ [k]: e.target.value })} /></label>;
   return (
     <Win id="contact" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name || "Neuer Kontakt"}</b><button className="btn primary" disabled={!c.name?.trim()} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
-      <div className="seg">{Object.entries(CONTACT_TYPES).map(([k, i]) => <button key={k} className={(c.type || "Kunde") === k ? "on" : ""} onClick={() => set({ type: k })}>{i} {k}</button>)}</div>
+      <div className="typepick">{types.map((t) => <button key={t.id} className={"chip" + ((c.type || types[0]?.name) === t.name ? " on" : "")} style={(c.type || types[0]?.name) === t.name ? undefined : { color: t.color }} onClick={() => set({ type: t.name })}><TypeGlyph t={t} /> {t.name}</button>)}</div>
       <fieldset><legend>Kontakt</legend>
         <div className="grid2">{f("name", "Name / Firma", "z. B. Muster GmbH")}{f("contact", "Ansprechperson", "z. B. Frau Huber")}</div>
         <label>Anschrift<textarea rows={3} value={c.address || ""} placeholder={"Straße Nr.\nPLZ Ort"} onChange={(e) => set({ address: e.target.value })} /></label>
@@ -4774,8 +4893,82 @@ function ContactEditor({ c: init, onSave, onDelete, onClose }) {
     </Win>
   );
 }
-function ContactsPage({ setTab }) {
+/* vCard (.vcf) lesen – Export aus iPhone/Mac-Kontakten, Android, Google, Outlook */
+const cityOf = (a) => { const l = String(a || "").split("\n"); return l.find((x) => /^\d{4,5}\s/.test(x.trim())) || l[l.length - 1] || ""; };
+function parseVcf(text) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\n[ \t]/g, "").replace(/=\n/g, "").split("\n");
+  const out = []; let c = null;
+  const qp = (v) => { try { return decodeURIComponent(v.replace(/=([0-9A-F]{2})/gi, "%$1")); } catch { return v; } };
+  const un = (v) => v.replace(/\\n/gi, "\n").replace(/\\([,;\\])/g, "$1").trim();
+  for (const raw of lines) {
+    const i = raw.indexOf(":"); if (i < 0) continue;
+    const head = raw.slice(0, i), params = head.toUpperCase().split(";"), key = params[0].replace(/^ITEM\d+\./, "");
+    let val = raw.slice(i + 1); if (params.some((x) => x.includes("QUOTED-PRINTABLE"))) val = qp(val);
+    if (key === "BEGIN") { c = { tels: [] }; continue; }
+    if (key === "END") { if (c) {
+      const name = c.fn || c.n || c.org || "";
+      if (name) out.push({ name, contact: c.org && c.fn && c.org !== c.fn ? c.fn : "", ...(c.org && c.fn && c.org !== c.fn ? { name: c.org } : {}),
+        email: c.email || "", phone: (c.tels.find((t) => !t.cell) || {}).v || "", mobile: (c.tels.find((t) => t.cell) || {}).v || "",
+        address: c.adr || "", web: c.url || "", note: c.note || "", birthday: c.bday || "" });
+    } c = null; continue; }
+    if (!c) continue;
+    const v = un(val);
+    if (key === "FN") c.fn = v;
+    else if (key === "N" && !c.n) { const [last, first] = val.split(";"); c.n = [un(first || ""), un(last || "")].filter(Boolean).join(" "); }
+    else if (key === "ORG") c.org = un(val.split(";")[0]);
+    else if (key === "EMAIL" && !c.email) c.email = v;
+    else if (key === "TEL") c.tels.push({ v, cell: params.some((x) => /CELL|MOBILE|IPHONE/.test(x)) });
+    else if (key === "ADR" && !c.adr) { const p = val.split(";").map(un); c.adr = [p[2], [p[5], p[3]].filter(Boolean).join(" "), p[6]].filter(Boolean).join("\n"); }
+    else if (key === "URL" && !c.url) c.url = v;
+    else if (key === "NOTE") c.note = v;
+    else if (key === "BDAY") { const m = v.replace(/-/g, "").match(/^(\d{4})(\d{2})(\d{2})/); if (m) c.bday = `${m[1]}-${m[2]}-${m[3]}`; }
+  }
+  return out;
+}
+function ContactImportWin({ items: init, existing, onImport, onClose }) {
+  const [items, setItems] = useState(() => init.map((c) => ({ ...c, on: !existing.some((x) => norm(x.name) === norm(c.name) || (c.email && norm(x.email) === norm(c.email))) })));
+  const [q, setQ] = useState("");
+  const dup = (c) => existing.some((x) => norm(x.name) === norm(c.name) || (c.email && norm(x.email) === norm(c.email)));
+  const shown = items.map((c, i) => [c, i]).filter(([c]) => !q || norm(`${c.name} ${c.contact} ${c.email} ${c.phone} ${c.mobile}`).includes(norm(q)));
+  const sel = items.filter((c) => c.on);
+  return (
+    <Win id="ctimport" onClose={onClose} dirty={false}>
+      <div className="panelhead"><b>Kontakte übernehmen</b><button className="btn primary" disabled={!sel.length} onClick={() => onImport(sel)}>{sel.length} übernehmen</button><XBtn /></div>
+      <p className="muted small">{items.length} Kontakt{items.length === 1 ? "" : "e"} gefunden. Bereits vorhandene (gleicher Name oder E-Mail) sind abgewählt.</p>
+      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Filtern" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="actions" style={{ marginTop: 0 }}>
+        <button className="link" onClick={() => setItems((l) => l.map((c) => ({ ...c, on: true })))}>Alle</button>
+        <button className="link" onClick={() => setItems((l) => l.map((c) => ({ ...c, on: false })))}>Keine</button>
+      </div>
+      {shown.map(([c, i]) => (
+        <label key={i} className="frow click impcontact">
+          <input type="checkbox" checked={c.on} onChange={(e) => setItems((l) => l.map((x, k) => (k === i ? { ...x, on: e.target.checked } : x)))} />
+          <div className="grow"><b>{c.name}</b>{dup(c) && <small className="warnc"> · schon vorhanden</small>}
+            <small className="muted block">{[c.contact, c.email, c.mobile || c.phone, cityOf(c.address)].filter(Boolean).join(" · ") || "—"}</small></div>
+        </label>
+      ))}
+    </Win>
+  );
+}
+function ContactsPage({ setTab, req = 0 }) {
   const [list, setList] = useLsState("customers", []);
+  const [types] = useContactTypes();
+  const typeOf = (c) => types.find((t) => t.name === (c.type || "Kunde")) || { name: c.type || "Kunde", icon: "👤", color: "#888" };
+  const [picked, setPicked] = useState(null); // Import-Vorschau
+  const vcfRef = useRef();
+  useEffect(() => { if (ls.get("pendingContact", null)) { ls.set("pendingContact", null); setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }); } }, [req]);
+  const fromPhone = async () => {
+    if ("contacts" in navigator && "select" in navigator.contacts) {
+      try {
+        const props = await navigator.contacts.getProperties().catch(() => ["name", "email", "tel"]);
+        const res = await navigator.contacts.select(props.filter((x) => ["name", "email", "tel", "address"].includes(x)), { multiple: true });
+        const out = res.map((r) => ({ name: (r.name || [])[0] || "", email: (r.email || [])[0] || "", phone: (r.tel || [])[0] || "",
+          address: r.address?.[0] ? [(r.address[0].addressLine || []).join(" "), [r.address[0].postalCode, r.address[0].city].filter(Boolean).join(" "), r.address[0].country].filter(Boolean).join("\n") : "" })).filter((c) => c.name);
+        if (out.length) setPicked(out.map((c) => ({ ...c, on: true }))); return;
+      } catch (e) { if (e.name === "AbortError" || e.name === "InvalidStateError") return; }
+    }
+    vcfRef.current.click();
+  };
   const invoices = ls.get("invoices", []);
   const [edit, setEdit] = useState(null), [q, setQ] = useState(""), [type, setType] = useState("alle");
   const save = (c) => setList((l) => (l.some((x) => x.id === c.id) ? l.map((x) => (x.id === c.id ? c : x)) : [...l, c]));
@@ -4793,29 +4986,46 @@ function ContactsPage({ setTab }) {
     <div className="ctpage">
       <div className="invbar">
         <button className="btn primary" onClick={() => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() })}>＋ Kontakt</button>
+        <button className="btn" onClick={fromPhone}>📱 Aus Handy-Kontakten</button>
+        <input ref={vcfRef} type="file" accept=".vcf,text/vcard,text/x-vcard" multiple hidden onChange={async (e) => {
+          const files = [...e.target.files]; e.target.value = ""; let all = [];
+          for (const f of files) all = all.concat(parseVcf(await f.text()));
+          if (!all.length) return alert("Keine Kontakte in der Datei gefunden.");
+          setPicked(all.map((c) => ({ ...c, on: true })));
+        }} />
         <span className="grow" />
         <small className="muted">{list.length} Kontakt{list.length === 1 ? "" : "e"}</small>
       </div>
+      {!("contacts" in navigator && "select" in (navigator.contacts || {})) && <p className="muted small hint">📱 <b>iPhone:</b> Kontakte-App → Kontakt öffnen → „Kontakt teilen“ → „In Dateien sichern“ (mehrere: in der Liste mit zwei Fingern markieren → teilen). Dann hier „Aus Handy-Kontakten“ und die .vcf-Datei wählen. <b>Mac:</b> Kontakte → Ablage → Exportieren → vCard. <b>Android/Chrome:</b> Kontakte werden direkt ausgewählt.</p>}
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Name, E-Mail, Telefon, Ort suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-      <div className="chips invfilter">{["alle", ...Object.keys(CONTACT_TYPES)].map((k) => <button key={k} className={"chip" + (type === k ? " on" : "")} onClick={() => setType(k)}>{k === "alle" ? "Alle" : CONTACT_TYPES[k] + " " + k} <small>({k === "alle" ? list.length : list.filter((c) => (c.type || "Kunde") === k).length})</small></button>)}</div>
+      <div className="chips invfilter">
+        <button className={"chip" + (type === "alle" ? " on" : "")} onClick={() => setType("alle")}>Alle <small>({list.length})</small></button>
+        {types.map((t) => <button key={t.id} className={"chip" + (type === t.name ? " on" : "")} style={type === t.name ? undefined : { color: t.color }} onClick={() => setType(t.name)}><TypeGlyph t={t} /> {t.name} <small>({list.filter((c) => (c.type || "Kunde") === t.name).length})</small></button>)}
+        {setTab && <button className="chip" title="Kategorien bearbeiten" onClick={() => { ls.set("openSettingsSec", "kontaktarten"); setTab("settings"); }}>⚙︎</button>}
+      </div>
       <section className="tile ctlist">
-        {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
+        {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📱 Aus Handy-Kontakten“ übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
         {shown.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
           <div key={c.id} className="frow click contactrow" onClick={() => setEdit(c)}>
             <span className="caticon avatar" style={{ width: 42, height: 42 }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>
             <div className="grow">
-              <b>{c.name}</b> <small className="muted">{CONTACT_TYPES[c.type || "Kunde"]} {c.number || ""}</small>
-              <small className="muted block">{[c.contact, (c.address || "").split("\n").pop()].filter(Boolean).join(" · ")}</small>
+              <b>{c.name}</b> <small style={{ color: typeOf(c).color }}><TypeGlyph t={typeOf(c)} /> {typeOf(c).name}</small> <small className="muted">{c.number || ""}</small>
+              <small className="muted block">{[c.contact, cityOf(c.address)].filter(Boolean).join(" · ")}</small>
               <div className="cactions" onClick={(e) => e.stopPropagation()}>
                 {c.email && <a className="chip" href={`mailto:${c.email}`}>✉️ {c.email}</a>}
                 {(c.phone || c.mobile) && <a className="chip" href={`tel:${(c.mobile || c.phone).replace(/\s/g, "")}`}>📞 {c.mobile || c.phone}</a>}
-                {(c.type || "Kunde") === "Kunde" && setTab && <button className="chip" onClick={() => { ls.set("pendingInvoice", { kind: "rechnung", customer: c }); setTab("invoices"); }}>🧾 Rechnung</button>}
+                {setTab && <button className="chip" onClick={() => { ls.set("pendingInvoice", { kind: "rechnung", customer: c }); setTab("invoices"); }}>🧾 Rechnung</button>}
                 <button className="chip" onClick={() => vcard(c)}>📇 vCard</button>
               </div>
             </div>
             {!!inv.length && <div className="right"><b>{fmtMoney(inv.reduce((s, i) => s + invTotal(i), 0))}</b><small className={"block " + (open.length ? "warnc" : "muted")}>{inv.length} Rechnung{inv.length === 1 ? "" : "en"}{open.length ? ` · ${open.length} offen` : ""}</small></div>}
           </div>); })}
       </section>
+      {picked && <ContactImportWin items={picked} existing={list} onClose={() => setPicked(null)} onImport={(sel) => {
+        let n = list.reduce((m, c) => Math.max(m, parseInt(String(c.number || "").replace(/\D/g, ""), 10) || 0), 0);
+        setList((l) => [...l, ...sel.map((c) => { const { on, ...rest } = c; return { id: uid(), type: "Kunde", number: "K-" + String(++n).padStart(3, "0"), ...rest }; })]);
+        setPicked(null);
+      }} />}
       {edit && <ContactEditor c={edit} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
     </div>
   );
@@ -5738,4 +5948,13 @@ nav.bottom .subtab .badge{margin-left:auto}
 nav.bottom>button span.tl{font-size:inherit;filter:none;opacity:1}
 nav.bottom>button span.tabico.custom{filter:none;opacity:1}
 nav.bottom>button.subtab span.tabico{font-size:16px}
+
+.impcontact{gap:12px;align-items:center;cursor:pointer}.impcontact input{width:auto;margin:0}
+
+/* v0.21.0 */
+.pdfviewwin .dpages{max-height:none;flex:1}
+.itemsfs>.itemwrap{clear:both}.itemwrap{margin-bottom:8px}.itemwrap .itemrow{margin-bottom:4px}
+.itemextra{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px}.itemextra input{height:36px;min-height:36px;padding:6px 10px;font-size:13px}
+.artrow .artextra{grid-column:1/-1}
+.typepick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}.typepick .chip{display:inline-flex;align-items:center;gap:4px}
 `;

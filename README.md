@@ -2,6 +2,17 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.21.0
+
+- Fix: Rechnungs-Vorschau öffnet sich jetzt in einem App-Fenster (mit ✕, Drucken, Teilen) statt in einem neuen Browser-Fenster – am iPhone kam man dort nicht mehr zurück. Gilt für Vorschau, 📄 und Mahnungs-Vorschau.
+- Einstellungen › **Kunden – Kategorien** (neu): eigene Kontakt-Kategorien anlegen, umbenennen, löschen, sortieren; Symbol & Textfarbe (auch eigenes Bild). Im Reiter Kunden führt ⚙︎ direkt dorthin.
+- Einstellungen › Rechnungen › **Eigene Felder**: zusätzliche Felder für die Rechnung (im Kopf, z. B. Projekt, Bestellnr.) und für Positionen (unter der Bezeichnung, z. B. Artikelnr., Seriennr.); auch bei Artikeln hinterlegbar und beim Auswählen übernommen. Leere Felder werden nicht gedruckt.
+
+## v0.20.1
+
+- Schwebendes ＋: **Neue Rechnung** und **Neuer Kunde**.
+- Kunden: **📱 Aus Handy-Kontakten** – Android/Chrome wählt Kontakte direkt aus; iPhone/Mac über vCard-Datei (.vcf, auch mehrere Kontakte in einer Datei). Vorschau mit Auswahl, bereits vorhandene (gleicher Name/E-Mail) abgewählt, Kundennummern werden fortlaufend vergeben. Übernimmt Name, Firma/Ansprechperson, E-Mail, Telefon/Mobil, Anschrift, Website, Geburtstag, Notiz.
+
 ## v0.20.0
 
 - „Fristen“ heißt jetzt **Umtauschfrist** und steht in der Seitenleiste als Unterpunkt unter **Dokumente** (plus Knopf „⏰ Umtauschfrist“ in der Dokumentenliste, Zähler für Fristen der nächsten 7 Tage).
