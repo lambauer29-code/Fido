@@ -442,7 +442,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Fristen"], accounts: ["🏦", "Konten"], cash: ["💶", "Barausgabe"], contracts: ["📑", "Verträge"], settings: ["⚙️", "Einstellungen"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Fristen"], accounts: ["🏦", "Konten"], cash: ["💶", "Barausgabe"], invoices: ["🧾", "Rechnungen"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -515,7 +515,7 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 const DEFAULT_NAV = {
   tabs: [
     { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: false },
-    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }
+    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }
   ],
   groups: [
     { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
@@ -1621,6 +1621,8 @@ export default function App() {
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "cash" && <CashPage accounts={accounts} txs={txs} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory}
           docs={active} onOpen={setOpenId} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
+        {tab === "invoices" && <InvoicesPage me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
+        {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
         {tab === "settings" && (
           <Settings theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
@@ -3974,6 +3976,696 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
 }
 
 /* ---------- Styles ---------- */
+/* ======================= Rechnungen (Firma) ======================= */
+const KU_NOTE = "Umsatzsteuerbefreit – Kleinunternehmer gemäß § 6 Abs. 1 Z 27 UStG.";
+const KU_LIMIT = 55000;
+const CO_DEFAULT = {
+  name: "", owner: "", street: "", zip: "", city: "", email: "", phone: "", web: "", iban: "", bic: "", bank: "", taxNo: "", uid: "", fn: "", logo: "",
+  dueDays: 14, validDays: 30, prefixR: "RE", prefixA: "AN",
+  intro: "Vielen Dank für Ihren Auftrag. Ich erlaube mir, folgende Leistungen in Rechnung zu stellen:",
+  introA: "Gerne unterbreite ich Ihnen folgendes Angebot:",
+  outro: "Bei Fragen stehe ich Ihnen gerne zur Verfügung.",
+};
+const INTERVALS = { monatlich: 1, vierteljährlich: 3, halbjährlich: 6, jährlich: 12 };
+const UNITS = ["Stk", "Std", "Pausch.", "Tag", "km", "m", "m²", "kg", "Monat"];
+const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+const addDays = (iso, n) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + Number(n || 0)); return d.toLocaleDateString("sv-SE"); };
+const addMonths = (iso, n) => {
+  const d = new Date(iso + "T12:00:00"), day = d.getDate();
+  d.setDate(1); d.setMonth(d.getMonth() + Number(n || 0));
+  d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  return d.toLocaleDateString("sv-SE");
+};
+const invTotal = (inv) => r2((inv.items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0) + (Number(inv.fee) || 0));
+const invDue = (inv) => (inv.date ? addDays(inv.date, inv.dueDays ?? 14) : "");
+const lastReminder = (inv) => (inv.reminders || [])[(inv.reminders || []).length - 1];
+const invDueEff = (inv) => lastReminder(inv)?.due || invDue(inv);
+function invState(inv) {
+  if (inv.kind === "angebot") return inv.status === "entwurf" ? "entwurf" : inv.status || "offen";
+  if (inv.status === "entwurf" || inv.status === "storniert" || inv.status === "bezahlt") return inv.status;
+  return daysUntil(invDueEff(inv)) < 0 ? "überfällig" : "offen";
+}
+const STATE_UI = {
+  entwurf: ["Entwurf", "st-draft"], offen: ["Offen", "st-open"], "überfällig": ["Überfällig", "st-over"], bezahlt: ["Bezahlt", "st-paid"],
+  storniert: ["Storniert", "st-void"], angenommen: ["Angenommen", "st-paid"], abgelehnt: ["Abgelehnt", "st-void"],
+};
+const REMIND = ["Zahlungserinnerung", "1. Mahnung", "2. Mahnung", "Letzte Mahnung"];
+function nextInvNumber(list, kind, co, date) {
+  const pre = (kind === "angebot" ? co.prefixA || "AN" : co.prefixR || "RE") + "-" + (date || todayISO()).slice(0, 4) + "-";
+  const max = list.filter((x) => (x.number || "").startsWith(pre)).reduce((m, x) => Math.max(m, parseInt(x.number.slice(pre.length), 10) || 0), 0);
+  return pre + String(max + 1).padStart(3, "0");
+}
+function useLsState(key, def) {
+  const [v, setV] = useState(() => ls.get(key, def));
+  const set = (f) => setV((cur) => { const n = typeof f === "function" ? f(cur) : f; ls.set(key, n); return n; });
+  return [v, set];
+}
+
+/* ---------- PDF (pdf-lib, Standardschrift) ---------- */
+const WIN_ANSI_EXTRA = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
+const pdfSafe = (t) => String(t ?? "").replace(/[   ]/g, " ").replace(/[‐‑]/g, "-").split("")
+  .map((ch) => (ch.charCodeAt(0) < 256 || WIN_ANSI_EXTRA.includes(ch) ? ch : ch === "\t" ? " " : "?")).join("");
+const money = (v) => (Number(v) || 0).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+async function buildInvoicePdf(inv, co, remind = null) {
+  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+  const pdf = await PDFDocument.create();
+  const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const W = 595.28, H = 841.89, M = 56, grey = rgb(0.38, 0.4, 0.45), dark = rgb(0.1, 0.11, 0.14), line = rgb(0.82, 0.83, 0.86);
+  let page = pdf.addPage([W, H]);
+  const txt = (s, x, y, o = {}) => page.drawText(pdfSafe(s), { x, y, size: o.size || 10, font: o.bold ? B : F, color: o.color || dark });
+  const width = (s, o = {}) => (o.bold ? B : F).widthOfTextAtSize(pdfSafe(s), o.size || 10);
+  const right = (s, xr, y, o = {}) => txt(s, xr - width(s, o), y, o);
+  const wrap = (s, maxW, o = {}) => {
+    const out = [];
+    for (const para of pdfSafe(s).split("\n")) {
+      let cur = "";
+      for (const w of para.split(" ")) {
+        const t = cur ? cur + " " + w : w;
+        if (width(t, o) > maxW && cur) { out.push(cur); cur = w; } else cur = t;
+      }
+      out.push(cur);
+    }
+    return out;
+  };
+  const hr = (y) => page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.6, color: line });
+  const footer = () => {
+    hr(62);
+    const cols = [
+      [co.name, co.owner && co.owner !== co.name ? co.owner : "", co.street, [co.zip, co.city].filter(Boolean).join(" ")],
+      [co.phone && "Tel. " + co.phone, co.email, co.web, co.fn && "FN " + co.fn],
+      [co.bank, co.iban && "IBAN " + co.iban, co.bic && "BIC " + co.bic, co.uid ? "UID " + co.uid : co.taxNo && "St.-Nr. " + co.taxNo],
+    ].map((c) => c.filter(Boolean));
+    const cw = (W - 2 * M) / 3;
+    cols.forEach((c, i) => c.slice(0, 4).forEach((l, k) => txt(l, M + i * cw, 50 - k * 9, { size: 7, color: grey })));
+  };
+
+  // Kopf: Logo rechts, Absenderzeile, Empfänger
+  if (co.logo) {
+    try {
+      const bytes = Uint8Array.from(atob(co.logo.split(",")[1]), (c) => c.charCodeAt(0));
+      const img = co.logo.startsWith("data:image/png") ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+      const sc = Math.min(140 / img.width, 56 / img.height);
+      page.drawImage(img, { x: W - M - img.width * sc, y: H - 48 - img.height * sc, width: img.width * sc, height: img.height * sc });
+    } catch {}
+  } else if (co.name) right(co.name, W - M, H - 70, { bold: true, size: 14 });
+  const sender = [co.name, co.street, [co.zip, co.city].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+  txt(sender, M, H - 138, { size: 7, color: grey });
+  page.drawLine({ start: { x: M, y: H - 142 }, end: { x: M + Math.min(width(sender, { size: 7 }), 240), y: H - 142 }, thickness: 0.4, color: line });
+  const c = inv.customer || {};
+  let y = H - 158;
+  [c.name, ...(c.address || "").split("\n")].filter((l) => l && l.trim()).slice(0, 6).forEach((l, i) => txt(l, M, y - i * 13, { size: 10.5 }));
+  if (c.uid) txt("UID: " + c.uid, M, y - 6 * 13, { size: 8.5, color: grey });
+
+  // Infoblock rechts
+  const kindName = remind ? REMIND[remind.level] : inv.kind === "angebot" ? "Angebot" : "Rechnung";
+  const info = remind
+    ? [["Datum", fmtDate(remind.date)], ["Rechnung Nr.", inv.number], ["Rechnungsdatum", fmtDate(inv.date)], ["Zahlbar bis", fmtDate(remind.due)]]
+    : [[kindName + " Nr.", inv.number || "ENTWURF"], [inv.kind === "angebot" ? "Datum" : "Rechnungsdatum", fmtDate(inv.date)],
+       ...(inv.kind === "angebot" ? [["Gültig bis", fmtDate(addDays(inv.date, inv.validDays ?? co.validDays ?? 30))]]
+         : [["Leistung", inv.serviceTo ? `${fmtDate(inv.serviceFrom)} – ${fmtDate(inv.serviceTo)}` : fmtDate(inv.serviceFrom || inv.date)], ["Zahlbar bis", fmtDate(invDue(inv))]]),
+       ...(c.number ? [["Kundennr.", c.number]] : [])];
+  info.forEach(([k, v], i) => { txt(k, W - M - 190, H - 158 - i * 14, { size: 9, color: grey }); right(v, W - M, H - 158 - i * 14, { size: 9.5, bold: i === 0 }); });
+
+  y = H - 270;
+  txt(kindName.toUpperCase(), M, y, { bold: true, size: 17 });
+  y -= 24;
+  const intro = remind
+    ? (remind.level === 0
+      ? `sicher ist es Ihrer Aufmerksamkeit entgangen: Für die unten angeführte Rechnung konnten wir bis heute keinen Zahlungseingang feststellen. Wir bitten Sie, den offenen Betrag bis ${fmtDate(remind.due)} zu überweisen.`
+      : `leider konnten wir trotz ${remind.level === 1 ? "unserer Zahlungserinnerung" : "bisheriger Mahnungen"} noch keinen Zahlungseingang für die unten angeführte Rechnung feststellen. Wir ersuchen Sie dringend, den offenen Betrag bis ${fmtDate(remind.due)} zu begleichen.`) + "\nSollten Sie die Zahlung bereits veranlasst haben, betrachten Sie dieses Schreiben bitte als gegenstandslos."
+    : inv.intro ?? (inv.kind === "angebot" ? co.introA : co.intro);
+  if (remind) { txt(c.contact ? `Sehr geehrte/r ${c.contact},` : "Sehr geehrte Damen und Herren,", M, y); y -= 16; }
+  for (const l of wrap(intro || "", W - 2 * M)) { txt(l, M, y); y -= 14; }
+  y -= 10;
+
+  // Tabelle
+  const X = { pos: M, txt: M + 28, qty: W - M - 210, unit: W - M - 170, price: W - M - 70, sum: W - M };
+  const head = () => {
+    page.drawRectangle({ x: M, y: y - 6, width: W - 2 * M, height: 20, color: rgb(0.95, 0.96, 0.97) });
+    txt("Pos", X.pos + 4, y, { size: 8.5, bold: true, color: grey }); txt("Bezeichnung", X.txt, y, { size: 8.5, bold: true, color: grey });
+    if (!remind) { right("Menge", X.qty + 20, y, { size: 8.5, bold: true, color: grey }); txt("Einheit", X.unit, y, { size: 8.5, bold: true, color: grey });
+      right("Einzelpreis", X.price, y, { size: 8.5, bold: true, color: grey }); } right("Gesamt", X.sum, y, { size: 8.5, bold: true, color: grey });
+    y -= 22;
+  };
+  const newPageIfNeeded = (need) => { if (y - need < 120) { footer(); page = pdf.addPage([W, H]); y = H - 70; head(); } };
+  head();
+  const rows = remind
+    ? [{ text: `Rechnung ${inv.number} vom ${fmtDate(inv.date)}, fällig seit ${fmtDate(invDue(inv))}`, qty: 1, unit: "", price: invTotal({ ...inv, fee: 0 }) },
+       ...(inv.reminders || []).filter((r) => r.fee).map((r) => ({ text: `Mahnspesen ${REMIND[r.level]}`, qty: 1, unit: "", price: Number(r.fee) }))]
+    : (inv.items || []).filter((it) => it.text || it.price);
+  rows.forEach((it, i) => {
+    const lines = wrap(it.text || "", (remind ? X.price : X.qty - 40) - X.txt, { size: 9.5 });
+    newPageIfNeeded(lines.length * 12 + 8);
+    txt(String(i + 1), X.pos + 4, y, { size: 9.5 });
+    lines.forEach((l, k) => txt(l, X.txt, y - k * 12, { size: 9.5 }));
+    if (!remind) { right(String(it.qty ?? "").replace(".", ","), X.qty + 20, y, { size: 9.5 }); txt(it.unit || "", X.unit, y, { size: 9.5 }); right(money(it.price), X.price, y, { size: 9.5 }); }
+    right(money((Number(it.qty) || 0) * (Number(it.price) || 0)), X.sum, y, { size: 9.5 });
+    y -= lines.length * 12 + 6;
+    hr(y + 2); y -= 10;
+  });
+  newPageIfNeeded(90);
+  const total = remind ? r2(rows.reduce((s, r) => s + r.qty * r.price, 0)) : invTotal(inv);
+  y -= 4;
+  txt(remind ? "Offener Betrag" : "Gesamtbetrag", W - M - 210, y, { bold: true, size: 11 });
+  right("€ " + money(total), W - M, y, { bold: true, size: 11 });
+  y -= 16;
+  txt(KU_NOTE, M, y, { size: 8.5, color: grey });
+  y -= 26;
+
+  // Zahlung + QR
+  if (inv.kind !== "angebot" && co.iban) {
+    newPageIfNeeded(110);
+    const ref = inv.number || "";
+    try {
+      const payload = ["BCD", "002", "1", "SCT", (co.bic || "").replace(/\s/g, ""), (co.name || "").slice(0, 70), co.iban.replace(/\s/g, "").toUpperCase(),
+        "EUR" + total.toFixed(2), "", "", ref.slice(0, 140)].join("\n");
+      const png = await QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width: 300 });
+      const img = await pdf.embedPng(Uint8Array.from(atob(png.split(",")[1]), (ch) => ch.charCodeAt(0)));
+      page.drawImage(img, { x: W - M - 78, y: y - 70, width: 78, height: 78 });
+      txt("Zahlen mit Code", W - M - 76, y - 80, { size: 7, color: grey });
+    } catch {}
+    const pay = [`Bitte überweisen Sie den Betrag bis ${fmtDate(remind ? remind.due : invDue(inv))} auf folgendes Konto:`,
+      `${co.name}${co.bank ? " · " + co.bank : ""}`, `IBAN ${co.iban}${co.bic ? " · BIC " + co.bic : ""}`, `Verwendungszweck: ${ref}`];
+    pay.forEach((l, i) => txt(l, M, y - i * 14, { size: 9.5, bold: i === 3 }));
+    y -= 70;
+  }
+  const outro = remind ? "Mit freundlichen Grüßen" : [inv.outro ?? co.outro, "Mit freundlichen Grüßen"].filter(Boolean).join("\n");
+  y -= 10;
+  for (const l of wrap(outro, W - 2 * M - 100)) { newPageIfNeeded(14); txt(l, M, y); y -= 14; }
+  txt(co.owner || co.name, M, y - 8);
+  footer();
+  pdf.getPages().forEach((p, i, all) => { if (all.length > 1) p.drawText(`Seite ${i + 1} von ${all.length}`, { x: W - M - 60, y: 72, size: 7, font: F, color: grey }); });
+  return new Blob([await pdf.save()], { type: "application/pdf" });
+}
+const invFileName = (inv, remind) => safeName(`${remind ? REMIND[remind.level] : inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"} ${inv.customer?.name || ""}`) + ".pdf";
+async function openPdf(blob) {
+  const u = URL.createObjectURL(blob); const w = window.open(u, "_blank"); if (!w) location.href = u; setTimeout(() => URL.revokeObjectURL(u), 120000);
+}
+async function sharePdf(blob, name, title) {
+  const f = new File([blob], name, { type: "application/pdf" });
+  if (navigator.canShare?.({ files: [f] })) { try { await navigator.share({ files: [f], title }); return; } catch (e) { if (e.name === "AbortError") return; } }
+  shareUi ? shareUi({ files: [f], title, docs: [{ title }] }) : downloadFiles([f]);
+}
+
+/* ---------- Firmendaten ---------- */
+function CompanyWin({ co, setCo, onClose }) {
+  const [v, setV] = useState({ ...CO_DEFAULT, ...co });
+  const f = (k, label, ph = "", type = "text") => <label>{label}<input type={type} value={v[k] ?? ""} placeholder={ph} onChange={(e) => setV({ ...v, [k]: type === "number" ? Number(e.target.value) : e.target.value })} /></label>;
+  const logoRef = useRef();
+  return (
+    <Win id="company" onClose={onClose} dirty={JSON.stringify(v) !== JSON.stringify({ ...CO_DEFAULT, ...co })}>
+      <div className="panelhead"><b>Firmendaten für Rechnungen</b><button className="btn primary" onClick={() => { setCo(v); onClose(); }}>Speichern</button><XBtn /></div>
+      <p className="muted small">Diese Angaben erscheinen auf jeder Rechnung (Pflichtangaben nach § 11 UStG: Name und Anschrift des Unternehmens). Als Kleinunternehmer wird automatisch der Hinweis „{KU_NOTE}“ gedruckt.</p>
+      <fieldset><legend>Unternehmen</legend>
+        {f("name", "Firmenname", "z. B. Mustermann e.U.")}{f("owner", "Inhaber/in (Unterschrift)", "z. B. Roland Mustermann")}
+        {f("street", "Straße & Nr.")}<div className="grid2">{f("zip", "PLZ")}{f("city", "Ort")}</div>
+        <div className="grid2">{f("email", "E-Mail", "", "email")}{f("phone", "Telefon")}</div>
+        <div className="grid2">{f("web", "Website")}{f("fn", "Firmenbuchnr. (falls vorhanden)")}</div>
+        <div className="grid2">{f("taxNo", "Steuernummer")}{f("uid", "UID-Nr. (nur falls vorhanden)", "ATU…")}</div>
+        <div className="logorow">
+          {v.logo ? <img src={v.logo} alt="Logo" /> : <span className="muted small">Kein Logo</span>}
+          <button className="btn sm" onClick={() => logoRef.current.click()}>{v.logo ? "Logo ändern" : "Logo hochladen"}</button>
+          {v.logo && <button className="link red" onClick={() => setV({ ...v, logo: "" })}>Entfernen</button>}
+          <input ref={logoRef} type="file" accept="image/png,image/jpeg" hidden onChange={async (e) => {
+            const file = e.target.files[0]; e.target.value = ""; if (!file) return;
+            const img = await loadImage(file).catch(() => null); if (!img) return alert("Bild konnte nicht gelesen werden");
+            const sc = Math.min(1, 600 / img.width, 240 / img.height), cv = document.createElement("canvas");
+            cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc); cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+            setV((x) => ({ ...x, logo: cv.toDataURL("image/png") }));
+          }} />
+        </div>
+      </fieldset>
+      <fieldset><legend>Bankverbindung</legend>
+        {f("iban", "IBAN", "AT..")}<div className="grid2">{f("bic", "BIC")}{f("bank", "Bank")}</div>
+      </fieldset>
+      <fieldset><legend>Vorgaben</legend>
+        <div className="grid2">{f("dueDays", "Zahlungsziel (Tage)", "14", "number")}{f("validDays", "Angebote gültig (Tage)", "30", "number")}</div>
+        <div className="grid2">{f("prefixR", "Kürzel Rechnungsnummer", "RE")}{f("prefixA", "Kürzel Angebotsnummer", "AN")}</div>
+        <label>Einleitung Rechnung<textarea rows={2} value={v.intro} onChange={(e) => setV({ ...v, intro: e.target.value })} /></label>
+        <label>Einleitung Angebot<textarea rows={2} value={v.introA} onChange={(e) => setV({ ...v, introA: e.target.value })} /></label>
+        <label>Schlusstext<textarea rows={2} value={v.outro} onChange={(e) => setV({ ...v, outro: e.target.value })} /></label>
+      </fieldset>
+    </Win>
+  );
+}
+
+/* ---------- Kunden & Artikel ---------- */
+function MasterDataWin({ customers, setCustomers, articles, setArticles, onClose }) {
+  const [tab, setTab] = useState("kunden");
+  const patchC = (id, p) => setCustomers((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  const patchA = (id, p) => setArticles((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  return (
+    <Win id="masterdata" onClose={onClose} dirty={false}>
+      <div className="panelhead"><b>Kunden & Artikel</b><XBtn /></div>
+      <div className="seg"><button className={tab === "kunden" ? "on" : ""} onClick={() => setTab("kunden")}>Kunden ({customers.length})</button><button className={tab === "artikel" ? "on" : ""} onClick={() => setTab("artikel")}>Artikel & Leistungen ({articles.length})</button></div>
+      {tab === "kunden" ? <>
+        {customers.map((c) => (
+          <fieldset key={c.id} className="mdrow">
+            <div className="grid2"><label>Name<input value={c.name} onChange={(e) => patchC(c.id, { name: e.target.value })} /></label><label>Kundennr.<input value={c.number || ""} onChange={(e) => patchC(c.id, { number: e.target.value })} /></label></div>
+            <label>Anschrift<textarea rows={2} value={c.address || ""} onChange={(e) => patchC(c.id, { address: e.target.value })} /></label>
+            <div className="grid2"><label>E-Mail<input value={c.email || ""} onChange={(e) => patchC(c.id, { email: e.target.value })} /></label><label>UID<input value={c.uid || ""} onChange={(e) => patchC(c.id, { uid: e.target.value })} /></label></div>
+            <button className="link red" onClick={() => confirm(`Kunde „${c.name}“ löschen?`) && setCustomers((l) => l.filter((x) => x.id !== c.id))}>Löschen</button>
+          </fieldset>
+        ))}
+        <button className="btn" onClick={() => setCustomers((l) => [...l, { id: uid(), name: "Neuer Kunde", address: "" }])}>＋ Kunde</button>
+      </> : <>
+        {articles.map((a) => (
+          <div key={a.id} className="artrow">
+            <input value={a.text} placeholder="Bezeichnung" onChange={(e) => patchA(a.id, { text: e.target.value })} />
+            <select value={a.unit || "Stk"} onChange={(e) => patchA(a.id, { unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
+            <input inputMode="decimal" value={a.price ?? ""} placeholder="Preis" onChange={(e) => patchA(a.id, { price: e.target.value.replace(",", ".") })} />
+            <button className="iconbtn" title="Löschen" onClick={() => setArticles((l) => l.filter((x) => x.id !== a.id))}>✕</button>
+          </div>
+        ))}
+        <button className="btn" onClick={() => setArticles((l) => [...l, { id: uid(), text: "", unit: "Std", price: "" }])}>＋ Artikel / Leistung</button>
+      </>}
+    </Win>
+  );
+}
+
+/* ---------- Editor ---------- */
+function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, onFinalize, setArticles }) {
+  const [inv, setInv] = useState(init);
+  const [saveCust, setSaveCust] = useState(!customers.some((c) => c.name === init.customer?.name));
+  const locked = init.status !== "entwurf";
+  const set = (p) => setInv((x) => ({ ...x, ...p }));
+  const setC = (p) => setInv((x) => ({ ...x, customer: { ...(x.customer || {}), ...p } }));
+  const setIt = (i, p) => setInv((x) => ({ ...x, items: x.items.map((it, k) => (k === i ? { ...it, ...p } : it)) }));
+  const total = invTotal(inv);
+  const warn = [];
+  if (!co.name || !co.street || !co.city) warn.push("Firmendaten unvollständig (Name/Anschrift)");
+  if (!inv.customer?.name) warn.push("Kunde fehlt");
+  if (total > 400 && !(inv.customer?.address || "").trim()) warn.push("Über € 400: Anschrift des Kunden ist Pflicht");
+  if (total > 10000 && !inv.customer?.uid) warn.push("Über € 10.000: UID des Kunden ist Pflicht (falls Unternehmer)");
+  if (!(inv.items || []).some((it) => it.text && Number(it.price))) warn.push("Mindestens eine Position mit Preis");
+  if (inv.kind !== "angebot" && !co.iban) warn.push("IBAN fehlt in den Firmendaten (kein Zahlen-QR-Code)");
+  const blocking = warn.filter((w) => !/IBAN|UID/.test(w));
+  const isA = inv.kind === "angebot";
+  const pick = (name) => { const c = customers.find((x) => x.name === name); if (c) { setC({ name: c.name, address: c.address, uid: c.uid, email: c.email, number: c.number }); setSaveCust(false); } else setC({ name }); };
+  const pickArt = (i, text) => { const a = articles.find((x) => x.text === text); setIt(i, a ? { text, unit: a.unit, price: a.price } : { text }); };
+  const doSave = (final) => {
+    const out = { ...inv, items: inv.items.filter((it) => it.text || it.price), updatedAt: new Date().toISOString() };
+    onSave(out, saveCust);
+    if (final) onFinalize(out);
+    onClose();
+  };
+  return (
+    <Win id="invedit" defW={760} onClose={onClose} dirty={!locked && JSON.stringify(inv) !== JSON.stringify(init)}>
+      <div className="panelhead"><b>{isA ? "Angebot" : "Rechnung"} {inv.number || "(Entwurf)"}</b>
+        <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(inv, co))}>Vorschau</button>
+        {!locked && <button className="btn primary" onClick={() => doSave(false)}>Speichern</button>}
+        <XBtn /></div>
+      {locked && <p className="warn small">Diese {isA ? "Angebot" : "Rechnung"} ist ausgestellt und kann nicht mehr geändert werden (Rechnungen dürfen nachträglich nicht verändert werden – bei Fehlern stornieren und neu ausstellen).</p>}
+      <fieldset disabled={locked}>
+        <legend>Kunde</legend>
+        <label>Name / Firma<input list="custlist" value={inv.customer?.name || ""} onChange={(e) => pick(e.target.value)} placeholder="Name oder gespeicherten Kunden wählen" /></label>
+        <datalist id="custlist">{customers.map((c) => <option key={c.id} value={c.name} />)}</datalist>
+        <label>Anschrift<textarea rows={3} value={inv.customer?.address || ""} onChange={(e) => setC({ address: e.target.value })} placeholder={"Straße Nr.\nPLZ Ort"} /></label>
+        <div className="grid2">
+          <label>E-Mail<input value={inv.customer?.email || ""} onChange={(e) => setC({ email: e.target.value })} /></label>
+          <label>UID (bei Firmenkunden)<input value={inv.customer?.uid || ""} onChange={(e) => setC({ uid: e.target.value })} /></label>
+        </div>
+        <label className="check"><input type="checkbox" checked={saveCust} onChange={(e) => setSaveCust(e.target.checked)} /> Kunde merken</label>
+      </fieldset>
+      <fieldset disabled={locked}>
+        <legend>Daten</legend>
+        <div className="grid2">
+          <label>{isA ? "Angebotsdatum" : "Rechnungsdatum"}<input type="date" value={inv.date} onChange={(e) => set({ date: e.target.value })} /></label>
+          {isA ? <label>Gültig (Tage)<input type="number" value={inv.validDays ?? co.validDays} onChange={(e) => set({ validDays: Number(e.target.value) })} /></label>
+            : <label>Zahlungsziel (Tage)<input type="number" value={inv.dueDays ?? co.dueDays} onChange={(e) => set({ dueDays: Number(e.target.value) })} /></label>}
+        </div>
+        {!isA && <div className="grid2">
+          <label>Leistung am / ab<input type="date" value={inv.serviceFrom || ""} onChange={(e) => set({ serviceFrom: e.target.value })} /></label>
+          <label>Leistung bis (optional)<input type="date" value={inv.serviceTo || ""} onChange={(e) => set({ serviceTo: e.target.value })} /></label>
+        </div>}
+      </fieldset>
+      <fieldset disabled={locked} className="itemsfs">
+        <legend>Positionen</legend>
+        <datalist id="artlist">{articles.map((a) => <option key={a.id} value={a.text} />)}</datalist>
+        {inv.items.map((it, i) => (
+          <div key={i} className="itemrow">
+            <input className="itxt" list="artlist" value={it.text} placeholder="Leistung / Artikel" onChange={(e) => pickArt(i, e.target.value)} />
+            <input className="iqty" inputMode="decimal" value={it.qty} onChange={(e) => setIt(i, { qty: e.target.value.replace(",", ".") })} aria-label="Menge" />
+            <select className="iunit" value={it.unit || "Stk"} onChange={(e) => setIt(i, { unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
+            <input className="iprice" inputMode="decimal" value={it.price} placeholder="Preis €" onChange={(e) => setIt(i, { price: e.target.value.replace(",", ".") })} aria-label="Einzelpreis" />
+            <b className="isum">{fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
+            <span className="iact">
+              {it.text && !articles.some((a) => a.text === it.text) && <button type="button" className="iconbtn" title="Als Artikel merken" onClick={() => setArticles((l) => [...l, { id: uid(), text: it.text, unit: it.unit, price: it.price }])}>☆</button>}
+              <button type="button" className="iconbtn" title="Position löschen" onClick={() => set({ items: inv.items.filter((_, k) => k !== i) })}>✕</button>
+            </span>
+          </div>
+        ))}
+        <button type="button" className="btn sm" onClick={() => set({ items: [...inv.items, { text: "", qty: 1, unit: "Stk", price: "" }] })}>＋ Position</button>
+        <div className="invtotal"><span>Gesamt</span><b>{fmtMoney(total)}</b></div>
+        <small className="muted">{KU_NOTE}</small>
+      </fieldset>
+      <fieldset disabled={locked}>
+        <legend>Texte</legend>
+        <label>Einleitung<textarea rows={2} value={inv.intro ?? (isA ? co.introA : co.intro)} onChange={(e) => set({ intro: e.target.value })} /></label>
+        <label>Schlusstext<textarea rows={2} value={inv.outro ?? co.outro} onChange={(e) => set({ outro: e.target.value })} /></label>
+      </fieldset>
+      {!isA && !locked && (
+        <fieldset>
+          <legend>Wiederkehrend</legend>
+          <label className="check"><input type="checkbox" checked={!!inv.repeat} onChange={(e) => set({ repeat: e.target.checked ? { interval: "monatlich" } : null })} /> Diese Rechnung regelmäßig neu als Entwurf vorbereiten</label>
+          {inv.repeat && <label>Intervall<select value={inv.repeat.interval} onChange={(e) => set({ repeat: { interval: e.target.value } })}>{Object.keys(INTERVALS).map((k) => <option key={k}>{k}</option>)}</select></label>}
+        </fieldset>
+      )}
+      {!!warn.length && !locked && <div className="invwarn">{warn.map((w) => <div key={w}>⚠︎ {w}</div>)}</div>}
+      {!locked && <button className="btn primary wide" disabled={!!blocking.length} onClick={() => doSave(true)}>{isA ? "Angebot ausstellen" : "Rechnung ausstellen"} – Nummer vergeben</button>}
+    </Win>
+  );
+}
+
+/* ---------- Mahnung ---------- */
+function RemindWin({ inv, co, onDone, onClose }) {
+  const level = Math.min((inv.reminders || []).length, REMIND.length - 1);
+  const [days, setDays] = useState(level === 0 ? 7 : 10), [fee, setFee] = useState(level === 0 ? "" : "10");
+  const r = { level, date: todayISO(), due: addDays(todayISO(), days), fee: Number(String(fee).replace(",", ".")) || 0 };
+  const next = { ...inv, reminders: [...(inv.reminders || []), r] };
+  return (
+    <Win id="remind" onClose={onClose} small center dirty={false}>
+      <div className="panelhead"><b>{REMIND[level]}</b><XBtn /></div>
+      <p className="small">Rechnung <b>{inv.number}</b> an {inv.customer?.name} über <b>{fmtMoney(invTotal({ ...inv, fee: 0 }))}</b>, fällig seit {fmtDate(invDueEff(inv))} ({-daysUntil(invDueEff(inv))} Tage).</p>
+      <div className="grid2">
+        <label>Neue Frist (Tage)<input type="number" value={days} onChange={(e) => setDays(Number(e.target.value))} /></label>
+        <label>Mahnspesen € (optional)<input inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="0" /></label>
+      </div>
+      <div className="actions">
+        <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(next, co, r))}>Vorschau</button>
+        <button className="btn primary" onClick={async () => { const pdf = await buildInvoicePdf(next, co, r); onDone(next); onClose(); sharePdf(pdf, invFileName(inv, r), REMIND[level] + " " + inv.number); }}>Erstellen & senden</button>
+      </div>
+      <p className="muted small">Wird im Verlauf der Rechnung vermerkt. Das PDF kannst du per Mail, WhatsApp usw. teilen.</p>
+    </Win>
+  );
+}
+
+/* ---------- Seite ---------- */
+function InvoicesPage({ me, txs = [], notify, onArchive }) {
+  const [list, setList] = useLsState("invoices", []);
+  const [templates, setTemplates] = useLsState("invoiceTemplates", []);
+  const [customers, setCustomers] = useLsState("customers", []);
+  const [articles, setArticles] = useLsState("articles", []);
+  const [co, setCo] = useLsState("company", { ...CO_DEFAULT, name: me?.company || "", owner: me?.name || "" });
+  const [edit, setEdit] = useState(null), [coOpen, setCoOpen] = useState(false), [mdOpen, setMdOpen] = useState(false), [remind, setRemind] = useState(null);
+  const [filter, setFilter] = useState("alle"), [q, setQ] = useState("");
+  const coOk = co.name && co.street && co.city;
+
+  // wiederkehrende Rechnungen: fällige Entwürfe anlegen
+  useEffect(() => {
+    const today = todayISO(); let made = 0; const add = [];
+    const tpl = templates.map((t) => {
+      if (!t.active) return t; let next = t.next;
+      while (next && next <= today && made < 24) {
+        const from = next, to = addDays(addMonths(next, INTERVALS[t.interval] || 1), -1);
+        add.push({ ...t.inv, id: uid(), kind: "rechnung", status: "entwurf", number: "", date: from, serviceFrom: from, serviceTo: to, fromTemplate: t.id, reminders: [], createdAt: new Date().toISOString() });
+        next = addMonths(next, INTERVALS[t.interval] || 1); made++;
+      }
+      return { ...t, next };
+    });
+    if (add.length) { setList((l) => [...add, ...l]); setTemplates(tpl); notify?.(`${add.length} wiederkehrende Rechnung${add.length > 1 ? "en" : ""} als Entwurf vorbereitet`); }
+  }, []);
+
+  const newDoc = (kind) => setEdit({ id: uid(), kind, status: "entwurf", number: "", date: todayISO(), serviceFrom: todayISO(), dueDays: co.dueDays, validDays: co.validDays,
+    customer: { name: "", address: "" }, items: [{ text: "", qty: 1, unit: kind === "angebot" ? "Pausch." : "Std", price: "" }], reminders: [], createdAt: new Date().toISOString() });
+  const save = (inv, saveCust) => {
+    setList((l) => (l.some((x) => x.id === inv.id) ? l.map((x) => (x.id === inv.id ? inv : x)) : [inv, ...l]));
+    if (saveCust && inv.customer?.name) setCustomers((l) => (l.some((c) => c.name === inv.customer.name) ? l : [...l, { id: uid(), ...inv.customer }]));
+    if (inv.repeat && !inv.fromTemplate) {
+      const t = { id: uid(), name: inv.customer?.name || "Wiederkehrend", interval: inv.repeat.interval, next: addMonths(inv.serviceFrom || inv.date, INTERVALS[inv.repeat.interval]), active: true,
+        inv: { ...inv, repeat: null, number: "", status: "entwurf", reminders: [] } };
+      setTemplates((l) => [...l, t]); setList((l) => l.map((x) => (x.id === inv.id ? { ...x, repeat: null, fromTemplate: t.id } : x)));
+      notify?.(`Wiederkehrend: nächster Entwurf am ${fmtDate(t.next)}`);
+    }
+  };
+  const finalize = (inv) => setList((l) => {
+    const number = nextInvNumber(l, inv.kind, co, inv.date);
+    notify?.(`${inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${number} ausgestellt`);
+    return l.map((x) => (x.id === inv.id ? { ...x, number, status: "offen", issuedAt: new Date().toISOString() } : x));
+  });
+  const patch = (id, p) => setList((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  const toInvoice = (a) => { patch(a.id, { status: "angenommen" }); setEdit({ ...a, id: uid(), kind: "rechnung", status: "entwurf", number: "", date: todayISO(), serviceFrom: todayISO(), fromOffer: a.number, intro: undefined, dueDays: co.dueDays, reminders: [] }); };
+  const copyAsNew = (x) => setEdit({ ...x, id: uid(), status: "entwurf", number: "", date: todayISO(), reminders: [], paidAt: null, fromOffer: null });
+
+  // Zahlungseingang in Kontobuchungen erkennen (Betrag gleich + Nummer im Verwendungszweck)
+  const payFor = (inv) => {
+    if (inv.kind !== "rechnung" || !inv.number || invState(inv) === "bezahlt" || invState(inv) === "entwurf") return null;
+    const tot = invTotal({ ...inv, fee: 0 }), num = inv.number.toLowerCase().replace(/\s/g, "");
+    return txs.find((t) => t.amount > 0 && t.date >= inv.date && (Math.abs(t.amount - tot) < 0.01 || Math.abs(t.amount - invTotal(inv)) < 0.01) && `${t.purpose} ${t.counterparty}`.toLowerCase().replace(/\s/g, "").includes(num));
+  };
+
+  const year = todayISO().slice(0, 4);
+  const inv = list.filter((x) => x.kind === "rechnung");
+  const st = (x) => invState(x);
+  const sumOf = (l) => l.reduce((s, x) => s + invTotal(x), 0);
+  const openL = inv.filter((x) => ["offen", "überfällig"].includes(st(x))), overL = inv.filter((x) => st(x) === "überfällig");
+  const yearRev = sumOf(inv.filter((x) => !["entwurf", "storniert"].includes(st(x)) && (x.date || "").startsWith(year)));
+  const paidYear = sumOf(inv.filter((x) => st(x) === "bezahlt" && (x.paidAt || x.date || "").startsWith(year)));
+  const FILTERS = [["alle", "Alle"], ["entwurf", "Entwürfe"], ["offen", "Offen"], ["überfällig", "Überfällig"], ["bezahlt", "Bezahlt"], ["angebote", "Angebote"], ["wiederkehrend", "Wiederkehrend"]];
+  const cnt = (k) => (k === "alle" ? list.length : k === "angebote" ? list.filter((x) => x.kind === "angebot").length : k === "wiederkehrend" ? templates.length : inv.filter((x) => st(x) === k).length);
+  const shown = list.filter((x) => (filter === "alle" ? true : filter === "angebote" ? x.kind === "angebot" : x.kind === "rechnung" && st(x) === filter))
+    .filter((x) => !q || norm(`${x.number} ${x.customer?.name} ${(x.items || []).map((i) => i.text).join(" ")}`).includes(norm(q)))
+    .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.number || "").localeCompare(a.number || ""));
+
+  return (
+    <div className="invpage">
+      {!coOk && <div className="healthbox"><b>Zuerst Firmendaten eintragen</b><p className="small muted">Name, Anschrift, Bankverbindung und Logo erscheinen auf jeder Rechnung.</p><button className="btn primary" onClick={() => setCoOpen(true)}>Firmendaten eintragen</button></div>}
+      <div className="invstats">
+        <div className="tile"><small className="muted">Offen</small><b>{fmtMoney(sumOf(openL))}</b><small className="muted">{openL.length} Rechnung{openL.length === 1 ? "" : "en"} (inkl. überfällig)</small></div>
+        <div className={"tile" + (overL.length ? " alert" : "")}><small className="muted">Überfällig</small><b className={overL.length ? "neg" : ""}>{fmtMoney(sumOf(overL))}</b><small className="muted">{overL.length} Rechnung{overL.length === 1 ? "" : "en"}</small></div>
+        <div className="tile"><small className="muted">Bezahlt {year}</small><b className="pos">{fmtMoney(paidYear)}</b><small className="muted">eingegangen</small></div>
+        <div className="tile"><small className="muted">Umsatz {year} · Kleinunternehmergrenze</small><b>{fmtMoney(yearRev)}</b>
+          <div className="kubar"><i style={{ width: Math.min(100, (yearRev / KU_LIMIT) * 100) + "%", background: yearRev > KU_LIMIT * 0.9 ? "var(--red)" : yearRev > KU_LIMIT * 0.75 ? "#f59e0b" : "var(--acc)" }} /></div>
+          <small className="muted">{Math.round((yearRev / KU_LIMIT) * 100)} % von € 55.000 (netto/Jahr)</small></div>
+      </div>
+      <div className="invbar">
+        <button className="btn primary" onClick={() => newDoc("rechnung")}>＋ Rechnung</button>
+        <button className="btn" onClick={() => newDoc("angebot")}>＋ Angebot</button>
+        <span className="grow" />
+        <button className="btn" onClick={() => setMdOpen(true)}>👥 Kunden & Artikel</button>
+        <button className="btn" onClick={() => setCoOpen(true)}>🏢 Firmendaten</button>
+      </div>
+      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Nummer, Kunde, Leistung suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="chips invfilter">{FILTERS.map(([k, l]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({cnt(k)})</small></button>)}</div>
+
+      {filter === "wiederkehrend" ? (
+        <section className="tile">
+          {!templates.length && <p className="muted small">Noch keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „Wiederkehrend“ anhaken – Fidocu legt dann zum Termin automatisch einen Entwurf an, den du nur noch prüfst und ausstellst.</p>}
+          {templates.map((t) => (
+            <div key={t.id} className="frow">
+              <span className="caticon" style={{ width: 40, height: 40, background: "#0b63f622" }}>🔁</span>
+              <div className="grow"><b>{t.name}</b><small className="muted block">{t.interval} · {fmtMoney(invTotal(t.inv))} · nächster Entwurf {fmtDate(t.next)}{t.active ? "" : " · pausiert"}</small></div>
+              <select className="chip" value={t.interval} onChange={(e) => setTemplates((l) => l.map((x) => (x.id === t.id ? { ...x, interval: e.target.value } : x)))}>{Object.keys(INTERVALS).map((k) => <option key={k}>{k}</option>)}</select>
+              <button className="btn sm" onClick={() => setTemplates((l) => l.map((x) => (x.id === t.id ? { ...x, active: !x.active } : x)))}>{t.active ? "Pausieren" : "Fortsetzen"}</button>
+              <button className="iconbtn" title="Löschen" onClick={() => confirm("Wiederkehrende Rechnung löschen? Bereits erstellte Rechnungen bleiben.") && setTemplates((l) => l.filter((x) => x.id !== t.id))}>🗑</button>
+            </div>
+          ))}
+        </section>
+      ) : (
+        <section className="tile invlist">
+          {!shown.length && <p className="muted small">{list.length ? "Keine Einträge für diesen Filter." : "Noch keine Rechnungen. Mit „＋ Rechnung“ legst du die erste an – die Nummer wird beim Ausstellen fortlaufend vergeben."}</p>}
+          {shown.map((x) => {
+            const s = st(x), [label, cls] = STATE_UI[s] || [s, ""], pay = payFor(x);
+            return (
+              <div key={x.id} className="invrow" onClick={() => setEdit(x)}>
+                <div className="invmain">
+                  <div className="row1"><b>{x.customer?.name || "Ohne Kunde"}</b><b>{fmtMoney(invTotal(x))}</b></div>
+                  <small className="muted block">
+                    {x.kind === "angebot" ? "Angebot " : ""}{x.number || "Entwurf"} · {fmtDate(x.date)}
+                    {x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) && ` · fällig ${fmtDate(invDueEff(x))}`}
+                    {s === "bezahlt" && x.paidAt && ` · bezahlt ${fmtDate(x.paidAt)}`}
+                    {(x.reminders || []).length > 0 && ` · ${REMIND[lastReminder(x).level]} ${fmtDate(lastReminder(x).date)}`}
+                    {x.fromOffer && ` · aus ${x.fromOffer}`}{x.fromTemplate && " · 🔁"}
+                  </small>
+                  {pay && <button className="link pos small" onClick={(e) => { e.stopPropagation(); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id }); }}>💡 Zahlungseingang vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}
+                </div>
+                <span className={"stpill " + cls}>{label}</span>
+                <div className="invacts" onClick={(e) => e.stopPropagation()}>
+                  {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co))}>📄</button>}
+                  {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`)}><IcoShare /></button>}
+                  {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" onClick={() => patch(x.id, { status: "bezahlt", paidAt: todayISO() })}>✓ Bezahlt</button>}
+                  {s === "bezahlt" && <button className="link small" onClick={() => patch(x.id, { status: "offen", paidAt: null })}>Doch offen</button>}
+                  {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{REMIND[Math.min((x.reminders || []).length, 3)]}</button>}
+                  {x.kind === "angebot" && s === "offen" && <><button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button><button className="link small" onClick={() => patch(x.id, { status: "abgelehnt" })}>Abgelehnt</button></>}
+                  <details className="more"><summary className="iconbtn" title="Mehr">⋯</summary>
+                    <div className="moremenu">
+                      <button onClick={() => copyAsNew(x)}>Als neue {x.kind === "angebot" ? "Angebot" : "Rechnung"} kopieren</button>
+                      {s !== "entwurf" && onArchive && <button onClick={async () => { await onArchive(await buildInvoicePdf(x, co), invFileName(x), x); }}>In Dokumente ablegen</button>}
+                      {x.kind === "rechnung" && !["entwurf", "storniert"].includes(s) && <button onClick={() => confirm(`Rechnung ${x.number} stornieren? Sie bleibt im Verlauf, zählt aber nicht mehr zum Umsatz.`) && patch(x.id, { status: "storniert" })}>Stornieren</button>}
+                      {s === "entwurf" && <button className="red" onClick={() => confirm("Entwurf löschen?") && setList((l) => l.filter((y) => y.id !== x.id))}>Entwurf löschen</button>}
+                    </div>
+                  </details>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      )}
+      {edit && <InvoiceEditor inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
+      {coOpen && <CompanyWin co={co} setCo={setCo} onClose={() => setCoOpen(false)} />}
+      {mdOpen && <MasterDataWin customers={customers} setCustomers={setCustomers} articles={articles} setArticles={setArticles} onClose={() => setMdOpen(false)} />}
+      {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
+    </div>
+  );
+}
+
+/* ======================= Verträge (hinterlegt, Privat & Firma) ======================= */
+const CT_CATS = { Internet: "🌐", Handy: "📱", "Strom & Gas": "⚡", Versicherung: "🛡️", Miete: "🏠", "Leasing & Kredit": "🚗", "Streaming & Abos": "🎬", Software: "💻", Fitness: "🏋️", Sonstiges: "📄" };
+const CT_FACTOR = { monatlich: 1, vierteljährlich: 1 / 3, halbjährlich: 1 / 6, jährlich: 1 / 12 };
+// nächstes Vertragsende und letzter Kündigungstag
+function ctDates(c) {
+  if (c.cancelledAt) return { end: c.cancelledEnd || "", cancelBy: "" };
+  if (!c.start) return { end: c.end || "", cancelBy: c.end && c.notice ? addMonthsOrWeeks(c.end, -c.notice, c.noticeUnit) : "" };
+  let end = c.end || addDays(addMonths(c.start, Number(c.minMonths) || 0), -1);
+  const ren = Number(c.renewMonths) || 0, n = Number(c.notice) || 0, today = todayISO();
+  if (!(Number(c.minMonths) || c.end)) end = "";
+  let cancelBy = end && n ? addMonthsOrWeeks(addDays(end, 1), -n, c.noticeUnit, -1) : end;
+  let guard = 0;
+  while (end && ren && (cancelBy || end) < today && guard++ < 200) {
+    end = addDays(addMonths(addDays(end, 1), ren), -1);
+    cancelBy = n ? addMonthsOrWeeks(addDays(end, 1), -n, c.noticeUnit, -1) : end;
+  }
+  if (!end && n) { // unbefristet: Kündigung jederzeit mit Frist (zum Monatsende)
+    const e = new Date(addMonthsOrWeeks(today, n, c.noticeUnit) + "T12:00:00"); const last = new Date(e.getFullYear(), e.getMonth() + 1, 0);
+    return { end: last.toLocaleDateString("sv-SE"), cancelBy: today, open: true };
+  }
+  return { end, cancelBy };
+}
+function addMonthsOrWeeks(iso, n, unit, plusDays = 0) { const r = unit === "Wochen" ? addDays(iso, n * 7) : unit === "Tage" ? addDays(iso, n) : addMonths(iso, n); return plusDays ? addDays(r, plusDays) : r; }
+
+function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
+  const [c, setC] = useState(init);
+  const set = (p) => setC((x) => ({ ...x, ...p }));
+  const d = ctDates(c);
+  const [letter, setLetter] = useState(false);
+  const linked = docs.filter((x) => (c.docIds || []).includes(x.id));
+  const cand = docs.filter((x) => !(c.docIds || []).includes(x.id)).slice(0, 300);
+  return (
+    <Win id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
+      <div className="panelhead"><b>{init.name ? c.name || "Vertrag" : "Neuer Vertrag"}</b>
+        <button className="btn primary" disabled={!c.name} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
+      <div className="seg">{SCOPES.map(([k, i, l]) => <button key={k} className={(c.scope || "privat") === k ? "on" : ""} onClick={() => set({ scope: k })}>{i} {l}</button>)}</div>
+      <fieldset><legend>Vertrag</legend>
+        <div className="grid2">
+          <label>Bezeichnung<input value={c.name || ""} placeholder="z. B. Internet Zuhause" onChange={(e) => set({ name: e.target.value })} /></label>
+          <label>Anbieter<input value={c.provider || ""} placeholder="z. B. Magenta, A1, Drei" onChange={(e) => set({ provider: e.target.value })} /></label>
+        </div>
+        <label>Art<select value={c.cat || "Sonstiges"} onChange={(e) => set({ cat: e.target.value })}>{Object.entries(CT_CATS).map(([k, i]) => <option key={k} value={k}>{i} {k}</option>)}</select></label>
+        <div className="grid2">
+          <label>Betrag €<input inputMode="decimal" value={c.amount ?? ""} onChange={(e) => set({ amount: e.target.value.replace(",", ".") })} /></label>
+          <label>Intervall<select value={c.interval || "monatlich"} onChange={(e) => set({ interval: e.target.value })}>{Object.keys(CT_FACTOR).map((k) => <option key={k}>{k}</option>)}</select></label>
+        </div>
+        <div className="grid2">
+          <label>Kundennummer<input value={c.customerNo || ""} onChange={(e) => set({ customerNo: e.target.value })} /></label>
+          <label>Vertragsnummer<input value={c.contractNo || ""} onChange={(e) => set({ contractNo: e.target.value })} /></label>
+        </div>
+      </fieldset>
+      <fieldset><legend>Laufzeit & Kündigung</legend>
+        <div className="grid2">
+          <label>Vertragsbeginn<input type="date" value={c.start || ""} onChange={(e) => set({ start: e.target.value })} /></label>
+          <label>Mindestlaufzeit (Monate)<input type="number" value={c.minMonths ?? ""} placeholder="z. B. 24, leer = unbefristet" onChange={(e) => set({ minMonths: e.target.value })} /></label>
+        </div>
+        <div className="grid2">
+          <label>Kündigungsfrist<div className="inrow"><input type="number" value={c.notice ?? ""} placeholder="z. B. 1" onChange={(e) => set({ notice: e.target.value })} />
+            <select value={c.noticeUnit || "Monate"} onChange={(e) => set({ noticeUnit: e.target.value })}><option>Monate</option><option>Wochen</option><option>Tage</option></select></div></label>
+          <label>Verlängert sich um (Monate)<input type="number" value={c.renewMonths ?? ""} placeholder="z. B. 12 oder 1" onChange={(e) => set({ renewMonths: e.target.value })} /></label>
+        </div>
+        <div className="ctcalc">
+          {c.cancelledAt ? <span>✕ Gekündigt am {fmtDate(c.cancelledAt)}</span>
+            : d.open ? <span>Unbefristet – kündbar jederzeit, frühestens zum <b>{fmtDate(d.end)}</b></span>
+            : d.end ? <span>Nächstes Vertragsende <b>{fmtDate(d.end)}</b>{d.cancelBy && <> · kündigen bis <b className={daysUntil(d.cancelBy) <= 30 ? "neg" : ""}>{fmtDate(d.cancelBy)}</b> ({daysUntil(d.cancelBy)} Tage)</>}</span>
+            : <span className="muted">Beginn + Mindestlaufzeit + Frist eintragen, dann rechnet Fidocu den letzten Kündigungstag aus.</span>}
+        </div>
+        <div className="actions">
+          {!c.cancelledAt ? <button className="btn" onClick={() => set({ cancelledAt: todayISO(), cancelledEnd: d.end })}>Als gekündigt markieren</button>
+            : <button className="btn" onClick={() => set({ cancelledAt: null, cancelledEnd: null })}>Kündigung zurücknehmen</button>}
+          <button className="btn" onClick={() => setLetter(true)}>✉️ Kündigungsschreiben</button>
+        </div>
+      </fieldset>
+      <fieldset><legend>Dokumente</legend>
+        {linked.map((x) => <div key={x.id} className="frow"><Thumb d={x} /><div className="grow"><b>{x.title}</b><small className="muted block">{fmtDate(x.documentDate)}</small></div>
+          <button className="iconbtn" title="Öffnen" onClick={() => openOriginal(x)}>↗</button><button className="iconbtn" title="Lösen" onClick={() => set({ docIds: c.docIds.filter((i) => i !== x.id) })}>✕</button></div>)}
+        <select value="" onChange={(e) => e.target.value && set({ docIds: [...(c.docIds || []), e.target.value] })}>
+          <option value="">＋ Dokument verknüpfen (Vertrag, Rechnung …)</option>
+          {cand.map((x) => <option key={x.id} value={x.id}>{x.title} · {fmtDate(x.documentDate)}</option>)}
+        </select>
+      </fieldset>
+      <label>Notiz<textarea rows={2} value={c.note || ""} onChange={(e) => set({ note: e.target.value })} /></label>
+      {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={() => confirm(`Vertrag „${c.name}“ löschen?`) && (onDelete(c), onClose())}>Vertrag löschen</button>}
+      {letter && createPortal(
+        <Win id="ctletter" onClose={() => setLetter(false)} dirty={false}>
+          <div className="panelhead"><b>Kündigung</b><XBtn /></div>
+          <pre className="fulltext letter">{cancelLetter({ provider: c.provider, name: c.name, customerNumber: c.customerNo || c.contractNo, endDate: d.end }, me)}</pre>
+          <div className="actions"><button className="btn primary" onClick={() => navigator.clipboard?.writeText(cancelLetter({ provider: c.provider, name: c.name, customerNumber: c.customerNo || c.contractNo, endDate: d.end }, me))}>Kopieren</button></div>
+        </Win>, document.querySelector(".app") || document.body)}
+    </Win>
+  );
+}
+
+function ContractsPage({ docs, me, onOpen }) {
+  const [list, setList] = useLsState("contractList", []);
+  const [scope, setScope] = useState(() => ls.get("ctScope", "alle"));
+  useEffect(() => ls.set("ctScope", scope), [scope]);
+  const [edit, setEdit] = useState(null), [showOld, setShowOld] = useState(false), [imp, setImp] = useState(false);
+  const save = (c) => setList((l) => (l.some((x) => x.id === c.id) ? l.map((x) => (x.id === c.id ? c : x)) : [...l, c]));
+  const monthly = (c) => (Number(c.amount) || 0) * (CT_FACTOR[c.interval || "monatlich"] || 1);
+  const active = list.filter((c) => !c.cancelledAt || (c.cancelledEnd && c.cancelledEnd >= todayISO()));
+  const inScope = (c) => scope === "alle" || (c.scope || "privat") === scope;
+  const shown = list.filter(inScope).filter((c) => showOld || active.includes(c))
+    .map((c) => ({ c, d: ctDates(c) })).sort((a, b) => (a.d.cancelBy || a.d.end || "9999").localeCompare(b.d.cancelBy || b.d.end || "9999"));
+  const sum = (sc) => active.filter((c) => sc === "alle" || (c.scope || "privat") === sc).reduce((s, c) => s + monthly(c), 0);
+  const soon = active.filter(inScope).map((c) => ({ c, d: ctDates(c) })).filter(({ c, d }) => !c.cancelledAt && !d.open && d.cancelBy && daysUntil(d.cancelBy) >= 0 && daysUntil(d.cancelBy) <= 60);
+  const docCands = docs.filter((d) => d.contract && !list.some((c) => (c.docIds || []).includes(d.id)));
+  const fromDoc = (d) => {
+    const k = d.contract, cat = Object.keys(CT_CATS).find((x) => norm(`${k.provider} ${k.name} ${d.category}`).includes(norm(x.split(" ")[0]))) || "Sonstiges";
+    const nm = String(k.noticePeriod || "").match(/(\d+)\s*(Monat|Woche|Tag)/i);
+    return { id: uid(), scope: docScope(d), name: k.name || k.provider, provider: k.provider, cat, amount: k.amount ?? "", interval: k.interval || "monatlich",
+      customerNo: k.customerNumber || "", start: k.startDate || "", end: k.endDate || "", notice: nm ? nm[1] : "", noticeUnit: nm ? (/woche/i.test(nm[2]) ? "Wochen" : /tag/i.test(nm[2]) ? "Tage" : "Monate") : "Monate",
+      renewMonths: "", docIds: [d.id], note: k.noticePeriod ? "Kündigungsfrist laut Dokument: " + k.noticePeriod : "" };
+  };
+  return (
+    <div className="ctpage">
+      <div className="seg scopeseg">{[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small className="cnt">({k === "alle" ? active.length : active.filter((c) => (c.scope || "privat") === k).length})</small></button>)}</div>
+      <div className="invstats">
+        <div className="tile"><small className="muted">Kosten pro Monat</small><b>{fmtMoney(sum(scope))}</b><small className="muted">{fmtMoney(sum(scope) * 12)} im Jahr</small></div>
+        {scope === "alle" && <><div className="tile"><small className="muted">👤 Privat</small><b>{fmtMoney(sum("privat"))}</b><small className="muted">pro Monat</small></div>
+          <div className="tile"><small className="muted">🏢 Firma</small><b>{fmtMoney(sum("firma"))}</b><small className="muted">pro Monat</small></div></>}
+        <div className={"tile" + (soon.length ? " alert" : "")}><small className="muted">Kündbar in 60 Tagen</small><b className={soon.length ? "neg" : ""}>{soon.length}</b><small className="muted">{soon[0] ? `${soon[0].c.name} bis ${fmtDate(soon[0].d.cancelBy)}` : "nichts dringend"}</small></div>
+      </div>
+      <div className="invbar">
+        <button className="btn primary" onClick={() => setEdit({ id: uid(), scope: scope === "firma" ? "firma" : "privat", interval: "monatlich", noticeUnit: "Monate", cat: "Internet", docIds: [] })}>＋ Vertrag</button>
+        {!!docCands.length && <button className="btn" onClick={() => setImp(!imp)}>📄 Aus Dokumenten übernehmen ({docCands.length})</button>}
+        <span className="grow" />
+        <label className="check mini"><input type="checkbox" checked={showOld} onChange={(e) => setShowOld(e.target.checked)} /> Gekündigte anzeigen</label>
+      </div>
+      {imp && <section className="tile">
+        <div className="tilehead"><b>Von Claude erkannte Verträge in deinen Dokumenten</b></div>
+        {docCands.map((d) => <div key={d.id} className="frow"><Thumb d={d} /><div className="grow"><b>{d.contract.provider}</b><small className="muted block">{d.title} · {d.contract.amount ? fmtMoney(d.contract.amount) + " " + (d.contract.interval || "") : ""}</small></div>
+          <button className="btn sm" onClick={() => setEdit(fromDoc(d))}>Übernehmen</button></div>)}
+      </section>}
+      <section className="tile ctlist">
+        {!shown.length && <p className="muted small">Noch keine Verträge hinterlegt. Mit „＋ Vertrag“ z. B. Internet, Handy, Strom, Versicherungen oder Miete eintragen – Fidocu rechnet den letzten Kündigungstag aus. Erkannte Abos aus deinen Kontobuchungen findest du weiterhin unter „Fixkosten & Abos“.</p>}
+        {shown.map(({ c, d }) => (
+          <div key={c.id} className={"frow click ctrow" + (c.cancelledAt ? " ended" : "")} onClick={() => setEdit(c)}>
+            <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{CT_CATS[c.cat] || "📄"}</span>
+            <div className="grow">
+              <b>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small>
+              <small className="muted block">{[c.provider, c.customerNo && "Nr. " + c.customerNo, (c.docIds || []).length ? `📎 ${(c.docIds || []).length}` : ""].filter(Boolean).join(" · ")}</small>
+              <small className="block">{c.cancelledAt ? <span className="muted">Gekündigt{c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}</span>
+                : d.open ? <span className="muted">unbefristet · jederzeit kündbar</span>
+                : d.cancelBy ? <span className={daysUntil(d.cancelBy) <= 30 ? "neg" : daysUntil(d.cancelBy) <= 60 ? "warnc" : "muted"}>kündigen bis {fmtDate(d.cancelBy)} · Ende {fmtDate(d.end)}</span>
+                : d.end ? <span className="muted">Ende {fmtDate(d.end)}</span> : <span className="muted">Laufzeit nicht eingetragen</span>}</small>
+            </div>
+            <div className="right"><b>{c.amount ? fmtMoney(Number(c.amount)) : "—"}</b><small className="muted block">{c.interval || "monatlich"}</small></div>
+          </div>
+        ))}
+      </section>
+      {edit && <ContractEditor c={edit} docs={docs} me={me} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
+    </div>
+  );
+}
+
 const CSS = `
 :root{color-scheme:light;--bg:#f3f5f9;--card:#ffffff;--card2:#f6f8fb;--line:#e6e9ef;--txt:#0f1b2d;--mut:#6b7686;--acc:#0b63f6;--acc2:#00b3a4;--red:#e5484d;--warn:#e88a00;--ok:#16a34a;
   --shadow:0 1px 2px #0f1b2d0d,0 4px 14px #0f1b2d0f;--hero:linear-gradient(135deg,#0b3d91 0%,#0b63f6 55%,#00b3a4 100%)}
@@ -4826,4 +5518,47 @@ html.win-open,html.win-open body{overscroll-behavior:none}
 .sharegrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
 .sharegrid button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--txt);font:inherit;font-size:12px;cursor:pointer}
 .sharegrid button span{font-size:24px}.sharegrid button:hover{border-color:var(--acc)}
+
+/* v0.19.0: Rechnungen & Verträge */
+.invpage,.ctpage{display:flex;flex-direction:column;gap:12px}
+.invstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.invstats .tile{display:flex;flex-direction:column;gap:2px;margin:0}.invstats .tile b{font-size:20px}
+.kubar{height:6px;border-radius:3px;background:var(--card2);overflow:hidden;margin:6px 0 2px}.kubar i{display:block;height:100%;border-radius:3px}
+.invbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.invbar .btn{margin:0}
+.invfilter{margin:0}.invfilter small{opacity:.7}
+.invlist{padding:4px 0}
+.invrow{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}.invrow:last-child{border-bottom:0}
+.invrow:hover{background:var(--card2)}
+.invmain{flex:1;min-width:0}.invmain .row1{display:flex;justify-content:space-between;gap:10px}
+.invacts{display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end}.invacts .btn{margin:0}.invacts .iconbtn svg{width:18px;height:18px}
+.stpill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;flex:none}
+.st-draft{background:var(--card2);color:var(--mut)}.st-open{background:#0b63f622;color:var(--acc)}.st-over{background:#ef444422;color:var(--red)}
+.st-paid{background:#16a34a22;color:#16a34a}.st-void{background:var(--card2);color:var(--mut);text-decoration:line-through}
+.more{position:relative}.more summary{list-style:none;cursor:pointer}.more summary::-webkit-details-marker{display:none}
+.moremenu{position:absolute;right:0;top:100%;z-index:20;min-width:220px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px #0005;padding:6px;display:flex;flex-direction:column}
+.moremenu button{background:none;border:0;color:var(--txt);text-align:left;padding:9px 10px;border-radius:8px;font:inherit;font-size:14px;cursor:pointer}.moremenu button:hover{background:var(--card2)}.moremenu .red{color:var(--red)}
+.itemrow{display:grid;grid-template-columns:minmax(0,1fr) 64px 90px 92px 88px auto;gap:6px;align-items:center;margin-bottom:6px}
+.itemrow input,.itemrow select{height:42px;min-height:42px;padding:8px 10px;font-size:15px}.itemrow select{padding-right:28px;background-position:right 10px center}
+.itemrow .isum{text-align:right;font-size:14px;white-space:nowrap}.itemrow .iact{display:flex}
+.itemsfs{container-type:inline-size;min-width:0}.itemsfs>.itemrow,.itemsfs>.btn{clear:both}
+@container (max-width:640px){.itemrow{grid-template-columns:70px minmax(0,1fr) minmax(0,1fr);padding:8px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px}
+  .itemrow .itxt{grid-column:1/-1}.itemrow .isum{grid-column:1/3;text-align:left}.itemrow .iact{justify-content:flex-end}}
+.invtotal{display:flex;justify-content:space-between;align-items:center;margin:12px 0 4px;padding:10px 12px;border-radius:12px;background:var(--card2)}.invtotal b{font-size:18px}
+.invwarn{margin:12px 0;padding:10px 12px;border-radius:12px;background:#f59e0b1f;color:#b45309;font-size:13px;display:flex;flex-direction:column;gap:4px}
+[data-theme=dark] .invwarn{color:#fbbf24}
+.btn.wide{width:100%;margin:12px 0 0}
+.logorow{display:flex;align-items:center;gap:12px;margin-top:12px}.logorow img{max-height:48px;max-width:160px;background:#fff;border-radius:6px;padding:4px}
+.artrow{display:grid;grid-template-columns:1fr 100px 100px auto;gap:6px;margin-bottom:6px}.artrow input,.artrow select{height:42px;min-height:42px}
+.mdrow{margin-bottom:10px}
+.inrow{display:flex;gap:6px;margin-top:4px}.inrow input{flex:1;min-width:0;height:46px}.inrow select{width:auto;flex:none;height:46px}
+.ctcalc{margin:12px 0 4px;padding:10px 12px;border-radius:12px;background:var(--card2);font-size:14px}
+.ctrow.ended{opacity:.55}.warnc{color:#f59e0b}
+fieldset:disabled{opacity:.75}
+
+.invstats .tile.alert{text-align:left;align-items:flex-start}
+.invrow .stpill{width:84px;text-align:center}
+@media (min-width:900px){.invacts{width:380px}}
+@media (max-width:899px){.invrow{flex-wrap:wrap}.invmain{flex-basis:calc(100% - 100px)}.invacts{width:100%;justify-content:flex-start}}
+
+@media (max-width:699px){.invstats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.invstats .tile{padding:12px}.invstats .tile b{font-size:17px}.invstats .tile small{font-size:11px}}
 `;

@@ -2,6 +2,37 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.19.0
+
+- Neuer Reiter **Rechnungen** (Firma, Kleinunternehmer):
+  - Rechnungen und Angebote erstellen, fortlaufende Nummer beim Ausstellen (RE-2026-001 / AN-2026-001, Kürzel einstellbar), Entwürfe; ausgestellte Rechnungen sind gesperrt (Storno statt Ändern).
+  - PDF im klassischen Briefformat (Logo, Anschrift fürs Fensterkuvert, Positionstabelle, Kleinunternehmer-Hinweis § 6 Abs. 1 Z 27 UStG, Zahlen-QR-Code, Bankdaten in der Fußzeile) – ansehen/drucken, teilen (Mail, WhatsApp …), in Dokumente ablegen.
+  - Verlauf mit Status Entwurf/Offen/Überfällig/Bezahlt/Storniert, Suche, Filter, Kennzahlen inkl. Fortschritt zur Kleinunternehmergrenze (€ 55.000).
+  - Zahlungseingang wird in Kontobuchungen erkannt (Betrag + Rechnungsnummer im Verwendungszweck).
+  - Zahlungserinnerung, 1./2./letzte Mahnung als PDF (neue Frist, optionale Mahnspesen).
+  - Angebot → Rechnung mit einem Klick, Angebot abgelehnt markieren.
+  - Wiederkehrende Rechnungen: monatlich/vierteljährlich/halbjährlich/jährlich automatisch als Entwurf mit Leistungszeitraum; pausieren/löschen.
+  - Kunden & Artikel merken (Auswahl beim Tippen), Pflichtangaben-Prüfung (Anschrift ab € 400, UID ab € 10.000).
+  - Firmendaten: Name, Anschrift, Kontakt, Steuernummer/UID, FN, Bank, Logo, Zahlungsziel, Texte.
+- Neuer Reiter **Verträge** für hinterlegte Verträge (Privat & Firma): Internet, Handy, Strom, Versicherung, Miete …; Betrag/Intervall, Beginn, Mindestlaufzeit, Kündigungsfrist, automatische Verlängerung → berechnet nächstes Vertragsende und letzten Kündigungstag; Kosten pro Monat (Privat/Firma), „kündbar in 60 Tagen“, Dokumente verknüpfen, Kündigungsschreiben, als gekündigt markieren, Übernahme von Claude erkannten Verträgen aus Dokumenten.
+- Bisheriger Reiter „Verträge“ heißt jetzt **Fixkosten & Abos** (unverändert).
+
+## v0.18.0
+
+- **Teilen** in der Symbolleiste jedes Dokuments (zwischen Drucken und Löschen): System-Teilen-Menü mit der Originaldatei – Nachrichten, WhatsApp, Mail, AirDrop usw.
+- **Mehrere Dokumente teilen**: „☑︎ Auswählen“ bei den Filtern, Dokumente antippen, unten „Teilen“.
+- Browser ohne Datei-Teilen: Fenster mit E-Mail, WhatsApp, Telegram und Herunterladen.
+
+## v0.17.2
+
+- Handy: Solange ein Fenster offen ist, werden Auge/Tag-Nacht und ＋ ausgeblendet.
+- Offenes Fenster sperrt den Hintergrund (kein Mitscrollen), Scrollposition bleibt erhalten.
+
+## v0.17.1
+
+- Einstellungen: „Dokumente – Gruppen“ und „Dokumente – Kategorien“ getrennt.
+- Fix: „0“ neben „Dokumente“ in der Seitenleiste.
+
 ## v0.17.0
 
 - Neuer Reiter **Barausgabe** in der Seitenleiste (vor Einstellungen; am iPhone in Einstellungen › Seitenleiste zuschaltbar): Eingabe für Bargeld links, rechts Bestand und letzte Barbuchungen.
