@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.36.1
+- Verträge: inaktive/gekündigte Verträge nicht mehr per Transparenz abgeblendet (wirkte verschwommen), sondern gestochen scharf in grauer Schrift mit grauem Vorschaubild
+
 ## v0.36.0
 - Verträge: Vorschau der verknüpften Dokumente direkt in der Liste – Klick auf Titel, Vorschaubild oder Auge klappt sie auf/zu (wie bei Dokumente, mit Drucken & „Original öffnen“)
 - Verträge: Status „Aktiv“ / „Inaktiv“ per Klick auf die Pill; inaktive Verträge werden abgeblendet und zählen nicht zu Kosten und Kündigungs-Hinweisen

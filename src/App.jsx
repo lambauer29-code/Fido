@@ -7038,7 +7038,7 @@ html.win-open,html.win-open body{overscroll-behavior:none}
 .mdrow{margin-bottom:10px}
 .inrow{display:flex;gap:6px;margin-top:4px}.inrow input{flex:1;min-width:0;height:46px}.inrow select{width:auto;flex:none;height:46px}
 .ctcalc{margin:12px 0 4px;padding:10px 12px;border-radius:12px;background:var(--card2);font-size:14px}
-.ctrow.ended{opacity:.55}.warnc{color:#f59e0b}
+.ctrow.ended{opacity:1}.warnc{color:#f59e0b}
 fieldset:disabled{opacity:.75}
 
 .invstats .tile.alert{text-align:left;align-items:flex-start}
@@ -7279,7 +7279,9 @@ html.side-mini .sidebusy,html.side-mini .busytab small{display:none}
 .ctrow .ctacts .iconbtn{width:36px;height:36px;min-width:36px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--mut)}
 .ctrow .ctacts .iconbtn svg{width:18px;height:18px}.ctrow .ctacts .iconbtn.on{color:var(--acc)}.ctrow .ctacts .iconbtn:disabled{opacity:.3}
 .ctstate{border:0;cursor:pointer;font:inherit;font-size:11px;font-weight:700}
-.ctrow.inactive>.grow,.ctrow.inactive>.right{opacity:.5}
+.ctrow.inactive .grow b,.ctrow.inactive .right b,.ctrow.ended .grow b,.ctrow.ended .right b{color:var(--mut)}
+.ctrow.inactive .grow small,.ctrow.ended .grow small{color:var(--mut)}
+.ctrow.inactive .thumb,.ctrow.ended .thumb,.ctrow.inactive img,.ctrow.ended img{filter:grayscale(1) brightness(.85)}
 .ctwrap .dprev{margin:0 0 10px}
 @media (max-width:700px){.ctrow{flex-wrap:wrap}.ctrow .ctacts{width:100%;justify-content:flex-end}}
 `;
