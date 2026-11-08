@@ -33,6 +33,23 @@ const tool = (categories) => ({
           currency: { type: "string", description: "ISO-Code, meist EUR" }
         }
       },
+      merchant: { type: ["string", "null"], description: "Bei Kassenbons/Belegen: Name des Geschäfts/Händlers, kurz und ohne Rechtsform (z. B. \"Penny\", \"BILLA\", \"OMV\")" },
+      purchase_date: { type: ["string", "null"], description: "Bei Kassenbons: Kaufdatum laut Bon, YYYY-MM-DD" },
+      line_items: {
+        type: "array",
+        description: "Nur bei Kassenbons/Kaufbelegen/Rechnungen mit Einzelpositionen: alle gekauften Positionen in Bon-Reihenfolge. Rabatte/Gutscheine als eigene Position mit negativem Betrag, Pfand als eigene Position. Sonst leeres Array.",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Artikelbezeichnung, gut lesbar ausgeschrieben (z. B. \"Red Bull 0,25 l\")" },
+            qty: { type: "number", description: "Menge/Stückzahl (bei Gewicht kg), Standard 1" },
+            unit_price: { type: ["number", "null"], description: "Preis pro Stück/kg" },
+            total: { type: "number", description: "Gesamtpreis der Position (brutto)" },
+            category: { type: "string", description: "Warengruppe – möglichst aus der Liste der Positions-Kategorien" }
+          },
+          required: ["name", "qty", "total", "category"]
+        }
+      },
       deadlines: {
         type: "array",
         description: "Alle konkreten Fristen: Zahlungsfrist, Kündigungsfrist, Einspruchsfrist, Vertragsende, Garantieende, Termin …",
@@ -95,7 +112,7 @@ export default async function handler(req, res) {
   }
   if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY fehlt in Vercel – unter Settings → Environment Variables eintragen und danach neu deployen" });
 
-  const { data, mediaType, categories, today, groups, company, person } = req.body || {};
+  const { data, mediaType, categories, today, groups, company, person, itemCategories } = req.body || {};
   if (!data || !mediaType) return res.status(400).json({ error: "data und mediaType erforderlich" });
   const cats = Array.isArray(categories) && categories.length ? categories : ["Sonstiges"];
 
@@ -112,11 +129,12 @@ export default async function handler(req, res) {
 - Zahlung: IBAN/BIC/Zahlungsreferenz nur übernehmen, wenn sie auf dem Dokument stehen – nichts erfinden.
 - scope: "firma" nur für Dokumente der eigenen Firma${company ? ` („${String(company).slice(0, 80)}“)` : ""}, sonst "privat".
 - amount.payout: bei Lohnzetteln den Netto-Auszahlungsbetrag.
+- Kassenbon/Kaufbeleg: doc_type "Beleg", merchant = Geschäft, purchase_date = Kaufdatum, amount.total = Endsumme, line_items = alle Positionen (Menge, Name, Einzelpreis, Gesamtpreis, Warengruppe${Array.isArray(itemCategories) && itemCategories.length ? ` aus: ${itemCategories.slice(0, 60).join(", ")}` : ""}). Die Summe der Positionen soll der Endsumme entsprechen.
 - full_text: den Text so vollständig wie möglich übernehmen.
 Rufe das Tool dokument_speichern auf.`;
 
   try {
-    const out = await callTool({ tool: tool(cats), content: [fileBlock, { type: "text", text: prompt }], maxTokens: 8000 });
+    const out = await callTool({ tool: tool(cats), content: [fileBlock, { type: "text", text: prompt }], maxTokens: 10000 });
     if (out.error) return res.status(out.status || 500).json({ error: out.error });
     return res.status(200).json(out.data);
   } catch (e) {

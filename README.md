@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.44.0
+- Reiter „Barausgabe“ heißt jetzt **„Ausgabe“** und wurde neu gebaut (Vorbild Bonsy): Beleg scannen, QR-Code oder Foto/PDF; Firma, Gesamtbetrag, Datum, Konto (alle Konten), Kategorie und **einzelne Positionen mit Warengruppe** (z. B. 1× Red Bull 0,95 € · Getränke). Die KI füllt alles nach dem Scannen selbst aus; Datum nur, wenn es heute oder in der Vergangenheit liegt. Differenz zwischen Positionen und Gesamtbetrag wird angezeigt.
+- **QR-Scanner für Kassenbons**: österreichischer Registrierkassen-QR (RKSV) und deutscher TSE-QR – übernimmt Betrag, Datum, Beleg-Nr. und Steuersätze. Händlername steht nicht im QR; wird gemerkt, sobald die Kasse einmal zugeordnet wurde.
+- Neuer Reiter **„Analyse“** (Vorbild Finanzguru): Monat/Jahr/12 Monate, Kontofilter, Einnahmen/Ausgaben/Saldo/Sparquote mit Vergleich zur Vorperiode, In & Out-Verlauf, Kategorien mit Drilldown (Verlauf, Händler, Buchungen), Top-Händler, größte Ausgaben, Wochentage, Einkaufs-Positionen aus Belegen.
+- Neuer Reiter **„Vermögen“**: Nettovermögen mit Verlauf (6 M/1 J/3 J/Alles), Verteilung nach Kontoart, Veränderung pro Monat, Konten mit Zuwachs und manuelle Vermögenswerte/Schulden (Immobilie, Auto, Gold, Kredit …).
+- KI-Auslesen (api/analyze.js) liefert bei Kassenbons zusätzlich Händler, Kaufdatum und Positionen.
+
 ## v0.43.2
 - Einstellungen → Seitenleiste: „Backup“ zeigt korrekt „unter Einstellungen“ (Einstellungen ist jetzt als Elternreiter wählbar)
 - „Einstellungen“, „Übersicht“ und Reiter mit Unterreitern zeigen fest „Hauptreiter“; Ebenen-Auswahl breiter, Text nicht mehr abgeschnitten

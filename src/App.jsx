@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrinkPdf } from "./scan.js";
+import { parseReceiptQR, pastOrToday } from "./receipt.js";
 import { latestBalance, parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS } from "./importers.js";
 
 /* ============================================================
@@ -479,7 +480,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Barausgabe"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -552,7 +553,7 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 const DEFAULT_NAV = {
   tabs: [
     { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: false, parent: "docs" },
-    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "kunden", side: true, phone: false }, { key: "mahnungen", side: true, phone: false }, { key: "artikel", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: false, parent: "settings" }
+    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "analyse", side: true, phone: false }, { key: "vermoegen", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "kunden", side: true, phone: false }, { key: "mahnungen", side: true, phone: false }, { key: "artikel", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: false, parent: "settings" }
   ],
   groups: [
     { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
@@ -577,6 +578,12 @@ function loadNav() {
   if (!n.v19) { n.tabs = n.tabs.map((t) => (t.key === "deadlines" && !t.parent ? { ...t, parent: "docs" } : t)); n.v19 = true; }
   const keys = n.tabs.map((t) => t.key);
   // fehlende (neue) Reiter vor „Einstellungen“ einfügen
+  // Analyse/Vermögen direkt nach „Ausgabe“ einfügen
+  for (const k of ["analyse", "vermoegen"]) if (!keys.includes(k)) {
+    const prevKey = k === "analyse" ? "cash" : "analyse";
+    const pi = n.tabs.findIndex((t) => t.key === prevKey);
+    if (pi >= 0) { n.tabs = [...n.tabs.slice(0, pi + 1), DEFAULT_NAV.tabs.find((t) => t.key === k), ...n.tabs.slice(pi + 1)]; keys.push(k); }
+  }
   const missing = DEFAULT_NAV.tabs.filter((t) => !keys.includes(t.key) && t.parent !== "settings");
   const after = DEFAULT_NAV.tabs.filter((t) => !keys.includes(t.key) && t.parent === "settings");
   const si = n.tabs.findIndex((t) => t.key === "settings");
@@ -591,6 +598,8 @@ const TAB_SVG = {
   docs: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h6" /></>,
   deadlines: <><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5" /><path d="M5 3 2.5 5.5M19 3l2.5 2.5" /></>,
   accounts: <><path d="M3 10 12 4l9 6" /><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8" /><path d="M3 20h18" /></>,
+  analyse: <><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M21 20H3" /></>,
+  vermoegen: <><path d="M3 17l5-5 4 4 8-8" /><path d="M15 8h5v5" /><path d="M3 21h18" /></>,
   cash: <><rect x="2.5" y="6" width="19" height="12" rx="2.5" /><circle cx="12" cy="12" r="2.6" /><path d="M6 9.5v5M18 9.5v5" /></>,
   invoices: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
   kunden: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.5 3 5.2" /></>,
@@ -1701,6 +1710,18 @@ function AppMain() {
     else notify("Buchung gespeichert");
     return tx;
   }
+  // Reiter „Ausgabe“: Buchung anlegen, bereits ausgelesenen Beleg verknüpfen (kein zweiter KI-Aufruf)
+  async function saveExpense(t, att = {}) {
+    const tx = await addManualTx(t);
+    if (att.docId) {
+      await linkTx(tx.id, att.docId);
+      const d = docsRef.current?.find?.((x) => x.id === att.docId);
+      if (d) await saveDoc({ ...d, receiptFlow: false, paid: true, paidDate: tx.date, ...(accountsRef.current.find((a) => a.id === tx.accountId)?.kind === "cash" ? { paidCash: true } : {}) });
+      notify(`Ausgabe ${fmtMoney(tx.amount)} gespeichert · Beleg verknüpft`);
+    } else if (att.file) await onFiles([att.file], { linkTx: tx.id, stay: true });
+    else notify(`Ausgabe ${fmtMoney(tx.amount)} gespeichert`);
+    return tx;
+  }
   function attachNew(txId, how) { pendingLink.current = txId; if (how === "scan") startScan(); else fileInput.current.click(); }
   // Kategorie umbenennen/löschen: Dokumente, Umsätze, Budgets, Regeln mitziehen
   async function renameCategory(from, to) {
@@ -1772,7 +1793,7 @@ function AppMain() {
       const r = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json", "x-app-token": token },
-        body: JSON.stringify({ data, mediaType: send.type, categories, today: todayISO(), company: me.company || "", person: me.name || "",
+        body: JSON.stringify({ data, mediaType: send.type, categories, itemCategories: itemCats(), today: todayISO(), company: me.company || "", person: me.name || "",
           groups: nav.docGroups.map((g) => `${g.title || "Gruppe"} (${AREAS[g.area][1]}): ${g.cats.join(", ")}`).join("\n") })
       });
       const j = await r.json().catch(() => ({ error: r.status === 413 ? "Datei zu groß für den Server (max. ca. 4 MB)" : `HTTP ${r.status}` }));
@@ -1789,6 +1810,9 @@ function AppMain() {
         documentDate: j.document_date || "",
         summary: j.summary || "",
         fullText: j.full_text || "",
+        merchant: j.merchant || "",
+        purchaseDate: /^\d{4}-\d{2}-\d{2}$/.test(j.purchase_date || "") ? j.purchase_date : "",
+        lineItems: (j.line_items || []).filter((x) => x && x.name && Number.isFinite(+x.total)).map((x) => ({ id: uid(), name: String(x.name), qty: +x.qty || 1, unitPrice: x.unit_price != null ? +x.unit_price : null, total: +x.total, category: x.category || "Sonstiges" })),
         amount: j.amount && j.amount.total != null ? { ...j.amount, currency: j.amount.currency || "EUR" } : null,
         direction: j.direction || "keine",
         area: ["finanzen", "vertraege", "sonstiges"].includes(j.area) ? j.area : undefined,
@@ -1810,7 +1834,8 @@ function AppMain() {
         delete uniFiles.current[doc.id];
         if (done.docType === "Kontoauszug") { notify(`KI hat einen Kontoauszug erkannt: „${done.title}“ – Umsätze werden importiert`); uf.__ai = true; enqueueStmt(uf); }
       }
-      if (doc.payCash && done.amount?.total && done.direction !== "einnahme") await bookCash({ ...done, direction: "ausgabe" });
+      if (doc.receiptFlow) { /* Beleg aus dem Reiter „Ausgabe“: Buchung entsteht beim Speichern des Formulars */ }
+      else if (doc.payCash && done.amount?.total && done.direction !== "einnahme") await bookCash({ ...done, direction: "ausgabe" });
       else if (!txsRef.current.some((t) => t.docId === done.id)) {
         const [l] = matchInvoices([done], txsRef.current);
         if (l) { await linkTx(l.txId, done.id); const t = txsRef.current.find((x) => x.id === l.txId); notify(`Beleg „${done.title}“ an Buchung ${t ? fmtDate(t.date) + " · " + fmtMoney(t.amount) : ""} angehängt`); }
@@ -1830,7 +1855,7 @@ function AppMain() {
       const doc = {
         id: uid(), createdAt: new Date().toISOString(), fileName: f.name, mimeType: blob.type, size: blob.size,
         title: f.name, category: "Sonstiges", tags: [], deadlines: [], amount: null, paid: false, notes: "", status: "processing",
-        ...(opts.cash ? { payCash: true } : {}), ...(opts.scanned ? { scanned: true } : {}), ...(opts.uni ? { uniCheck: true } : {})
+        ...(opts.cash ? { payCash: true } : {}), ...(opts.scanned ? { scanned: true } : {}), ...(opts.uni ? { uniCheck: true } : {}), ...(opts.receipt ? { receiptFlow: true, category: "Garantie & Kaufbelege" } : {})
       };
       try { doc.thumb = await makeThumb(blob); } catch {}
       if (opts.uni) uniFiles.current[doc.id] = f;
@@ -1926,8 +1951,12 @@ function AppMain() {
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup}
           deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
-        {tab === "cash" && <CashPage accounts={accounts} txs={txs} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory}
+        {tab === "cash" && <ExpensePage accounts={visAccounts} txs={txs} categories={TX_CATS(categories)} onSave={saveExpense} onScan={scanFor} addCategory={addCategory} notify={notify}
+          onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
+          suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")}
           docs={active} onOpen={setOpenId} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
+        {tab === "analyse" && <Analysis txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} accounts={visAccounts} hasCash={visAccounts.some((a) => a.kind === "cash")} />}
+        {tab === "vermoegen" && <Wealth txs={txs} accounts={visAccounts} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
         {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
         {tab === "artikel" && <ArticlesPage setTab={setTab} />}
@@ -2098,7 +2127,7 @@ const HOME_WIDGETS = {
   alerts: ["Offene Rechnungen", 12, "🧾", "Hinweis auf unbezahlte Rechnungen"],
   konten: ["Konten", 4, "🏦", "Kontostände aller Konten"],
   bargeld: ["Bargeld", 4, "💶", "Bestand der Geldbörse"],
-  barerfassung: ["Barausgabe erfassen", 4, "✍️", "Sofort-Eingabe fürs Bargeld, mit Beleg-Scan"],
+  barerfassung: ["Ausgabe erfassen", 4, "✍️", "Sofort-Eingabe für Ausgaben, mit Beleg-Scan"],
   kategorien: ["Ausgaben nach Kategorie", 4, "🍩", "Donut-Diagramm des Monats"],
   verlauf: ["Verlauf", 4, "📊", "6 Monate Einnahmen/Ausgaben"],
   budgets: ["Budgets", 4, "🎯", "Budget pro Kategorie"],
@@ -2118,34 +2147,522 @@ function migrateLayout(l) {
   return { gap: 16, h: {}, w: {}, ...l };
 }
 
-function CashPage({ accounts, txs, categories, onSave, onScan, addCategory, docs, onOpen, openAccount }) {
-  const cash = accounts.filter((a) => a.kind === "cash");
-  const ids = new Set(cash.map((a) => a.id));
-  const list = txs.filter((t) => ids.has(t.accountId)).sort((a, b) => (b.date + (b.createdAt || "")).localeCompare(a.date + (a.createdAt || ""))).slice(0, 30);
-  const docOf = (t) => t.docId && docs.find((d) => d.id === t.docId);
+/* ======================= Ausgabe (Kassenbon erfassen, Positionen, QR) ======================= */
+const ITEM_CATS_DEF = ["Lebensmittel", "Getränke", "Obst & Gemüse", "Fleisch & Fisch", "Milchprodukte", "Brot & Backwaren", "Süßes & Snacks", "Alkohol",
+  "Drogerie & Hygiene", "Haushalt & Reinigung", "Tierbedarf", "Baby & Kind", "Kleidung", "Elektronik", "Gastronomie", "Treibstoff", "Pfand", "Rabatt", "Sonstiges"];
+const itemCats = () => { const l = ls.get("itemCats", null); return Array.isArray(l) && l.length ? l : ITEM_CATS_DEF; };
+const parseAmt = (x) => { const v = Number(String(x ?? "").replace(/\s|€/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".")); return Number.isFinite(v) ? v : NaN; };
+const amtStr = (v) => (v == null || isNaN(v) ? "" : (Math.round(v * 100) / 100).toFixed(2).replace(".", ","));
+const GENERIC_DOC_CATS = ["Rechnungen", "Sonstiges", "Garantie & Kaufbelege", "Verträge"];
+
+function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload, addCategory, suggestCat, notify }) {
+  const today = todayISO();
+  const cashAcc = accounts.find((a) => a.kind === "cash");
+  const lastAcc = ls.get("expAcc", "");
+  const defAcc = accounts.some((a) => a.id === lastAcc) ? lastAcc : cashAcc?.id || accounts[0]?.id || "new-cash";
+  const blank = () => ({ dir: "out", merchant: "", amount: "", date: today, accountId: defAcc, category: "", note: "", items: [], docId: null, file: null, url: null, qr: null, touched: {} });
+  const [f, setF] = useState(blank);
+  const [busy, setBusy] = useState(false), [qrOpen, setQrOpen] = useState(false), [extraCats, setExtraCats] = useState([]);
+  const [icats, setIcats] = useState(itemCats);
+  const fileRef = useRef();
+  const set = (p, touch) => setF((x) => ({ ...x, ...p, touched: touch ? { ...x.touched, ...Object.fromEntries(Object.keys(p).map((k) => [k, true])) } : x.touched }));
+  const doc = f.docId ? docs.find((d) => d.id === f.docId) : null;
+  const reading = doc?.status === "processing";
+  // Nach dem Auslesen durch die KI die Felder füllen (vom Nutzer Geändertes bleibt)
+  const filled = useRef(null);
+  useEffect(() => {
+    if (!doc || doc.status !== "done" || filled.current === doc.id) return;
+    filled.current = doc.id;
+    setF((x) => {
+      const t = x.touched, merchant = t.merchant && x.merchant ? x.merchant : doc.merchant || doc.sender || x.merchant;
+      const items = x.items.length ? x.items : (doc.lineItems || []).map((it) => ({ ...it, id: uid(), qty: String(Math.round((+it.qty || 1) * 1000) / 1000).replace(".", ","), total: amtStr(it.total) }));
+      const docCat = categories.includes(doc.category) && !GENERIC_DOC_CATS.includes(doc.category) ? doc.category : "";
+      return { ...x, merchant,
+        amount: t.amount && x.amount ? x.amount : doc.amount?.total != null ? amtStr(doc.amount.total) : x.amount,
+        date: t.date ? x.date : pastOrToday(doc.purchaseDate || doc.documentDate, today),
+        category: t.category && x.category ? x.category : docCat || suggestCat(merchant) || x.category,
+        dir: doc.direction === "einnahme" ? "in" : x.dir, items };
+    });
+    notify(doc.lineItems?.length ? `Beleg ausgelesen: ${doc.lineItems.length} Position${doc.lineItems.length === 1 ? "" : "en"}` : "Beleg ausgelesen");
+  }, [doc?.status, doc?.id]);
+  useEffect(() => () => f.url && URL.revokeObjectURL(f.url), []);
+
+  const attach = async (file, opts = {}) => {
+    if (f.url) URL.revokeObjectURL(f.url);
+    const url = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
+    setF((x) => ({ ...x, file, url, docId: null }));
+    filled.current = null;
+    const id = await onUpload(file, opts);
+    if (id) setF((x) => ({ ...x, docId: id }));
+  };
+  const onQr = (text) => {
+    setQrOpen(false);
+    const q = parseReceiptQR(text);
+    if (!q) return notify("Kein Kassenbon-QR erkannt (RKSV/TSE). Tipp: Beleg stattdessen scannen – die KI liest ihn aus.");
+    const known = q.register && txs.find((t) => t.receiptQr?.register === q.register && t.counterparty);
+    setF((x) => ({ ...x, qr: q, amount: x.touched.amount && x.amount ? x.amount : amtStr(q.total), date: x.touched.date ? x.date : pastOrToday(q.date, today),
+      merchant: x.merchant || known?.counterparty || "", category: x.category || known?.category || "" }));
+    notify(`QR-Code gelesen: ${fmtMoney(q.total)}${q.date ? " · " + fmtDate(q.date) : ""}${known ? " · " + known.counterparty : ""}`);
+  };
+  const items = f.items, setItems = (fn) => setF((x) => ({ ...x, items: typeof fn === "function" ? fn(x.items) : fn }));
+  const itemSum = items.reduce((s, it) => s + (parseAmt(it.total) || 0), 0);
+  const val = parseAmt(f.amount);
+  const total = val > 0 ? val : items.length ? itemSum : NaN;
+  const diff = items.length && val > 0 ? Math.round((val - itemSum) * 100) / 100 : 0;
+  const cat = f.category || suggestCat(f.merchant) || "Lebensmittel & Haushalt";
+  const ok = total > 0 && f.date && f.merchant.trim() && !busy;
+  const cats = [...new Set([...categories, ...extraCats, cat])];
+  const merchants = useMemo(() => {
+    const m = {}; txs.forEach((t) => { if (t.counterparty && t.amount < 0) m[t.counterparty] = (m[t.counterparty] || 0) + 1; });
+    return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 300).map((x) => x[0]);
+  }, [txs.length]);
+  const save = async () => {
+    if (!ok) return; setBusy(true);
+    try {
+      const it = items.filter((x) => x.name.trim() || parseAmt(x.total)).map((x) => ({ name: x.name.trim(), qty: parseAmt(x.qty) || 1, total: Math.round((parseAmt(x.total) || 0) * 100) / 100, category: x.category || "Sonstiges" }));
+      const date = pastOrToday(f.date, today);
+      ls.set("expAcc", f.accountId);
+      await onSave({ accountId: f.accountId, date, amount: f.dir === "out" ? -total : total, counterparty: f.merchant.trim(), purpose: f.note.trim(),
+        category: f.dir === "in" && !f.category ? "Einnahmen" : cat, ...(it.length ? { items: it } : {}),
+        ...(f.qr ? { receiptQr: { kind: f.qr.kind, register: f.qr.register, receiptNo: f.qr.receiptNo } } : {}) },
+        { docId: f.docId, file: f.docId ? null : f.file });
+      if (f.url) URL.revokeObjectURL(f.url);
+      filled.current = null; setF(blank());
+    } finally { setBusy(false); }
+  };
+  const newItemCat = () => { const n = (prompt("Neue Positions-Kategorie:") || "").trim(); if (!n) return null; const l = [...new Set([...icats, n])]; ls.set("itemCats", l); setIcats(l); return n; };
+
   return (
-    <div className="cashpage">
+    <div className="expform">
+      <div className="expscan">
+        <button className="expbig" onClick={() => onScan((file, o) => attach(file, { ...o, scanned: true }))}>
+          <span className="expico">📷</span><b>Beleg scannen</b><small>KI liest Firma, Betrag & Positionen</small>
+        </button>
+        <button className="expbig" onClick={() => setQrOpen(true)}>
+          <span className="expico">▦</span><b>QR-Code</b><small>Registrierkassen-QR (RKSV)</small>
+        </button>
+        <button className="expbig" onClick={() => fileRef.current.click()}>
+          <span className="expico">🖼</span><b>Foto / PDF</b><small>aus Galerie oder Dateien</small>
+        </button>
+        <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const x = e.target.files[0]; e.target.value = ""; if (x) attach(x); }} />
+      </div>
+      {(f.file || f.qr) && (
+        <div className="expatt">
+          {f.file && (f.url ? <img src={f.url} alt="" /> : <span className="attpdf">PDF</span>)}
+          <div className="grow">
+            {f.file && <b>{reading ? "KI liest den Beleg …" : doc?.status === "error" ? "Auslesen fehlgeschlagen" : doc?.status === "done" ? "Beleg ausgelesen" : "Beleg wird hochgeladen …"}</b>}
+            {f.file && <small className="muted block">{doc?.status === "error" ? doc.error : reading ? "Felder werden gleich automatisch ausgefüllt" : doc?.status === "done" ? `${doc.lineItems?.length || 0} Positionen erkannt` : f.file.name}</small>}
+            {f.qr && <small className="muted block">▦ {f.qr.kind} · Beleg {f.qr.receiptNo || "—"}{f.qr.time ? " · " + f.qr.time + " Uhr" : ""}{f.qr.vat?.length ? " · " + f.qr.vat.map((v) => `${v.rate}: ${fmtMoney(v.gross)}`).join(", ") : ""}</small>}
+          </div>
+          {reading && <span className="spin" aria-hidden="true" />}
+          <button className="iconbtn" title="Entfernen" aria-label="Beleg entfernen" onClick={() => { if (f.url) URL.revokeObjectURL(f.url); setF((x) => ({ ...x, file: null, url: null, docId: null, qr: null })); }}>✕</button>
+        </div>
+      )}
+      <div className="seg">
+        <button className={f.dir === "out" ? "on" : ""} onClick={() => set({ dir: "out" })}>Ausgabe</button>
+        <button className={f.dir === "in" ? "on" : ""} onClick={() => set({ dir: "in" })}>Einnahme</button>
+      </div>
+      <label>Firma<input list="expmerchants" value={f.merchant} placeholder="z. B. Penny, BILLA, OMV" onChange={(e) => set({ merchant: e.target.value }, true)} /></label>
+      <datalist id="expmerchants">{merchants.map((m) => <option key={m} value={m} />)}</datalist>
+      <label>Gesamtbetrag<input className="bigamount" inputMode="decimal" placeholder={items.length ? amtStr(itemSum) + " €" : "0,00 €"} value={f.amount} onChange={(e) => set({ amount: e.target.value }, true)} /></label>
+      <div className="grid2">
+        <label>Datum<input type="date" max={today} value={f.date} onChange={(e) => set({ date: e.target.value > today ? today : e.target.value }, true)} /></label>
+        <label>Konto
+          <select value={f.accountId} onChange={(e) => set({ accountId: e.target.value }, true)}>
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}
+            {!cashAcc && <option value="new-cash">💶 Geldbörse (neu)</option>}
+          </select>
+        </label>
+      </div>
+      <label>Kategorie
+        <select value={cat} onChange={(e) => {
+          if (e.target.value !== "__new") return set({ category: e.target.value }, true);
+          const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return;
+          addCategory?.(n); setExtraCats((x) => [...x, n]); set({ category: n }, true);
+        }}>
+          {cats.map((c) => <option key={c}>{c}</option>)}
+          {addCategory && <option value="__new">＋ Neue Kategorie …</option>}
+        </select>
+      </label>
+      <div className="expitems">
+        <div className="expitemshead"><b>Positionen</b><small className="muted">{items.length ? `${items.length} · ${fmtMoney(itemSum)}` : "optional"}</small></div>
+        {items.map((it, i) => (
+          <div key={it.id} className="expitem">
+            <input className="q" inputMode="decimal" aria-label="Menge" value={it.qty} onChange={(e) => setItems((l) => l.map((x) => (x.id === it.id ? { ...x, qty: e.target.value } : x)))} />
+            <span className="x">×</span>
+            <input className="n" aria-label="Bezeichnung" placeholder="Artikel" value={it.name} onChange={(e) => setItems((l) => l.map((x) => (x.id === it.id ? { ...x, name: e.target.value } : x)))} />
+            <input className="p" inputMode="decimal" aria-label="Preis" placeholder="0,00" value={it.total} onChange={(e) => setItems((l) => l.map((x) => (x.id === it.id ? { ...x, total: e.target.value } : x)))} />
+            <select className="c" aria-label="Kategorie der Position" value={it.category} onChange={(e) => {
+              const v = e.target.value === "__new" ? newItemCat() : e.target.value; if (v) setItems((l) => l.map((x) => (x.id === it.id ? { ...x, category: v } : x)));
+            }}>
+              {[...new Set([...icats, it.category])].map((c) => <option key={c}>{c}</option>)}
+              <option value="__new">＋ Neue …</option>
+            </select>
+            <button className="iconbtn" title="Position entfernen" aria-label="Position entfernen" onClick={() => setItems((l) => l.filter((x) => x.id !== it.id))}>✕</button>
+          </div>
+        ))}
+        <div className="expitemsfoot">
+          <button className="link" onClick={() => setItems((l) => [...l, { id: uid(), qty: "1", name: "", total: "", category: l[l.length - 1]?.category || icats[0] }])}>＋ Position</button>
+          {diff !== 0 && <span className={"expdiff" + (Math.abs(diff) > 0.009 ? " warn" : "")}>Differenz {fmtMoney(diff)}
+            <button className="link" onClick={() => set({ amount: amtStr(itemSum) }, true)}>Summe übernehmen</button></span>}
+        </div>
+      </div>
+      <label>Notiz (optional)<input value={f.note} onChange={(e) => set({ note: e.target.value })} placeholder="z. B. Wocheneinkauf" /></label>
+      <button className="btn primary cashsave" disabled={!ok} onClick={save}>{busy ? "Speichert …" : reading ? "Speichern (Beleg wird noch gelesen)" : `Speichern${total > 0 ? " · " + fmtMoney(f.dir === "out" ? -total : total) : ""}`}</button>
+      {qrOpen && createPortal(<CodeScanWin title="Kassenbon-QR scannen" onClose={() => setQrOpen(false)} onResult={(code) => onQr(code)} />, document.querySelector(".app") || document.body)}
+    </div>
+  );
+}
+
+function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addCategory, suggestCat, docs, onOpen, openAccount, notify }) {
+  const [openId, setOpenId] = useState(null);
+  const month = todayISO().slice(0, 7);
+  const list = txs.filter((t) => t.manual).sort((a, b) => (b.date + (b.createdAt || "")).localeCompare(a.date + (a.createdAt || ""))).slice(0, 40);
+  const monthOut = txs.filter((t) => t.manual && t.amount < 0 && t.date.startsWith(month)).reduce((s, t) => s - t.amount, 0);
+  const cash = accounts.filter((a) => a.kind === "cash");
+  const accOf = (id) => accounts.find((a) => a.id === id);
+  return (
+    <div className="exppage">
       <section className="tile">
-        <div className="tilehead"><b>Barausgabe erfassen</b></div>
-        <CashForm accounts={accounts} categories={categories} onSave={onSave} onScan={onScan} addCategory={addCategory} autoFocus />
+        <div className="tilehead"><b>Ausgabe erfassen</b><small>alle Konten</small></div>
+        <ExpenseForm accounts={accounts} txs={txs} docs={docs} categories={categories} onSave={onSave} onScan={onScan} onUpload={onUpload} addCategory={addCategory} suggestCat={suggestCat} notify={notify} />
       </section>
       <section className="tile">
-        <div className="tilehead"><b>Bargeld</b>{cash[0] && <small>{fmtMoney(cash.reduce((s, a) => s + cashBalance(a, txs), 0))}</small>}</div>
-        {!cash.length && <p className="muted small">Noch kein Bargeld-Konto – wird bei der ersten Barausgabe automatisch als „Geldbörse“ angelegt.</p>}
+        <div className="tilehead"><b>Erfasste Ausgaben</b><small>{monthLabel(month)}: {fmtMoney(monthOut)}</small></div>
         {cash.map((a) => (
           <div key={a.id} className="frow click" onClick={() => openAccount(a.id)}>
             <span className="caticon" style={{ width: 40, height: 40, background: "#16a34a22", fontSize: 20 }}><AccIcon a={a} className="acci" force /></span>
-            <div className="grow"><b style={accStyle(a)}>{a.name}</b><small className="muted block">Bestand · alle Buchungen ansehen</small></div>
+            <div className="grow"><b style={accStyle(a)}>{a.name}</b><small className="muted block">Bargeld-Bestand</small></div>
             <div className="right"><b className={cashBalance(a, txs) < 0 ? "neg" : "pos"}>{fmtMoney(cashBalance(a, txs))}</b></div>
           </div>
         ))}
-        {list.length > 0 && <div className="tilehead" style={{ marginTop: 10 }}><b>Letzte Barbuchungen</b></div>}
-        {list.map((t) => { const d = docOf(t); return (
-          <div key={t.id} className={"frow" + (d ? " click" : "")} onClick={() => d && onOpen(d.id)}>
-            <CatIcon c={t.category} size={36} />
-            <div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b><small className="muted block">{fmtDate(t.date)} · {t.category}{d ? " · 📎 Beleg" : ""}</small></div>
-            <div className="right"><b className={t.amount < 0 ? "neg" : "pos"}>{fmtMoney(t.amount)}</b></div>
+        {!list.length && <p className="muted small">Noch keine Ausgaben erfasst. Scanne einen Kassenbon – Firma, Betrag, Datum und Positionen werden automatisch ausgefüllt.</p>}
+        {list.map((t) => { const d = t.docId && docs.find((x) => x.id === t.docId), a = accOf(t.accountId), open = openId === t.id; return (
+          <div key={t.id} className="expentry">
+            <div className="frow click" onClick={() => setOpenId(open ? null : t.id)}>
+              <CatIcon c={t.category} size={36} />
+              <div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b>
+                <small className="muted block">{fmtDate(t.date)} · {t.category}{a ? " · " + a.name : ""}{t.items?.length ? ` · ${t.items.length} Pos.` : ""}{d ? " · 📎" : ""}</small></div>
+              <div className="right"><b className={t.amount < 0 ? "neg" : "pos"}>{fmtMoney(t.amount)}</b></div>
+            </div>
+            {open && (
+              <div className="expdetail">
+                {t.items?.length ? t.items.map((it, i) => (
+                  <div key={i} className="exprow"><span className="muted">{String(it.qty).replace(".", ",")}×</span><span className="grow">{it.name}</span><span className="chip sm">{it.category}</span><b>{fmtMoney(it.total)}</b></div>
+                )) : <p className="muted small">Keine Positionen erfasst.</p>}
+                {t.purpose && <p className="small">{t.purpose}</p>}
+                {d && <button className="link" onClick={() => onOpen(d.id)}>📎 Beleg öffnen</button>}
+              </div>
+            )}
           </div>); })}
+      </section>
+    </div>
+  );
+}
+
+/* ======================= Analyse ======================= */
+const addMon = (m, n) => { const d = new Date(m + "-15"); d.setMonth(d.getMonth() + n); return d.toLocaleDateString("sv-SE").slice(0, 7); };
+const monthsRange = (from, to) => { const out = []; for (let m = from; m <= to && out.length < 600; m = addMon(m, 1)) out.push(m); return out; };
+const normName = (s) => String(s || "").replace(/\s+/g, " ").trim();
+const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+const WD = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+
+function MiniBars({ data, h = 120, onPick, sel, fmt = (v) => fmtMoney(v).replace(",00", "") }) {
+  // data: [{ k, label, a (positiv/grün), b (negativ/rot) }]
+  const max = Math.max(1, ...data.flatMap((d) => [d.a || 0, d.b || 0]));
+  return (
+    <div className="mbars" style={{ height: h }}>
+      {data.map((d) => (
+        <button key={d.k} className={"mcol" + (sel === d.k ? " on" : "")} onClick={() => onPick?.(d.k)} title={`${d.label}: ${d.a != null ? "+" + fmt(d.a) : ""} ${d.b != null ? "−" + fmt(d.b) : ""}`}>
+          <div className="mpair">
+            {d.a != null && <div className="v inc" style={{ height: (d.a / max) * 100 + "%" }} />}
+            {d.b != null && <div className="v out" style={{ height: (d.b / max) * 100 + "%" }} />}
+          </div>
+          <small>{d.label}</small>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Analysis({ txs, accounts, hasCash }) {
+  const thisMonth = todayISO().slice(0, 7);
+  const [mode, setMode] = useLsState("anaMode", "month"); // month | year | 12m
+  const [cur, setCur] = useState(thisMonth);
+  const [accSel, setAccSel] = useLsState("anaAccs", []);
+  const [kind, setKind] = useState("out"); // out | in
+  const [drill, setDrill] = useState(null); // Kategorie
+  const [drillM, setDrillM] = useState(null); // Händler
+  const valid = accSel.filter((id) => accounts.some((a) => a.id === id));
+  const base = useMemo(() => txs.filter((t) => t.kind !== "broker" && t.category !== "Umbuchung" && !(hasCash && t.category === "Bargeld") && (t.currency || "EUR") === "EUR"
+    && (!valid.length || valid.includes(t.accountId))), [txs, valid.join(","), hasCash]);
+  const year = cur.slice(0, 4);
+  const [from, to] = mode === "year" ? [year + "-01", year + "-12"] : mode === "12m" ? [addMon(cur, -11), cur] : [cur, cur];
+  const span = monthsRange(from, to).length;
+  const [pFrom, pTo] = [addMon(from, -span), addMon(to, -span)];
+  const inR = (t, a, b) => { const m = t.date.slice(0, 7); return m >= a && m <= b; };
+  const list = base.filter((t) => inR(t, from, to)), prev = base.filter((t) => inR(t, pFrom, pTo));
+  const sum = (l, s) => l.filter((t) => (s > 0 ? t.amount > 0 : t.amount < 0)).reduce((x, t) => x + Math.abs(t.amount), 0);
+  const inc = sum(list, 1), out = sum(list, -1), pInc = sum(prev, 1), pOut = sum(prev, -1);
+  const sel = list.filter((t) => (kind === "out" ? t.amount < 0 : t.amount > 0));
+  const byCat = {}; sel.forEach((t) => { byCat[t.category || "Sonstiges"] = (byCat[t.category || "Sonstiges"] || 0) + Math.abs(t.amount); });
+  const pByCat = {}; prev.filter((t) => (kind === "out" ? t.amount < 0 : t.amount > 0)).forEach((t) => { pByCat[t.category || "Sonstiges"] = (pByCat[t.category || "Sonstiges"] || 0) + Math.abs(t.amount); });
+  const parts = Object.entries(byCat).map(([c, v]) => ({ c, v })).sort((a, b) => b.v - a.v);
+  const selTotal = kind === "out" ? out : inc;
+  // Verlauf: 12 Monate bis zum Ende des Zeitraums
+  const chartTo = mode === "year" ? (year === thisMonth.slice(0, 4) ? thisMonth : year + "-12") : cur;
+  const chartMonths = monthsRange(addMon(chartTo, -11), chartTo);
+  const chart = chartMonths.map((m) => { const l = base.filter((t) => t.date.startsWith(m)); return { k: m, label: monthLabel(m).split(" ")[0], a: sum(l, 1), b: sum(l, -1) }; });
+  const avgOut = chart.reduce((s, x) => s + x.b, 0) / Math.max(1, chart.filter((x) => x.a || x.b).length);
+  // Händler
+  const merch = {}; sel.forEach((t) => { const k = normName(t.counterparty || t.purpose || "Unbekannt"); const m = merch[k] || (merch[k] = { k, v: 0, n: 0, cat: t.category }); m.v += Math.abs(t.amount); m.n++; });
+  const topMerch = Object.values(merch).sort((a, b) => b.v - a.v);
+  // Positionen aus Kassenbons
+  const items = list.filter((t) => t.amount < 0 && t.items?.length).flatMap((t) => t.items.map((it) => ({ ...it, merchant: t.counterparty })));
+  const byItemCat = {}; items.forEach((it) => { byItemCat[it.category || "Sonstiges"] = (byItemCat[it.category || "Sonstiges"] || 0) + (it.total || 0); });
+  const itemParts = Object.entries(byItemCat).map(([c, v]) => ({ c, v })).sort((a, b) => b.v - a.v);
+  const byItem = {}; items.forEach((it) => { const k = normName(it.name).toLowerCase(); const x = byItem[k] || (byItem[k] = { name: normName(it.name), v: 0, q: 0, shops: new Set() }); x.v += it.total || 0; x.q += +it.qty || 1; x.shops.add(it.merchant); });
+  const topItems = Object.values(byItem).sort((a, b) => b.v - a.v).slice(0, 10);
+  const itemTotal = itemParts.reduce((s, p) => s + p.v, 0);
+  // Wochentage (Ausgaben)
+  const wd = Array(7).fill(0); list.filter((t) => t.amount < 0).forEach((t) => { wd[(new Date(t.date).getDay() + 6) % 7] += -t.amount; });
+  const wdMax = Math.max(1, ...wd);
+  const biggest = list.filter((t) => t.amount < 0).sort((a, b) => a.amount - b.amount).slice(0, 5);
+  const periodLabel = mode === "year" ? year : mode === "12m" ? `${monthLabel(from)} – ${monthLabel(to)}` : new Date(cur + "-15").toLocaleDateString("de-AT", { month: "long", year: "numeric" });
+  const step = (n) => setCur((c) => { const m = mode === "year" ? addMon(c, 12 * n) : addMon(c, n); return m > thisMonth ? thisMonth : m; });
+  const delta = (a, b) => { if (!b) return null; const d = Math.round(((a - b) / b) * 100); return d; };
+  const Delta = ({ a, b, good = "down" }) => { const d = delta(a, b); if (d == null || !isFinite(d)) return null; const up = d > 0; const bad = good === "down" ? up : !up;
+    return <small className={"delta " + (d === 0 ? "" : bad ? "bad" : "good")}>{up ? "▲" : d < 0 ? "▼" : "•"} {Math.abs(d)} %</small>; };
+  const pal = (c, i) => catMeta(c).color || PALETTE[i % PALETTE.length];
+
+  if (drill) {
+    const l = sel.filter((t) => (t.category || "Sonstiges") === drill && (!drillM || normName(t.counterparty || t.purpose || "Unbekannt") === drillM)).sort((a, b) => b.date.localeCompare(a.date));
+    const hist = chartMonths.map((m) => { const v = base.filter((t) => t.date.startsWith(m) && (t.category || "Sonstiges") === drill && (kind === "out" ? t.amount < 0 : t.amount > 0)).reduce((s, t) => s + Math.abs(t.amount), 0); return { k: m, label: monthLabel(m).split(" ")[0], [kind === "out" ? "b" : "a"]: v }; });
+    const mm = {}; sel.filter((t) => (t.category || "Sonstiges") === drill).forEach((t) => { const k = normName(t.counterparty || t.purpose || "Unbekannt"); mm[k] = (mm[k] || 0) + Math.abs(t.amount); });
+    return (
+      <div className="anapage">
+        <div className="anahead"><button className="btn sm" onClick={() => { setDrill(null); setDrillM(null); }}>‹ Zurück</button><b className="grow">{drill}</b><small className="muted">{periodLabel}</small></div>
+        <section className="tile anakpi"><CatIcon c={drill} size={44} /><div><small className="muted">{kind === "out" ? "Ausgaben" : "Einnahmen"}</small><div className="kpiv">{fmtMoney(byCat[drill] || 0)}</div>
+          <small className="muted">{pct(byCat[drill] || 0, selTotal)} % vom Gesamt · {l.length} Buchungen</small> <Delta a={byCat[drill] || 0} b={pByCat[drill] || 0} good={kind === "out" ? "down" : "up"} /></div></section>
+        <section className="tile"><div className="tilehead"><b>Verlauf</b><small>12 Monate</small></div><MiniBars data={hist} /></section>
+        <section className="tile"><div className="tilehead"><b>Händler</b>{drillM && <button className="link" onClick={() => setDrillM(null)}>alle zeigen</button>}</div>
+          {Object.entries(mm).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, v]) => (
+            <div key={k} className={"frow click" + (drillM === k ? " on" : "")} onClick={() => setDrillM(drillM === k ? null : k)}>
+              <div className="grow"><b>{k}</b><Bar value={v} max={byCat[drill]} color={catMeta(drill).color} /></div><div className="right"><b>{fmtMoney(v)}</b></div>
+            </div>))}
+        </section>
+        <section className="tile"><div className="tilehead"><b>Buchungen</b><small>{l.length}</small></div>
+          {l.slice(0, 100).map((t) => (
+            <div key={t.id} className="frow"><div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b><small className="muted block">{fmtDate(t.date)}{t.items?.length ? ` · ${t.items.length} Positionen` : ""}</small></div>
+              <div className="right"><b className={t.amount < 0 ? "neg" : "pos"}>{fmtMoney(t.amount)}</b></div></div>))}
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="anapage">
+      <div className="anahead">
+        <div className="seg sm">{[["month", "Monat"], ["year", "Jahr"], ["12m", "12 Monate"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => setMode(k)}>{l}</button>)}</div>
+        <div className="anaper"><button className="iconbtn" aria-label="Zurück" onClick={() => step(-1)}>‹</button><b>{periodLabel}</b><button className="iconbtn" aria-label="Weiter" disabled={cur >= thisMonth} onClick={() => step(1)}>›</button></div>
+      </div>
+      {accounts.length > 1 && (
+        <div className="chips anaaccs">
+          <button className={"chip" + (!valid.length ? " on" : "")} onClick={() => setAccSel([])}>Alle Konten</button>
+          {accounts.map((a) => <button key={a.id} className={"chip" + (valid.includes(a.id) ? " on" : "")} onClick={() => setAccSel(valid.includes(a.id) ? valid.filter((x) => x !== a.id) : [...valid, a.id])}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</button>)}
+        </div>
+      )}
+      <div className="anakpis">
+        <div className="tile kpi"><small className="muted">Einnahmen</small><div className="kpiv pos">{fmtMoney(inc)}</div><Delta a={inc} b={pInc} good="up" /></div>
+        <div className="tile kpi"><small className="muted">Ausgaben</small><div className="kpiv neg">{fmtMoney(out)}</div><Delta a={out} b={pOut} /></div>
+        <div className="tile kpi"><small className="muted">Saldo</small><div className={"kpiv " + (inc - out >= 0 ? "pos" : "neg")}>{(inc - out >= 0 ? "+" : "") + fmtMoney(inc - out)}</div><small className="muted">Vorperiode {fmtMoney(pInc - pOut)}</small></div>
+        <div className="tile kpi"><small className="muted">Sparquote</small><div className="kpiv">{inc > 0 ? Math.round(((inc - out) / inc) * 100) + " %" : "—"}</div><small className="muted">vom Einkommen übrig</small></div>
+      </div>
+      <section className="tile">
+        <div className="tilehead"><b>In & Out</b><small>Ø Ausgaben {fmtMoney(avgOut)}/Monat</small></div>
+        <MiniBars data={chart} h={150} sel={mode === "month" ? cur : null} onPick={(m) => { setMode("month"); setCur(m); }} />
+        <div className="legend"><span className="dot inc" />Einnahmen <span className="dot out" />Ausgaben</div>
+      </section>
+      <section className="tile">
+        <div className="tilehead"><b>Kategorien</b>
+          <div className="seg sm">{[["out", "Ausgaben"], ["in", "Einnahmen"]].map(([k, l]) => <button key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>{l}</button>)}</div></div>
+        {parts.length ? (<>
+          <div className="anadonut"><Donut parts={parts} total={selTotal} /></div>
+          {parts.map((p, i) => (
+            <div key={p.c} className="frow click" onClick={() => setDrill(p.c)}>
+              <CatIcon c={p.c} size={36} />
+              <div className="grow"><div className="row1"><span>{p.c}</span><span><b>{fmtMoney(p.v)}</b></span></div>
+                <Bar value={p.v} max={parts[0].v} color={pal(p.c, i)} />
+                <small className="muted">{pct(p.v, selTotal)} % · {sel.filter((t) => (t.category || "Sonstiges") === p.c).length} Buchungen</small> <Delta a={p.v} b={pByCat[p.c] || 0} good={kind === "out" ? "down" : "up"} /></div>
+              <span className="muted">›</span>
+            </div>))}
+        </>) : <p className="muted small">Keine {kind === "out" ? "Ausgaben" : "Einnahmen"} im Zeitraum.</p>}
+      </section>
+      <div className="anagrid">
+        <section className="tile">
+          <div className="tilehead"><b>Top-Händler</b><small>{kind === "out" ? "Ausgaben" : "Einnahmen"}</small></div>
+          {topMerch.slice(0, 8).map((m) => (
+            <div key={m.k} className="frow click" onClick={() => { setDrill(m.cat || "Sonstiges"); setDrillM(m.k); }}>
+              <CatIcon c={m.cat} size={32} />
+              <div className="grow"><b>{m.k}</b><small className="muted block">{m.n}× · Ø {fmtMoney(m.v / m.n)}</small></div>
+              <div className="right"><b>{fmtMoney(m.v)}</b></div>
+            </div>))}
+          {!topMerch.length && <p className="muted small">Keine Daten.</p>}
+        </section>
+        <section className="tile">
+          <div className="tilehead"><b>Größte Ausgaben</b></div>
+          {biggest.map((t) => (
+            <div key={t.id} className="frow"><CatIcon c={t.category} size={32} /><div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b><small className="muted block">{fmtDate(t.date)} · {t.category}</small></div>
+              <div className="right"><b className="neg">{fmtMoney(t.amount)}</b></div></div>))}
+          {!biggest.length && <p className="muted small">Keine Ausgaben.</p>}
+        </section>
+        <section className="tile">
+          <div className="tilehead"><b>Ausgaben nach Wochentag</b></div>
+          <div className="wdbars">{wd.map((v, i) => (
+            <div key={i} className="wdcol" title={fmtMoney(v)}><div className="wdv" style={{ height: (v / wdMax) * 100 + "%" }} /><small>{WD[i]}</small></div>))}</div>
+          <small className="muted">Am meisten am {["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"][wd.indexOf(Math.max(...wd))]}{wd.some(Boolean) ? ` (${fmtMoney(Math.max(...wd))})` : ""}</small>
+        </section>
+        <section className="tile">
+          <div className="tilehead"><b>Einkaufs-Positionen</b><small>{items.length} Artikel aus Belegen</small></div>
+          {itemParts.length ? (<>
+            {itemParts.slice(0, 8).map((p, i) => (
+              <div key={p.c} className="frow"><div className="grow"><div className="row1"><span>{p.c}</span><span><b>{fmtMoney(p.v)}</b></span></div>
+                <Bar value={p.v} max={itemParts[0].v} color={PALETTE[i % PALETTE.length]} /><small className="muted">{pct(p.v, itemTotal)} %</small></div></div>))}
+            <div className="tilehead" style={{ marginTop: 10 }}><b>Top-Artikel</b></div>
+            {topItems.map((x) => (
+              <div key={x.name} className="exprow"><span className="muted">{String(Math.round(x.q * 100) / 100).replace(".", ",")}×</span><span className="grow">{x.name}<small className="muted block">{[...x.shops].filter(Boolean).join(", ")}</small></span><b>{fmtMoney(x.v)}</b></div>))}
+          </>) : <p className="muted small">Noch keine Positionen – scanne Kassenbons im Reiter „Ausgabe“, dann siehst du hier, wofür du im Detail Geld ausgibst (z. B. Getränke, Snacks, Drogerie).</p>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* ======================= Vermögen ======================= */
+const ASSET_KINDS = { immo: ["🏠", "Immobilie"], auto: ["🚗", "Fahrzeug"], gold: ["🪙", "Gold & Wertsachen"], depot: ["📈", "Depot / Fonds"], krypto: ["₿", "Krypto"], pension: ["🧓", "Vorsorge"], sonst: ["💎", "Sonstiges"], kredit: ["🏦", "Kredit (Schuld)"] };
+function LineChart({ points, h = 180 }) {
+  const [hov, setHov] = useState(null);
+  if (points.length < 2) return <p className="muted small">Noch zu wenig Verlauf – sobald Umsätze aus mehreren Monaten vorhanden sind, erscheint hier die Entwicklung.</p>;
+  const W = 600, P = 8, vals = points.map((p) => p.v), min = Math.min(0, ...vals), max = Math.max(1, ...vals);
+  const x = (i) => P + (i / (points.length - 1)) * (W - 2 * P), y = (v) => P + (1 - (v - min) / (max - min || 1)) * (h - 2 * P);
+  const d = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+  const area = `${d} L${x(points.length - 1).toFixed(1)},${y(min)} L${x(0)},${y(min)} Z`;
+  const hp = hov != null ? points[hov] : points[points.length - 1];
+  const every = Math.ceil(points.length / 6);
+  return (
+    <div className="linechart">
+      <div className="lcinfo"><b>{fmtMoney(hp.v)}</b><small className="muted">{monthLabel(hp.m)}</small></div>
+      <svg viewBox={`0 0 ${W} ${h}`} preserveAspectRatio="none" onMouseLeave={() => setHov(null)}
+        onPointerMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); const i = Math.round(((e.clientX - r.left) / r.width) * (points.length - 1)); setHov(Math.max(0, Math.min(points.length - 1, i))); }}>
+        <defs><linearGradient id="vgrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="var(--acc)" stopOpacity=".35" /><stop offset="1" stopColor="var(--acc)" stopOpacity="0" /></linearGradient></defs>
+        {min < 0 && <line x1="0" x2={W} y1={y(0)} y2={y(0)} stroke="var(--line)" strokeDasharray="4 4" />}
+        <path d={area} fill="url(#vgrad)" />
+        <path d={d} fill="none" stroke="var(--acc)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+        {hov != null && <line x1={x(hov)} x2={x(hov)} y1="0" y2={h} stroke="var(--muted)" strokeWidth="1" vectorEffect="non-scaling-stroke" />}
+      </svg>
+      <div className="lcx">{points.map((p, i) => <small key={p.m} style={{ visibility: i % every && i !== points.length - 1 ? "hidden" : "visible" }}>{monthLabel(p.m)}</small>)}</div>
+    </div>
+  );
+}
+
+function Wealth({ txs, accounts, openAccount }) {
+  const thisMonth = todayISO().slice(0, 7);
+  const [range, setRange] = useLsState("wealthRange", 12);
+  const [assets, setAssets] = useLsState("assets", []);
+  const [edit, setEdit] = useState(null);
+  const accs = accounts.map((a) => ({ a, now: accountBalance(a, txs) })).filter((x) => x.now != null);
+  const firstTx = txs.reduce((m, t) => (t.date < m ? t.date : m), thisMonth + "-31").slice(0, 7);
+  const firstM = [firstTx, ...assets.map((x) => (x.since || thisMonth).slice(0, 7))].sort()[0];
+  const start = range === 0 ? (firstM < thisMonth ? firstM : addMon(thisMonth, -1)) : addMon(thisMonth, -(range - 1));
+  const months = monthsRange(start, thisMonth);
+  const endOf = (m) => m + "-31";
+  // Kontostand am Monatsende = heutiger Stand − alle späteren Umsätze
+  const accAt = (x, m) => x.now - txs.filter((t) => t.accountId === x.a.id && t.date > endOf(m)).reduce((s, t) => s + t.amount, 0)
+    - (x.a.kind === "cash" && x.a.atm ? txs.filter((t) => t.accountId !== x.a.id && t.category === "Bargeld" && t.amount < 0 && t.date > endOf(m) && afterOpening(t, x.a)).reduce((s, t) => s - t.amount, 0) : 0);
+  const assetVal = (x) => (x.kind === "kredit" ? -Math.abs(+x.value || 0) : +x.value || 0);
+  const assetAt = (m) => assets.filter((x) => (x.since || "").slice(0, 7) <= m).reduce((s, x) => s + assetVal(x), 0);
+  const points = months.map((m) => ({ m, v: accs.reduce((s, x) => s + accAt(x, m), 0) + assetAt(m) }));
+  const now = points[points.length - 1]?.v || 0, first = points[0]?.v || 0, prevM = points[points.length - 2]?.v;
+  const change = now - first;
+  const groups = {};
+  accs.forEach((x) => { const k = KIND_DEFS[x.a.kind || "bank"] ? x.a.kind || "bank" : "bank"; groups[k] = (groups[k] || 0) + x.now; });
+  assets.forEach((x) => { const k = "a-" + (x.kind || "sonst"); groups[k] = (groups[k] || 0) + assetVal(x); });
+  const gList = Object.entries(groups).map(([k, v]) => ({ k, v, label: k.startsWith("a-") ? ASSET_KINDS[k.slice(2)]?.[1] : KIND_DEFS[k][1], icon: k.startsWith("a-") ? ASSET_KINDS[k.slice(2)]?.[0] : KIND_DEFS[k][0] })).sort((a, b) => b.v - a.v);
+  const posTotal = gList.filter((g) => g.v > 0).reduce((s, g) => s + g.v, 0);
+  const debts = gList.filter((g) => g.v < 0).reduce((s, g) => s + g.v, 0);
+  const monthly = points.slice(1).map((p, i) => ({ k: p.m, label: monthLabel(p.m).split(" ")[0], d: p.v - points[i].v }));
+  const COLORS = ["#5ee6cf", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#22c55e", "#f97316", "#14b8a6", "#ef4444"];
+  const saveAsset = () => { const v = parseAmt(edit.value); if (!edit.name.trim() || isNaN(v)) return;
+    const a = { ...edit, name: edit.name.trim(), value: v, since: edit.since || todayISO() };
+    setAssets((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a])); setEdit(null); };
+  return (
+    <div className="wealthpage">
+      <section className="tile wealthhero">
+        <small className="muted">Nettovermögen</small>
+        <div className="kpiv big">{fmtMoney(now)}</div>
+        <div className="wealthdelta">
+          <span className={change >= 0 ? "pos" : "neg"}>{change >= 0 ? "▲ +" : "▼ "}{fmtMoney(change)}{first ? ` (${Math.round((change / Math.abs(first)) * 100)} %)` : ""}</span>
+          <small className="muted"> seit {monthLabel(months[0])}</small>
+          {prevM != null && <small className="muted"> · Vormonat {now - prevM >= 0 ? "+" : ""}{fmtMoney(now - prevM)}</small>}
+        </div>
+        <div className="seg sm">{[[6, "6 M"], [12, "1 J"], [36, "3 J"], [0, "Alles"]].map(([k, l]) => <button key={k} className={range === k ? "on" : ""} onClick={() => setRange(k)}>{l}</button>)}</div>
+        <LineChart points={points} />
+      </section>
+      <div className="anagrid">
+        <section className="tile">
+          <div className="tilehead"><b>Verteilung</b><small>{debts ? `Schulden ${fmtMoney(debts)}` : ""}</small></div>
+          {posTotal > 0 && <div className="stackbar">{gList.filter((g) => g.v > 0).map((g, i) => <div key={g.k} style={{ width: (g.v / posTotal) * 100 + "%", background: COLORS[i % COLORS.length] }} title={g.label} />)}</div>}
+          {gList.map((g, i) => (
+            <div key={g.k} className="frow"><span className="dot" style={{ background: g.v > 0 ? COLORS[gList.filter((x) => x.v > 0).indexOf(g) % COLORS.length] : "var(--red)" }} /><span>{g.icon}</span>
+              <div className="grow"><b>{g.label}</b></div><div className="right"><b className={g.v < 0 ? "neg" : ""}>{fmtMoney(g.v)}</b><small className="muted block">{g.v > 0 ? pct(g.v, posTotal) + " %" : ""}</small></div></div>))}
+          {!gList.length && <p className="muted small">Noch keine Konten mit Kontostand.</p>}
+        </section>
+        <section className="tile">
+          <div className="tilehead"><b>Veränderung pro Monat</b></div>
+          {monthly.length ? (
+            <div className="mbars diverge" style={{ height: 130 }}>
+              {(() => { const mx = Math.max(1, ...monthly.map((x) => Math.abs(x.d))); return monthly.slice(-12).map((x) => (
+                <div key={x.k} className="mcol" title={`${monthLabel(x.k)}: ${x.d >= 0 ? "+" : ""}${fmtMoney(x.d)}`}>
+                  <div className="dpos">{x.d > 0 && <div className="v inc" style={{ height: (x.d / mx) * 100 + "%" }} />}</div>
+                  <div className="dneg">{x.d < 0 && <div className="v out" style={{ height: (-x.d / mx) * 100 + "%" }} />}</div>
+                  <small>{x.label}</small>
+                </div>)); })()}
+            </div>) : <p className="muted small">Noch kein Verlauf.</p>}
+        </section>
+      </div>
+      <section className="tile">
+        <div className="tilehead"><b>Konten</b><small>{fmtMoney(accs.reduce((s, x) => s + x.now, 0))}</small></div>
+        {accs.sort((a, b) => b.now - a.now).map((x) => { const d = x.now - accAt(x, months[0]); return (
+          <div key={x.a.id} className="frow click" onClick={() => openAccount(x.a.id)}>
+            <span className="caticon" style={{ width: 38, height: 38, background: "#0b63f622", fontSize: 18 }}><AccIcon a={x.a} className="acci" force /></span>
+            <div className="grow"><b style={accStyle(x.a)}>{x.a.name}</b><small className="muted block">{KIND_DEFS[x.a.kind || "bank"]?.[1]}{balEstimated(x.a) ? " · aus Umsätzen berechnet" : ""}</small></div>
+            <div className="right"><b className={x.now < 0 ? "neg" : ""}>{fmtMoney(x.now)}</b><small className={"block " + (d >= 0 ? "pos" : "neg")}>{d >= 0 ? "+" : ""}{fmtMoney(d)}</small></div>
+          </div>); })}
+      </section>
+      <section className="tile">
+        <div className="tilehead"><b>Weitere Vermögenswerte & Schulden</b><button className="link" onClick={() => setEdit({ id: uid(), name: "", kind: "immo", value: "", since: todayISO() })}>＋ Hinzufügen</button></div>
+        {!assets.length && !edit && <p className="muted small">Immobilie, Auto, Gold, Depot oder Kredite manuell erfassen – sie fließen ins Nettovermögen ein.</p>}
+        {assets.map((x) => (
+          <div key={x.id} className="frow click" onClick={() => setEdit({ ...x, value: amtStr(x.value) })}>
+            <span className="caticon" style={{ width: 38, height: 38, fontSize: 18 }}>{ASSET_KINDS[x.kind]?.[0] || "💎"}</span>
+            <div className="grow"><b>{x.name}</b><small className="muted block">{ASSET_KINDS[x.kind]?.[1]} · seit {fmtDate(x.since)}</small></div>
+            <div className="right"><b className={assetVal(x) < 0 ? "neg" : ""}>{fmtMoney(assetVal(x))}</b></div>
+          </div>))}
+        {edit && (
+          <div className="assetedit">
+            <div className="grid2">
+              <label>Bezeichnung<input value={edit.name} autoFocus onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="z. B. Wohnung Linz" /></label>
+              <label>Art<select value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })}>{Object.entries(ASSET_KINDS).map(([k, [i, l]]) => <option key={k} value={k}>{i} {l}</option>)}</select></label>
+              <label>{edit.kind === "kredit" ? "Offene Schuld" : "Aktueller Wert"}<input inputMode="decimal" value={edit.value} onChange={(e) => setEdit({ ...edit, value: e.target.value })} placeholder="0,00" /></label>
+              <label>Seit<input type="date" value={edit.since} onChange={(e) => setEdit({ ...edit, since: e.target.value })} /></label>
+            </div>
+            <div className="row gap">
+              <button className="btn primary sm" onClick={saveAsset}>Speichern</button>
+              <button className="btn sm" onClick={() => setEdit(null)}>Abbrechen</button>
+              {assets.some((x) => x.id === edit.id) && <button className="btn sm danger" onClick={() => { setAssets((l) => l.filter((x) => x.id !== edit.id)); setEdit(null); }}>Löschen</button>}
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
@@ -7708,4 +8225,69 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
   html.fg nav.bottom .subtab:hover{background:var(--card)}
 }
 .navcfg .parentsel{width:auto;min-width:180px;max-width:220px}.navcfg .parentsel:disabled{opacity:.6}
+
+/* v0.44: Ausgabe (Bonsy-Stil), Analyse, Vermögen */
+.exppage,.anapage,.wealthpage{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:1024px){.exppage{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start}}
+.expscan{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.expbig{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:14px 12px;border-radius:16px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font:inherit;cursor:pointer;min-width:0}
+.expbig:first-child{background:color-mix(in srgb,var(--acc) 18%,var(--card));border-color:color-mix(in srgb,var(--acc) 45%,transparent)}
+.expbig .expico{font-size:22px;line-height:1;margin-bottom:6px}.expbig b{font-size:14px}.expbig small{color:var(--mut);font-size:11.5px;line-height:1.3}
+@media (max-width:520px){.expbig small{display:none}.expbig{align-items:center;text-align:center;padding:12px 6px}}
+.expatt{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:14px;background:var(--card2);margin-bottom:10px}
+.expatt img,.expatt .attpdf{width:46px;height:46px;object-fit:cover;border-radius:8px;flex:none;background:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#e8384f}
+.expatt .grow{min-width:0}.expatt small{overflow-wrap:anywhere}
+.expform .bigamount{width:100%;text-align:left;margin:4px 0 0;padding:6px 0;font-size:32px}
+.expitems{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.expitemshead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.expitem{display:grid;grid-template-columns:46px 8px minmax(0,1fr) 72px minmax(0,118px) 32px;gap:6px;align-items:center;margin:6px 0}
+.expitem>input,.expitem>select{width:100%;min-width:0;box-sizing:border-box}.expitem .iconbtn{width:32px;height:32px;padding:0;margin:0}
+.expform input.bigamount{font-size:30px!important;font-weight:700;letter-spacing:-.01em}
+.expitem input,.expitem select{margin:0;padding:8px 8px;font-size:14px;min-width:0}
+.expitem .q,.expitem .p{text-align:right}.expitem .x{color:var(--mut);font-size:12px;text-align:center}
+@media (max-width:620px){.expitem{grid-template-columns:40px 8px minmax(0,1fr) 70px 28px;grid-template-areas:"q x n p d" ". . c c c"}
+  .expitem .q{grid-area:q}.expitem .x{grid-area:x}.expitem .n{grid-area:n}.expitem .p{grid-area:p}.expitem .c{grid-area:c;font-size:12px;padding:5px 8px}.expitem .iconbtn{grid-area:d}}
+.expitemsfoot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}
+.expdiff{font-size:12.5px;color:var(--mut);display:flex;gap:8px;align-items:center}.expdiff.warn{color:var(--warn)}
+.expentry+.expentry{border-top:1px solid var(--line)}
+.expdetail{padding:4px 4px 12px 50px}
+.exprow{display:flex;gap:8px;align-items:center;padding:5px 0;font-size:14px}.exprow .grow{min-width:0;overflow-wrap:anywhere}
+.chip.sm{padding:2px 8px;font-size:11px}
+.anahead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.anahead .seg{margin:0;flex:0 1 auto}.anahead .seg button{padding:7px 12px;white-space:nowrap}
+@media (max-width:520px){.anaper{margin-left:0;width:100%;justify-content:space-between}}
+.anaper{display:flex;align-items:center;gap:6px;margin-left:auto}.anaper b{min-width:120px;text-align:center;text-transform:capitalize}
+.anaaccs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.anakpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.anakpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{padding:14px 16px}.kpiv{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:2px 0;overflow-wrap:anywhere}.kpiv.big{font-size:40px}
+.kpiv.pos,.pos{color:var(--pos,var(--ok))}.kpiv.neg{color:var(--neg,var(--red))}
+.delta{font-size:12px;font-weight:600}.delta.good{color:var(--pos,var(--ok))}.delta.bad{color:var(--neg,var(--red))}
+.anakpi{display:flex;gap:14px;align-items:center}
+.anagrid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:900px){.anagrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}}
+.anadonut{display:flex;justify-content:center;margin:4px 0 8px}.anadonut .donut{width:170px;height:170px}
+.tilehead .seg.sm{margin:0}.seg.sm button{font-size:12.5px;padding:5px 10px}
+.mbars{display:flex;gap:6px;align-items:stretch}
+.mcol{flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;border-radius:8px}
+.mcol.on{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.mpair{flex:1;width:100%;display:flex;gap:3px;align-items:flex-end;justify-content:center}
+.mpair .v{width:38%;max-width:16px;border-radius:4px 4px 0 0;min-height:2px}
+.mcol small{color:var(--mut);font-size:10px;margin-top:4px;white-space:nowrap}
+.mbars.diverge .mcol{cursor:default}
+.mbars.diverge .dpos,.mbars.diverge .dneg{flex:1;width:100%;display:flex;justify-content:center}
+.mbars.diverge .dpos{align-items:flex-end;border-bottom:1px solid var(--line)}.mbars.diverge .dneg{align-items:flex-start}
+.mbars.diverge .v{width:46%;max-width:18px;border-radius:4px}
+.wdbars{display:flex;gap:8px;height:110px;align-items:stretch;margin-bottom:8px}
+.wdcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}
+.wdv{width:60%;max-width:26px;background:var(--acc);border-radius:5px 5px 0 0;min-height:2px}.wdcol small{color:var(--mut);font-size:11px;margin-top:4px}
+.frow.on{background:color-mix(in srgb,var(--acc) 10%,transparent);border-radius:10px}
+.wealthhero .seg{max-width:280px;margin:10px 0}
+.wealthdelta{font-size:14px;font-weight:600}
+.linechart{position:relative}.linechart svg{width:100%;height:180px;display:block;touch-action:pan-y}
+.lcinfo{display:flex;gap:8px;align-items:baseline;justify-content:flex-end;font-size:14px}
+.lcx{display:flex;justify-content:space-between}.lcx small{color:var(--mut);font-size:10px}
+.stackbar{display:flex;height:14px;border-radius:7px;overflow:hidden;margin:4px 0 10px;background:var(--line)}
+.assetedit{border:1px solid var(--line);border-radius:14px;padding:4px 12px 12px;margin-top:8px}
+.assetedit .row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 `;
