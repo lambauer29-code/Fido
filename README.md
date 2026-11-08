@@ -2,6 +2,16 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.15.6
+- Drucken: Druckersymbol neben dem Papierkorb und in der Vorschau-Leiste – druckt alle Seiten (PDF oder Bild) über den normalen Druckdialog.
+
+## v0.15.5
+- Vorschau: „Original öffnen“ und „Bearbeiten“ schweben oben über dem Dokument (bleiben beim Scrollen sichtbar).
+- Dokumentliste: Symbole Bearbeiten/Vorschau/Öffnen entfernt – Titel = Vorschau, Zeile = Bearbeiten, 🗑 bleibt.
+
+## v0.15.4
+- Fristen-Kalender: ausgewählter Tag (anfangs heute) mit seinen Fristen ganz oben, darunter ein-/ausklappbare Liste „Bevorstehend“ (überfällige zuerst, Tage bis zur Frist, Klick springt im Kalender hin), dann der Monatskalender.
+
 ## v0.15.3
 - Datum überall einheitlich als TT.MM.JJJJ (z. B. 05.11.2026), Spalten mit gleich breiten Ziffern.
 

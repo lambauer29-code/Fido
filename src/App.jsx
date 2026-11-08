@@ -72,13 +72,39 @@ async function openOriginal(d) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
   return true;
 }
+/* Drucken: Seiten als Bilder in einen unsichtbaren Rahmen legen und den Druckdialog öffnen (klappt auch in Safari) */
+async function printDoc(d, notify) {
+  const b = await db.getFile(d.id);
+  if (!b) return notify?.("Originaldatei nicht gefunden");
+  notify?.("Druck wird vorbereitet …");
+  const srcs = [];
+  if (b.type === "application/pdf") {
+    const pdf = await (await loadPdfjs()).getDocument({ data: await b.arrayBuffer() }).promise;
+    for (let i = 1; i <= Math.min(pdf.numPages, 60); i++) {
+      const page = await pdf.getPage(i), v1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: 1700 / v1.width });
+      const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+      await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+      srcs.push(c.toDataURL("image/jpeg", 0.9));
+    }
+    pdf.destroy();
+  } else srcs.push(URL.createObjectURL(b));
+  const f = document.createElement("iframe");
+  f.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);
+  const w = f.contentWindow, docu = w.document;
+  docu.open();
+  docu.write(`<!doctype html><html><head><title>${(d.title || "Dokument").replace(/</g, "&lt;")}</title><style>@page{margin:8mm}html,body{margin:0}img{display:block;width:100%;height:auto;page-break-after:always;break-after:page}img:last-child{page-break-after:auto;break-after:auto}</style></head><body>${srcs.map((s) => `<img src="${s}">`).join("")}</body></html>`);
+  docu.close();
+  await Promise.all([...docu.images].map((im) => (im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; }))));
+  w.focus(); w.print();
+  setTimeout(() => { f.remove(); srcs.forEach((u) => u.startsWith("blob:") && URL.revokeObjectURL(u)); }, 60000);
+}
+
 function DocActions({ d, prevOpen, onPreview, onEdit, onTrash }) {
   const stop = (f) => (e) => { e.stopPropagation(); f(); };
   return (
     <div className="dactions" onClick={(e) => e.stopPropagation()}>
-      <button title="Bearbeiten" aria-label="Bearbeiten" onClick={stop(onEdit)}><IcoEdit /></button>
-      <button title={prevOpen ? "Vorschau schließen" : "Vorschau"} aria-label="Vorschau" className={prevOpen ? "on" : ""} onClick={stop(onPreview)}><IcoEye /></button>
-      <button title="Original öffnen" aria-label="Original öffnen" onClick={stop(() => openOriginal(d))}><IcoOpen /></button>
+      <button title="Drucken" aria-label="Drucken" onClick={stop(() => printDoc(d))}><IcoPrint /></button>
       <button title="In den Papierkorb" aria-label="Löschen" className="del" onClick={stop(() => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && onTrash(d))}><IcoTrash /></button>
     </div>
   );
@@ -113,15 +139,16 @@ function DocPreview({ d, onOpen }) {
     <div className="dprev" onClick={(e) => e.stopPropagation()}>
       {err ? <p className="muted small">Vorschau nicht möglich: {err}</p> : <>
         <div className="dpages">
+          {/* schwebende Leiste am oberen Rand der Vorschau */}
+          <div className="dprevbar float">
+            <small>{total > 1 ? `${pages.length} von ${total} Seiten` : "1 Seite"}</small>
+            {total > pages.length && pages.length >= want && <button className="btn sm" onClick={() => setWant(want + 5)}>Weitere Seiten</button>}
+            <button className="btn sm" onClick={() => printDoc(d)} title="Drucken"><IcoPrint /></button>
+            <button className="btn sm" onClick={() => openOriginal(d)}>Original öffnen</button>
+            <button className="btn sm primary" onClick={onOpen}>Bearbeiten</button>
+          </div>
           {pages.map((src, i) => <img key={i} src={src} alt={`Seite ${i + 1}`} loading="lazy" />)}
           {(!pages.length || pages.length < Math.min(want, total || 1)) && <div className="dpload">Seite wird geladen …</div>}
-        </div>
-        <div className="dprevbar">
-          <small className="muted">{total > 1 ? `${pages.length} von ${total} Seiten` : "1 Seite"}</small>
-          <span className="grow" />
-          {total > pages.length && pages.length >= want && <button className="btn sm" onClick={() => setWant(want + 5)}>Weitere Seiten</button>}
-          <button className="btn sm" onClick={() => openOriginal(d)}>Original öffnen</button>
-          <button className="btn sm primary" onClick={onOpen}>Bearbeiten</button>
         </div>
       </>}
     </div>
@@ -207,6 +234,7 @@ const IcoEdit = () => <Ico d={<><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 
 const IcoOpen = () => <Ico d={<><path d="M14 4h6v6" /><path d="M10 14L20 4" /><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></>} />;
 const IcoTrash = () => <Ico d={<><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V4h6v3" /></>} />;
 const IcoCalSync = () => <Ico size={17} d={<><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /><path d="M9.5 15.5l2 2 3.5-4" /></>} />;
+const IcoPrint = () => <Ico d={<><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M6 14h12v7H6z" /><path d="M17 12h.01" /></>} />;
 const IcoSun = () => <Ico d={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} />;
 const IcoMoon = () => <Ico d={<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z" />} />;
 const IcoChev = ({ open }) => <span className={"pchev" + (open ? " open" : "")}><Ico size={16} d={<path d="M6 9l6 6 6-6" />} /></span>;
@@ -1977,8 +2005,47 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
   const toggle = (dl, doc) => saveDoc({ ...doc, deadlines: doc.deadlines.map((x) => (x.id === dl.id ? { ...x, done: !x.done } : x)), paid: /zahl|fällig/i.test(dl.label) && !dl.done ? true : doc.paid });
   const tone = (dl) => (dl.done ? "done" : dl.date < today ? "over" : daysUntil(dl.date) <= 7 ? "soon" : "");
   const sel = byDay[selDay] || [];
+  const [upOpen, setUpOpen] = useState(() => ls.get("calUpOpen", true));
+  useEffect(() => ls.set("calUpOpen", upOpen), [upOpen]);
+  const open = items.filter(([dl]) => !dl.done);
+  const overdue = open.filter(([dl]) => dl.date < today), upcoming = open.filter(([dl]) => dl.date >= today);
   return (
     <div className="cal">
+      <div className="calsel top">
+        <h3>{new Date(selDay + "T12:00").toLocaleDateString("de-AT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}{selDay === today ? " · heute" : ""}</h3>
+        {!sel.length && <p className="muted small">Keine Fristen an diesem Tag.</p>}
+        {sel.map(([dl, doc]) => (
+          <div key={dl.id} className={"frow calrow " + tone(dl)}>
+            <input type="checkbox" checked={!!dl.done} onChange={() => toggle(dl, doc)} aria-label="Erledigt" />
+            <div className="grow click" onClick={() => onOpen(doc.id)}><b>{dl.label}</b><small className="muted block">{doc.title}</small></div>
+            {payAmt(doc) != null && <b>{fmtMoney(payAmt(doc), doc.amount.currency)}</b>}
+            <input type="date" value={dl.date} onChange={(e) => e.target.value && moveTo(doc.id, dl.id, e.target.value)} aria-label="Datum ändern" />
+          </div>
+        ))}
+      </div>
+      <div className="calupc">
+        <button className="calupchead" onClick={() => setUpOpen(!upOpen)} aria-expanded={upOpen}>
+          <IcoChev open={upOpen} /><b className="grow">Bevorstehend</b>
+          <small className="muted">{overdue.length ? `${overdue.length} überfällig · ` : ""}{upcoming.length} offen</small>
+        </button>
+        {upOpen && (
+          <div className="calupclist">
+            {!overdue.length && !upcoming.length && <p className="muted small">Keine offenen Fristen 🎉</p>}
+            {[...overdue, ...upcoming].map(([dl, doc]) => {
+              const n = daysUntil(dl.date);
+              return (
+                <div key={dl.id} className={"frow calrow click " + tone(dl) + (dl.date === selDay ? " cur" : "")} onClick={() => { setSelDay(dl.date); setMonth(dl.date.slice(0, 7)); }}>
+                  <div className={"datebox" + (n < 0 ? " red" : n <= 7 ? " warn" : "")}><b>{new Date(dl.date + "T12:00").getDate()}</b><small>{new Date(dl.date + "T12:00").toLocaleDateString("de-AT", { month: "short" })}</small></div>
+                  <div className="grow"><b>{dl.label}</b><small className="muted block">{doc.title}</small></div>
+                  {payAmt(doc) != null && <b>{fmtMoney(payAmt(doc), doc.amount.currency)}</b>}
+                  <small className={"muted nowrap" + (n < 0 ? " red" : "")}>{n === 0 ? "heute" : n < 0 ? `vor ${-n} T.` : `in ${n} T.`}</small>
+                  <button className="iconbtn" title="Dokument öffnen" onClick={(e) => { e.stopPropagation(); onOpen(doc.id); }}>›</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
       <div className="calhead">
         <button className="iconbtn" onClick={() => shift(-1)} aria-label="Vorheriger Monat">‹</button>
         <b className="grow">{first.toLocaleDateString("de-AT", { month: "long", year: "numeric" })}</b>
@@ -2008,18 +2075,6 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
             </div>
           );
         })}
-      </div>
-      <div className="calsel">
-        <h3>{new Date(selDay + "T12:00").toLocaleDateString("de-AT", { weekday: "long", day: "numeric", month: "long" })}</h3>
-        {!sel.length && <p className="muted small">Keine Fristen an diesem Tag.</p>}
-        {sel.map(([dl, doc]) => (
-          <div key={dl.id} className={"frow calrow " + tone(dl)}>
-            <input type="checkbox" checked={!!dl.done} onChange={() => toggle(dl, doc)} aria-label="Erledigt" />
-            <div className="grow click" onClick={() => onOpen(doc.id)}><b>{dl.label}</b><small className="muted block">{doc.title}</small></div>
-            {payAmt(doc) != null && <b>{fmtMoney(payAmt(doc), doc.amount.currency)}</b>}
-            <input type="date" value={dl.date} onChange={(e) => e.target.value && moveTo(doc.id, dl.id, e.target.value)} aria-label="Datum ändern" />
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -4113,4 +4168,21 @@ nav .acctree .accitem .ab{font-size:11.5px}
 @container (max-width:700px){.txfold{padding-left:14px}.txfoldrow{grid-template-columns:74px minmax(0,1fr) 90px}.txfoldrow>span:nth-child(3){display:none}}
 .cmeta{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .txfoldrow>span:first-child,.subrow>span:nth-child(7),.txrow>span:first-child{font-variant-numeric:tabular-nums}
+
+/* Fristen: Tag oben, Bevorstehend ausklappbar */
+.calsel.top{margin:0 0 10px;border:0;padding:4px 4px 10px;border-bottom:1px solid var(--line)}
+.calsel.top h3{margin:4px 0 6px;font-size:20px}
+.calupc{border-bottom:1px solid var(--line);margin-bottom:12px;padding-bottom:6px}
+.calupchead{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;color:var(--txt);font:inherit;padding:8px 4px;cursor:pointer;text-align:left}
+.calupchead .pchev{color:var(--mut)}
+.calupclist{max-height:340px;overflow:auto;padding:0 4px 6px}
+.calupclist .calrow{border-radius:12px;padding:6px 8px}.calupclist .calrow:hover{background:var(--card2)}
+.nowrap{white-space:nowrap}
+.calsel.top{display:block!important}.calsel.top>.frow{width:100%;box-sizing:border-box}.calupclist .calrow.cur{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+
+.dprevbar.float{position:sticky;top:6px;z-index:3;align-self:flex-end;margin:0 0 -46px;display:flex;align-items:center;gap:8px;padding:5px 6px 5px 12px;border-radius:999px;
+  background:color-mix(in srgb,var(--card) 85%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);box-shadow:0 4px 14px #0004}
+.dprevbar.float small{color:var(--mut);font-size:12px;white-space:nowrap}
+.dprevbar.float .btn{margin:0;border-radius:999px;display:inline-flex;align-items:center}.dprevbar.float .btn svg{width:16px;height:16px}
+.dpages{padding-top:12px}
 `;
