@@ -29,6 +29,7 @@ const tool = (categories) => ({
           total: { type: ["number", "null"], description: "Bruttobetrag / Endsumme" },
           net: { type: ["number", "null"] },
           vat: { type: ["number", "null"], description: "USt-Betrag" },
+          payout: { type: ["number", "null"], description: "Tatsächlich überwiesener/ausbezahlter Betrag, falls abweichend von total – bei Lohnzettel/Gehaltsabrechnung der Netto-Auszahlungsbetrag (Überweisung aufs Konto)" },
           currency: { type: "string", description: "ISO-Code, meist EUR" }
         }
       },
@@ -52,7 +53,8 @@ const tool = (categories) => ({
         type: "string", enum: ["finanzen", "vertraege", "sonstiges"],
         description: "finanzen = Rechnung, Kassabon, Beleg, Lohnzettel, Kontoauszug, alles mit Geldfluss für die Ausgaben-/Einnahmen-Analyse; vertraege = Vertrag, Polizze, AGB, Vertragsänderung, Kündigung; sonstiges = alles ohne Bezug zur Finanzanalyse (Zeugnis, Ausweis, Arztbrief, Bedienungsanleitung, private Briefe, Behördeninfo ohne Betrag)"
       },
-      tax_relevant: { type: "boolean", description: "Relevant für die österreichische Arbeitnehmerveranlagung/Steuer (Lohnzettel L16, Werbungskosten, Sonderausgaben, außergewöhnliche Belastungen, Spenden, Kirchenbeitrag, Handwerkerbonus, Bescheide vom Finanzamt …)" },
+      tax_relevant: { type: "boolean", description: "Steuerlich relevant – privat (Arbeitnehmerveranlagung: Lohnzettel L16, Werbungskosten, Sonderausgaben, außergewöhnliche Belastungen, Spenden, Kirchenbeitrag, Handwerkerbonus, Bescheide) oder betrieblich (Betriebseinnahmen/-ausgaben, Umsatzsteuer, Einkommensteuer der Firma, SVS)" },
+      scope: { type: "string", enum: ["privat", "firma"], description: "firma = betriebliches Dokument der eigenen Firma (an die Firma adressiert, Firmenrechnung, Ausgangsrechnung, Betriebsausgabe, SVS, UVA); privat = alles Private inkl. Lohnzettel aus dem Angestelltenverhältnis" },
       payment: {
         type: ["object", "null"],
         description: "Nur bei offener Zahlung per Überweisung (nicht bei Lastschrift/bereits bezahlt).",
@@ -80,7 +82,7 @@ const tool = (categories) => ({
       },
       full_text: { type: "string", description: "Der vollständige lesbare Text des Dokuments (für die Volltextsuche), max. ca. 8000 Zeichen" }
     },
-    required: ["title", "category", "doc_type", "tags", "summary", "deadlines", "direction", "area", "tax_relevant", "full_text"]
+    required: ["title", "category", "doc_type", "tags", "summary", "deadlines", "direction", "area", "tax_relevant", "scope", "full_text"]
   }
 });
 
@@ -93,7 +95,7 @@ export default async function handler(req, res) {
   }
   if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY fehlt in Vercel – unter Settings → Environment Variables eintragen und danach neu deployen" });
 
-  const { data, mediaType, categories, today, groups } = req.body || {};
+  const { data, mediaType, categories, today, groups, company, person } = req.body || {};
   if (!data || !mediaType) return res.status(400).json({ error: "data und mediaType erforderlich" });
   const cats = Array.isArray(categories) && categories.length ? categories : ["Sonstiges"];
 
@@ -102,12 +104,14 @@ export default async function handler(req, res) {
       ? { type: "document", source: { type: "base64", media_type: "application/pdf", data } }
       : { type: "image", source: { type: "base64", media_type: mediaType, data } };
 
-  const prompt = `Analysiere dieses Dokument (Kontext: Privatperson in Österreich). Heute ist ${today || new Date().toISOString().slice(0, 10)}.
+  const prompt = `Analysiere dieses Dokument (Kontext: Person in Österreich${person ? ` (${String(person).slice(0, 80)})` : ""}, angestellt${company ? ` und mit eigener Firma „${String(company).slice(0, 80)}“` : ""}). Heute ist ${today || new Date().toISOString().slice(0, 10)}.
 - Wähle die passendste Kategorie aus der vorgegebenen Liste.${groups ? `\n  Die Kategorien des Nutzers sind so gruppiert:\n${groups}` : ""}
 - Beträge: Endsumme brutto als "total". Österreichische Schreibweise beachten (1.234,56 € = 1234.56).
 - Fristen: rechne relative Angaben ("zahlbar binnen 14 Tagen", "Einspruch binnen 4 Wochen ab Zustellung") ausgehend vom Dokumentdatum in ein konkretes Datum um. Keine erfundenen Fristen.
 - Vertrag: bei Verträgen/Abos Anbieter, Kundennummer, regelmäßigen Betrag, Intervall, Vertragsende und Kündigungsfrist erfassen; "cancel_by" aus Vertragsende minus Kündigungsfrist berechnen und zusätzlich als Frist "Kündigung bis" eintragen.
 - Zahlung: IBAN/BIC/Zahlungsreferenz nur übernehmen, wenn sie auf dem Dokument stehen – nichts erfinden.
+- scope: "firma" nur für Dokumente der eigenen Firma${company ? ` („${String(company).slice(0, 80)}“)` : ""}, sonst "privat".
+- amount.payout: bei Lohnzetteln den Netto-Auszahlungsbetrag.
 - full_text: den Text so vollständig wie möglich übernehmen.
 Rufe das Tool dokument_speichern auf.`;
 

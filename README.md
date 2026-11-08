@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.12.0 – Privat/Firma, Belege an Buchungen, Netto-Lohn
+- Dokumente: „👤 Privat / 🏢 Firma“ – Claude ordnet zu (Firmenname unter Einstellungen › Meine Daten), änderbar im Dokument, Filter in der Liste. „Steuerrelevant“ ohne Zusatz.
+- Beleg ↔ Buchung: in der Buchung „Scannen / Datei / Vorhandenes Dokument“, im Dokument „Mit Buchung verknüpfen“ (passende Buchungen nach Betrag & Datum zuerst), jeweils lösbar.
+- Lohnzettel: gerechnet wird der ausbezahlte Netto-Betrag; neues Feld „Ausbezahlt / Zahlbetrag“.
+- Vorschau bleibt in ihrer Spalte statt eine eigene Zeile zu öffnen.
+- Konten: Kontostand-Karte bricht bei schmalem Fenster sauber um, Tabelle blendet Spalten aus; eingeblendete Konten werden gleich ausgewählt; Auswahl-Kästchen abschaltbar (Einstellungen › Konten & Gruppen).
+
 ## v0.11.0 – Konten auswählen & ausblenden
 - Seitenleiste: Kästchen pro Konto und pro Gruppe (Mehrfachauswahl), Name antippen = nur dieses Konto, Auge = Konto ausblenden; „Ausgeblendet“-Bereich mit „Einblenden“.
 - Konten-Tab zeigt die Zusammenfassung der Auswahl: Gesamtstand, Guthaben, Schulden, Eingänge/Ausgänge, Karte je Konto, Buchungen nur der gewählten Konten.

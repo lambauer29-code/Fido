@@ -187,6 +187,10 @@ const monthKey = (d) => (d.documentDate || d.createdAt || "").slice(0, 7);
 const monthLabel = (k) => new Date(k + "-15").toLocaleDateString("de-AT", { month: "short", year: "2-digit" });
 const norm = (s) => String(s || "").toLowerCase();
 const isEUR = (d) => (d.amount?.currency || "EUR") === "EUR";
+// tatsächlich überwiesener Betrag: bei Lohn/Gehalt die Netto-Auszahlung, sonst die Endsumme
+const isSalary = (d) => /lohn|gehalt|bezug/i.test(`${d.docType || ""} ${d.category || ""} ${d.title || ""}`);
+const payAmt = (d) => !d.amount ? null : d.amount.payout ?? (d.direction === "einnahme" && isSalary(d) && d.amount.net ? d.amount.net : d.amount.total);
+const docScope = (d) => d.scope || "privat";
 const monthlyCost = (c) => (c?.amount && INTERVAL_FACTOR[c.interval] ? c.amount * INTERVAL_FACTOR[c.interval] : 0);
 const Ico = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>);
@@ -372,6 +376,7 @@ function accountBalance(acc, txs) {
   return acc.opening + txs.filter((t) => t.accountId === acc.id && afterOpening(t, acc)).reduce((s, t) => s + t.amount, 0);
 }
 
+const SCOPES = [["privat", "👤", "Privat"], ["firma", "🏢", "Firma"]];
 const AREAS = { finanzen: ["💶", "Finanzen"], vertraege: ["📑", "Verträge"], sonstiges: ["🗂️", "Sonstiges"] };
 function docArea(d) {
   if (d.areaManual) return d.areaManual;
@@ -654,6 +659,10 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
       </SetSec>}
 
       {part !== "tabs" && <SetSec id="nav-accounts" title="Konten & Gruppen">
+        <label className="switchrow">
+          <span><b>Auswahl-Kästchen in der Seitenleiste</b><small className="muted block">An = mehrere Konten ankreuzen und zusammenfassen. Aus = Konto antippen zeigt nur dieses Konto (nochmal antippen = alle).</small></span>
+          <input type="checkbox" className="switch" checked={nav.showChecks !== false} onChange={(e) => setNav((n) => ({ ...n, showChecks: e.target.checked }))} />
+        </label>
         <p className="muted small">Gruppen erscheinen unter „{tabLabel(nav, "accounts")}“ mit Überschrift und Trennlinie und lassen sich dort ein- und ausklappen. Konten und Gruppen am Griff <b>⠿</b> verschieben. Leere Überschrift = nur Trennlinie.</p>
         {resolved.map((g, gi) => (
           <React.Fragment key={g.id}>
@@ -791,10 +800,10 @@ function SideResizer() {
   return <div className="sideresize" onPointerDown={down} onDoubleClick={reset} title="Ziehen = Breite ändern · Doppelklick = Standard" />;
 }
 
-function AccountTree({ groups, txs, sel = [], onToggle, onOnly, onGroupSel, onHide, onToggleGroup, hidden = [], onUnhide, variant = "" }) {
+function AccountTree({ onAll, showChecks = true, groups, txs, sel = [], onToggle, onOnly, onGroupSel, onHide, onToggleGroup, hidden = [], onUnhide, variant = "" }) {
   const shown = groups.filter((g) => g.accounts.length);
   if (!shown.length && !hidden.length) return null;
-  const Box = ({ state, onClick, label }) => (
+  const Box = ({ state, onClick, label }) => !showChecks ? null : (
     <button className={"cbox" + (state ? " on" : "")} onClick={(e) => { e.stopPropagation(); onClick(); }} aria-label={label} aria-pressed={state === "all"}>
       {state === "all" ? "✓" : state === "some" ? "–" : ""}
     </button>
@@ -815,11 +824,11 @@ function AccountTree({ groups, txs, sel = [], onToggle, onOnly, onGroupSel, onHi
               </div>
             )}
             {!g.collapsed && g.accounts.map((a) => {
-              const bal = accountBalance(a, txs), on = sel.includes(a.id);
+              const bal = accountBalance(a, txs), on = sel.includes(a.id) && (showChecks || sel.length < groups.reduce((t, g) => t + g.accounts.length, 0));
               return (
                 <div key={a.id} className={"accitem" + (on ? " on" : "")}>
                   <Box state={on ? "all" : ""} onClick={() => onToggle(a.id)} label={`${a.name} auswählen`} />
-                  <button className="aname" onClick={() => onOnly(a.id)} title={`Nur ${a.name} anzeigen`}>
+                  <button className="aname" onClick={() => (showChecks ? onOnly(a.id) : sel.length === 1 && sel[0] === a.id && onAll ? onAll() : onOnly(a.id))} title={`Nur ${a.name} anzeigen`}>
                     <span className="ki">{kindIcon(a.kind)}</span><span className="an">{a.name}</span>
                   </button>
                   {bal != null ? <span className={"ab " + (bal < 0 ? "neg" : "pos")} title={balEstimated(a) ? "Aus Umsätzen berechnet – für den genauen Stand Kontostand eintragen oder Import mit Saldo-Spalte" : undefined}>{fmtMoney(bal)}</span>
@@ -907,6 +916,7 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [txs, setTxsState] = useState([]);
   const txsRef = useRef([]);
+  const pendingLink = useRef(null);
   const setTxs = (v) => setTxsState((prev) => { const n = typeof v === "function" ? v(prev) : v; txsRef.current = n; return n; });
   const [accounts, setAccountsState] = useState(() => ls.get("accounts", []));
   const accountsRef = useRef(accounts);
@@ -1023,6 +1033,19 @@ export default function App() {
     }
     setTxs(list); await db.putTxs(list.filter((x) => x.id === t.id || (applyRule && x.counterparty?.toLowerCase().includes(t.counterparty.toLowerCase()))));
   }
+  // Beleg ↔ Buchung verknüpfen (docId leer = lösen)
+  async function linkTx(txId, docId) {
+    const cur = txsRef.current;
+    const list = cur.map((x) => (x.id === txId ? { ...x, docId: docId || undefined } : docId && x.docId === docId ? { ...x, docId: undefined } : x));
+    const changed = list.filter((x, i) => x !== cur[i]);
+    setTxs(list); await db.putTxs(changed);
+    const t = list.find((x) => x.id === txId);
+    setDocs((prev) => prev.map((d) => {
+      if (docId && d.id === docId && d.direction !== "einnahme" && !d.paid) { const n = { ...d, paid: true, paidDate: t?.date }; db.putDoc(n); return n; }
+      return d;
+    }));
+  }
+  function attachNew(txId, how) { pendingLink.current = txId; if (how === "scan") setScanOpen(true); else fileInput.current.click(); }
   // Kategorie umbenennen/löschen: Dokumente, Umsätze, Budgets, Regeln mitziehen
   async function renameCategory(from, to) {
     const m = catMeta(from);
@@ -1093,7 +1116,7 @@ export default function App() {
       const r = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json", "x-app-token": token },
-        body: JSON.stringify({ data, mediaType: send.type, categories, today: todayISO(),
+        body: JSON.stringify({ data, mediaType: send.type, categories, today: todayISO(), company: me.company || "", person: me.name || "",
           groups: nav.docGroups.map((g) => `${g.title || "Gruppe"} (${AREAS[g.area][1]}): ${g.cats.join(", ")}`).join("\n") })
       });
       const j = await r.json().catch(() => ({ error: r.status === 413 ? "Datei zu groß für den Server (max. ca. 4 MB)" : `HTTP ${r.status}` }));
@@ -1114,6 +1137,7 @@ export default function App() {
         direction: j.direction || "keine",
         area: ["finanzen", "vertraege", "sonstiges"].includes(j.area) ? j.area : undefined,
         taxRelevant: !!j.tax_relevant,
+        scope: doc.scopeManual ? doc.scope : j.scope === "firma" ? "firma" : "privat",
         payment: j.payment?.iban ? j.payment : null,
         contract: c?.provider ? {
           provider: c.provider, name: c.name || "", customerNumber: c.customer_number || "", amount: c.amount ?? null,
@@ -1121,7 +1145,8 @@ export default function App() {
           cancelBy: c.cancel_by || "", active: true
         } : null,
         deadlines: (j.deadlines || []).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date)).map((x) => ({ id: uid(), date: x.date, label: x.label, done: false })),
-        paid: false
+        paid: doc.paid || txsRef.current.some((t) => t.docId === doc.id),
+        paidDate: doc.paidDate || txsRef.current.find((t) => t.docId === doc.id)?.date
       });
       await saveDoc(done);
       if (doc.payCash && done.amount?.total && done.direction !== "einnahme") await bookCash({ ...done, direction: "ausgabe" });
@@ -1144,9 +1169,10 @@ export default function App() {
       try { doc.thumb = await makeThumb(blob); } catch {}
       await db.putFile(doc.id, blob);
       await saveDoc(doc);
+      if (opts.linkTx) { await linkTx(opts.linkTx, doc.id); notify("Beleg wird ausgelesen und ist der Buchung zugeordnet"); }
       queue.current = queue.current.then(() => analyze(doc, blob));
     }
-    if (files.length) setTab("docs");
+    if (files.length && !opts.linkTx) setTab("docs");
   }
   async function reanalyze(doc) {
     const blob = await db.getFile(doc.id);
@@ -1167,9 +1193,10 @@ export default function App() {
   const accActions = {
     onToggle: (id) => setSelAccs(() => { const n = effSel.includes(id) ? effSel.filter((x) => x !== id) : [...effSel, id]; return n.length === visIds.length ? [] : n; }),
     onOnly: (id) => { setSelAccs([id]); setTab("accounts"); },
+    onAll: () => setSelAccs([]),
     onGroupSel: (ids, add) => setSelAccs(() => { const n = add ? [...new Set([...effSel, ...ids])] : effSel.filter((x) => !ids.includes(x)); return n.length === visIds.length ? [] : n; }),
     onHide: (id) => { setAccounts((l) => l.map((a) => (a.id === id ? { ...a, hidden: true } : a))); setSelAccs((c) => c.filter((x) => x !== id)); notify("Konto ausgeblendet – unten unter „Ausgeblendet“ wieder einblendbar"); },
-    onUnhide: (id) => setAccounts((l) => l.map((a) => (a.id === id ? { ...a, hidden: false } : a))),
+    onUnhide: (id) => { setAccounts((l) => l.map((a) => (a.id === id ? { ...a, hidden: false } : a))); if (!allSel) setSelAccs([...effSel, id]); },
   };
   const toggleGroup = (id) => setNav((n) => ({ ...n, groups: n.groups.map((g) => (g.id === id ? { ...g, collapsed: !g.collapsed } : g)) }));
   const areaCounts = Object.fromEntries(Object.keys(AREAS).map((k) => [k, active.filter((d) => docArea(d) === k).length]));
@@ -1193,7 +1220,7 @@ export default function App() {
         {tab === "home" && <Home docs={active} txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={visAccounts.some((a) => a.kind === "cash")}
           accounts={visAccounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
           editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => setScanOpen(true), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
-        {tab === "accounts" && <Accounts txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
+        {tab === "accounts" && <Accounts linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
           acc={selAcc} setAcc={setSelAcc} sel={effSel} allSel={allSel} setSel={setSelAccs} accActions={accActions} hiddenAccs={hiddenAccs} visAccounts={visAccounts} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
@@ -1209,7 +1236,7 @@ export default function App() {
       </main>
 
       <input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden
-        onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
+        onChange={(e) => { const l = pendingLink.current; pendingLink.current = null; onFiles(e.target.files, l ? { linkTx: l } : {}); e.target.value = ""; }} />
       {fabOpen && <div className="fabmenu-bg" onClick={() => setFabOpen(false)} />}
       {fabOpen && (
         <div className="fabmenu" role="menu">
@@ -1220,7 +1247,7 @@ export default function App() {
         </div>
       )}
       <button className={"fab" + (fabOpen ? " open" : "")} onClick={() => setFabOpen(!fabOpen)} aria-label="Hinzufügen">＋</button>
-      {scanOpen && <Scanner onClose={() => setScanOpen(false)} onDone={(file, o) => { setScanOpen(false); onFiles([file], { ...o, scanned: true }); }} />}
+      {scanOpen && <Scanner onClose={() => { setScanOpen(false); pendingLink.current = null; }} onDone={(file, o) => { setScanOpen(false); const l = pendingLink.current; pendingLink.current = null; onFiles([file], { ...o, scanned: true, ...(l ? { linkTx: l } : {}) }); }} />}
       {manualTx && <ManualTxSheet init={manualTx} accounts={accounts} categories={TX_CATS(categories)} onClose={() => setManualTx(null)}
         onSave={async (t) => { await addManualTx(t); setManualTx(null); notify("Buchung gespeichert"); }} />}
 
@@ -1241,7 +1268,7 @@ export default function App() {
               </button>
               {t.key === "accounts" && t.side && nav.accOpen && accounts.length > 0 && (
                 <div className="subnav side-only">
-                  <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={hiddenAccs} {...accActions} />
+                  <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={hiddenAccs} showChecks={nav.showChecks !== false} {...accActions} />
                 </div>
               )}
               {t.key === "docs" && t.side && nav.docsOpen && active.length > 0 && (
@@ -1257,7 +1284,7 @@ export default function App() {
 
       <SideResizer />
       {openDoc && (
-        <Detail doc={openDoc} categories={categories} onClose={() => setOpenId(null)} bookCash={bookCash}
+        <Detail doc={openDoc} categories={categories} onClose={() => setOpenId(null)} bookCash={bookCash} txs={txs} accounts={accounts} linkTx={linkTx}
           saveDoc={saveDoc} trashDoc={trashDoc} reanalyze={reanalyze} notify={notify} />
       )}
       {toast && <div className="toast">{toast}</div>}
@@ -1331,8 +1358,8 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
       return { out: l.filter((t) => t.amount < 0).reduce((s, t) => s - t.amount, 0), inc: l.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0), byCat };
     }
     const l = money.filter((d) => monthKey(d) === month), byCat = {};
-    l.filter((d) => d.direction === "ausgabe").forEach((d) => { byCat[d.category] = (byCat[d.category] || 0) + d.amount.total; });
-    return { out: l.filter((d) => d.direction === "ausgabe").reduce((s, d) => s + d.amount.total, 0), inc: l.filter((d) => d.direction === "einnahme").reduce((s, d) => s + d.amount.total, 0), byCat };
+    l.filter((d) => d.direction === "ausgabe").forEach((d) => { byCat[d.category] = (byCat[d.category] || 0) + payAmt(d); });
+    return { out: l.filter((d) => d.direction === "ausgabe").reduce((s, d) => s + payAmt(d), 0), inc: l.filter((d) => d.direction === "einnahme").reduce((s, d) => s + payAmt(d), 0), byCat };
   };
   const sumBy = (month, dir) => flows(month)[dir === "ausgabe" ? "out" : "inc"];
 
@@ -1653,6 +1680,8 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
   const [year, setYear] = useState("");
   const [sort, setSort] = useState("date");
   const [taxOnly, setTaxOnly] = useState(false);
+  const [scope, setScope] = useState(() => ls.get("docScope", "alle"));
+  useEffect(() => ls.set("docScope", scope), [scope]);
   const [unpaid, setUnpaid] = useState(false);
   const [view, setView] = useState(() => ls.get("view", "list"));
   useEffect(() => ls.set("view", view), [view]);
@@ -1663,16 +1692,16 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
   const list = useMemo(() => {
     const terms = norm(q).split(/\s+/).filter(Boolean);
     return docs
-      .filter((d) => (area === "alle" || docArea(d) === area) && (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) &&
+      .filter((d) => (scope === "alle" || docScope(d) === scope) && (area === "alle" || docArea(d) === area) && (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) &&
         (!taxOnly || d.taxRelevant) && (!unpaid || (d.direction === "ausgabe" && d.amount?.total && !d.paid)))
       .filter((d) => { if (!terms.length) return true; const h = haystack(d); return terms.every((t) => h.includes(t)); })
-      .sort((a, b) => sort === "amount" ? (b.amount?.total || 0) - (a.amount?.total || 0)
+      .sort((a, b) => sort === "amount" ? (payAmt(b) || 0) - (payAmt(a) || 0)
         : (b.documentDate || b.createdAt).localeCompare(a.documentDate || a.createdAt));
-  }, [docs, q, cat, tag, year, sort, taxOnly, unpaid, area]);
+  }, [docs, q, cat, tag, year, sort, taxOnly, unpaid, area, scope]);
 
   const counts = useMemo(() => Object.fromEntries(categories.map((c) => [c, docs.filter((d) => d.category === c).length])), [docs, categories]);
   const amt = (d) => d.amount?.total != null && (
-    <span className={"amt" + (d.direction === "einnahme" ? " ok" : d.paid ? " paid" : "")}>{d.direction === "einnahme" ? "+" : ""}{fmtMoney(d.amount.total, d.amount.currency)}</span>);
+    <span className={"amt" + (d.direction === "einnahme" ? " ok" : d.paid ? " paid" : "")} title={payAmt(d) !== d.amount.total ? `Brutto ${fmtMoney(d.amount.total)} · ausbezahlt ${fmtMoney(payAmt(d))}` : undefined}>{d.direction === "einnahme" ? "+" : ""}{fmtMoney(payAmt(d), d.amount.currency)}</span>);
   const status = (d) => d.status === "processing" ? <span className="muted small">⏳ wird analysiert …</span> : d.status === "error" ? <span className="err">⚠️ {d.error}{reanalyze && <button className="retry" onClick={(e) => { e.stopPropagation(); reanalyze(d); }}>↻ Neu analysieren</button>}</span> : null;
 
   return (
@@ -1683,6 +1712,11 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         <button className="iconbtn" onClick={() => setView(view === "list" ? "grid" : "list")} aria-label="Ansicht">{view === "list" ? "▦" : "☰"}</button>
       </div>
 
+      <div className="seg scopeseg" role="group" aria-label="Privat oder Firma">
+        {[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => (
+          <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small>{k === "alle" ? docs.length : docs.filter((d) => docScope(d) === k).length}</small></button>
+        ))}
+      </div>
       <div className="seg areaseg">
         {[["alle", "Alle", docs.length], ...Object.entries(AREAS).map(([k, [i, l]]) => [k, `${i} ${l}`, docs.filter((d) => docArea(d) === k).length])].map(([k, l, n]) => (
           <button key={k} className={area === k ? "on" : ""} onClick={() => setArea(k)}>{l} <small>{n}</small></button>
@@ -1905,7 +1939,7 @@ const shortD = (iso) => (iso ? new Date(iso + "T12:00").toLocaleDateString("de-A
 const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json,.xlsx,.xlsm,.xls,.pdf,image/*";
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
-function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc, setAcc, sel = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
+function Accounts({ linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc, setAcc, sel = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
   const [pick, setPick] = useState(false);
   const [newAcc, setNewAcc] = useState(false);
   useEffect(() => { if (newAccReq) { setNewAcc(true); clearNewAccReq(); } }, [newAccReq]);
@@ -2083,7 +2117,7 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
         onSave={(a) => { setAccounts((l) => l.map((x) => (x.id === a.id ? a : x))); setEditAcc(null); notify("Konto gespeichert"); }} />}
       {newAcc && <AccountSheet txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
       {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
-      {txOpen && <TxSheet deleteTx={deleteTx} t={txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
+      {txOpen && <TxSheet linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
     </div>
   );
 }
@@ -2247,8 +2281,10 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
   );
 }
 
-function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, deleteTx }) {
+function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, deleteTx, linkTx, attachNew }) {
   useEsc(onClose);
+  const [pickDoc, setPickDoc] = useState(false);
+  const [dq, setDq] = useState("");
   const [cat, setCat] = useState(t.category);
   const [rule, setRule] = useState(false);
   const doc = t.docId && docs.find((d) => d.id === t.docId);
@@ -2274,8 +2310,37 @@ function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, dele
         )}
         {doc && (
           <div className="tile frow click" style={{ marginTop: 12 }} onClick={() => onOpen(doc.id)}>
-            <Thumb d={doc} /><div className="grow"><b>📎 {doc.title}</b><small className="muted block">Beleg automatisch zugeordnet</small></div><span className="muted">›</span>
+            <Thumb d={doc} /><div className="grow"><b>📎 {doc.title}</b><small className="muted block">Beleg zugeordnet</small></div>
+            <button className="link red" onClick={(e) => { e.stopPropagation(); linkTx(t.id, null); onClose(); }}>Lösen</button><span className="muted">›</span>
           </div>
+        )}
+        {!doc && t.kind !== "broker" && (
+          <fieldset>
+            <legend>Beleg / Rechnung</legend>
+            <div className="attachbtns">
+              <button className="btn" onClick={() => { attachNew(t.id, "scan"); onClose(); }}>📷 Scannen</button>
+              <button className="btn" onClick={() => { attachNew(t.id, "file"); onClose(); }}>📄 Datei</button>
+              <button className="btn" onClick={() => setPickDoc(!pickDoc)}>🗂 Vorhandenes Dokument</button>
+            </div>
+            {pickDoc && (() => {
+              const qn = norm(dq), amtAbs = Math.abs(t.amount);
+              const cands = docs.filter((d) => !d.deletedAt && (!qn || haystack(d).includes(qn)))
+                .map((d) => ({ d, s: (payAmt(d) != null ? Math.abs(payAmt(d) - amtAbs) * 10 : 500) + Math.abs((new Date(d.documentDate || d.createdAt) - new Date(t.date)) / 864e5) }))
+                .sort((a, b) => a.s - b.s).slice(0, 8).map((x) => x.d);
+              return (
+                <div className="linkpick">
+                  <input type="search" placeholder="Dokument suchen" value={dq} onChange={(e) => setDq(e.target.value)} />
+                  {cands.map((d) => (
+                    <button key={d.id} className="frow click linkopt" onClick={() => { linkTx(t.id, d.id); onClose(); }}>
+                      <Thumb d={d} className="thumb sm" /><span className="grow"><b className="one">{d.title}</b><small className="muted block">{fmtDate(d.documentDate)}</small></span>
+                      {payAmt(d) != null && <b>{fmtMoney(payAmt(d))}</b>}
+                    </button>
+                  ))}
+                  {!cands.length && <p className="muted small">Keine Dokumente gefunden.</p>}
+                </div>
+              );
+            })()}
+          </fieldset>
         )}
         <fieldset>
           <legend>Details</legend>
@@ -2525,7 +2590,9 @@ function PayQR({ doc, notify }) {
     </div>
   );
 }
-function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash }) {
+function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash, txs = [], accounts = [], linkTx }) {
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [lq, setLq] = useState("");
   useEsc(onClose);
   const [url, setUrl] = useState(null);
   const [blob, setBlob] = useState(null);
@@ -2559,6 +2626,9 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
         {url && (doc.mimeType.startsWith("image/")
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
           : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b>PDF-Dokument</b><small className="muted block">{doc.fileName}</small></div></div>)}
+        <div className="seg scopeseg" style={{ margin: "6px 0 6px" }} role="group" aria-label="Privat oder Firma">
+          {SCOPES.map(([k, i, l]) => <button key={k} className={docScope(d) === k ? "on" : ""} onClick={() => set({ scope: k, scopeManual: true })}>{i} {l}</button>)}
+        </div>
         <div className="seg areaseg" style={{ margin: "6px 0 10px" }}>
           {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={docArea(d) === k ? "on" : ""} onClick={() => set({ areaManual: k })}>{i} {l}</button>)}
         </div>
@@ -2578,7 +2648,7 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
           <label>Absender<input value={d.sender || ""} onChange={(e) => set({ sender: e.target.value })} /></label>
           <label>Datum<input type="date" value={d.documentDate || ""} onChange={(e) => set({ documentDate: e.target.value })} /></label>
         </div>
-        <label className="check"><input type="checkbox" checked={!!d.taxRelevant} onChange={(e) => set({ taxRelevant: e.target.checked })} /> 🧾 Steuerrelevant (Arbeitnehmerveranlagung)</label>
+        <label className="check"><input type="checkbox" checked={!!d.taxRelevant} onChange={(e) => set({ taxRelevant: e.target.checked })} /> 🧾 Steuerrelevant</label>
 
         <fieldset>
           <legend>Betrag</legend>
@@ -2587,13 +2657,15 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
               <button key={k} className={(d.direction || "keine") === k ? "on" : ""} onClick={() => set({ direction: k })}>{l}</button>
             ))}
           </div>
-          <div className="grid3">
-            {[["total", "Brutto"], ["net", "Netto"], ["vat", "USt"]].map(([k, l]) => (
+          <div className="grid4">
+            {[["total", "Brutto"], ["net", "Netto"], ["vat", "USt"], ["payout", "Ausbezahlt / Zahlbetrag"]].map(([k, l]) => (
               <label key={k}>{l}
-                <input inputMode="decimal" value={d.amount?.[k] ?? ""} onChange={(e) => set({ amount: { currency: "EUR", ...d.amount, [k]: numIn(e.target.value) } })} />
+                <input inputMode="decimal" value={d.amount?.[k] ?? ""} placeholder={k === "payout" && d.amount ? String(payAmt(d) ?? "") : ""}
+                  onChange={(e) => set({ amount: { currency: "EUR", ...d.amount, [k]: numIn(e.target.value) } })} />
               </label>
             ))}
           </div>
+          {d.amount && payAmt(d) !== d.amount.total && <p className="muted small">Gerechnet wird mit dem ausbezahlten Betrag {fmtMoney(payAmt(d))} (z. B. Netto-Auszahlung beim Lohnzettel).</p>}
           {d.amount?.total != null && d.direction === "ausgabe" && (
             <div className="row1" style={{ alignItems: "center" }}>
               <label className="check"><input type="checkbox" checked={!!d.paid} onChange={(e) => set({ paid: e.target.checked })} /> Bezahlt{doc.paidCash ? " (bar)" : ""}</label>
@@ -2601,6 +2673,46 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
             </div>
           )}
         </fieldset>
+
+
+        {(() => {
+          const linked = txs.find((t) => t.docId === doc.id);
+          const accN = (id) => accounts.find((a) => a.id === id)?.name || "";
+          const target = payAmt(d), dd = d.documentDate || doc.createdAt?.slice(0, 10) || todayISO();
+          const days = (x) => Math.abs((new Date(x) - new Date(dd)) / 864e5);
+          const qn = norm(lq);
+          const cands = !linkOpen ? [] : txs.filter((t) => t.id !== linked?.id && t.kind !== "broker")
+            .filter((t) => !qn || norm(`${t.counterparty} ${t.purpose} ${t.amount}`).includes(qn))
+            .map((t) => ({ t, score: (target ? Math.abs(Math.abs(t.amount) - target) : 0) * 10 + days(t.date) }))
+            .sort((a, b) => a.score - b.score).slice(0, 8).map((x) => x.t);
+          return (
+            <fieldset>
+              <legend>Buchung</legend>
+              {linked ? (
+                <div className="frow">
+                  <CatIcon c={linked.category} />
+                  <div className="grow"><b>{linked.counterparty || linked.purpose || "Buchung"}</b><small className="muted block">{fmtDate(linked.date)} · {accN(linked.accountId)}</small></div>
+                  <b className={linked.amount > 0 ? "pos" : ""}>{fmtMoney(linked.amount, linked.currency)}</b>
+                  <button className="link red" onClick={() => linkTx(linked.id, null)}>Lösen</button>
+                </div>
+              ) : <p className="muted small">Noch keiner Kontobuchung zugeordnet.</p>}
+              {!linkOpen ? <button className="btn" onClick={() => setLinkOpen(true)}>🔗 {linked ? "Andere Buchung wählen" : "Mit Buchung verknüpfen"}</button> : (
+                <div className="linkpick">
+                  <input type="search" placeholder="Buchung suchen (Empfänger, Betrag …)" value={lq} onChange={(e) => setLq(e.target.value)} />
+                  {cands.map((t) => (
+                    <button key={t.id} className="frow click linkopt" onClick={() => { linkTx(t.id, doc.id); setLinkOpen(false); notify("Beleg mit Buchung verknüpft"); }}>
+                      <CatIcon c={t.category} size={32} />
+                      <span className="grow"><b className="one">{t.counterparty || t.purpose || "Buchung"}</b><small className="muted block">{fmtDate(t.date)} · {accN(t.accountId)}{t.docId ? " · hat schon Beleg" : ""}</small></span>
+                      <b className={t.amount > 0 ? "pos" : ""}>{fmtMoney(t.amount, t.currency)}</b>
+                    </button>
+                  ))}
+                  {!cands.length && <p className="muted small">Keine passenden Buchungen – erst Umsätze importieren.</p>}
+                  <button className="link" onClick={() => setLinkOpen(false)}>Abbrechen</button>
+                </div>
+              )}
+            </fieldset>
+          );
+        })()}
 
         {(d.direction === "ausgabe" || d.payment) && (
           <fieldset>
@@ -2908,8 +3020,10 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
           </div>
         ))}
       </SetSec></>,
-    "meinedaten": <><SetSec id="meinedaten" title="Meine Daten (für Kündigungsschreiben)">
+    "meinedaten": <><SetSec id="meinedaten" title="Meine Daten">
         <label>Name<input value={me.name} onChange={(e) => setMe({ ...me, name: e.target.value })} /></label>
+        <label>Firma (für die Trennung Privat/Firma)<input value={me.company || ""} placeholder="z. B. Mustermann e.U." onChange={(e) => setMe({ ...me, company: e.target.value })} /></label>
+        <small className="muted block">Dokumente, die an deine Firma gehen oder betrieblich sind, ordnet Claude automatisch „🏢 Firma“ zu – änderbar im Dokument.</small>
         <label>Adresse<textarea rows={2} value={me.address} onChange={(e) => setMe({ ...me, address: e.target.value })} /></label>
         <label>Ort<input value={me.city} onChange={(e) => setMe({ ...me, city: e.target.value })} /></label>
       </SetSec></>,
@@ -3357,7 +3471,7 @@ body.win-moving,body.win-moving *{user-select:none!important;-webkit-user-select
 .eyebtn:hover{background:var(--card2);color:var(--txt)}
 .accitem .ab .est,.est{font-style:normal;opacity:.6;margin-right:2px}
 .dwrap+.dwrap{border-top:1px solid var(--line)}.dwrap .ditem{border:0}
-@media (min-width:1024px){.tab-docs .dlist .dwrap.open{grid-column:1/-1}}
+@media (min-width:1024px){.tab-docs .dlist{align-items:start}}
 .prevbtn{align-self:center;flex:none;width:34px;height:34px;border-radius:10px;border:0;background:transparent;color:var(--mut);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .prevbtn:hover,.prevbtn.on{background:var(--card2);color:var(--txt)}
 .pchev{display:inline-flex;transition:transform .18s}.pchev.open{transform:rotate(180deg)}
@@ -3583,4 +3697,30 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .txhead,.txrow{grid-template-columns:84px minmax(160px,2.2fr) minmax(0,1fr) 120px}
 .txtable.withacc .txhead,.txtable.withacc .txrow{grid-template-columns:84px minmax(160px,2.2fr) minmax(0,1fr) minmax(0,1fr) 120px}
 .txrow>span.one,.txrow>span.muted{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* v0.12 */
+.maincol{container-type:inline-size;min-width:0}
+@media (min-width:1024px){
+  .maincol .hero{display:block}
+  .maincol .hero>.hero-row{margin-top:14px}
+}
+@container (min-width:780px){
+  .maincol .hero{display:grid!important;grid-template-columns:minmax(0,auto) minmax(0,1fr)}
+  .maincol .hero>.hero-row.four{grid-column:1/-1;grid-row:auto;margin-top:14px}
+}
+.heronames{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+@container (max-width:640px){
+  .txhead,.txrow,.txtable.withacc .txhead,.txtable.withacc .txrow{grid-template-columns:76px minmax(0,1fr) 110px!important}
+  .txhead>span:nth-child(3),.txrow>span:nth-child(3),.txtable.withacc .txhead>span:nth-child(4),.txtable.withacc .txrow>span:nth-child(4){display:none}
+}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:620px){.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.scopeseg{margin-bottom:8px}
+.linkpick{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.linkopt{width:100%;border:1px solid var(--line);background:var(--card);color:var(--txt);font:inherit;text-align:left;border-radius:12px;padding:8px 10px;cursor:pointer}
+.linkopt:hover{border-color:var(--acc)}
+.attachbtns{display:flex;gap:8px;flex-wrap:wrap}.attachbtns .btn{margin:0}
+
+@container (max-width:700px){.maincol .hero-row.four{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.hero-row>div{min-width:0}.hero-row b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 `;
