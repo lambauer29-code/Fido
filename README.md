@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.17.0
+
+- Neuer Reiter **Barausgabe** in der Seitenleiste (vor Einstellungen; am iPhone in Einstellungen › Seitenleiste zuschaltbar): Eingabe für Bargeld links, rechts Bestand und letzte Barbuchungen.
+- Neues Übersicht-Widget **Barausgabe erfassen** (Sofort-Eingabe direkt auf der Übersicht).
+- Bargeld-Eingabe überall (Fenster, Widget, Reiter): Beleg per **📷 Scannen** oder **🖼 Foto/Datei** anhängen – wird nach dem Speichern ausgelesen und der Buchung zugeordnet. Neue Kategorie direkt in der Auswahl.
+- Einheitliche Auswahlfelder in der ganzen App: Kategorie, Konto, Gruppe usw. haben jetzt dieselbe Höhe und Optik wie Textfelder (eigener Pfeil statt Safari-Standard); Datumsfelder gleich hoch.
+- Kategorien: eigene Symbole hochladen (Bilder) bzw. eigenes Emoji – gemeinsame Sammlung mit den Konto-Symbolen.
+
 ## v0.16.8
 
 - Dokument bearbeiten: In der Kategorie-Auswahl gibt es „＋ Neue Kategorie …“ – Fenster mit Name, Gruppe (bestimmt Finanzen/Verträge/Sonstiges), Symbol und Farbe; die neue Kategorie wird gleich zugewiesen.

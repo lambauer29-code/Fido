@@ -26,14 +26,15 @@ const CAT_META = {
 const PALETTE = ["#3b82f6", "#f97316", "#22c55e", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444", "#6366f1", "#84cc16"];
 let CAT_STYLE = {}; // Symbol/Farbe umbenannter Kategorien (aus den Einstellungen)
 function catMeta(c) {
-  if (CAT_STYLE[c]) return { icon: CAT_STYLE[c][0], color: CAT_STYLE[c][1] };
+  if (CAT_STYLE[c]) return { icon: CAT_STYLE[c][0], color: CAT_STYLE[c][1], img: CAT_STYLE[c][2] };
   if (CAT_META[c]) return { icon: CAT_META[c][0], color: CAT_META[c][1] };
   let h = 0; for (const ch of String(c)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return { icon: "📁", color: PALETTE[h % PALETTE.length] };
 }
+const CatGlyph = ({ c }) => { const m = catMeta(c); return m.img ? <img className="catimg" src={m.img} alt="" /> : <>{m.icon}</>; };
 const CatIcon = ({ c, size = 40 }) => {
   const m = catMeta(c);
-  return <span className="caticon" style={{ width: size, height: size, background: m.color + "22", fontSize: size * 0.48 }}>{m.icon}</span>;
+  return <span className="caticon" style={{ width: size, height: size, background: m.color + "22", fontSize: size * 0.48 }}><CatGlyph c={c} /></span>;
 };
 const Label = ({ c }) => { const m = catMeta(c); return <span className="label" style={{ color: m.color, background: m.color + "1f" }}>{c}</span>; };
 
@@ -387,7 +388,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Fristen"], accounts: ["🏦", "Konten"], contracts: ["📑", "Verträge"], settings: ["⚙️", "Einstellungen"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Fristen"], accounts: ["🏦", "Konten"], cash: ["💶", "Barausgabe"], contracts: ["📑", "Verträge"], settings: ["⚙️", "Einstellungen"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -460,7 +461,7 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 const DEFAULT_NAV = {
   tabs: [
     { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: false },
-    { key: "accounts", side: true, phone: true }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }
+    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }
   ],
   groups: [
     { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
@@ -476,7 +477,11 @@ function loadNav() {
   if (!n) return { ...DEFAULT_NAV, docGroups };
   n.docGroups = docGroups;
   const keys = n.tabs.map((t) => t.key);
-  return { ...DEFAULT_NAV, ...n, tabs: [...n.tabs, ...DEFAULT_NAV.tabs.filter((t) => !keys.includes(t.key))] };
+  // fehlende (neue) Reiter vor „Einstellungen“ einfügen
+  const missing = DEFAULT_NAV.tabs.filter((t) => !keys.includes(t.key));
+  const si = n.tabs.findIndex((t) => t.key === "settings");
+  const tabs = si < 0 ? [...n.tabs, ...missing] : [...n.tabs.slice(0, si), ...missing, ...n.tabs.slice(si)];
+  return { ...DEFAULT_NAV, ...n, tabs };
 }
 const tabLabel = (nav, key) => nav.tabs.find((t) => t.key === key)?.label?.trim() || TAB_DEFS[key][1];
 
@@ -558,7 +563,7 @@ function DocTree({ docGroups, docs, selected, onSelect, onToggleGroup, variant =
           )}
           {!g.collapsed && g.cats.map((c) => (
             <button key={c} className={"accitem" + (selected === c ? " on" : "")} onClick={() => onSelect(selected === c ? "" : c)}>
-              <span className="ki">{catMeta(c).icon}</span><span className="an">{c}</span><span className="ab muted">{count(c)}</span>
+              <span className="ki"><CatGlyph c={c} /></span><span className="an">{c}</span><span className="ab muted">{count(c)}</span>
             </button>
           ))}
         </div>
@@ -673,23 +678,45 @@ function EditText({ value = "", onSave, placeholder, className = "", validate, r
 
 /* Kategorie: Symbol & Farbe (Einstellungen und „Neue Kategorie“) */
 const CAT_EMOJIS = ["📁", "🏠", "⚡", "🚗", "⛽", "🛒", "🍽️", "🏥", "💊", "🛡️", "📱", "🌐", "🎓", "👶", "🐾", "✈️", "🎁", "👕", "🔧", "🏋️", "🎮", "📚", "💼", "🏢", "🧾", "💶", "📈", "🏦", "🧸", "🌱", "🔒", "⭐"];
-function CatStylePicker({ icon, color, onChange }) {
+const IconLibCtx = React.createContext({ lib: [], setLib: null });
+function CatStylePicker({ icon, color, img, onChange }) {
   const [txt, setTxt] = useState("");
+  const { lib, setLib } = React.useContext(IconLibCtx);
+  const fileRef = useRef();
+  const set = (p) => onChange({ icon, color, img, ...p });
   return (
     <div className="accstyle catstyle">
       <div className="asrow"><small className="muted">Farbe</small>
         <div className="swatches">
-          {ACC_COLORS.map((c) => <button type="button" key={c} className={"sw" + (color === c ? " on" : "")} style={{ background: c }} title={c} onClick={() => onChange({ icon, color: c })} />)}
-          <ColorDot className={"sw custom" + (color && !ACC_COLORS.includes(color) ? " on" : "")} title="Eigene Farbe" value={color || "#4f8cff"} onInput={(c) => onChange({ icon, color: c })}>＋</ColorDot>
+          {ACC_COLORS.map((c) => <button type="button" key={c} className={"sw" + (color === c ? " on" : "")} style={{ background: c }} title={c} onClick={() => set({ color: c })} />)}
+          <ColorDot className={"sw custom" + (color && !ACC_COLORS.includes(color) ? " on" : "")} title="Eigene Farbe" value={color || "#4f8cff"} onInput={(c) => set({ color: c })}>＋</ColorDot>
         </div>
       </div>
       <div className="asrow"><small className="muted">Symbol</small>
         <div className="emojigrid">
-          {[...new Set([...CAT_EMOJIS, icon].filter(Boolean))].map((e) => <button type="button" key={e} className={icon === e ? "on" : ""} onClick={() => onChange({ icon: e, color })}>{e}</button>)}
+          {[...new Set([...CAT_EMOJIS, icon].filter(Boolean))].map((e) => <button type="button" key={e} className={icon === e && !img ? "on" : ""} onClick={() => set({ icon: e, img: undefined })}>{e}</button>)}
+        </div>
+      </div>
+      <div className="asrow"><small className="muted">Eigene Symbole <span className="muted">– für Kategorien und Konten</span></small>
+        <div className="emojigrid">
+          {lib.map((it) => (
+            <span key={it.id} className="libwrap">
+              <button type="button" className={(it.src ? img === it.src : icon === it.emoji && !img) ? "on" : ""} onClick={() => set(it.src ? { img: it.src } : { icon: it.emoji, img: undefined })}>{it.src ? <img src={it.src} alt="" /> : it.emoji}</button>
+              <button type="button" className="libdel" title="Aus Sammlung löschen" onClick={() => confirm("Dieses eigene Symbol aus der Sammlung löschen?") && setLib?.(lib.filter((x) => x.id !== it.id))}>×</button>
+            </span>
+          ))}
+          {img && !lib.some((x) => x.src === img) && <button type="button" className="on"><img src={img} alt="" /></button>}
+          <button type="button" className="upl" title="Bild hochladen (PNG, JPG, SVG) – wird zur Sammlung hinzugefügt" onClick={() => fileRef.current.click()}>＋</button>
+          <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={async (e) => {
+            const files = [...e.target.files]; e.target.value = ""; let last = null; const add = [];
+            for (const f of files) { try { last = await iconFromFile(f); add.push({ id: uid(), src: last }); } catch {} }
+            if (!add.length) return alert("Bild konnte nicht gelesen werden");
+            setLib?.([...lib, ...add]); set({ img: last });
+          }} />
         </div>
         <div className="libadd">
-          <input value={txt} maxLength={4} placeholder="Eigenes Emoji / Zeichen" onChange={(e) => setTxt(e.target.value)} />
-          <button type="button" className="btn sm" disabled={!txt.trim()} onClick={() => { onChange({ icon: txt.trim(), color }); setTxt(""); }}>Übernehmen</button>
+          <input value={txt} maxLength={4} placeholder="Eigenes Emoji / Zeichen, z. B. 🦊 oder B" onChange={(e) => setTxt(e.target.value)} />
+          <button type="button" className="btn sm" disabled={!txt.trim()} onClick={() => { const t = txt.trim(); if (!lib.some((x) => x.emoji === t)) setLib?.([...lib, { id: uid(), emoji: t }]); set({ icon: t, img: undefined }); setTxt(""); }}>Hinzufügen</button>
         </div>
       </div>
     </div>
@@ -710,8 +737,8 @@ function NewCategoryWin({ groups, defGroup, existing, onCreate, onClose }) {
       <label>Gruppe<select value={gid} onChange={(e) => setGid(e.target.value)}>
         {groups.map((g) => <option key={g.id} value={g.id}>{g.title || "(ohne Überschrift)"} · {AREAS[g.area]?.[1] || ""}</option>)}
       </select></label>
-      <CatStylePicker icon={st.icon} color={st.color} onChange={setSt} />
-      <div className="asfoot"><span className="aspreview"><span className="label" style={{ color: st.color, background: st.color + "22" }}>{st.icon} {n || "Vorschau"}</span></span></div>
+      <CatStylePicker icon={st.icon} color={st.color} img={st.img} onChange={setSt} />
+      <div className="asfoot"><span className="aspreview"><span className="label" style={{ color: st.color, background: st.color + "22" }}>{st.img ? <img className="catimg" src={st.img} alt="" /> : st.icon} {n || "Vorschau"}</span></span></div>
       <p className="muted small">Später änderbar unter Einstellungen › Dokumente – Gruppen &amp; Kategorien.</p>
     </Win>
   );
@@ -765,7 +792,7 @@ function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, not
                 <div className={"acccfg catrow" + (dnd.isDragging("dcat", g.id, ci) ? " dragging" : "")} data-dcat-item={`${g.id}|${ci}`}>
                   <Handle onDown={(e) => dnd.start(e, { kind: "dcat", list: g.id, index: ci, label: `${catMeta(c).icon} ${c}` })} />
                   <button className="ki catki" title="Symbol & Farbe" aria-label="Symbol & Farbe" style={{ background: catMeta(c).color + "22", color: catMeta(c).color }}
-                    onClick={() => setStyleCat(styleCat === c ? null : c)}>{catMeta(c).icon}</button>
+                    onClick={() => setStyleCat(styleCat === c ? null : c)}><CatGlyph c={c} /></button>
                   <EditText className="grow" inputClass="catname" value={c} validate={check(c)} onSave={(t) => t !== c && renameCategory(c, t)} />
                   <small className="muted cnt" title="Dokumente">{count(c)}</small>
                   {c !== "Sonstiges"
@@ -774,8 +801,8 @@ function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, not
                     : <span className="iconbtn-spacer" />}
                 </div>
                 {styleCat === c && <div className="catstylebox">
-                  <CatStylePicker icon={catMeta(c).icon} color={catMeta(c).color} onChange={(m) => setNav((n) => ({ ...n, catStyle: { ...(n.catStyle || {}), [c]: [m.icon, m.color] } }))} />
-                  <div className="asfoot"><span className="aspreview"><Label c={c} /></span>
+                  <CatStylePicker icon={catMeta(c).icon} color={catMeta(c).color} img={catMeta(c).img} onChange={(m) => setNav((n) => ({ ...n, catStyle: { ...(n.catStyle || {}), [c]: [m.icon, m.color, m.img] } }))} />
+                  <div className="asfoot"><span className="aspreview"><span className="label" style={{ color: catMeta(c).color, background: catMeta(c).color + "1f" }}><CatGlyph c={c} /> {c}</span></span>
                     <button className="link" onClick={() => setNav((n) => { const cs = { ...(n.catStyle || {}) }; delete cs[c]; return { ...n, catStyle: cs }; })}>Standard</button>
                     <button className="btn sm" onClick={() => setStyleCat(null)}>Fertig</button></div>
                 </div>}
@@ -1184,7 +1211,7 @@ export default function App() {
     if (n.docGroups.some((g) => g.cats.includes(name))) return n;
     const has = n.docGroups.some((g) => g.id === gid);
     const docGroups = n.docGroups.map((g, i) => ((has ? g.id === gid : i === 0) ? { ...g, cats: [...g.cats, name] } : g));
-    return { ...n, docGroups, catStyle: st ? { ...(n.catStyle || {}), [name]: [st.icon, st.color] } : n.catStyle };
+    return { ...n, docGroups, catStyle: st ? { ...(n.catStyle || {}), [name]: [st.icon, st.color, st.img] } : n.catStyle };
   });
   const toggleDocGroup = (id) => setNav((n) => ({ ...n, docGroups: n.docGroups.map((g) => (g.id === id ? { ...g, collapsed: !g.collapsed } : g)) }));
   const [selAccs, setSelAccsRaw] = useState(() => ls.get("selAccs", []));
@@ -1305,11 +1332,19 @@ export default function App() {
       return d;
     }));
   }
+  const scanCb = useRef(null);
+  const scanFor = (cb) => { scanCb.current = cb; setScanOpen(true); };
+  async function saveCash(t, att) {
+    const tx = await addManualTx(t);
+    if (att?.file) await onFiles([att.file], { ...(att.opts || {}), linkTx: tx.id });
+    else notify("Buchung gespeichert");
+    return tx;
+  }
   function attachNew(txId, how) { pendingLink.current = txId; if (how === "scan") setScanOpen(true); else fileInput.current.click(); }
   // Kategorie umbenennen/löschen: Dokumente, Umsätze, Budgets, Regeln mitziehen
   async function renameCategory(from, to) {
     const m = catMeta(from);
-    setNav((n) => ({ ...n, catStyle: { ...(n.catStyle || {}), [to]: [m.icon, m.color] }, docGroups: n.docGroups.map((g) => ({ ...g, cats: g.cats.map((c) => (c === from ? to : c)) })) }));
+    setNav((n) => ({ ...n, catStyle: { ...(n.catStyle || {}), [to]: [m.icon, m.color, m.img] }, docGroups: n.docGroups.map((g) => ({ ...g, cats: g.cats.map((c) => (c === from ? to : c)) })) }));
     const changed = docs.filter((d) => d.category === from).map((d) => ({ ...d, category: to }));
     for (const d of changed) await saveDoc(d);
     const tx = txsRef.current.filter((t) => t.category === from).map((t) => ({ ...t, category: to }));
@@ -1474,6 +1509,7 @@ export default function App() {
   const areaCounts = Object.fromEntries(Object.keys(AREAS).map((k) => [k, active.filter((d) => docArea(d) === k).length]));
 
   return (
+    <IconLibCtx.Provider value={{ lib: nav.accIcons || [], setLib: (l) => setNav((n) => ({ ...n, accIcons: l })) }}>
     <div className={"app tab-" + tab}>
       <style>{CSS}</style>
       <header className="top">
@@ -1493,6 +1529,7 @@ export default function App() {
       <main>
         {tab === "home" && <Home docs={active} txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={visAccounts.some((a) => a.kind === "cash")}
           accounts={visAccounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
+          cashForm={<CashForm compact accounts={accounts} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory} />}
           editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => setScanOpen(true), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
         {tab === "accounts" && <Accounts addCategory={addCategory} linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
@@ -1501,6 +1538,8 @@ export default function App() {
         {tab === "docs" && <DocList trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
+        {tab === "cash" && <CashPage accounts={accounts} txs={txs} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory}
+          docs={active} onOpen={setOpenId} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
         {tab === "settings" && (
           <Settings theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
@@ -1521,9 +1560,11 @@ export default function App() {
         </div>
       )}
       <button className={"fab" + (fabOpen ? " open" : "")} onClick={() => setFabOpen(!fabOpen)} aria-label="Hinzufügen">＋</button>
-      {scanOpen && <Scanner onClose={() => { setScanOpen(false); pendingLink.current = null; }} onDone={(file, o) => { setScanOpen(false); const l = pendingLink.current; pendingLink.current = null; onFiles([file], { ...o, scanned: true, ...(l ? { linkTx: l } : {}) }); }} />}
+      {scanOpen && <Scanner onClose={() => { setScanOpen(false); pendingLink.current = null; scanCb.current = null; }} onDone={(file, o) => { setScanOpen(false);
+        if (scanCb.current) { const cb = scanCb.current; scanCb.current = null; cb(file, o); return; }
+        const l = pendingLink.current; pendingLink.current = null; onFiles([file], { ...o, scanned: true, ...(l ? { linkTx: l } : {}) }); }} />}
       {manualTx && <ManualTxSheet init={manualTx} accounts={accounts} categories={TX_CATS(categories)} onClose={() => setManualTx(null)}
-        onSave={async (t) => { await addManualTx(t); setManualTx(null); notify("Buchung gespeichert"); }} />}
+        onSave={saveCash} onScan={scanFor} addCategory={addCategory} />}
 
       <nav className="bottom">
         <div className="brand"><img src="/icon.svg" alt="" /><div><b>Fidocu</b><small>Finanzen & Dokumente</small></div></div>
@@ -1574,6 +1615,7 @@ export default function App() {
       )}
       {toast && <div className="toast">{toast}</div>}
     </div>
+    </IconLibCtx.Provider>
   );
 }
 
@@ -1609,6 +1651,7 @@ const HOME_WIDGETS = {
   alerts: ["Offene Rechnungen", 12, "🧾", "Hinweis auf unbezahlte Rechnungen"],
   konten: ["Konten", 4, "🏦", "Kontostände aller Konten"],
   bargeld: ["Bargeld", 4, "💶", "Bestand der Geldbörse"],
+  barerfassung: ["Barausgabe erfassen", 4, "✍️", "Sofort-Eingabe fürs Bargeld, mit Beleg-Scan"],
   kategorien: ["Ausgaben nach Kategorie", 4, "🍩", "Donut-Diagramm des Monats"],
   verlauf: ["Verlauf", 4, "📊", "6 Monate Einnahmen/Ausgaben"],
   budgets: ["Budgets", 4, "🎯", "Budget pro Kategorie"],
@@ -1626,7 +1669,39 @@ function migrateLayout(l) {
   return { gap: 16, h: {}, w: {}, ...l };
 }
 
-function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount, editing = false, setEditing = () => {}, actions }) {
+function CashPage({ accounts, txs, categories, onSave, onScan, addCategory, docs, onOpen, openAccount }) {
+  const cash = accounts.filter((a) => a.kind === "cash");
+  const ids = new Set(cash.map((a) => a.id));
+  const list = txs.filter((t) => ids.has(t.accountId)).sort((a, b) => (b.date + (b.createdAt || "")).localeCompare(a.date + (a.createdAt || ""))).slice(0, 30);
+  const docOf = (t) => t.docId && docs.find((d) => d.id === t.docId);
+  return (
+    <div className="cashpage">
+      <section className="tile">
+        <div className="tilehead"><b>Barausgabe erfassen</b></div>
+        <CashForm accounts={accounts} categories={categories} onSave={onSave} onScan={onScan} addCategory={addCategory} autoFocus />
+      </section>
+      <section className="tile">
+        <div className="tilehead"><b>Bargeld</b>{cash[0] && <small>{fmtMoney(cash.reduce((s, a) => s + cashBalance(a, txs), 0))}</small>}</div>
+        {!cash.length && <p className="muted small">Noch kein Bargeld-Konto – wird bei der ersten Barausgabe automatisch als „Geldbörse“ angelegt.</p>}
+        {cash.map((a) => (
+          <div key={a.id} className="frow click" onClick={() => openAccount(a.id)}>
+            <span className="caticon" style={{ width: 40, height: 40, background: "#16a34a22", fontSize: 20 }}><AccIcon a={a} className="acci" force /></span>
+            <div className="grow"><b style={accStyle(a)}>{a.name}</b><small className="muted block">Bestand · alle Buchungen ansehen</small></div>
+            <div className="right"><b className={cashBalance(a, txs) < 0 ? "neg" : "pos"}>{fmtMoney(cashBalance(a, txs))}</b></div>
+          </div>
+        ))}
+        {list.length > 0 && <div className="tilehead" style={{ marginTop: 10 }}><b>Letzte Barbuchungen</b></div>}
+        {list.map((t) => { const d = docOf(t); return (
+          <div key={t.id} className={"frow" + (d ? " click" : "")} onClick={() => d && onOpen(d.id)}>
+            <CatIcon c={t.category} size={36} />
+            <div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b><small className="muted block">{fmtDate(t.date)} · {t.category}{d ? " · 📎 Beleg" : ""}</small></div>
+            <div className="right"><b className={t.amount < 0 ? "neg" : "pos"}>{fmtMoney(t.amount)}</b></div>
+          </div>); })}
+      </section>
+    </div>
+  );
+}
+function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount, cashForm, editing = false, setEditing = () => {}, actions }) {
   const bankAccs = accounts.filter((a) => a.kind !== "cash");
   const bankBals = bankAccs.map((a) => accountBalance(a, txs)).filter((x) => x != null);
   const bankTotal = bankBals.length ? bankBals.reduce((x, y) => x + y, 0) : null;
@@ -1838,7 +1913,12 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
       </div>
     </section>) : null;
 
-  const els = { hero: w_hero, alerts: w_alerts, konten: w_konten, bargeld: w_bargeld, kategorien: w_kategorien, verlauf: w_verlauf,
+  const w_barerfassung = cashForm ? (
+    <section className="tile">
+      <div className="tilehead"><b>Barausgabe erfassen</b></div>
+      {cashForm}
+    </section>) : null;
+  const els = { barerfassung: w_barerfassung, hero: w_hero, alerts: w_alerts, konten: w_konten, bargeld: w_bargeld, kategorien: w_kategorien, verlauf: w_verlauf,
     budgets: w_budgets, fristen: w_fristen, docs: w_docs, contracts: w_contracts, tx: w_tx, tax: w_tax, quick: w_quick };
   const [layout, setLayoutRaw] = useState(() => migrateLayout(ls.get("homeLayout", null)));
   const setLayout = (f) => setLayoutRaw((l) => { const n = typeof f === "function" ? f(l) : f; ls.set("homeLayout", n); return n; });
@@ -2015,7 +2095,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         </div>
       )}
       <div className="chips">
-        {cat && <button className="chip on" onClick={() => setCat("")}>✕ {catMeta(cat).icon} {cat}</button>}
+        {cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>}
         <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button>
         <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button>
         <select className="chip" value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</select>
@@ -3173,7 +3253,8 @@ function AccountSheet({ init, onSave, onClose, onDelete, hasAtmAccount, txs = []
   );
 }
 
-function ManualTxSheet({ init, accounts, categories, onSave, onClose }) {
+/* Bargeld / Buchung schnell erfassen – im Fenster, als Übersichts-Widget und im Reiter „Barausgabe“ */
+function CashForm({ init, accounts, categories, onSave, onScan, addCategory, compact = false, autoFocus = false }) {
   const cashAcc = accounts.find((a) => a.kind === "cash");
   const [accountId, setAccountId] = useState(init?.accountId || cashAcc?.id || accounts[0]?.id || "new-cash");
   const [dir, setDir] = useState("out");
@@ -3181,32 +3262,75 @@ function ManualTxSheet({ init, accounts, categories, onSave, onClose }) {
   const [date, setDate] = useState(todayISO());
   const [text, setText] = useState("");
   const [category, setCategory] = useState("Lebensmittel & Haushalt");
-  const val = Number(String(amount).replace(",", "."));
-  const ok = val > 0 && date && text.trim();
+  const [extra, setExtra] = useState([]);
+  const [att, setAtt] = useState(null); // { file, opts, url }
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef();
+  const val = Number(String(amount).replace(/\s/g, "").replace(",", "."));
+  const ok = val > 0 && date && text.trim() && !busy;
+  const setFile = (file, opts = {}) => setAtt((old) => { if (old?.url) URL.revokeObjectURL(old.url); return file ? { file, opts, url: file.type.startsWith("image/") ? URL.createObjectURL(file) : null } : null; });
+  useEffect(() => () => att?.url && URL.revokeObjectURL(att.url), []);
+  const save = async () => {
+    if (!ok) return; setBusy(true);
+    try {
+      await onSave({ accountId, date, amount: dir === "out" ? -val : val, counterparty: text.trim(), purpose: "", category: dir === "in" && category === "Lebensmittel & Haushalt" ? "Einnahmen" : category }, att);
+      setAmount(""); setText(""); setFile(null);
+    } finally { setBusy(false); }
+  };
+  const cats = [...new Set([...categories, ...extra, category])];
+  return (
+    <div className={"cashform" + (compact ? " compact" : "")}>
+      <div className="seg">
+        <button className={dir === "out" ? "on" : ""} onClick={() => setDir("out")}>Ausgabe</button>
+        <button className={dir === "in" ? "on" : ""} onClick={() => setDir("in")}>Einnahme</button>
+      </div>
+      <input className="bigamount" inputMode="decimal" placeholder="0,00 €" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus={autoFocus}
+        onKeyDown={(e) => e.key === "Enter" && save()} />
+      <label>Wofür / bei wem<input value={text} onChange={(e) => setText(e.target.value)} placeholder="z. B. Bäckerei, Trinkgeld, Flohmarkt" onKeyDown={(e) => e.key === "Enter" && save()} /></label>
+      <div className="grid2">
+        <label>Datum<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+        <label>Konto
+          <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}
+            {!cashAcc && <option value="new-cash">💶 Geldbörse (neu)</option>}
+          </select>
+        </label>
+      </div>
+      <label>Kategorie
+        <select value={category} onChange={(e) => {
+          if (e.target.value !== "__new") return setCategory(e.target.value);
+          const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return;
+          addCategory?.(n); setExtra((x) => [...x, n]); setCategory(n);
+        }}>
+          {cats.map((c) => <option key={c}>{c}</option>)}
+          {addCategory && <option value="__new">＋ Neue Kategorie …</option>}
+        </select>
+      </label>
+      <div className="cashatt">
+        <small className="muted">Beleg (optional)</small>
+        {att ? (
+          <div className="attchip">
+            {att.url ? <img src={att.url} alt="" /> : <span className="attpdf">PDF</span>}
+            <span className="grow">{att.opts?.scanned ? "Gescannter Beleg" : att.file.name}</span>
+            <button className="iconbtn" title="Entfernen" aria-label="Beleg entfernen" onClick={() => setFile(null)}>✕</button>
+          </div>
+        ) : (
+          <div className="attbtns">
+            {onScan && <button className="btn" onClick={() => onScan((f, o) => setFile(f, { ...o, scanned: true }))}>📷 Scannen</button>}
+            <button className="btn" onClick={() => fileRef.current.click()}>🖼 Foto / Datei</button>
+            <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) setFile(f); }} />
+          </div>
+        )}
+      </div>
+      <button className="btn primary cashsave" disabled={!ok} onClick={save}>{busy ? "Speichert …" : "Speichern"}</button>
+    </div>
+  );
+}
+function ManualTxSheet({ init, onClose, ...rest }) {
   return (
     <Win id="manual" onClose={onClose} small>
-        <div className="panelhead"><b>Buchung erfassen</b>
-          <button className="btn primary" disabled={!ok} onClick={() => onSave({ accountId, date, amount: dir === "out" ? -val : val, counterparty: text.trim(), purpose: "", category: dir === "in" && category === "Lebensmittel & Haushalt" ? "Einnahmen" : category })}>Speichern</button>
-          <XBtn />
-        </div>
-        <div className="seg">
-          <button className={dir === "out" ? "on" : ""} onClick={() => setDir("out")}>Ausgabe</button>
-          <button className={dir === "in" ? "on" : ""} onClick={() => setDir("in")}>Einnahme</button>
-        </div>
-        <input className="bigamount" inputMode="decimal" placeholder="0,00 €" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
-        <fieldset>
-          <label>Wofür / bei wem<input value={text} onChange={(e) => setText(e.target.value)} placeholder="z. B. Bäckerei, Trinkgeld, Flohmarkt" /></label>
-          <div className="grid2">
-            <label>Datum<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
-            <label>Konto
-              <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-                {accounts.map((a) => <option key={a.id} value={a.id}>{a.kind === "cash" ? "💶" : a.kind === "broker" ? "📈" : "🏦"} {a.name}</option>)}
-                {!cashAcc && <option value="new-cash">💶 Geldbörse (neu)</option>}
-              </select>
-            </label>
-          </div>
-          <label>Kategorie<select value={category} onChange={(e) => setCategory(e.target.value)}>{categories.map((c) => <option key={c}>{c}</option>)}</select></label>
-        </fieldset>
+      <div className="panelhead"><b>Buchung erfassen</b><XBtn /></div>
+      <CashForm init={init} {...rest} autoFocus onSave={async (t, att) => { await rest.onSave(t, att); onClose(); }} />
     </Win>
   );
 }
@@ -4555,4 +4679,28 @@ nav .acctree .accitem .ki.custom{display:inline-flex;width:18px;justify-content:
 .catstylebox{margin:4px 0 10px 34px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--card2)}
 .catstylebox .accstyle,.catstyle{padding:0;border:0;background:none;margin:0}
 .catstylebox .asfoot{display:flex;align-items:center;gap:10px;margin-top:8px}.catstylebox .asfoot .aspreview{flex:1}
+
+/* v0.17.0: einheitliche Eingabefelder (Auswahlfelder wie Textfelder) */
+select:not(.chip){-webkit-appearance:none;appearance:none;padding-right:38px;line-height:1.3;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%238b93a7' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 14px center;background-size:12px 8px;text-overflow:ellipsis}
+label>input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),label>select:not(.chip),fieldset>select:not(.chip){height:46px;min-height:46px}
+input[type=date]{-webkit-appearance:none;appearance:none;display:block;line-height:1.3;text-align:left;min-width:0}
+input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
+.grid2>label{min-width:0}
+/* Kategorie-Bildsymbole */
+.catimg{width:1.15em;height:1.15em;object-fit:contain;vertical-align:-.2em;border-radius:3px}
+.caticon .catimg{width:62%;height:62%}
+/* Bargeld-Formular */
+.cashform .seg{margin-bottom:8px}.cashform .bigamount{margin:0 0 2px}
+.cashform.compact .bigamount{font-size:26px;padding:8px 12px}
+.cashatt{margin-top:12px}.cashatt>small{display:block;margin-bottom:6px}
+.attbtns{display:flex;gap:8px;flex-wrap:wrap}.attbtns .btn{margin:0;flex:1 1 auto}
+.attchip{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 8px;border:1px solid var(--line);border-radius:12px;background:var(--card2)}
+.attchip img,.attchip .attpdf{width:42px;height:42px;object-fit:cover;border-radius:8px;flex:none;background:#fff}
+.attchip .attpdf{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#e8384f}
+.attchip .grow{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.cashsave{width:100%;margin:14px 0 0}
+.cashpage{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:1024px){.cashpage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}}
 `;
