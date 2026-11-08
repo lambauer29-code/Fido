@@ -200,6 +200,7 @@ const IcoLayout = () => <Ico d={<><rect x="3" y="3" width="7" height="9" rx="1.5
 const IcoEdit = () => <Ico d={<><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></>} />;
 const IcoOpen = () => <Ico d={<><path d="M14 4h6v6" /><path d="M10 14L20 4" /><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></>} />;
 const IcoTrash = () => <Ico d={<><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V4h6v3" /></>} />;
+const IcoCalSync = () => <Ico size={17} d={<><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /><path d="M9.5 15.5l2 2 3.5-4" /></>} />;
 const IcoSun = () => <Ico d={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} />;
 const IcoMoon = () => <Ico d={<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z" />} />;
 const IcoChev = ({ open }) => <span className={"pchev" + (open ? " open" : "")}><Ico size={16} d={<path d="M6 9l6 6 6-6" />} /></span>;
@@ -1846,7 +1847,7 @@ function Deadlines({ docs, onOpen, saveDoc, calSync, setCalSync, token, notify }
           <button className={mode === "list" ? "on" : ""} onClick={() => setMode("list")}>☰ Liste</button>
         </div>
         <span className="grow" />
-        <button className={"btn" + (calSync.on ? " synced" : "")} onClick={() => setSyncOpen(true)}>🍎 {calSync.on ? "Apple Kalender verbunden" : "Mit Apple Kalender verbinden"}</button>
+        <button className={"btn" + (calSync.on ? " synced" : "")} onClick={() => setSyncOpen(true)}><IcoCalSync /> {calSync.on ? "Apple Kalender verbunden" : "Mit Apple Kalender verbinden"}</button>
         <button className="btn" onClick={() => downloadIcs(allItems.filter(([dl]) => !dl.done), "fristen.ics")} disabled={!allItems.length} title="Einmalig als .ics herunterladen">⬇︎ .ics</button>
         {mode === "list" && <label className="check"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Erledigte zeigen</label>}
       </div>
@@ -1926,10 +1927,10 @@ function CalSyncSheet({ sync, setSync, items, token, onClose, notify }) {
             <li>Speicher mit dem Projekt verbinden („Connect Project“) – die Variable <code>BLOB_READ_WRITE_TOKEN</code> wird automatisch gesetzt</li>
             <li>Unter <b>Deployments</b> → ⋯ → <b>Redeploy</b>, dann hier nochmal „Einrichten“</li>
           </ol>}</div>}
-        <button className="btn primary" disabled={busy} onClick={enable}>{busy ? "Richte ein …" : "🍎 Kalender-Abo einrichten"}</button>
+        <button className="btn primary" disabled={busy} onClick={enable}>{busy ? "Richte ein …" : "Kalender-Abo einrichten"}</button>
       </> : <>
         <p className="ok">✓ Abo aktiv · zuletzt aktualisiert {sync.at ? new Date(sync.at).toLocaleString("de-AT") : "–"}</p>
-        <a className="btn primary" href={url}>🍎 In Apple Kalender abonnieren</a>
+        <a className="btn primary" href={url}><IcoCalSync /> In Apple Kalender abonnieren</a>
         <p className="muted small">Am iPhone/iPad/Mac antippen → „Abonnieren“. Tipp: in den Kalender-Einstellungen „Aktualisieren: Alle 15 Minuten“ bzw. „Stündlich“ wählen.</p>
         <label>Link (auch für Google Kalender / Outlook)
           <div className="row1" style={{ gap: 6 }}><input readOnly value={url.replace("webcal://", "https://")} onFocus={(e) => e.target.select()} />
@@ -3982,4 +3983,5 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .hero-stable .hsub>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hero-stable .hsub .herolink{margin:0;padding:2px 10px;font-size:12.5px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .hero-stable .hero-row{margin:0!important}
+.dlbar .btn,.win a.btn.primary{display:inline-flex;align-items:center;gap:7px}
 `;

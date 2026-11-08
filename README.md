@@ -14,7 +14,7 @@ Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags,
 
 ## v0.14.0 – Kalender & Apple-Kalender-Abo
 - Fristen: interaktiver Monatskalender (Standard) oder Liste. Fristen aus Bons/Rechnungen erscheinen automatisch; per Ziehen auf einen anderen Tag verschieben, Tag antippen = Details, abhaken, Datum ändern.
-- „🍎 Mit Apple Kalender verbinden“: Kalender-Abo (webcal) – Fido lädt Änderungen automatisch hoch, Apple Kalender holt sie selbst ab. Benötigt einen kostenlosen Vercel-Blob-Speicher (Storage › Blob › mit Projekt verbinden, dann Redeploy). Funktioniert auch mit Google Kalender/Outlook.
+- „Mit Apple Kalender verbinden“: Kalender-Abo (webcal) – Fido lädt Änderungen automatisch hoch, Apple Kalender holt sie selbst ab. Benötigt einen kostenlosen Vercel-Blob-Speicher (Storage › Blob › mit Projekt verbinden, dann Redeploy). Funktioniert auch mit Google Kalender/Outlook.
 - „⬇︎ .ics“ für den einmaligen Export bleibt.
 
 ## v0.13.0
