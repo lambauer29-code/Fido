@@ -1530,10 +1530,6 @@ export default function App() {
   const [sideTip, setSideTip] = useState(null);
   const setSideMini = (v) => { setSideMiniRaw(v); ls.set("sideMini", v); };
   useEffect(() => { document.documentElement.classList.toggle("side-mini", !!sideMini); }, [sideMini]);
-  const [barHidden, setBarHiddenRaw] = useState(() => ls.get("barHidden", false));
-  const setBarHidden = (v) => { setBarHiddenRaw(v); ls.set("barHidden", v); };
-  useEffect(() => { document.documentElement.classList.toggle("bar-hidden", !!barHidden); }, [barHidden]);
-  const barSwipe = useRef(null);
   useEffect(() => {
     const k = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); setSideMiniRaw((v) => { ls.set("sideMini", !v); return !v; }); } };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
@@ -1918,12 +1914,7 @@ export default function App() {
       {manualTx && <ManualTxSheet init={manualTx} accounts={accounts} categories={TX_CATS(categories)} onClose={() => setManualTx(null)}
         onSave={saveCash} onScan={scanFor} addCategory={addCategory} />}
 
-      <button className="barhandle" aria-label={barHidden ? "Leiste einblenden" : "Leiste ausblenden"} title={barHidden ? "Leiste einblenden" : "Leiste ausblenden"} onClick={() => setBarHidden(!barHidden)}
-        onTouchStart={(e) => { barSwipe.current = e.touches[0].clientY; }} onTouchEnd={(e) => { const dy = e.changedTouches[0].clientY - (barSwipe.current ?? 0); if (Math.abs(dy) > 25) { e.preventDefault(); setBarHidden(dy > 0); } }}>
-        <span className={"chev" + (barHidden ? " up" : "")}>›</span></button>
-      <nav className="bottom" onTouchStart={(e) => { barSwipe.current = [e.touches[0].clientX, e.touches[0].clientY]; }}
-        onTouchEnd={(e) => { const s0 = barSwipe.current; if (!Array.isArray(s0)) return; const dx = e.changedTouches[0].clientX - s0[0], dy = e.changedTouches[0].clientY - s0[1]; if (dy > 40 && Math.abs(dy) > Math.abs(dx) * 1.5 && window.innerWidth < 768) setBarHidden(true); }}
-        onPointerOver={(e) => {
+      <nav className="bottom" onPointerOver={(e) => {
         if (!sideMini || e.pointerType === "touch") return;
         const b = e.target.closest?.("button,.brand"); if (!b) return setSideTip(null);
         const r = b.getBoundingClientRect();
@@ -7294,19 +7285,10 @@ html.side-mini .sidebusy,html.side-mini .busytab small{display:none}
 .ctwrap .dprev{margin:0 0 10px}
 @media (max-width:700px){.ctrow{flex-wrap:wrap}.ctrow .ctacts{width:100%;justify-content:flex-end}}
 
-.barhandle{display:none}
 @media (max-width:767px){
-  nav.bottom{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;transition:transform .25s ease}
+  nav.bottom{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
   nav.bottom::-webkit-scrollbar{display:none}
   nav.bottom>button{flex:0 0 auto;min-width:72px;padding:8px 6px;scroll-snap-align:start}
   nav.bottom>button span.tl{font-size:10.5px;white-space:nowrap}
-  html.bar-hidden nav.bottom{transform:translateY(110%)}
-  .barhandle{display:flex;align-items:center;justify-content:center;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 58px);z-index:5;width:56px;height:20px;border:1px solid var(--line);border-bottom:0;border-radius:12px 12px 0 0;background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);color:var(--mut);padding:0;transition:bottom .25s ease;touch-action:none}
-  .barhandle .chev{display:inline-block;transform:rotate(90deg);font-size:18px;line-height:1}
-  .barhandle .chev.up{transform:rotate(-90deg)}
-  html.bar-hidden .barhandle{bottom:env(safe-area-inset-bottom)}
-  html.bar-hidden .fab{bottom:calc(env(safe-area-inset-bottom) + 28px)}
-  .fab{transition:bottom .25s ease}
-  html.bar-hidden main{padding-bottom:calc(env(safe-area-inset-bottom) + 40px)}
 }
 `;
