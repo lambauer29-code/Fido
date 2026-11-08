@@ -2,6 +2,16 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.11.0 – Konten auswählen & ausblenden
+- Seitenleiste: Kästchen pro Konto und pro Gruppe (Mehrfachauswahl), Name antippen = nur dieses Konto, Auge = Konto ausblenden; „Ausgeblendet“-Bereich mit „Einblenden“.
+- Konten-Tab zeigt die Zusammenfassung der Auswahl: Gesamtstand, Guthaben, Schulden, Eingänge/Ausgänge, Karte je Konto, Buchungen nur der gewählten Konten.
+- Chip „Alle Konten ▾“ öffnet die Kontenauswahl mit Schnellwahl (Alle, Keine, Nur Guthaben, Nur Schulden) und Summe. Auswahl wird gemerkt.
+- Ausgeblendete Konten zählen auch in der Übersicht nicht mit.
+- Buchungstabelle am Desktop mit flexiblen Spalten; Seitenleiste etwas breiter.
+
+## v0.10.6
+- Papierkorb: „🗑 Leeren“ (alles endgültig löschen, mit Rückfrage) und „↺ Alle“ wiederherstellen.
+
 ## v0.10.5
 - Übersicht anpassen: statt Titelleiste eine kompakte Bedien-Pille auf der Oberkante jedes Widgets – Inhalt bleibt sichtbar, Größe und Position identisch mit der fertigen Ansicht.
 

@@ -791,33 +791,105 @@ function SideResizer() {
   return <div className="sideresize" onPointerDown={down} onDoubleClick={reset} title="Ziehen = Breite ändern · Doppelklick = Standard" />;
 }
 
-function AccountTree({ groups, txs, selected, onSelect, onToggleGroup, variant = "" }) {
+function AccountTree({ groups, txs, sel = [], onToggle, onOnly, onGroupSel, onHide, onToggleGroup, hidden = [], onUnhide, variant = "" }) {
   const shown = groups.filter((g) => g.accounts.length);
-  if (!shown.length) return null;
+  if (!shown.length && !hidden.length) return null;
+  const Box = ({ state, onClick, label }) => (
+    <button className={"cbox" + (state ? " on" : "")} onClick={(e) => { e.stopPropagation(); onClick(); }} aria-label={label} aria-pressed={state === "all"}>
+      {state === "all" ? "✓" : state === "some" ? "–" : ""}
+    </button>
+  );
   return (
     <div className={"acctree " + variant}>
-      {shown.map((g, gi) => (
-        <div key={g.id} className="accgroup">
-          {gi > 0 && <div className="accdiv" />}
-          {g.title?.trim() && (
-            <button className="acctitle" onClick={() => onToggleGroup(g.id)} aria-expanded={!g.collapsed}>
-              <span className={"chev" + (g.collapsed ? "" : " open")}>›</span><span className="grow">{g.title}</span>
-              {g.collapsed && <small>{g.accounts.length}</small>}
-            </button>
-          )}
-          {!g.collapsed && g.accounts.map((a) => {
-            const bal = accountBalance(a, txs);
-            return (
-              <button key={a.id} className={"accitem" + (selected === a.id ? " on" : "")} onClick={() => onSelect(selected === a.id ? "" : a.id)}>
-                <span className="ki">{kindIcon(a.kind)}</span><span className="an">{a.name}</span>
-                {bal != null ? <span className={"ab " + (bal < 0 ? "neg" : "pos")} title={balEstimated(a) ? "Aus Umsätzen berechnet – für den genauen Stand Kontostand eintragen oder Import mit Saldo-Spalte" : undefined}>{fmtMoney(bal)}</span>
-                  : <span className="ab muted" title="Kontostand unbekannt – im Konto eintragen oder per Import mit Saldo übernehmen">—</span>}
-              </button>
-            );
-          })}
+      {shown.map((g, gi) => {
+        const ids = g.accounts.map((a) => a.id), n = ids.filter((id) => sel.includes(id)).length;
+        return (
+          <div key={g.id} className="accgroup">
+            {gi > 0 && <div className="accdiv" />}
+            {g.title?.trim() && (
+              <div className="acctitle">
+                <Box state={n === ids.length ? "all" : n ? "some" : ""} onClick={() => onGroupSel(ids, n !== ids.length)} label={`Gruppe „${g.title}“ auswählen`} />
+                <button className="acctoggle" onClick={() => onToggleGroup(g.id)} aria-expanded={!g.collapsed}>
+                  <span className="grow">{g.title}</span>{g.collapsed && <small>{g.accounts.length}</small>}<span className={"chev" + (g.collapsed ? "" : " open")}>›</span>
+                </button>
+              </div>
+            )}
+            {!g.collapsed && g.accounts.map((a) => {
+              const bal = accountBalance(a, txs), on = sel.includes(a.id);
+              return (
+                <div key={a.id} className={"accitem" + (on ? " on" : "")}>
+                  <Box state={on ? "all" : ""} onClick={() => onToggle(a.id)} label={`${a.name} auswählen`} />
+                  <button className="aname" onClick={() => onOnly(a.id)} title={`Nur ${a.name} anzeigen`}>
+                    <span className="ki">{kindIcon(a.kind)}</span><span className="an">{a.name}</span>
+                  </button>
+                  {bal != null ? <span className={"ab " + (bal < 0 ? "neg" : "pos")} title={balEstimated(a) ? "Aus Umsätzen berechnet – für den genauen Stand Kontostand eintragen oder Import mit Saldo-Spalte" : undefined}>{fmtMoney(bal)}</span>
+                    : <span className="ab muted" title="Kontostand unbekannt">—</span>}
+                  <button className="aeye" onClick={() => onHide(a.id)} title={`${a.name} ausblenden`} aria-label={`${a.name} ausblenden`}><IcoEye /></button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+      {!!hidden.length && (
+        <div className="acchidden">
+          <div className="acctitle muted"><span className="grow">Ausgeblendet ({hidden.length})</span></div>
+          {hidden.map((a) => (
+            <div key={a.id} className="accitem hid">
+              <span className="ki">{kindIcon(a.kind)}</span><span className="an">{a.name}</span>
+              <button className="unhide" onClick={() => onUnhide(a.id)}>Einblenden</button>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
+  );
+}
+
+/* Konten-Auswahl (Chip „Alle Konten“): Mehrfachauswahl mit Schnellwahl */
+function AccountPicker({ groups, txs, sel, onApply, onClose }) {
+  const all = groups.flatMap((g) => g.accounts);
+  const [s, setS] = useState(sel.length ? sel : all.map((a) => a.id));
+  const bal = (a) => accountBalance(a, txs);
+  const total = all.filter((a) => s.includes(a.id)).reduce((t, a) => t + (bal(a) || 0), 0);
+  const tog = (id) => setS((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
+  return (
+    <Win id="accpick" onClose={onClose} small>
+      <div className="panelhead"><b>Konten auswählen</b><small className="muted">{s.length} von {all.length}</small>
+        <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button></div>
+      <div className="quickpick">
+        <button onClick={() => setS(all.map((a) => a.id))}>Alle</button>
+        <button onClick={() => setS([])}>Keine</button>
+        <button onClick={() => setS(all.filter((a) => (bal(a) || 0) > 0).map((a) => a.id))}>Nur Guthaben</button>
+        <button onClick={() => setS(all.filter((a) => (bal(a) || 0) < 0).map((a) => a.id))}>Nur Schulden</button>
+      </div>
+      <div className="picklist">
+        {groups.filter((g) => g.accounts.length).map((g) => {
+          const ids = g.accounts.map((a) => a.id), n = ids.filter((id) => s.includes(id)).length;
+          return (
+            <div key={g.id}>
+              <button className="pickgroup" onClick={() => setS((x) => (n === ids.length ? x.filter((y) => !ids.includes(y)) : [...new Set([...x, ...ids])]))}>
+                <span className={"cbox" + (n ? " on" : "")}>{n === ids.length ? "✓" : n ? "–" : ""}</span>
+                <span className="grow">{g.title?.trim() || "Konten"}</span>
+                <small>{fmtMoney(g.accounts.reduce((t, a) => t + (bal(a) || 0), 0))}</small>
+              </button>
+              {g.accounts.map((a) => (
+                <button key={a.id} className="pickitem" onClick={() => tog(a.id)}>
+                  <span className={"cbox" + (s.includes(a.id) ? " on" : "")}>{s.includes(a.id) ? "✓" : ""}</span>
+                  <span className="grow">{a.name}</span>
+                  <b className={(bal(a) || 0) < 0 ? "neg" : "pos"}>{bal(a) != null ? fmtMoney(bal(a)) : "—"}</b>
+                </button>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+      <div className="pickfoot">
+        <span className="grow muted small">Summe Auswahl</span>
+        <b className={total < 0 ? "neg" : "pos"}>{fmtMoney(total)}</b>
+        <button className="btn primary" disabled={!s.length} onClick={() => onApply(s.length === all.length ? [] : s)}>Übernehmen</button>
+      </div>
+    </Win>
   );
 }
 
@@ -847,7 +919,8 @@ export default function App() {
   useEffect(() => ls.set("categories", categories), [categories]);
   const setCategories = (list) => setNav((n) => ({ ...n, docGroups: buildDocGroups(list) }));
   const toggleDocGroup = (id) => setNav((n) => ({ ...n, docGroups: n.docGroups.map((g) => (g.id === id ? { ...g, collapsed: !g.collapsed } : g)) }));
-  const [selAcc, setSelAcc] = useState("");
+  const [selAccs, setSelAccsRaw] = useState(() => ls.get("selAccs", []));
+  const setSelAccs = (v) => setSelAccsRaw((cur) => { const n = typeof v === "function" ? v(cur) : v; ls.set("selAccs", n); return n; });
   const [docAreaSel, setDocAreaSel] = useState(() => ls.get("docArea", "alle"));
   const [manualTx, setManualTx] = useState(null);
   const [fabOpen, setFabOpen] = useState(false);
@@ -1082,7 +1155,22 @@ export default function App() {
   }
 
   const openDoc = docs.find((d) => d.id === openId);
-  const groups = resolveGroups(nav, accounts);
+  const visAccounts = accounts.filter((a) => !a.hidden), hiddenAccs = accounts.filter((a) => a.hidden);
+  const groups = resolveGroups(nav, visAccounts);
+  // Auswahl: leere Liste = alle sichtbaren Konten
+  const visIds = visAccounts.map((a) => a.id);
+  const pickedVis = selAccs.filter((id) => visIds.includes(id));
+  const allSel = !pickedVis.length || pickedVis.length === visIds.length;
+  const effSel = allSel ? visIds : pickedVis;
+  const selAcc = !allSel && effSel.length === 1 ? effSel[0] : "";
+  const setSelAcc = (id) => setSelAccs(id ? [id] : []);
+  const accActions = {
+    onToggle: (id) => setSelAccs(() => { const n = effSel.includes(id) ? effSel.filter((x) => x !== id) : [...effSel, id]; return n.length === visIds.length ? [] : n; }),
+    onOnly: (id) => { setSelAccs([id]); setTab("accounts"); },
+    onGroupSel: (ids, add) => setSelAccs(() => { const n = add ? [...new Set([...effSel, ...ids])] : effSel.filter((x) => !ids.includes(x)); return n.length === visIds.length ? [] : n; }),
+    onHide: (id) => { setAccounts((l) => l.map((a) => (a.id === id ? { ...a, hidden: true } : a))); setSelAccs((c) => c.filter((x) => x !== id)); notify("Konto ausgeblendet – unten unter „Ausgeblendet“ wieder einblendbar"); },
+    onUnhide: (id) => setAccounts((l) => l.map((a) => (a.id === id ? { ...a, hidden: false } : a))),
+  };
   const toggleGroup = (id) => setNav((n) => ({ ...n, groups: n.groups.map((g) => (g.id === id ? { ...g, collapsed: !g.collapsed } : g)) }));
   const areaCounts = Object.fromEntries(Object.keys(AREAS).map((k) => [k, active.filter((d) => docArea(d) === k).length]));
 
@@ -1102,13 +1190,13 @@ export default function App() {
       </header>
 
       <main>
-        {tab === "home" && <Home docs={active} txs={txs} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={accounts.some((a) => a.kind === "cash")}
-          accounts={accounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
+        {tab === "home" && <Home docs={active} txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={visAccounts.some((a) => a.kind === "cash")}
+          accounts={visAccounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
           editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => setScanOpen(true), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
         {tab === "accounts" && <Accounts txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
-          acc={selAcc} setAcc={setSelAcc} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
+          acc={selAcc} setAcc={setSelAcc} sel={effSel} allSel={allSel} setSel={setSelAccs} accActions={accActions} hiddenAccs={hiddenAccs} visAccounts={visAccounts} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
         {tab === "docs" && <DocList trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} />}
@@ -1145,7 +1233,7 @@ export default function App() {
           return (
             <React.Fragment key={t.key}>
               <button className={(tab === t.key ? "on" : "") + (t.phone ? "" : " ph-hide") + (t.side ? "" : " side-hide")}
-                onClick={() => { setTab(t.key); if (t.key === "accounts") setSelAcc(""); if (t.key === "docs") { setDocAreaSel("alle"); setDocCat(""); } }} aria-label={tabLabel(nav, t.key)}>
+                onClick={() => { setTab(t.key); if (t.key === "docs") { setDocAreaSel("alle"); setDocCat(""); } }} aria-label={tabLabel(nav, t.key)}>
                 <span>{TAB_DEFS[t.key][0]}</span>{tabLabel(nav, t.key)}
                 {t.key === "home" && <Badge docs={active} />}
                 {sub && <i className={"subtog side-only" + (open ? " open" : "")} role="button" aria-label="ein-/ausklappen"
@@ -1153,8 +1241,7 @@ export default function App() {
               </button>
               {t.key === "accounts" && t.side && nav.accOpen && accounts.length > 0 && (
                 <div className="subnav side-only">
-                  <AccountTree groups={groups} txs={txs} selected={tab === "accounts" ? selAcc : ""} onToggleGroup={toggleGroup}
-                    onSelect={(id) => { setSelAcc(id); setTab("accounts"); }} />
+                  <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={hiddenAccs} {...accActions} />
                 </div>
               )}
               {t.key === "docs" && t.side && nav.docsOpen && active.length > 0 && (
@@ -1818,7 +1905,8 @@ const shortD = (iso) => (iso ? new Date(iso + "T12:00").toLocaleDateString("de-A
 const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json,.xlsx,.xlsm,.xls,.pdf,image/*";
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
-function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc, setAcc, groups, toggleGroup, newAccReq, clearNewAccReq }) {
+function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc, setAcc, sel = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
+  const [pick, setPick] = useState(false);
   const [newAcc, setNewAcc] = useState(false);
   useEffect(() => { if (newAccReq) { setNewAcc(true); clearNewAccReq(); } }, [newAccReq]);
   const cashAccs = accounts.filter((a) => a.kind === "cash");
@@ -1829,7 +1917,8 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
   const [limit, setLimit] = useState(150);
   const fileRef = useRef();
 
-  const scoped = useMemo(() => (acc ? txs.filter((t) => t.accountId === acc) : txs), [txs, acc]);
+  const selKey = sel.join(",");
+  const scoped = useMemo(() => { const set = new Set(sel); return txs.filter((t) => set.has(t.accountId) || (!t.accountId && allSel)); }, [txs, selKey, allSel]);
   const pf = useMemo(() => portfolio(scoped), [scoped]);
   const months = useMemo(() => [...new Set(scoped.map((t) => t.date.slice(0, 7)))].sort().reverse(), [scoped]);
   const list = useMemo(() => {
@@ -1847,7 +1936,10 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
   const wideTx = useMedia("(min-width:1024px)");
   const selA = accounts.find((a) => a.id === acc);
   const selBal = selA ? accountBalance(selA, txs) : null;
-  const knownBal = accounts.map((a) => accountBalance(a, txs)).filter((x) => x != null);
+  const selAccounts = visAccounts.filter((a) => sel.includes(a.id));
+  const knownBal = selAccounts.map((a) => accountBalance(a, txs)).filter((x) => x != null);
+  const plusBal = knownBal.filter((x) => x > 0).reduce((t, x) => t + x, 0), minusBal = knownBal.filter((x) => x < 0).reduce((t, x) => t + x, 0);
+  const multi = !acc;
 
   async function onPick(file) {
     if (!file) return;
@@ -1903,27 +1995,43 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
           <div className="hero-v">{selBal != null ? fmtMoney(selBal) : "—"}</div>
           {balEstimated(selA) && <button className="herolink" onClick={() => setEditAcc(selA)}>{selBal != null ? "aus Umsätzen berechnet · Kontostand eintragen ›" : "Kontostand eintragen ›"}</button>}
         </> : <>
-          <small>Gesamtstand · {knownBal.length} von {accounts.length} Konten</small>
+          <small>{allSel ? `Gesamtstand · alle ${visAccounts.length} Konten` : `Zusammenfassung · ${sel.length} von ${visAccounts.length} Konten`}</small>
           <div className="hero-v">{knownBal.length ? fmtMoney(knownBal.reduce((s, x) => s + x, 0)) : "—"}</div>
+          {!allSel && <small className="heronames">{selAccounts.map((a) => a.name).join(" · ")}</small>}
         </>}
-        <div className="hero-row">
+        <div className={"hero-row" + (multi ? " four" : "")}>
+          {multi && <div><small>Guthaben</small><b>{fmtMoney(plusBal)}</b></div>}
+          {multi && <div><small>Schulden</small><b>{fmtMoney(minusBal)}</b></div>}
           <div><small>Eingänge{month ? " " + monthLabel(month) : ""}</small><b>↑ {fmtMoney(inc)}</b></div>
           <div><small>Ausgänge{month ? " " + monthLabel(month) : ""}</small><b>↓ {fmtMoney(out)}</b></div>
-          <div><small>Buchungen</small><b>{list.length}</b></div>
+          {!multi && <div><small>Buchungen</small><b>{list.length}</b></div>}
         </div>
       </div>
       {!!accounts.length && (
         <div className="tile mobile-only accphone">
-          <AccountTree groups={groups} txs={txs} selected={acc} onSelect={setAcc} onToggleGroup={toggleGroup} variant="card" />
+          <AccountTree groups={groups} txs={txs} sel={sel} onToggleGroup={toggleGroup} hidden={hiddenAccs} {...accActions} variant="card" />
         </div>
       )}
       {!!accounts.length && (
         <div className="chips">
-          <button className={!acc ? "chip on" : "chip"} onClick={() => setAcc("")}>{acc ? "✕ " + accName(acc) : "Alle Konten"}</button>
+          <button className="chip on chipdrop" onClick={() => setPick(true)}>{allSel ? "Alle Konten" : acc ? accName(acc) : `${sel.length} Konten`} <span aria-hidden="true">▾</span></button>
+          {!allSel && <button className="chip" onClick={() => setSel([])}>✕ Alle anzeigen</button>}
           {selA && <button className="chip" onClick={() => setEditAcc(selA)}>✎ Konto bearbeiten</button>}
           <select className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
         </div>
       )}
+      {!allSel && sel.length > 1 && (
+        <div className="selcards">
+          {selAccounts.map((a) => { const b = accountBalance(a, txs); return (
+            <div key={a.id} className="selcard" onClick={() => setAcc(a.id)}>
+              <div className="row1"><small className="muted">{kindIcon(a.kind)} {groups.find((g) => g.accounts.some((x) => x.id === a.id))?.title || ""}</small>
+                <button className="x" title="Aus Auswahl entfernen" onClick={(e) => { e.stopPropagation(); accActions.onToggle(a.id); }}>×</button></div>
+              <b className="one">{a.name}</b>
+              <b className={"big " + (b == null ? "" : b < 0 ? "neg" : "pos")}>{b != null ? fmtMoney(b) : "—"}</b>
+            </div>); })}
+        </div>
+      )}
+      {pick && <AccountPicker groups={groups} txs={txs} sel={allSel ? [] : sel} onClose={() => setPick(false)} onApply={(l) => { setSel(l); setPick(false); }} />}
       {!txs.length && (
         <div className="empty"><div style={{ fontSize: 48 }}>🏦</div>
           <p>Noch keine Umsätze.<br />Exportiere deine Umsätze im Online-Banking oder beim Broker (CSV, CAMT, MT940 …) oder nimm einfach den PDF-Kontoauszug – und importiere die Datei hier. Für Bargeld legst du ein Konto „Geldbörse“ an.</p></div>
@@ -1932,8 +2040,8 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
       {!!txs.length && <div className="searchbar"><span>🔍</span><input type="search" placeholder="Umsätze durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>}
 
       {wideTx ? (
-        <div className={"txtable" + (!acc && accounts.length > 1 ? " withacc" : "")}>
-          <div className="txhead"><span>Datum</span><span>Empfänger / Beschreibung</span><span>Kategorie</span>{!acc && accounts.length > 1 && <span>Konto</span>}<span className="r">Betrag</span></div>
+        <div className={"txtable" + (!acc && sel.length > 1 ? " withacc" : "")}>
+          <div className="txhead"><span>Datum</span><span>Empfänger</span><span>Kategorie</span>{!acc && sel.length > 1 && <span>Konto</span>}<span className="r">Betrag</span></div>
           {list.slice(0, limit).map((t) => (
             <div key={t.id} className="txrow" onClick={() => setTxOpen(t)}>
               <span className="muted">{fmtDate(t.date)}</span>
@@ -1944,7 +2052,7 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
                 {t.docId && <span title="Beleg verknüpft">📎</span>}
               </span>
               <span className="one muted">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}</span>
-              {!acc && accounts.length > 1 && <span className="one muted">{accName(t.accountId)}</span>}
+              {!acc && sel.length > 1 && <span className="one muted">{accName(t.accountId)}</span>}
               <b className={"r amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
             </div>
           ))}
@@ -1959,7 +2067,7 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
                 {t.kind === "broker" ? <span className="caticon" style={{ width: 40, height: 40, background: "#14b8a622", fontSize: 18 }}>📈</span> : <CatIcon c={t.category} />}
                 <div className="grow">
                   <b className="clamp">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
-                  <small className="muted block one">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}{t.docId ? " · 📎 Beleg" : ""}{!acc && accounts.length > 1 ? " · " + accName(t.accountId) : ""}</small>
+                  <small className="muted block one">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}{t.docId ? " · 📎 Beleg" : ""}{!acc && sel.length > 1 ? " · " + accName(t.accountId) : ""}</small>
                 </div>
                 <b className={"amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
               </div>
@@ -2817,7 +2925,15 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
         </SetSec>
       )}</>,
     "trash": <><SetSec id="trash" title={`Papierkorb (${trash.length})`}>
-        <p className="muted small">Wird nach {TRASH_DAYS} Tagen automatisch geleert.</p>
+        <div className="trashbar">
+          <p className="muted small grow">Wird nach {TRASH_DAYS} Tagen automatisch geleert.</p>
+          {!!trash.length && <>
+            <button className="btn" title="Alle wiederherstellen" onClick={async () => { for (const d of trash) await saveDoc({ ...d, deletedAt: null }); notify(`${trash.length} Dokument(e) wiederhergestellt`); }}>↺ Alle</button>
+            <button className="btn danger trashall" title="Papierkorb leeren – alles endgültig löschen"
+              onClick={async () => { if (!confirm(`Papierkorb leeren? ${trash.length} Dokument(e) werden endgültig gelöscht.`)) return; const n = trash.length; for (const d of trash) await purgeDoc(d.id); notify(`${n} Dokument(e) endgültig gelöscht`); }}>
+              <IcoTrash /> Leeren</button>
+          </>}
+        </div>
         <ul className="list">
           {trash.map((d) => (
             <li key={d.id} className="static">
@@ -3077,7 +3193,7 @@ img{max-width:100%}
   .split{grid-template-columns:1fr}.split>.side{order:0;position:static}
 }
 @media (min-width:1024px){
-  :root{--side:252px}
+  :root{--side:280px}
   .app{padding:24px 40px 48px calc(var(--side) + 40px)}
   .split{grid-template-columns:minmax(0,1fr) 360px;gap:22px}
   .dash{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
@@ -3416,4 +3532,55 @@ body.rz-active,body.rz-active *{cursor:nwse-resize!important;user-select:none!im
 .wchip .wx{width:24px;height:24px;background:transparent}.wchip .wx:hover{color:var(--red)}
 @media (max-width:699px){.wchip{top:-13px}}
 .dash.editing.gridded{padding-top:14px}
+
+.trashbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.trashbar .btn{margin:0;display:inline-flex;align-items:center;gap:6px}
+
+/* v0.11 Konten-Mehrfachauswahl */
+.cbox{flex:none;width:18px;height:18px;border-radius:5px;border:1.5px solid color-mix(in srgb,var(--mut) 70%,transparent);background:transparent;color:#fff;font-size:12px;line-height:15px;padding:0;text-align:center;cursor:pointer;font-weight:700}
+.cbox.on{background:var(--acc);border-color:var(--acc)}
+.acctitle{display:flex;align-items:center;gap:8px}
+.acctoggle{flex:1;display:flex;align-items:center;gap:6px;background:none;border:0;color:inherit;font:inherit;text-transform:inherit;letter-spacing:inherit;padding:0;cursor:pointer;text-align:left}
+.acctoggle .chev{margin-left:auto}
+.accitem{cursor:default}
+.accitem .aname{flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:none;border:0;color:inherit;font:inherit;padding:0;text-align:left;cursor:pointer}
+.accitem.on{font-weight:500}
+.aeye{flex:none;width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:var(--mut);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;opacity:0}
+.aeye svg{width:15px;height:15px}
+.accitem:hover .aeye,.aeye:focus-visible{opacity:1}.aeye:hover{background:var(--line);color:var(--txt)}
+@media (hover:none){.aeye{opacity:.6}}
+.acchidden{margin-top:10px;padding-top:6px;border-top:1px solid var(--line)}
+.accitem.hid{color:var(--mut)}.accitem.hid .an{text-decoration:line-through;flex:1}
+.unhide{border:1px solid var(--line);background:transparent;color:var(--mut);border-radius:999px;font:inherit;font-size:11px;padding:2px 9px;cursor:pointer}
+.unhide:hover{color:var(--acc);border-color:var(--acc)}
+.chipdrop span{font-size:10px;margin-left:2px}
+.hero-row.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:520px){.hero-row.four{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.heronames{display:block;opacity:.8;font-size:12px;margin-top:2px}
+.selcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin:4px 0 12px}
+.selcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;cursor:pointer;box-shadow:var(--shadow)}
+.selcard:hover{border-color:var(--acc)}
+.selcard .row1{display:flex;align-items:center;justify-content:space-between}
+.selcard .x{border:0;background:transparent;color:var(--mut);cursor:pointer;font-size:16px;padding:0 2px}
+.selcard .big{font-size:17px}
+.quickpick{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px}
+.quickpick button{border:1px solid var(--line);background:transparent;color:var(--mut);border-radius:999px;padding:5px 12px;font:inherit;font-size:12px;cursor:pointer}
+.quickpick button:hover{border-color:var(--acc);color:var(--txt)}
+.picklist{border-top:1px solid var(--line);padding:4px 0}
+.pickgroup,.pickitem{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;color:var(--txt);font:inherit;text-align:left;cursor:pointer;border-radius:10px}
+.pickgroup{color:var(--mut);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:12px 8px 4px}
+.pickitem{padding:9px 8px 9px 36px;min-height:42px}.pickitem:hover{background:var(--card2)}
+.pickgroup .cbox,.pickitem .cbox{pointer-events:none}
+.pickfoot{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding-top:12px;margin-top:6px;position:sticky;bottom:0;background:var(--bg)}
+.pickfoot .btn{margin:0}
+
+.txdesc>.grow{min-width:0;overflow:hidden}.txdesc b.one,.txdesc small.one{display:block}
+.txrow>span{min-width:0}
+/* Seitenleiste: Platz für Namen */
+nav .acctree .accitem .ki{display:none}
+nav .acctree .accitem{gap:7px;padding:6px 4px 6px 6px}
+nav .acctree .accitem .ab{font-size:11.5px}
+
+.txhead,.txrow{grid-template-columns:84px minmax(160px,2.2fr) minmax(0,1fr) 120px}
+.txtable.withacc .txhead,.txtable.withacc .txrow{grid-template-columns:84px minmax(160px,2.2fr) minmax(0,1fr) minmax(0,1fr) 120px}
+.txrow>span.one,.txrow>span.muted{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 `;
