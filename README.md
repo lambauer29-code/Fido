@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.46.2
+- Fahrtenbuch: jede Zeile hat die Aktionsleiste wie bei den Konten (Bearbeiten, Beleg drucken, Beleg teilen, Löschen). Klick auf einen Eintrag mit Beleg öffnet die Beleg-Vorschau direkt darunter (ohne Beleg öffnet sich der Eintrag zum Bearbeiten). Fehlender km-Stand wird nicht mehr als „—“ angezeigt.
+
+## v0.46.1
+- Fahrtenbuch: Fahrzeuge mit Akku bekommen „Akku nutzbar (kWh)“ und „Ladeleistung AC/DC (kW)“, Verbrenner/Hybride das Tankvolumen. Die Fahrzeugkarte zeigt Tank, Akku, Ladeleistung und die geschätzte Reichweite.
+- Beim Laden/Tanken: Füllstand-Balken (Anteil vom Akku/Tank), Warnung bei mehr als möglich und geschätzte Ladedauer (AC oder DC wählbar).
+
 ## v0.46.0
 - Fahrtenbuch: Hybrid- und Plug-in-Hybrid-Fahrzeuge (Benzin/Diesel). Plug-in und Elektro bekommen „⚡ Laden“ (kWh), der Verbrauch wird getrennt in l/100 km und kWh/100 km berechnet.
 - 📍 Standort: „In der Nähe“ zeigt Tankstellen (Österreich mit aktuellen Preisen vom E-Control Spritpreisrechner, sonst OpenStreetMap) bzw. Ladestationen (OpenStreetMap). Auswahl übernimmt Name, Adresse und Preis. Bei Fahrten setzt 📍 den aktuellen Ort bei Von/Nach ein. Neue Serverfunktion `api/nearby.js`.

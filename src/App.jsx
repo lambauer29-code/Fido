@@ -2656,6 +2656,14 @@ function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onD
             <label>{elec ? "kWh" : "Liter"}<input inputMode="decimal" value={x.liters ?? ""} onChange={(e) => setX(calc({ liters: e.target.value }))} /></label>
             <label>Gesamt €<input inputMode="decimal" value={x.total ?? ""} onChange={(e) => setX(calc({ total: e.target.value }))} /></label>
           </div>
+          {(() => { const cap = elec ? v?.battery : v?.tank, q = n("liters"); if (!cap) return null;
+            const over = q > cap * 1.05, pw = elec ? (+x.dc ? v.dcKw : v.acKw) : null;
+            return <div className={"fbcap" + (over ? " warn" : "")}>
+              <div className="kubar"><div style={{ width: Math.min(100, (q / cap) * 100 || 0) + "%", background: over ? "var(--red)" : "var(--acc)" }} /></div>
+              <small>{elec ? "Akku" : "Tank"} max. {String(cap).replace(".", ",")} {elec ? "kWh" : "l"}{q > 0 ? ` · ${Math.round((q / cap) * 100)} % gefüllt` : ""}{over ? " – mehr als möglich, bitte prüfen" : ""}
+                {elec && pw && q > 0 ? ` · Ladedauer ca. ${(() => { const h = q / pw; return h >= 1 ? `${Math.floor(h)} h ${Math.round((h % 1) * 60)} min` : `${Math.round(h * 60)} min`; })()} bei ${String(pw).replace(".", ",")} kW` : ""}</small>
+              {elec && v.dcKw && <div className="seg sm fbacdc"><button className={!+x.dc ? "on" : ""} onClick={() => set({ dc: 0 })}>AC (Wallbox/Säule)</button><button className={+x.dc ? "on" : ""} onClick={() => set({ dc: 1 })}>DC (Schnelllader)</button></div>}
+            </div>; })()}
           <label className="check"><input type="checkbox" checked={x.full ?? true} onChange={(e) => set({ full: e.target.checked })} /> {elec ? "Voll geladen" : "Vollgetankt"} (für die Verbrauchsberechnung)</label>
           <label>{elec ? "Ladestation" : "Tankstelle"}<span className="fbinbtn"><input value={x.station || ""} placeholder={elec ? "z. B. SMATRICS Linz" : "z. B. OMV Linz Süd"} onChange={(e) => set({ station: e.target.value })} />
             <button className="btn sm fbnear" disabled={near?.busy} onClick={findNear}>{near?.busy ? <span className="spin" /> : "📍"} In der Nähe</button></span></label>
@@ -2722,13 +2730,19 @@ function VehicleWin({ init, onSave, onDelete, onClose }) {
       <div className="grid2">
         <label>Marke & Modell<input value={v.model || ""} placeholder="VW Golf 8" onChange={(e) => set({ model: e.target.value })} /></label>
         <label>Kennzeichen<input value={v.plate || ""} placeholder="L-12345X" onChange={(e) => set({ plate: e.target.value.toUpperCase() })} /></label>
-        <label>Kraftstoff<select value={v.fuel} onChange={(e) => set({ fuel: e.target.value })}>{FUELS.map((f) => <option key={f}>{f}</option>)}</select></label>
-        <label>Tankvolumen (l)<input inputMode="decimal" value={v.tank ?? ""} onChange={(e) => set({ tank: e.target.value })} /></label>
         <label>Kilometerstand jetzt<input inputMode="numeric" value={v.startKm ?? ""} onChange={(e) => set({ startKm: e.target.value })} /></label>
         <label>Nutzung<select value={v.use || "privat"} onChange={(e) => set({ use: e.target.value })}><option value="privat">Privat</option><option value="firma">Firma</option><option value="beides">Privat & Firma</option></select></label>
       </div>
+      <label>Antrieb<select value={v.fuel} onChange={(e) => set({ fuel: e.target.value })}>{FUELS.map((f) => <option key={f}>{f}</option>)}</select></label>
+      <div className="grid2">
+        {vehHasFuel(v) && <label>Tankvolumen (l)<input inputMode="decimal" value={v.tank ?? ""} placeholder="z. B. 45" onChange={(e) => set({ tank: e.target.value })} /></label>}
+        {vehHasPlug(v) && <label>Akku nutzbar (kWh)<input inputMode="decimal" value={v.battery ?? ""} placeholder="z. B. 13,8" onChange={(e) => set({ battery: e.target.value })} /></label>}
+        {vehHasPlug(v) && <label>Ladeleistung AC (kW)<input inputMode="decimal" value={v.acKw ?? ""} placeholder="z. B. 3,7 / 11" onChange={(e) => set({ acKw: e.target.value })} /></label>}
+        {vehHasPlug(v) && <label>Ladeleistung DC (kW)<input inputMode="decimal" value={v.dcKw ?? ""} placeholder="leer = kein Schnellladen" onChange={(e) => set({ dcKw: e.target.value })} /></label>}
+      </div>
       <div className="row gap fbbtns">
-        <button className="btn primary" disabled={!(v.name || "").trim()} onClick={() => onSave({ ...v, id: v.id || uid(), name: v.name.trim(), startKm: Math.round(parseAmt(v.startKm) || 0) })}>Speichern</button>
+        <button className="btn primary" disabled={!(v.name || "").trim()} onClick={() => { const num = (k) => { const z = parseAmt(v[k]); return z > 0 ? z : null; };
+          onSave({ ...v, id: v.id || uid(), name: v.name.trim(), startKm: Math.round(parseAmt(v.startKm) || 0), tank: num("tank"), battery: num("battery"), acKw: num("acKw"), dcKw: num("dcKw") }); }}>Speichern</button>
         {init.id && <button className="btn danger" onClick={() => { if (confirm("Fahrzeug samt allen Einträgen löschen?")) onDelete(v.id); }}>Löschen</button>}
       </div>
     </Win>
@@ -2797,16 +2811,31 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
     const csv = "﻿" + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\r\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = `Fahrtenbuch_${v.name}_${year}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
+  const [prevId, setPrevId] = useState(null);
+  const docOf = (x) => x.docId && docs.find((d) => d.id === x.docId && !d.deletedAt);
+  const openEdit = (x) => setEdit({ ...x, liters: amtStr(x.liters), total: amtStr(x.total), price: x.price != null ? String(x.price).replace(".", ",") : "" });
+  const delEntry = (x) => { if (confirm(`Eintrag „${x.type === "trip" ? `${x.from || "?"} → ${x.to}` : x.type === "fuel" ? (isElec(x.fuel) ? "Laden" : "Tanken") : x.cat}“ vom ${fmtDate(x.date)} löschen?`)) upd((o) => ({ entries: o.entries.filter((y) => y.id !== x.id) })); };
+  const FbActs = ({ x }) => { const d = docOf(x); const st = (f) => (e) => { e.stopPropagation(); f(); }; return (
+    <div className="dactions txacts" onClick={(e) => e.stopPropagation()}>
+      <button title="Eintrag bearbeiten" aria-label="Bearbeiten" onClick={st(() => openEdit(x))}><IcoEdit /></button>
+      <button title={d ? "Beleg drucken" : "Kein Beleg angehängt"} aria-label="Drucken" disabled={!d} onClick={st(() => d && printDoc(d, notify))}><IcoPrint /></button>
+      <button title={d ? "Beleg teilen" : "Kein Beleg angehängt"} aria-label="Teilen" disabled={!d} onClick={st(() => d && shareDocs([d]))}><IcoShare /></button>
+      <button title="Eintrag löschen" aria-label="Löschen" className="del" onClick={st(() => delEntry(x))}><IcoTrash /></button>
+    </div>); };
   const row = (x) => {
     const icon = x.type === "expense" ? (FB_EXP.find((c) => c[0] === x.cat)?.[1] || "🧾") : FB_ICON[x.type];
     return (
-      <div key={x.id} className="frow click fbrow" onClick={() => setEdit({ ...x, liters: amtStr(x.liters), total: amtStr(x.total), price: x.price != null ? String(x.price).replace(".", ",") : "" })}>
+      <div key={x.id} className={"fbentry" + (prevId === x.id ? " open" : "")}>
+      <div className="frow click fbrow" onClick={() => (docOf(x) ? setPrevId(prevId === x.id ? null : x.id) : openEdit(x))}>
         <span className={"fbic " + x.type}>{x.type === "fuel" && isElec(x.fuel) ? "⚡" : icon}</span>
         <div className="grow">
           <b>{x.type === "fuel" ? `${isElec(x.fuel) ? "Laden" : "Tanken"} · ${amtStr(x.liters).replace(",00", "")} ${unitOf(x.fuel)}` : x.type === "trip" ? `${x.from || "?"} → ${x.to}` : x.cat}</b>
-          <small className="muted block">{fmtDate(x.date)}{x.time ? " " + x.time : ""} · {x.type === "trip" ? `${kmFmt(x.endKm - x.startKm)} · ${{ business: "geschäftlich", private: "privat", commute: "Arbeitsweg" }[x.purpose] || ""}${x.note ? " · " + x.note : ""}` : `${kmFmt(x.km)}${x.station ? " · " + x.station : ""}${x.type === "fuel" && x.price ? ` · ${String(x.price).replace(".", ",")} €/${unitOf(x.fuel)}` : ""}${x.txId ? " · 🏦" : ""}${x.docId ? " · 📎" : ""}`}</small>
+          <small className="muted block">{fmtDate(x.date)}{x.time ? " " + x.time : ""} · {x.type === "trip" ? `${kmFmt(x.endKm - x.startKm)} · ${{ business: "geschäftlich", private: "privat", commute: "Arbeitsweg" }[x.purpose] || ""}${x.note ? " · " + x.note : ""}` : `${[x.km ? kmFmt(x.km) : "", x.station].filter(Boolean).join(" · ")}${x.type === "fuel" && x.price ? ` · ${String(x.price).replace(".", ",")} €/${unitOf(x.fuel)}` : ""}${x.txId ? " · 🏦" : ""}${x.docId ? " · 📎" : ""}`}</small>
         </div>
         <div className="right">{x.type === "trip" ? (x.purpose === "business" ? <b className="pos">{fmtMoney((x.endKm - x.startKm) * kmRate)}</b> : <b>{kmFmt(x.endKm - x.startKm)}</b>) : <b className="neg">{fmtMoney(-x.total)}</b>}</div>
+        <FbActs x={x} />
+      </div>
+      {prevId === x.id && docOf(x) && <div className="txprev"><DocPreview d={docOf(x)} onOpen={() => onOpen(docOf(x).id)} /></div>}
       </div>);
   };
   const VIEWS = [["verlauf", "Verlauf"], ["fuel", "Tanken"], ["trip", "Fahrten"], ["expense", "Ausgaben"], ["rem", `Erinnerungen${dueN ? ` (${dueN})` : ""}`], ["bericht", "Berichte"]];
@@ -2819,7 +2848,12 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
       <section className="tile fbcar">
         <div className="fbcarhead">
           <span className="fbcaric">{v.icon || "🚗"}</span>
-          <div className="grow"><b>{v.name}</b><small className="muted block">{[v.model, v.plate, v.fuel].filter(Boolean).join(" · ")}</small></div>
+          <div className="grow"><b>{v.name}</b><small className="muted block">{[v.model, v.plate, v.fuel].filter(Boolean).join(" · ")}</small>
+            {(v.tank || v.battery) && <div className="fbspecs">
+              {vehHasFuel(v) && v.tank && <span>⛽ {String(v.tank).replace(".", ",")} l{st.avg ? ` · ~${Math.round((v.tank / st.avg) * 100)} km` : ""}</span>}
+              {vehHasPlug(v) && v.battery && <span>🔋 {String(v.battery).replace(".", ",")} kWh{st.avgE ? ` · ~${Math.round((v.battery / st.avgE) * 100)} km elektrisch` : ""}</span>}
+              {vehHasPlug(v) && (v.acKw || v.dcKw) && <span>⚡ {[v.acKw && `${String(v.acKw).replace(".", ",")} kW AC`, v.dcKw && `${String(v.dcKw).replace(".", ",")} kW DC`].filter(Boolean).join(" / ")}</span>}
+            </div>}</div>
           <button className="iconbtn" title="Fahrzeug bearbeiten" aria-label="Fahrzeug bearbeiten" onClick={() => setVEdit(v)}>✎</button>
         </div>
         <div className="fbodo"><small className="muted">Kilometerstand</small><div className="kpiv big">{kmFmt(st.odo)}</div></div>
@@ -2888,7 +2922,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
       </>)}
       {edit && <FbEntryWin init={edit} vehicles={vehicles} accounts={accounts} txs={txs} docs={docs} onScan={onScan} onUpload={onUpload} onOpen={onOpen} lastKm={st.odo} fuelPrice={lastFuel?.price} onClose={() => setEdit(null)} onSave={(x) => { if (x.type === "trip") ls.set("fbPurpose", x.purpose); saveEntry(x); }}
         onDelete={(id) => { upd((o) => ({ entries: o.entries.filter((y) => y.id !== id) })); setEdit(null); }} />}
-      {vEdit && <VehicleWin init={vEdit} onClose={() => setVEdit(null)} onSave={(nv) => { upd((o) => ({ vehicles: o.vehicles.some((y) => y.id === nv.id) ? o.vehicles.map((y) => (y.id === nv.id ? nv : y)) : [...o.vehicles, nv] })); setVid(nv.id); setVEdit(null); }}
+      {vEdit && <VehicleWin init={Object.fromEntries(Object.entries(vEdit).map(([k, val]) => [k, ["tank", "battery", "acKw", "dcKw"].includes(k) && val != null ? String(val).replace(".", ",") : val]))} onClose={() => setVEdit(null)} onSave={(nv) => { upd((o) => ({ vehicles: o.vehicles.some((y) => y.id === nv.id) ? o.vehicles.map((y) => (y.id === nv.id ? nv : y)) : [...o.vehicles, nv] })); setVid(nv.id); setVEdit(null); }}
         onDelete={(id) => { upd((o) => ({ vehicles: o.vehicles.filter((y) => y.id !== id), entries: o.entries.filter((y) => y.vid !== id), reminders: (o.reminders || []).filter((y) => y.vid !== id) })); setVEdit(null); }} />}
       {remEdit && (
         <Win id="fb-rem" onClose={() => setRemEdit(null)} small>
@@ -8887,4 +8921,11 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 .fbbook .seg{margin-top:4px}.fbbook select{margin-top:8px}
 .fbtxpick{margin-top:8px;border:1px solid var(--line);border-radius:14px;padding:6px 10px;max-height:300px;overflow:auto}
 .fblinked{border:1px solid var(--line);border-radius:12px;padding:6px 8px;margin-top:4px}
+
+.fbspecs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.fbspecs span{font-size:12px;background:var(--card2);border-radius:999px;padding:3px 9px;color:var(--txt)}
+.fbcap{margin-top:8px}.fbcap .kubar{margin:0 0 4px}.fbcap small{color:var(--mut)}.fbcap.warn small{color:var(--red)}.fbacdc{margin-top:8px}
+
+.fbentry+.fbentry{border-top:1px solid var(--line)}.fbentry .fbrow{border:0}
+.fbrow .txacts{flex:none}.fbentry .txprev{padding:0 4px 12px;border:0}
+@media (max-width:767px){.fbrow{flex-wrap:wrap}.fbrow .txacts{width:100%!important;justify-content:flex-end;margin-top:-4px!important}}
 `;
