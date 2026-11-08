@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.10.5
+- Übersicht anpassen: statt Titelleiste eine kompakte Bedien-Pille auf der Oberkante jedes Widgets – Inhalt bleibt sichtbar, Größe und Position identisch mit der fertigen Ansicht.
+
+## v0.10.4
+- Übersicht: Ansicht nach „Fertig“ sieht genauso aus wie im Anpassen-Modus (Bedienleiste schwebt über dem Widget statt Höhe hinzuzufügen; leere Widgets behalten ihren Platz).
+
 ## v0.10.3
 - Übersicht: „Leerfeld“-Widget (beliebig oft, Größe frei ziehbar, in der Ansicht unsichtbar) für freie Zeilen/Lücken.
 - Schalter „Lücken füllen“: aus = Reihenfolge strikt, Lücken bleiben frei.

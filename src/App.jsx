@@ -1458,7 +1458,9 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
   const lg = useMedia("(min-width:1024px)"), md = useMedia("(min-width:700px)");
   const cols = lg ? 12 : md ? 6 : 1;
   const wdnd = useDnd((d, over) => setLayout((l) => ({ ...l, order: [...moveBetween({ w: shown }, "w", d.index, "w", over.index).w, ...hiddenIds] })));
-  const vis = editing ? shown : shown.filter((id) => els[id]);
+  const spanOf = (id) => (cols === 12 ? wOf(id) : Math.max(1, Math.min(cols, Math.round(wOf(id) / 2))));
+  // leere Widgets: in der Ansicht unsichtbar, behalten aber ihren Platz (außer ganze Breite) – damit Ansicht = Anpassen-Modus
+  const vis = editing ? shown : shown.filter((id) => els[id] || (cols > 1 && spanOf(id) < cols));
   const setW = (id, w) => setLayout((l) => ({ ...l, w: { ...(l.w || {}), [id]: w } }));
   const setH = (id, h) => setLayout((l) => ({ ...l, h: { ...(l.h || {}), [id]: h } }));
 
@@ -1482,7 +1484,7 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
             onResize={(w, h) => setLayout((l) => ({ ...l, w: { ...(l.w || {}), [id]: w }, h: { ...(l.h || {}), [id]: h } }))}
             onWidth={(w) => setW(id, w)} onAutoH={() => setH(id, null)}
             onHide={() => setLayout((l) => ({ ...l, order: shown.filter((x) => x !== id), hidden: isSpacer(id) ? l.hidden : [...l.hidden.filter((x) => x !== id), id] }))}>
-            {els[id] || <section className="tile wempty"><b>{meta(id)[0]}</b><small className="muted block">derzeit keine Daten – wird automatisch angezeigt, sobald es etwas gibt</small></section>}
+            {els[id] || <section className={"tile wempty" + (editing ? "" : " ghost")}><b>{meta(id)[0]}</b><small className="muted block">derzeit keine Daten – wird automatisch angezeigt, sobald es etwas gibt</small></section>}
           </WidgetCell>
         ))}
         {wdnd.ghost}
@@ -1537,21 +1539,20 @@ function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore,
   return (
     <div ref={ref} className={cls} style={style} data-wid-item={"w|" + idx} data-grid="1">
       <div ref={inner} className={"winner" + (fixed ? " fixed" : "")}>
-        {editing && (
-          <div className="wbar">
-            <Handle onDown={(e) => dnd.start(e, { kind: "wid", list: "w", index: idx, label: title })} label="Widget verschieben" />
-            <b className="grow">{title}</b>
-            {grid && <div className="wsize" role="group" aria-label="Breite">
+        <div className="wbody">{children}</div>
+      </div>
+      {editing && (
+          <div className="wchip" title={title}>
+            <Handle onDown={(e) => dnd.start(e, { kind: "wid", list: "w", index: idx, label: title })} label={title + " verschieben"} />
+            {grid && <>
               {[[4, "⅓"], [6, "½"], [8, "⅔"], [12, "1"]].map(([k, t]) => (
                 <button key={k} className={w === k ? "on" : ""} title={k === 12 ? "Ganze Breite" : t + " Breite"} onClick={() => onWidth(k)}>{t}</button>
               ))}
               <button className={!h ? "on" : ""} title="Höhe automatisch nach Inhalt" onClick={onAutoH}>↕A</button>
-            </div>}
-            <button className="wx" title="Ausblenden" onClick={onHide}>✕</button>
+            </>}
+            <button className="wx" title={title + " ausblenden"} onClick={onHide}>✕</button>
           </div>
         )}
-        <div className="wbody">{children}</div>
-      </div>
       {editing && grid && <span className="wresize" onPointerDown={startResize} title="Ziehen: Breite & Höhe ändern" />}
     </div>
   );
@@ -3399,4 +3400,20 @@ body.rz-active,body.rz-active *{cursor:nwse-resize!important;user-select:none!im
 .densectl input{width:auto;margin:0;accent-color:var(--acc)}
 .wadd .spaceradd{border-style:dashed}
 @media (max-width:699px){.widget:has(.spacer){display:none}}
+
+/* Anpassen-Modus = gleiche Höhen wie Ansicht: Leiste schwebt über dem Widget */
+.wbar.overlay{position:absolute;left:0;right:0;top:0;z-index:4;margin:0;padding:6px 8px 6px 2px;border-radius:18px 18px 0 0;
+  background:color-mix(in srgb,var(--card) 78%,transparent);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+.wempty.ghost{visibility:hidden}
+
+/* v0.10.5: kompakte Bedienleiste auf der Oberkante – verändert Größe & Position nicht */
+.wchip{position:absolute;top:-15px;right:10px;z-index:6;display:flex;align-items:center;gap:1px;height:30px;padding:0 3px;border-radius:999px;
+  background:var(--card);border:1px solid var(--acc);box-shadow:0 2px 10px #0003}
+.wchip .handle{width:24px;height:26px;font-size:15px}
+.wchip button{border:0;background:transparent;color:var(--mut);height:24px;min-width:24px;padding:0 5px;border-radius:999px;font:inherit;font-size:12px;cursor:pointer}
+.wchip button.on{background:var(--acc);color:#fff}
+.wchip button:hover{color:var(--txt)}.wchip button.on:hover{color:#fff}
+.wchip .wx{width:24px;height:24px;background:transparent}.wchip .wx:hover{color:var(--red)}
+@media (max-width:699px){.wchip{top:-13px}}
+.dash.editing.gridded{padding-top:14px}
 `;
