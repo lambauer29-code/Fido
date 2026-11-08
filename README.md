@@ -1,6 +1,10 @@
-# Fidocu – Finanzen und Dokumente (PWA)
+# FinDocu – Finanzen und Dokumente (PWA)
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
+
+## v0.22.0
+
+- App umbenannt in **FinDocu** (Browser-Titel, Seitenleiste, Home-Bildschirm-Name, Manifest, Kalender-Abo-Name, Paketname, Texte). Gespeicherte Daten, Einstellungen und Kalender-Abos bleiben erhalten.
 
 ## v0.21.2
 
@@ -146,7 +150,7 @@ Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags,
 
 ## v0.14.0 – Kalender & Apple-Kalender-Abo
 - Fristen: interaktiver Monatskalender (Standard) oder Liste. Fristen aus Bons/Rechnungen erscheinen automatisch; per Ziehen auf einen anderen Tag verschieben, Tag antippen = Details, abhaken, Datum ändern.
-- „Mit Apple Kalender verbinden“: Kalender-Abo (webcal) – Fidocu lädt Änderungen automatisch hoch, Apple Kalender holt sie selbst ab. Benötigt einen kostenlosen Vercel-Blob-Speicher (Storage › Blob › mit Projekt verbinden, dann Redeploy). Funktioniert auch mit Google Kalender/Outlook.
+- „Mit Apple Kalender verbinden“: Kalender-Abo (webcal) – FinDocu lädt Änderungen automatisch hoch, Apple Kalender holt sie selbst ab. Benötigt einen kostenlosen Vercel-Blob-Speicher (Storage › Blob › mit Projekt verbinden, dann Redeploy). Funktioniert auch mit Google Kalender/Outlook.
 - „⬇︎ .ics“ für den einmaligen Export bleibt.
 
 ## v0.13.0

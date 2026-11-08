@@ -1737,7 +1737,7 @@ export default function App() {
         onSave={saveCash} onScan={scanFor} addCategory={addCategory} />}
 
       <nav className="bottom">
-        <div className="brand"><img src="/icon.svg" alt="" /><div><b>Fidocu</b><small>Finanzen & Dokumente</small></div></div>
+        <div className="brand"><img src="/icon.svg" alt="" /><div><b>FinDocu</b><small>Finanzen & Dokumente</small></div></div>
         {nav.tabs.map((t) => {
           if (t.sep) return <hr key={t.key} className="navsep side-only" />;
           if (t.head != null) return <div key={t.key} className="navhead side-only">{t.head}</div>;
@@ -2442,8 +2442,8 @@ function Deadlines({ docs, onOpen, saveDoc, calSync, setCalSync, token, notify }
 
 /* ---------- Kalender-Abo (Apple Kalender, Google, Outlook) ---------- */
 function buildIcs(items) {
-  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Fidocu//Fristen//DE", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
-    "X-WR-CALNAME:Fidocu – Fristen", "X-WR-TIMEZONE:Europe/Vienna", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H",
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinDocu//Fristen//DE", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "X-WR-CALNAME:FinDocu – Fristen", "X-WR-TIMEZONE:Europe/Vienna", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H",
     ...items.map(([dl, doc]) => icsEvent(dl, doc)), "END:VCALENDAR"].join("\r\n");
 }
 const calKeyNew = () => Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -2474,7 +2474,7 @@ function CalSyncSheet({ sync, setSync, items, token, onClose, notify }) {
     <Win id="calsync" onClose={onClose} small dirty={false}>
       <div className="panelhead"><b>Mit Apple Kalender verbinden</b><XBtn /></div>
       {!sync.on ? <>
-        <p>Fidocu stellt deine Fristen als <b>Kalender-Abo</b> bereit. Apple Kalender (iPhone, iPad, Mac) holt Änderungen dann selbst ab – neue Bons, Zahlungsfristen, Garantie- und Kündigungstermine erscheinen automatisch.</p>
+        <p>FinDocu stellt deine Fristen als <b>Kalender-Abo</b> bereit. Apple Kalender (iPhone, iPad, Mac) holt Änderungen dann selbst ab – neue Bons, Zahlungsfristen, Garantie- und Kündigungstermine erscheinen automatisch.</p>
         <p className="muted small">Die Fristen werden dafür verschlüsselt übertragen und in deinem Vercel-Speicher unter einem geheimen Link abgelegt. Wer den Link kennt, kann die Termine sehen – nicht weitergeben.</p>
         {err && <div className="healthbox"><p className="red">✕ {err}</p>
           {/Blob/.test(err) && <ol className="small steps">
@@ -3798,7 +3798,7 @@ function mergeOrder(cur, ids) {
 
 /* ---------- Design: Voreinstellungen (angelehnt an bekannte Finanz- & Dokumenten-Apps) ---------- */
 const DESIGN_PRESETS = [
-  { id: "fido", name: "Fidocu Blau", note: "Standard", acc: "#0b63f6", acc2: "#00b3a4", hero: ["#0b3d91", "#0b63f6", "#00b3a4"] },
+  { id: "fido", name: "FinDocu Blau", note: "Standard", acc: "#0b63f6", acc2: "#00b3a4", hero: ["#0b3d91", "#0b63f6", "#00b3a4"] },
   { id: "petrol", name: "Petrol", note: "inspiriert von N26", acc: "#088177", acc2: "#36a18b", hero: ["#00413e", "#088177", "#36a18b"] },
   { id: "koralle", name: "Koralle", note: "inspiriert von Monzo", acc: "#e8384f", acc2: "#007a8b", hero: ["#001e3a", "#007a8b", "#fe4b60"] },
   { id: "violett", name: "Midnight Violett", note: "inspiriert von Revolut", acc: "#494fdf", acc2: "#00a87e", hero: ["#191c1f", "#2d318f", "#494fdf"] },
@@ -4345,7 +4345,7 @@ function InvoiceSettings({ me }) {
   </>);
 }
 /* Einheiten: Standardliste + eigene, über „＋ Neue Einheit …“ in jeder Auswahl erweiterbar */
-const UNITS_EVT = "fidocu-units";
+const UNITS_EVT = "findocu-units";
 function useUnits() {
   const [units, setUnitsRaw] = useState(() => ls.get("units", UNITS));
   useEffect(() => { const h = () => setUnitsRaw(ls.get("units", UNITS)); window.addEventListener(UNITS_EVT, h); return () => window.removeEventListener(UNITS_EVT, h); }, []);
@@ -4659,7 +4659,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
 
       {filter === "wiederkehrend" ? (
         <section className="tile">
-          {!templates.length && <p className="muted small">Noch keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „Wiederkehrend“ anhaken – Fidocu legt dann zum Termin automatisch einen Entwurf an, den du nur noch prüfst und ausstellst.</p>}
+          {!templates.length && <p className="muted small">Noch keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „Wiederkehrend“ anhaken – FinDocu legt dann zum Termin automatisch einen Entwurf an, den du nur noch prüfst und ausstellst.</p>}
           {templates.map((t) => (
             <div key={t.id} className="frow">
               <span className="caticon" style={{ width: 40, height: 40, background: "#0b63f622" }}>🔁</span>
@@ -4789,7 +4789,7 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
           {c.cancelledAt ? <span>✕ Gekündigt am {fmtDate(c.cancelledAt)}</span>
             : d.open ? <span>Unbefristet – kündbar jederzeit, frühestens zum <b>{fmtDate(d.end)}</b></span>
             : d.end ? <span>Nächstes Vertragsende <b>{fmtDate(d.end)}</b>{d.cancelBy && <> · kündigen bis <b className={daysUntil(d.cancelBy) <= 30 ? "neg" : ""}>{fmtDate(d.cancelBy)}</b> ({daysUntil(d.cancelBy)} Tage)</>}</span>
-            : <span className="muted">Beginn + Mindestlaufzeit + Frist eintragen, dann rechnet Fidocu den letzten Kündigungstag aus.</span>}
+            : <span className="muted">Beginn + Mindestlaufzeit + Frist eintragen, dann rechnet FinDocu den letzten Kündigungstag aus.</span>}
         </div>
         <div className="actions">
           {!c.cancelledAt ? <button className="btn" onClick={() => set({ cancelledAt: todayISO(), cancelledEnd: d.end })}>Als gekündigt markieren</button>
@@ -4859,7 +4859,7 @@ function ContractsPage({ docs, me, onOpen }) {
           <button className="btn sm" onClick={() => setEdit(fromDoc(d))}>Übernehmen</button></div>)}
       </section>}
       <section className="tile ctlist">
-        {!shown.length && <p className="muted small">Noch keine Verträge hinterlegt. Mit „＋ Vertrag“ z. B. Internet, Handy, Strom, Versicherungen oder Miete eintragen – Fidocu rechnet den letzten Kündigungstag aus. Erkannte Abos aus deinen Kontobuchungen findest du weiterhin unter „Fixkosten & Abos“.</p>}
+        {!shown.length && <p className="muted small">Noch keine Verträge hinterlegt. Mit „＋ Vertrag“ z. B. Internet, Handy, Strom, Versicherungen oder Miete eintragen – FinDocu rechnet den letzten Kündigungstag aus. Erkannte Abos aus deinen Kontobuchungen findest du weiterhin unter „Fixkosten & Abos“.</p>}
         {shown.map(({ c, d }) => (
           <div key={c.id} className={"frow click ctrow" + (c.cancelledAt ? " ended" : "")} onClick={() => setEdit(c)}>
             <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{ctCats()[c.cat] || "📄"}</span>
@@ -5346,7 +5346,7 @@ img{max-width:100%}
 @media (min-width:768px){.fabmenu-bg{background:transparent}.fabmenu{top:76px;right:28px;bottom:auto}}
 @media (min-width:1024px){.fabmenu{right:40px}}
 
-/* Fidocu: Seitenleiste-Unterpunkte, Kontengruppen, Bereiche */
+/* FinDocu: Seitenleiste-Unterpunkte, Kontengruppen, Bereiche */
 .side-only{display:none}
 @media (max-width:767px){.ph-hide{display:none!important}}
 @media (min-width:768px){.subnav.side-only{display:block}.subtog.side-only{display:inline-flex}}
