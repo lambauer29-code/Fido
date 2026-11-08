@@ -2464,6 +2464,8 @@ function DocDrop({ onFiles, onHide }) {
 
 function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, onFiles }) {
   const [showDrop, setShowDrop] = useLsState("docDrop", true);
+  const [chipCfg, setChipCfg] = useLsState("docChips", { order: [], hidden: [] });
+  const [chipEdit, setChipEdit] = useState(false), [dragK, setDragK] = useState(null);
   const [q, setQ] = useState("");
   const [prevId, setPrevId] = useState(null);
   const [winPrev, setWinPrev] = useState(null);
@@ -2521,19 +2523,49 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
           <DocTree docGroups={docGroups} docs={docs} selected={cat} onSelect={setCat} onToggleGroup={toggleDocGroup} variant="card" />
         </div>
       )}
-      <div className="chips">
-        {deadlineTab && <button className="chip" onClick={deadlineTab.open}>⏰ {deadlineTab.label}</button>}
-        {cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>}
-        <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button>
-        <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button>
-        <select className={"chip" + (month ? " on" : "")} value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{MONTHS_DE.map((m, i) => <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>)}</select>
-        <select className={"chip" + (year ? " on" : "")} value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</select>
-        <select className="chip" value={tag} onChange={(e) => setTag(e.target.value)}><option value="">Alle Tags</option>{tags.map((t) => <option key={t}>{t}</option>)}</select>
-        <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></select>
-        <button className={pick ? "chip on" : "chip"} disabled={!list.length} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑︎ Auswählen"}</button>
-        <button className="chip" disabled={!list.length} onClick={() => exportCsv(list, `dokumente${year ? "-" + year : ""}${month ? "-" + month : ""}${taxOnly ? "-steuer" : ""}.csv`)}>⬇︎ CSV</button>
-        {onFiles && <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>}
-      </div>
+      {(() => {
+        const defs = {
+          frist: deadlineTab && ["⏰ " + deadlineTab.label, <button className="chip" onClick={deadlineTab.open}>⏰ {deadlineTab.label}</button>],
+          steuer: ["🧾 Steuerrelevant", <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button>],
+          unbezahlt: ["💶 Unbezahlt", <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button>],
+          monat: ["Monat", <select className={"chip" + (month ? " on" : "")} value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{MONTHS_DE.map((m, i) => <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>)}</select>],
+          jahr: ["Jahr", <select className={"chip" + (year ? " on" : "")} value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</select>],
+          tags: ["Tags", <select className={"chip" + (tag ? " on" : "")} value={tag} onChange={(e) => setTag(e.target.value)}><option value="">Alle Tags</option>{tags.map((t) => <option key={t}>{t}</option>)}</select>],
+          sort: ["Sortierung", <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></select>],
+          pick: ["☑︎ Auswählen", <button className={pick ? "chip on" : "chip"} disabled={!list.length} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑︎ Auswählen"}</button>],
+          csv: ["⬇︎ CSV", <button className="chip" disabled={!list.length} onClick={() => exportCsv(list, `dokumente${year ? "-" + year : ""}${month ? "-" + month : ""}${taxOnly ? "-steuer" : ""}.csv`)}>⬇︎ CSV</button>],
+          drop: onFiles && ["📥 Ablagefeld", <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>],
+        };
+        const order = [...chipCfg.order.filter((k) => defs[k]), ...Object.keys(defs).filter((k) => defs[k] && !chipCfg.order.includes(k))];
+        const hidden = new Set(chipCfg.hidden);
+        const startDrag = (e, k) => {
+          if (e.button > 0) return; e.preventDefault();
+          const row = e.currentTarget.parentElement; let cur = [...order];
+          setDragK(k);
+          const move = (ev) => {
+            const els = [...row.querySelectorAll("[data-chipk]")];
+            let to = els.findIndex((el) => { const r = el.getBoundingClientRect(); return ev.clientY < r.bottom && ev.clientX < r.left + r.width / 2; });
+            if (to < 0) to = els.length;
+            const from = cur.indexOf(k); if (to > from) to--;
+            if (to !== from) { cur = [...cur]; cur.splice(from, 1); cur.splice(to, 0, k); setChipCfg((c) => ({ ...c, order: cur })); }
+          };
+          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); setDragK(null); };
+          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+        };
+        return (
+          <div className={"chips" + (chipEdit ? " chipedit" : "")}>
+            {cat && !chipEdit && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>}
+            {order.map((k) => chipEdit
+              ? <span key={k} data-chipk={k} className={"chipcfg" + (hidden.has(k) ? " off" : "") + (dragK === k ? " drag" : "")} onPointerDown={(e) => !e.target.closest("button") && startDrag(e, k)}>
+                  <span className="chh" aria-hidden="true">⠿</span>{defs[k][0]}
+                  <button className="chipeye" title={hidden.has(k) ? "Einblenden" : "Ausblenden"} onClick={() => setChipCfg((c) => ({ ...c, hidden: hidden.has(k) ? c.hidden.filter((x) => x !== k) : [...c.hidden, k] }))}>{hidden.has(k) ? "◌" : "👁"}</button>
+                </span>
+              : !hidden.has(k) && <React.Fragment key={k}>{defs[k][1]}</React.Fragment>)}
+            <button className={"chip chipset" + (chipEdit ? " on" : "")} title="Filter anordnen und ein-/ausblenden" onClick={() => setChipEdit(!chipEdit)}>{chipEdit ? "✓ Fertig" : "⚙︎"}</button>
+            {chipEdit && <small className="muted chiphint">Am Griff ⠿ seitlich ziehen · 👁 ein-/ausblenden</small>}
+          </div>
+        );
+      })()}
       {onFiles && showDrop && <DocDrop onFiles={onFiles} onHide={() => setShowDrop(false)} />}
       <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>
 
@@ -7049,4 +7081,16 @@ nav.bottom>button.sidetoggle{display:none}
 .docdrop b{font-size:14px}.docdrop small{font-size:12px}
 .docdrop .ddx{flex:none;width:30px;height:30px;min-width:30px;min-height:30px;font-size:13px;color:var(--mut)}
 @media (max-width:700px){.docdrop{width:100%;min-width:0}}
+
+.chips select.chip{max-width:170px;text-overflow:ellipsis}
+.chipcfg{display:inline-flex;flex:none;white-space:nowrap;align-items:center;gap:6px;height:34px;padding:0 6px 0 8px;border:1px dashed var(--acc);border-radius:999px;background:var(--card);font-size:13px;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none}
+.chipcfg.off{opacity:.45;border-style:dotted;border-color:var(--line)}
+.chipcfg.drag{cursor:grabbing;background:color-mix(in srgb,var(--acc) 18%,var(--card));box-shadow:0 4px 14px #0004}
+.chipcfg .chh{color:var(--mut);font-size:14px}
+.chipeye{background:none;border:0;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:999px;color:var(--txt)}
+.chipeye:hover{background:var(--card2)}
+.chipset{min-width:36px;justify-content:center}
+.chiphint{align-self:center;font-size:12px}
+.chips.chipedit{flex-wrap:wrap;overflow:visible;row-gap:8px}
+.chipset,.chiphint{flex:none;white-space:nowrap}
 `;
