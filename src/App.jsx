@@ -464,7 +464,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Barausgabe"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Barausgabe"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -537,7 +537,7 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 const DEFAULT_NAV = {
   tabs: [
     { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: false, parent: "docs" },
-    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "kunden", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }
+    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "kunden", side: true, phone: false }, { key: "mahnungen", side: true, phone: false }, { key: "artikel", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }
   ],
   groups: [
     { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
@@ -1688,6 +1688,8 @@ export default function App() {
         {tab === "cash" && <CashPage accounts={accounts} txs={txs} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory}
           docs={active} onOpen={setOpenId} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
         {tab === "invoices" && <InvoicesPage req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
+        {tab === "mahnungen" && <DunningPage setTab={setTab} />}
+        {tab === "artikel" && <ArticlesPage setTab={setTab} />}
         {tab === "kunden" && <ContactsPage setTab={setTab} req={bizReq} />}
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
@@ -3784,7 +3786,7 @@ function SetSec({ id, title, children }) {
   );
 }
 
-const SET_IDS = ["darstellung", "design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"];
+const SET_IDS = ["darstellung", "design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -3912,7 +3914,7 @@ function DesignSettings({ design, setDesign, theme }) {
 
 function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
-  const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
+  const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
   useEffect(() => {
     const id = ls.get("openSettingsSec", null); if (!id) return; ls.set("openSettingsSec", null);
     setSecClosed((l) => l.filter((x) => x !== id));
@@ -4003,6 +4005,9 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
         <label>Ort<input value={me.city} onChange={(e) => setMe({ ...me, city: e.target.value })} /></label>
       </SetSec></>,
     "rechnungen": <><SetSec id="rechnungen" title="Rechnungen"><InvoiceSettings me={me} /></SetSec></>,
+    "rechnungsdesign": <><SetSec id="rechnungsdesign" title="Rechnungsdesign"><InvoiceDesignSettings /></SetSec></>,
+    "mahnwesen": <><SetSec id="mahnwesen" title="Mahnungen"><DunningSettings /></SetSec></>,
+    "artikel": <><SetSec id="artikel" title="Artikel"><ArticleSettings /></SetSec></>,
     "kontaktarten": <><SetSec id="kontaktarten" title="Kunden – Kategorien"><ContactTypeSettings /></SetSec></>,
     "doccats": <><DocNavSettings part="cats" nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} /></>,
     "docgroups": <><DocNavSettings nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} /></>,
@@ -4142,11 +4147,42 @@ const pdfSafe = (t) => String(t ?? "").replace(/[   ]/g, " ").replace(/[‐
   .map((ch) => (ch.charCodeAt(0) < 256 || WIN_ANSI_EXTRA.includes(ch) ? ch : ch === "\t" ? " " : "?")).join("");
 const money = (v) => (Number(v) || 0).toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-async function buildInvoicePdf(inv, co, remind = null) {
+/* ---------- Rechnungsdesign & Mahnwesen (Einstellungen) ---------- */
+const INV_PRESETS = {
+  klassisch: { label: "Klassisch", headerBand: false, tableStyle: "linien", totalBox: false, accentTitle: false, showPos: true, showSenderLine: true, logoPos: "rechts" },
+  modern: { label: "Modern", headerBand: true, tableStyle: "streifen", totalBox: true, accentTitle: true, showPos: true, showSenderLine: true, logoPos: "links" },
+  minimal: { label: "Minimal", headerBand: false, tableStyle: "schlicht", totalBox: false, accentTitle: false, showPos: false, showSenderLine: false, logoPos: "links" },
+  elegant: { label: "Elegant", headerBand: false, tableStyle: "linien", totalBox: true, accentTitle: true, showPos: true, showSenderLine: true, logoPos: "mitte", font: "times" },
+};
+const DESIGN_DEF = { preset: "klassisch", ...INV_PRESETS.klassisch, accent: "#0b63f6", font: "helvetica", logoSize: 56, fontSize: 9.5, titleSize: 17,
+  showQR: true, showUnit: true, showFooter: true, showKU: true, showArtNo: true, footerNote: "", titleR: "Rechnung", titleA: "Angebot" };
+const invDesign = () => ({ ...DESIGN_DEF, ...ls.get("invoiceDesign", {}) });
+const DUN_TEXT = {
+  0: "sicher ist es Ihrer Aufmerksamkeit entgangen: Für die Rechnung {nummer} vom {datum} über {betrag} konnten wir bis heute keinen Zahlungseingang feststellen. Wir bitten Sie, den offenen Betrag bis {frist} zu überweisen.",
+  1: "leider konnten wir trotz unserer Zahlungserinnerung noch keinen Zahlungseingang für die Rechnung {nummer} vom {datum} feststellen. Wir ersuchen Sie, den offenen Betrag bis {frist} zu begleichen.",
+  2: "trotz unserer bisherigen Mahnungen ist die Rechnung {nummer} vom {datum} weiterhin offen. Wir ersuchen Sie dringend, den offenen Betrag bis {frist} zu überweisen.",
+  3: "da die Rechnung {nummer} vom {datum} trotz mehrfacher Mahnung weiterhin offen ist, fordern wir Sie letztmalig auf, den offenen Betrag bis {frist} zu bezahlen. Andernfalls sehen wir uns gezwungen, weitere Schritte einzuleiten.",
+};
+const DUN_DEFAULT = {
+  levels: [["Zahlungserinnerung", 7, 0], ["1. Mahnung", 10, 10], ["2. Mahnung", 10, 15], ["Letzte Mahnung", 7, 20]].map(([title, days, fee], i) => ({ id: "l" + i, title, days, fee, text: DUN_TEXT[i] })),
+  waitDays: 7, closing: "Sollten Sie die Zahlung bereits veranlasst haben, betrachten Sie dieses Schreiben bitte als gegenstandslos.",
+  salutation: "Sehr geehrte Damen und Herren,",
+};
+const dunning = () => { const d = ls.get("dunning", {}); return { ...DUN_DEFAULT, ...d, levels: d.levels?.length ? d.levels : DUN_DEFAULT.levels }; };
+const remindName = (l) => { const lv = dunning().levels; return lv[Math.min(l, lv.length - 1)]?.title || "Mahnung"; };
+const fillDun = (t, inv, r) => String(t || "").replace(/\{nummer\}/g, inv.number || "").replace(/\{datum\}/g, fmtDate(inv.date)).replace(/\{betrag\}/g, "€ " + money(invTotal({ ...inv, fee: 0 })))
+  .replace(/\{frist\}/g, fmtDate(r.due)).replace(/\{faellig\}/g, fmtDate(invDue(inv))).replace(/\{kunde\}/g, inv.customer?.name || "");
+const hexRgb = (h, rgb) => { const m = String(h || "#0b63f6").replace("#", ""); const n = parseInt(m.length === 3 ? m.split("").map((x) => x + x).join("") : m, 16) || 0x0b63f6; return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
+
+async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
+  const D = { ...DESIGN_DEF, ...design };
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const pdf = await PDFDocument.create();
-  const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const W = 595.28, H = 841.89, M = 56, grey = rgb(0.38, 0.4, 0.45), dark = rgb(0.1, 0.11, 0.14), line = rgb(0.82, 0.83, 0.86);
+  const FF = { helvetica: ["Helvetica", "HelveticaBold"], times: ["TimesRoman", "TimesRomanBold"], courier: ["Courier", "CourierBold"] }[D.font] || ["Helvetica", "HelveticaBold"];
+  const F = await pdf.embedFont(StandardFonts[FF[0]]), B = await pdf.embedFont(StandardFonts[FF[1]]);
+  const W = 595.28, H = 841.89, M = 56, grey = rgb(0.38, 0.4, 0.45), dark = rgb(0.1, 0.11, 0.14), line = rgb(0.82, 0.83, 0.86), white = rgb(1, 1, 1);
+  const acc = hexRgb(D.accent, rgb), accSoft = (() => { const c = acc; return rgb(1 - (1 - c.red) * 0.12, 1 - (1 - c.green) * 0.12, 1 - (1 - c.blue) * 0.12); })();
+  const fs = Number(D.fontSize) || 9.5;
   let page = pdf.addPage([W, H]);
   const txt = (s, x, y, o = {}) => page.drawText(pdfSafe(s), { x, y, size: o.size || 10, font: o.bold ? B : F, color: o.color || dark });
   const width = (s, o = {}) => (o.bold ? B : F).widthOfTextAtSize(pdfSafe(s), o.size || 10);
@@ -4155,17 +4191,15 @@ async function buildInvoicePdf(inv, co, remind = null) {
     const out = [];
     for (const para of pdfSafe(s).split("\n")) {
       let cur = "";
-      for (const w of para.split(" ")) {
-        const t = cur ? cur + " " + w : w;
-        if (width(t, o) > maxW && cur) { out.push(cur); cur = w; } else cur = t;
-      }
+      for (const w of para.split(" ")) { const t = cur ? cur + " " + w : w; if (width(t, o) > maxW && cur) { out.push(cur); cur = w; } else cur = t; }
       out.push(cur);
     }
     return out;
   };
-  const hr = (y) => page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.6, color: line });
+  const hr = (y, col = line) => page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.6, color: col });
   const footer = () => {
-    hr(62);
+    if (!D.showFooter) return;
+    hr(62, D.headerBand ? acc : line);
     const cols = [
       [co.name, co.owner && co.owner !== co.name ? co.owner : "", co.street, [co.zip, co.city].filter(Boolean).join(" ")],
       [co.phone && "Tel. " + co.phone, co.email, co.web, co.fn && "FN " + co.fn],
@@ -4173,89 +4207,113 @@ async function buildInvoicePdf(inv, co, remind = null) {
     ].map((c) => c.filter(Boolean));
     const cw = (W - 2 * M) / 3;
     cols.forEach((c, i) => c.slice(0, 4).forEach((l, k) => txt(l, M + i * cw, 50 - k * 9, { size: 7, color: grey })));
+    if (D.footerNote) txt(D.footerNote, M, 18, { size: 7, color: grey });
   };
 
-  // Kopf: Logo rechts, Absenderzeile, Empfänger
+  // Kopf
+  if (D.headerBand) page.drawRectangle({ x: 0, y: H - 112, width: W, height: 112, color: acc });
+  const logoH = Math.max(24, Math.min(110, Number(D.logoSize) || 56));
+  let logoDrawn = false;
   if (co.logo) {
     try {
       const bytes = Uint8Array.from(atob(co.logo.split(",")[1]), (c) => c.charCodeAt(0));
       const img = co.logo.startsWith("data:image/png") ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
-      const sc = Math.min(140 / img.width, 56 / img.height);
-      page.drawImage(img, { x: W - M - img.width * sc, y: H - 48 - img.height * sc, width: img.width * sc, height: img.height * sc });
+      const sc = Math.min(200 / img.width, logoH / img.height), w = img.width * sc, h = img.height * sc;
+      const x = D.logoPos === "links" ? M : D.logoPos === "mitte" ? (W - w) / 2 : W - M - w;
+      page.drawImage(img, { x, y: H - 40 - h, width: w, height: h }); logoDrawn = true;
+      if (D.headerBand && co.name) (D.logoPos === "rechts" ? txt : (s, x2, y2, o) => right(s, W - M, y2, o))(co.name, M, H - 70, { bold: true, size: 15, color: white });
     } catch {}
-  } else if (co.name) right(co.name, W - M, H - 70, { bold: true, size: 14 });
-  const sender = [co.name, co.street, [co.zip, co.city].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
-  txt(sender, M, H - 138, { size: 7, color: grey });
-  page.drawLine({ start: { x: M, y: H - 142 }, end: { x: M + Math.min(width(sender, { size: 7 }), 240), y: H - 142 }, thickness: 0.4, color: line });
+  }
+  if (!logoDrawn && co.name) {
+    const o = { bold: true, size: 15, color: D.headerBand ? white : D.accentTitle ? acc : dark };
+    if (D.logoPos === "links") txt(co.name, M, H - 70, o); else if (D.logoPos === "mitte") txt(co.name, (W - width(co.name, o)) / 2, H - 70, o); else right(co.name, W - M, H - 70, o);
+  }
+  if (D.showSenderLine) {
+    const sender = [co.name, co.street, [co.zip, co.city].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+    txt(sender, M, H - 138, { size: 7, color: grey });
+    page.drawLine({ start: { x: M, y: H - 142 }, end: { x: M + Math.min(width(sender, { size: 7 }), 240), y: H - 142 }, thickness: 0.4, color: line });
+  }
   const c = inv.customer || {};
   let y = H - 158;
-  [c.name, ...(c.address || "").split("\n")].filter((l) => l && l.trim()).slice(0, 6).forEach((l, i) => txt(l, M, y - i * 13, { size: 10.5 }));
+  [c.name, ...(c.address || "").split("\n")].filter((l) => l && l.trim()).slice(0, 6).forEach((l, i) => txt(l, M, y - i * 13, { size: fs + 1 }));
   if (c.uid) txt("UID: " + c.uid, M, y - 6 * 13, { size: 8.5, color: grey });
 
-  // Infoblock rechts
-  const kindName = remind ? REMIND[remind.level] : inv.kind === "angebot" ? "Angebot" : "Rechnung";
+  // Infoblock
+  const kindName = remind ? remindName(remind.level) : inv.kind === "angebot" ? D.titleA || "Angebot" : D.titleR || "Rechnung";
+  const docWord = inv.kind === "angebot" ? D.titleA || "Angebot" : D.titleR || "Rechnung";
   const flds = ls.get("invoiceFields", []), invF = flds.filter((f) => f.scope === "rechnung" && inv.extra?.[f.id]), posF = flds.filter((f) => f.scope === "position");
   const info = remind
-    ? [["Datum", fmtDate(remind.date)], ["Rechnung Nr.", inv.number], ["Rechnungsdatum", fmtDate(inv.date)], ["Zahlbar bis", fmtDate(remind.due)]]
-    : [[kindName + " Nr.", inv.number || "ENTWURF"], [inv.kind === "angebot" ? "Datum" : "Rechnungsdatum", fmtDate(inv.date)],
+    ? [["Datum", fmtDate(remind.date)], [docWord + " Nr.", inv.number], [docWord + "sdatum", fmtDate(inv.date)], ["Zahlbar bis", fmtDate(remind.due)]]
+    : [[docWord + " Nr.", inv.number || "ENTWURF"], [inv.kind === "angebot" ? "Datum" : docWord + "sdatum", fmtDate(inv.date)],
        ...(inv.kind === "angebot" ? [["Gültig bis", fmtDate(addDays(inv.date, inv.validDays ?? co.validDays ?? 30))]]
          : [["Leistung", inv.serviceTo ? `${fmtDate(inv.serviceFrom)} – ${fmtDate(inv.serviceTo)}` : fmtDate(inv.serviceFrom || inv.date)], ["Zahlbar bis", fmtDate(invDue(inv))]]),
        ...(c.number ? [["Kundennr.", c.number]] : []), ...invF.map((f) => [f.label, inv.extra[f.id]])];
   info.forEach(([k, v], i) => { txt(k, W - M - 190, H - 158 - i * 14, { size: 9, color: grey }); right(v, W - M, H - 158 - i * 14, { size: 9.5, bold: i === 0 }); });
 
-  y = H - 270;
-  txt(kindName.toUpperCase(), M, y, { bold: true, size: 17 });
+  y = Math.min(H - 270, H - 170 - info.length * 14);
+  txt(kindName.toUpperCase(), M, y, { bold: true, size: Number(D.titleSize) || 17, color: D.accentTitle ? acc : dark });
   y -= 24;
-  const intro = remind
-    ? (remind.level === 0
-      ? `sicher ist es Ihrer Aufmerksamkeit entgangen: Für die unten angeführte Rechnung konnten wir bis heute keinen Zahlungseingang feststellen. Wir bitten Sie, den offenen Betrag bis ${fmtDate(remind.due)} zu überweisen.`
-      : `leider konnten wir trotz ${remind.level === 1 ? "unserer Zahlungserinnerung" : "bisheriger Mahnungen"} noch keinen Zahlungseingang für die unten angeführte Rechnung feststellen. Wir ersuchen Sie dringend, den offenen Betrag bis ${fmtDate(remind.due)} zu begleichen.`) + "\nSollten Sie die Zahlung bereits veranlasst haben, betrachten Sie dieses Schreiben bitte als gegenstandslos."
-    : inv.intro ?? (inv.kind === "angebot" ? co.introA : co.intro);
-  if (remind) { txt(c.contact ? `Sehr geehrte/r ${c.contact},` : "Sehr geehrte Damen und Herren,", M, y); y -= 16; }
-  for (const l of wrap(intro || "", W - 2 * M)) { txt(l, M, y); y -= 14; }
+  const dun = dunning(), lvl = remind ? dun.levels[Math.min(remind.level, dun.levels.length - 1)] : null;
+  const intro = remind ? fillDun(lvl?.text, inv, remind) + (dun.closing ? "\n" + dun.closing : "") : inv.intro ?? (inv.kind === "angebot" ? co.introA : co.intro);
+  if (remind) { txt(c.contact ? `Sehr geehrte/r ${c.contact},` : dun.salutation || "Sehr geehrte Damen und Herren,", M, y, { size: fs + 0.5 }); y -= 16; }
+  for (const l of wrap(intro || "", W - 2 * M, { size: fs + 0.5 })) { txt(l, M, y, { size: fs + 0.5 }); y -= fs + 4.5; }
   y -= 10;
 
   // Tabelle
-  const X = { pos: M, txt: M + 28, qty: W - M - 210, unit: W - M - 170, price: W - M - 70, sum: W - M };
+  const showPos = D.showPos, showUnit = D.showUnit && !remind;
+  const X = { pos: M, txt: showPos ? M + 28 : M, qty: W - M - (showUnit ? 210 : 170), unit: W - M - 170, price: W - M - 70, sum: W - M };
+  const hc = D.tableStyle === "schlicht" ? grey : D.headerBand || D.accentTitle ? acc : grey;
   const head = () => {
-    page.drawRectangle({ x: M, y: y - 6, width: W - 2 * M, height: 20, color: rgb(0.95, 0.96, 0.97) });
-    txt("Pos", X.pos + 4, y, { size: 8.5, bold: true, color: grey }); txt("Bezeichnung", X.txt, y, { size: 8.5, bold: true, color: grey });
-    if (!remind) { right("Menge", X.qty + 20, y, { size: 8.5, bold: true, color: grey }); txt("Einheit", X.unit, y, { size: 8.5, bold: true, color: grey });
-      right("Einzelpreis", X.price, y, { size: 8.5, bold: true, color: grey }); } right("Gesamt", X.sum, y, { size: 8.5, bold: true, color: grey });
+    if (D.tableStyle !== "schlicht") page.drawRectangle({ x: M, y: y - 6, width: W - 2 * M, height: 20, color: D.headerBand || D.accentTitle ? accSoft : rgb(0.95, 0.96, 0.97) });
+    const o = { size: 8.5, bold: true, color: hc };
+    if (showPos) txt("Pos", X.pos + 4, y, o);
+    txt("Bezeichnung", X.txt + (showPos ? 0 : 4), y, o);
+    if (!remind) { right("Menge", X.qty + 20, y, o); if (showUnit) txt("Einheit", X.unit, y, o); right("Einzelpreis", X.price, y, o); }
+    right("Gesamt", X.sum - 4, y, o);
+    if (D.tableStyle === "schlicht") hr(y - 6, dark);
     y -= 22;
   };
   const newPageIfNeeded = (need) => { if (y - need < 120) { footer(); page = pdf.addPage([W, H]); y = H - 70; head(); } };
   head();
   const rows = remind
-    ? [{ text: `Rechnung ${inv.number} vom ${fmtDate(inv.date)}, fällig seit ${fmtDate(invDue(inv))}`, qty: 1, unit: "", price: invTotal({ ...inv, fee: 0 }) },
-       ...(inv.reminders || []).filter((r) => r.fee).map((r) => ({ text: `Mahnspesen ${REMIND[r.level]}`, qty: 1, unit: "", price: Number(r.fee) }))]
+    ? [{ text: `${docWord} ${inv.number} vom ${fmtDate(inv.date)}, fällig seit ${fmtDate(invDue(inv))}`, qty: 1, unit: "", price: invTotal({ ...inv, fee: 0 }) },
+       ...(inv.reminders || []).filter((r) => r.fee).map((r) => ({ text: `Mahnspesen ${remindName(r.level)}`, qty: 1, unit: "", price: Number(r.fee) }))]
     : (inv.items || []).filter((it) => it.text || it.price);
   rows.forEach((it, i) => {
-    const lines = wrap(it.text || "", (remind ? X.price : X.qty - 40) - X.txt, { size: 9.5 });
-    const ex = remind ? [] : posF.filter((f) => it.extra?.[f.id]).flatMap((f) => wrap(`${f.label}: ${it.extra[f.id]}`, X.qty - 40 - X.txt, { size: 8 }));
-    newPageIfNeeded(lines.length * 12 + ex.length * 10 + 8);
-    txt(String(i + 1), X.pos + 4, y, { size: 9.5 });
-    lines.forEach((l, k) => txt(l, X.txt, y - k * 12, { size: 9.5 }));
-    if (!remind) { right(String(it.qty ?? "").replace(".", ","), X.qty + 20, y, { size: 9.5 }); txt(it.unit || "", X.unit, y, { size: 9.5 }); right(money(it.price), X.price, y, { size: 9.5 }); }
-    right(money((Number(it.qty) || 0) * (Number(it.price) || 0)), X.sum, y, { size: 9.5 });
-    ex.forEach((l, k) => txt(l, X.txt, y - lines.length * 12 - k * 10 + 1, { size: 8, color: grey }));
-    y -= lines.length * 12 + ex.length * 10 + 6;
-    hr(y + 2); y -= 10;
+    const tw = (remind ? X.price : X.qty - 40) - X.txt;
+    const lines = wrap(it.text || "", tw, { size: fs });
+    const ex = remind ? [] : [...(D.showArtNo !== false && it.artNo ? [`Art.-Nr.: ${it.artNo}`] : []), ...posF.filter((f) => it.extra?.[f.id]).map((f) => `${f.label}: ${it.extra[f.id]}`)].flatMap((t) => wrap(t, tw, { size: 8 }));
+    const hgt = lines.length * (fs + 2.5) + ex.length * 10;
+    newPageIfNeeded(hgt + 8);
+    if (D.tableStyle === "streifen" && i % 2 === 1) page.drawRectangle({ x: M, y: y - hgt + fs - 2, width: W - 2 * M, height: hgt + 6, color: rgb(0.965, 0.97, 0.975) });
+    if (showPos) txt(String(i + 1), X.pos + 4, y, { size: fs });
+    lines.forEach((l, k) => txt(l, X.txt + (showPos ? 0 : 4), y - k * (fs + 2.5), { size: fs }));
+    if (!remind) { right(String(it.qty ?? "").replace(".", ","), X.qty + 20, y, { size: fs }); if (showUnit) txt(it.unit || "", X.unit, y, { size: fs }); right(money(it.price), X.price, y, { size: fs }); }
+    right(money((Number(it.qty) || 0) * (Number(it.price) || 0)), X.sum - 4, y, { size: fs });
+    ex.forEach((l, k) => txt(l, X.txt + (showPos ? 0 : 4), y - lines.length * (fs + 2.5) - k * 10 + 1, { size: 8, color: grey }));
+    y -= hgt + 6;
+    if (D.tableStyle === "linien") hr(y + 2);
+    y -= 10;
   });
+  if (D.tableStyle !== "linien") hr(y + 8, D.tableStyle === "schlicht" ? dark : line);
   newPageIfNeeded(90);
   const total = remind ? r2(rows.reduce((s, r) => s + r.qty * r.price, 0)) : invTotal(inv);
   y -= 4;
-  txt(remind ? "Offener Betrag" : "Gesamtbetrag", W - M - 210, y, { bold: true, size: 11 });
-  right("€ " + money(total), W - M, y, { bold: true, size: 11 });
+  const tl = remind ? "Offener Betrag" : "Gesamtbetrag";
+  if (D.totalBox) {
+    page.drawRectangle({ x: W - M - 230, y: y - 9, width: 230, height: 28, color: acc });
+    txt(tl, W - M - 220, y, { bold: true, size: 11, color: white }); right("€ " + money(total), W - M - 10, y, { bold: true, size: 12, color: white });
+    y -= 10;
+  } else { txt(tl, W - M - 210, y, { bold: true, size: 11 }); right("€ " + money(total), W - M - 4, y, { bold: true, size: 11 }); }
   y -= 16;
-  txt(KU_NOTE, M, y, { size: 8.5, color: grey });
+  if (D.showKU) txt(KU_NOTE, M, y, { size: 8.5, color: grey });
   y -= 26;
 
   // Zahlung + QR
   if (inv.kind !== "angebot" && co.iban) {
     newPageIfNeeded(110);
     const ref = inv.number || "";
-    try {
+    if (D.showQR) try {
       const payload = ["BCD", "002", "1", "SCT", (co.bic || "").replace(/\s/g, ""), (co.name || "").slice(0, 70), co.iban.replace(/\s/g, "").toUpperCase(),
         "EUR" + total.toFixed(2), "", "", ref.slice(0, 140)].join("\n");
       const png = await QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width: 300 });
@@ -4265,18 +4323,18 @@ async function buildInvoicePdf(inv, co, remind = null) {
     } catch {}
     const pay = [`Bitte überweisen Sie den Betrag bis ${fmtDate(remind ? remind.due : invDue(inv))} auf folgendes Konto:`,
       `${co.name}${co.bank ? " · " + co.bank : ""}`, `IBAN ${co.iban}${co.bic ? " · BIC " + co.bic : ""}`, `Verwendungszweck: ${ref}`];
-    pay.forEach((l, i) => txt(l, M, y - i * 14, { size: 9.5, bold: i === 3 }));
+    pay.forEach((l, i) => txt(l, M, y - i * 14, { size: fs, bold: i === 3 }));
     y -= 70;
   }
   const outro = remind ? "Mit freundlichen Grüßen" : [inv.outro ?? co.outro, "Mit freundlichen Grüßen"].filter(Boolean).join("\n");
   y -= 10;
-  for (const l of wrap(outro, W - 2 * M - 100)) { newPageIfNeeded(14); txt(l, M, y); y -= 14; }
-  txt(co.owner || co.name, M, y - 8);
+  for (const l of wrap(outro, W - 2 * M - 100, { size: fs + 0.5 })) { newPageIfNeeded(14); txt(l, M, y, { size: fs + 0.5 }); y -= 14; }
+  txt(co.owner || co.name, M, y - 8, { size: fs + 0.5 });
   footer();
   pdf.getPages().forEach((p, i, all) => { if (all.length > 1) p.drawText(`Seite ${i + 1} von ${all.length}`, { x: W - M - 60, y: 72, size: 7, font: F, color: grey }); });
   return new Blob([await pdf.save()], { type: "application/pdf" });
 }
-const invFileName = (inv, remind) => safeName(`${remind ? REMIND[remind.level] : inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"} ${inv.customer?.name || ""}`) + ".pdf";
+const invFileName = (inv, remind) => safeName(`${remind ? remindName(remind.level) : inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"} ${inv.customer?.name || ""}`) + ".pdf";
 async function openPdf(blob, name = "Dokument.pdf", title = "") {
   if (pdfUi) return pdfUi({ blob, name, title: title || name.replace(/\.pdf$/, "") });
   const u = URL.createObjectURL(blob); const w = window.open(u, "_blank"); if (!w) location.href = u; setTimeout(() => URL.revokeObjectURL(u), 120000);
@@ -4340,8 +4398,8 @@ function InvoiceSettings({ me }) {
   const [part, setPart] = useState("firma");
   return (<>
     <p className="muted small">Firmendaten, Nummernkreise und Texte für Rechnungen &amp; Angebote (Kleinunternehmer – ohne USt). Änderungen werden sofort gespeichert.</p>
-    <div className="seg"><button className={part === "firma" ? "on" : ""} onClick={() => setPart("firma")}>🏢 Firmendaten</button><button className={part === "felder" ? "on" : ""} onClick={() => setPart("felder")}>🧩 Eigene Felder</button><button className={part === "artikel" ? "on" : ""} onClick={() => setPart("artikel")}>📦 Artikel ({articles.length})</button></div>
-    {part === "firma" ? <CompanyFields v={{ ...CO_DEFAULT, ...co }} setV={setCo} /> : part === "felder" ? <InvoiceFieldsEditor /> : <ArticlesEditor articles={articles} setArticles={setArticles} />}
+    <div className="seg"><button className={part === "firma" ? "on" : ""} onClick={() => setPart("firma")}>🏢 Firmendaten</button><button className={part === "felder" ? "on" : ""} onClick={() => setPart("felder")}>🧩 Eigene Felder</button></div>
+    {part === "firma" ? <CompanyFields v={{ ...CO_DEFAULT, ...co }} setV={setCo} /> : <InvoiceFieldsEditor />}
   </>);
 }
 /* Einheiten: Standardliste + eigene, über „＋ Neue Einheit …“ in jeder Auswahl erweiterbar */
@@ -4462,7 +4520,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
   const blocking = warn.filter((w) => !/IBAN|UID/.test(w));
   const isA = inv.kind === "angebot";
   const pick = (name) => { const c = customers.find((x) => x.name === name); if (c) { setC({ name: c.name, address: c.address, uid: c.uid, email: c.email, number: c.number }); setSaveCust(false); } else setC({ name }); };
-  const pickArt = (i, text) => { const a = articles.find((x) => x.text === text); setIt(i, a ? { text, unit: a.unit, price: a.price, ...(a.extra ? { extra: { ...a.extra } } : {}) } : { text }); };
+  const pickArt = (i, text) => { const a = articles.find((x) => x.text === text); setIt(i, a ? { text, unit: a.unit, price: a.price, artNo: a.number || "", ...(a.extra ? { extra: { ...a.extra } } : {}) } : { text, artNo: "" }); };
   const doSave = (final) => {
     const out = { ...inv, items: inv.items.filter((it) => it.text || it.price), updatedAt: new Date().toISOString() };
     onSave(out, saveCust);
@@ -4502,7 +4560,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
       </fieldset>
       <fieldset disabled={locked} className="itemsfs">
         <legend>Positionen</legend>
-        <datalist id="artlist">{articles.map((a) => <option key={a.id} value={a.text} />)}</datalist>
+        <datalist id="artlist">{articles.filter((a) => !a.inactive && a.text).map((a) => <option key={a.id} value={a.text}>{[a.number, a.price ? "€ " + money(a.price) + " / " + (a.unit || "") : ""].filter(Boolean).join(" · ")}</option>)}</datalist>
         {inv.items.map((it, i) => (
           <div key={i} className="itemwrap">
           <div className="itemrow">
@@ -4512,7 +4570,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
             <input className="iprice" inputMode="decimal" value={it.price} placeholder="Preis €" onChange={(e) => setIt(i, { price: e.target.value.replace(",", ".") })} aria-label="Einzelpreis" />
             <b className="isum">{fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
             <span className="iact">
-              {it.text && !articles.some((a) => a.text === it.text) && <button type="button" className="iconbtn" title="Als Artikel merken" onClick={() => setArticles((l) => [...l, { id: uid(), text: it.text, unit: it.unit, price: it.price, extra: it.extra }])}>☆</button>}
+              {it.text && !articles.some((a) => a.text === it.text) && <button type="button" className="iconbtn" title="Als Artikel merken" onClick={() => { const C = artCfg(); const no = C.autoNo ? C.prefix + String(articles.reduce((m, a) => Math.max(m, String(a.number || "").startsWith(C.prefix) ? parseInt(a.number.slice(C.prefix.length), 10) || 0 : 0), 0) + 1).padStart(3, "0") : ""; setArticles((l) => [...l, { id: uid(), text: it.text, unit: it.unit, price: it.price, extra: it.extra, number: no }]); setIt(i, { artNo: no }); }}>☆</button>}
               <button type="button" className="iconbtn" title="Position löschen" onClick={() => set({ items: inv.items.filter((_, k) => k !== i) })}>✕</button>
             </span>
           </div>
@@ -4543,13 +4601,14 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
 
 /* ---------- Mahnung ---------- */
 function RemindWin({ inv, co, onDone, onClose }) {
-  const level = Math.min((inv.reminders || []).length, REMIND.length - 1);
-  const [days, setDays] = useState(level === 0 ? 7 : 10), [fee, setFee] = useState(level === 0 ? "" : "10");
+  const level = Math.min((inv.reminders || []).length, dunning().levels.length - 1);
+  const lv = dunning().levels[level] || {};
+  const [days, setDays] = useState(Number(lv.days) || 7), [fee, setFee] = useState(Number(lv.fee) ? String(lv.fee) : "");
   const r = { level, date: todayISO(), due: addDays(todayISO(), days), fee: Number(String(fee).replace(",", ".")) || 0 };
   const next = { ...inv, reminders: [...(inv.reminders || []), r] };
   return (
     <Win id="remind" onClose={onClose} small center dirty={false}>
-      <div className="panelhead"><b>{REMIND[level]}</b><XBtn /></div>
+      <div className="panelhead"><b>{remindName(level)}</b><XBtn /></div>
       <p className="small">Rechnung <b>{inv.number}</b> an {inv.customer?.name} über <b>{fmtMoney(invTotal({ ...inv, fee: 0 }))}</b>, fällig seit {fmtDate(invDueEff(inv))} ({-daysUntil(invDueEff(inv))} Tage).</p>
       <div className="grid2">
         <label>Neue Frist (Tage)<input type="number" value={days} onChange={(e) => setDays(Number(e.target.value))} /></label>
@@ -4557,7 +4616,7 @@ function RemindWin({ inv, co, onDone, onClose }) {
       </div>
       <div className="actions">
         <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(next, co, r), invFileName(inv, r))}>Vorschau</button>
-        <button className="btn primary" onClick={async () => { const pdf = await buildInvoicePdf(next, co, r); onDone(next); onClose(); sharePdf(pdf, invFileName(inv, r), REMIND[level] + " " + inv.number); }}>Erstellen & senden</button>
+        <button className="btn primary" onClick={async () => { const pdf = await buildInvoicePdf(next, co, r); onDone(next); onClose(); sharePdf(pdf, invFileName(inv, r), remindName(level) + " " + inv.number); }}>Erstellen & senden</button>
       </div>
       <p className="muted small">Wird im Verlauf der Rechnung vermerkt. Das PDF kannst du per Mail, WhatsApp usw. teilen.</p>
     </Win>
@@ -4651,7 +4710,8 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
         <button className="btn" onClick={() => newDoc("angebot")}>＋ Angebot</button>
         <span className="grow" />
         <button className="btn" onClick={() => setTab?.("kunden")}>👥 Kunden</button>
-        <button className="btn" onClick={() => setMdOpen(true)}>📦 Artikel</button>
+        <button className="btn" onClick={() => (setTab ? setTab("artikel") : setMdOpen(true))}>📦 Artikel</button>
+        <button className="btn" onClick={() => setTab?.("mahnungen")}>📮 Mahnungen</button>
         <button className="btn" onClick={() => setCoOpen(true)}>🏢 Firmendaten</button>
       </div>
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Nummer, Kunde, Leistung suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -4683,7 +4743,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
                     {x.kind === "angebot" ? "Angebot " : ""}{x.number || "Entwurf"} · {fmtDate(x.date)}
                     {x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) && ` · fällig ${fmtDate(invDueEff(x))}`}
                     {s === "bezahlt" && x.paidAt && ` · bezahlt ${fmtDate(x.paidAt)}`}
-                    {(x.reminders || []).length > 0 && ` · ${REMIND[lastReminder(x).level]} ${fmtDate(lastReminder(x).date)}`}
+                    {(x.reminders || []).length > 0 && ` · ${remindName(lastReminder(x).level)} ${fmtDate(lastReminder(x).date)}`}
                     {x.fromOffer && ` · aus ${x.fromOffer}`}{x.fromTemplate && " · 🔁"}
                   </small>
                   {pay && <button className="link pos small" onClick={(e) => { e.stopPropagation(); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id }); }}>💡 Zahlungseingang vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}
@@ -4694,7 +4754,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
                   {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`)}><IcoShare /></button>}
                   {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" onClick={() => patch(x.id, { status: "bezahlt", paidAt: todayISO() })}>✓ Bezahlt</button>}
                   {s === "bezahlt" && <button className="link small" onClick={() => patch(x.id, { status: "offen", paidAt: null })}>Doch offen</button>}
-                  {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{REMIND[Math.min((x.reminders || []).length, 3)]}</button>}
+                  {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>}
                   {x.kind === "angebot" && s === "offen" && <><button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button><button className="link small" onClick={() => patch(x.id, { status: "abgelehnt" })}>Abgelehnt</button></>}
                   <details className="more"><summary className="iconbtn" title="Mehr">⋯</summary>
                     <div className="moremenu">
@@ -5087,6 +5147,272 @@ function ContactsPage({ setTab, req = 0 }) {
         setPicked(null);
       }} />}
       {edit && <ContactEditor c={edit} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
+    </div>
+  );
+}
+
+/* ======================= Rechnungsdesign (Einstellungen) ======================= */
+const SAMPLE_INV = () => ({ kind: "rechnung", number: "RE-2026-001", status: "offen", date: todayISO(), serviceFrom: todayISO(), dueDays: 14,
+  customer: { name: "Muster GmbH", address: "Hauptplatz 1\n4020 Linz", number: "K-001" },
+  items: [{ text: "Elektroinstallation Küche", qty: 6, unit: "Std", price: 65, artNo: "ART-001" }, { text: "Material lt. Aufstellung", qty: 1, unit: "Pausch.", price: 120.5 }, { text: "Anfahrt", qty: 1, unit: "Pausch.", price: 35 }], reminders: [] });
+function PdfPreview({ build, deps }) {
+  const [src, setSrc] = useState(null), [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let dead = false; setBusy(true);
+    const t = setTimeout(async () => { try { const b = await build(); const p = await blobToImages(b, 900, 1); if (!dead) setSrc(p[0]); } catch {} if (!dead) setBusy(false); }, 350);
+    return () => { dead = true; clearTimeout(t); };
+  }, deps);
+  return <div className={"pdfprev" + (busy ? " busy" : "")}>{src ? <img src={src} alt="Vorschau" /> : <div className="dpload">Vorschau wird erstellt …</div>}</div>;
+}
+function InvoiceDesignSettings() {
+  const [d, setD] = useLsState("invoiceDesign", {});
+  const D = { ...DESIGN_DEF, ...d };
+  const co = { ...CO_DEFAULT, name: "Deine Firma e.U.", street: "Musterstraße 1", zip: "4020", city: "Linz", iban: "AT61 1904 3002 3457 3201", ...ls.get("company", {}) };
+  const set = (p) => setD((x) => ({ ...x, ...p }));
+  const tog = (k, l) => <label className="check mini"><input type="checkbox" checked={!!D[k]} onChange={(e) => set({ [k]: e.target.checked })} /> {l}</label>;
+  const seg = (k, opts) => <div className="seg">{opts.map(([v, l]) => <button key={v} className={D[k] === v ? "on" : ""} onClick={() => set({ [k]: v })}>{l}</button>)}</div>;
+  return (
+    <div className="designmod">
+      <div className="dmctl">
+        <small className="muted">Vorlage</small>
+        <div className="presetrow">{Object.entries(INV_PRESETS).map(([k, p]) => (
+          <button key={k} className={"presetcard" + (D.preset === k ? " on" : "")} onClick={() => { const { label, ...pp } = p; setD({ ...d, preset: k, ...pp, font: p.font || "helvetica" }); }}>
+            <span className={"pcmini pc-" + k} style={{ "--a": D.accent }}><i /><i /><i /></span>{p.label}</button>))}</div>
+        <small className="muted">Akzentfarbe</small>
+        <div className="swatches">
+          {ACC_COLORS.map((c) => <button key={c} className={"sw" + (D.accent === c ? " on" : "")} style={{ background: c }} onClick={() => set({ accent: c })} />)}
+          <ColorDot className={"sw custom" + (!ACC_COLORS.includes(D.accent) ? " on" : "")} title="Eigene Farbe" value={D.accent} onInput={(c) => set({ accent: c })}>＋</ColorDot>
+        </div>
+        <small className="muted">Schrift</small>{seg("font", [["helvetica", "Helvetica"], ["times", "Times"], ["courier", "Courier"]])}
+        <small className="muted">Logo-Position</small>{seg("logoPos", [["links", "Links"], ["mitte", "Mitte"], ["rechts", "Rechts"]])}
+        <label className="rangel">Logo-Größe <input type="range" min="24" max="110" value={D.logoSize} onChange={(e) => set({ logoSize: Number(e.target.value) })} /><b>{D.logoSize}</b></label>
+        <label className="rangel">Schriftgröße <input type="range" min="8" max="12" step="0.5" value={D.fontSize} onChange={(e) => set({ fontSize: Number(e.target.value) })} /><b>{D.fontSize}</b></label>
+        <label className="rangel">Titelgröße <input type="range" min="12" max="28" value={D.titleSize} onChange={(e) => set({ titleSize: Number(e.target.value) })} /><b>{D.titleSize}</b></label>
+        <small className="muted">Tabelle</small>{seg("tableStyle", [["linien", "Linien"], ["streifen", "Streifen"], ["schlicht", "Schlicht"]])}
+        <div className="toggles">
+          {tog("headerBand", "Farbiges Kopfband")}{tog("accentTitle", "Titel in Akzentfarbe")}{tog("totalBox", "Summe hervorheben")}
+          {tog("showPos", "Spalte Pos.")}{tog("showUnit", "Spalte Einheit")}{tog("showSenderLine", "Absenderzeile (Fensterkuvert)")}
+          {tog("showQR", "Zahlen-QR-Code")}{tog("showFooter", "Fußzeile mit Firmendaten")}{tog("showKU", "Kleinunternehmer-Hinweis")}{tog("showArtNo", "Artikelnummer drucken")}
+        </div>
+        <div className="grid2">
+          <label>Titel Rechnung<input value={D.titleR} onChange={(e) => set({ titleR: e.target.value })} /></label>
+          <label>Titel Angebot<input value={D.titleA} onChange={(e) => set({ titleA: e.target.value })} /></label>
+        </div>
+        <label>Zusatzzeile ganz unten (optional)<input value={D.footerNote} placeholder="z. B. Gerichtsstand Linz · Es gelten unsere AGB" onChange={(e) => set({ footerNote: e.target.value })} /></label>
+        {!D.showKU && <p className="warn small">Als Kleinunternehmer ist der Hinweis auf die Steuerbefreiung auf der Rechnung Pflicht.</p>}
+        <div className="actions">
+          <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(SAMPLE_INV(), co, null, D), "Muster-Rechnung.pdf")}>Groß ansehen</button>
+          <button className="link" onClick={() => confirm("Design auf Standard (Klassisch) zurücksetzen?") && setD({})}>Zurücksetzen</button>
+        </div>
+      </div>
+      <PdfPreview build={() => buildInvoicePdf(SAMPLE_INV(), co, null, D)} deps={[JSON.stringify(D)]} />
+    </div>
+  );
+}
+
+/* ======================= Mahnwesen (Einstellungen) ======================= */
+function DunningSettings() {
+  const [raw, setRaw] = useLsState("dunning", {});
+  const dn = { ...DUN_DEFAULT, ...raw, levels: raw.levels?.length ? raw.levels : DUN_DEFAULT.levels };
+  const set = (p) => setRaw((x) => ({ ...dn, ...x, ...p }));
+  const setL = (i, p) => set({ levels: dn.levels.map((l, k) => (k === i ? { ...l, ...p } : l)) });
+  const [open, setOpen] = useState(0);
+  const co = { ...CO_DEFAULT, name: "Deine Firma e.U.", street: "Musterstraße 1", zip: "4020", city: "Linz", iban: "AT61 1904 3002 3457 3201", ...ls.get("company", {}) };
+  const sample = (i) => { const inv = { ...SAMPLE_INV(), date: addDays(todayISO(), -40) }; const rs = dn.levels.slice(0, i + 1).map((l, k) => ({ level: k, date: todayISO(), due: addDays(todayISO(), l.days), fee: l.fee })); return [{ ...inv, reminders: rs }, rs[i]]; };
+  return (<>
+    <p className="muted small">Stufen, Fristen, Mahnspesen und Texte für Zahlungserinnerungen und Mahnungen. Platzhalter im Text: <code>{"{nummer}"}</code> <code>{"{datum}"}</code> <code>{"{betrag}"}</code> <code>{"{faellig}"}</code> <code>{"{frist}"}</code> <code>{"{kunde}"}</code>. Das Aussehen kommt aus „Rechnungsdesign“.</p>
+    <div className="grid2">
+      <label>Wartezeit bis zur nächsten Stufe (Tage)<input type="number" value={dn.waitDays} onChange={(e) => set({ waitDays: Number(e.target.value) })} /></label>
+      <label>Anrede<input value={dn.salutation} onChange={(e) => set({ salutation: e.target.value })} /></label>
+    </div>
+    {dn.levels.map((l, i) => (
+      <fieldset key={l.id || i} className="dunlvl">
+        <div className="dunhead" onClick={() => setOpen(open === i ? -1 : i)}><b>Stufe {i + 1}: {l.title}</b><small className="muted">{l.days} Tage{Number(l.fee) ? ` · € ${money(l.fee)} Spesen` : ""}</small><IcoChev open={open === i} /></div>
+        {open === i && <>
+          <div className="grid2">
+            <label>Bezeichnung<input value={l.title} onChange={(e) => setL(i, { title: e.target.value })} /></label>
+            <div className="grid2"><label>Frist (Tage)<input type="number" value={l.days} onChange={(e) => setL(i, { days: Number(e.target.value) })} /></label>
+              <label>Spesen €<input inputMode="decimal" value={l.fee} onChange={(e) => setL(i, { fee: e.target.value.replace(",", ".") })} /></label></div>
+          </div>
+          <label>Text<textarea rows={4} value={l.text} onChange={(e) => setL(i, { text: e.target.value })} /></label>
+          <div className="actions">
+            <button className="btn sm" onClick={async () => { const [inv, r] = sample(i); openPdf(await buildInvoicePdf(inv, co, r), l.title + " Muster.pdf"); }}>Vorschau</button>
+            {dn.levels.length > 1 && <button className="link red" onClick={() => confirm(`Stufe „${l.title}“ entfernen?`) && set({ levels: dn.levels.filter((_, k) => k !== i) })}>Stufe entfernen</button>}
+          </div>
+        </>}
+      </fieldset>
+    ))}
+    <label>Schlusssatz<textarea rows={2} value={dn.closing} onChange={(e) => set({ closing: e.target.value })} /></label>
+    <div className="actions">
+      {dn.levels.length < 6 && <button className="btn" onClick={() => { set({ levels: [...dn.levels, { id: "l" + uid(), title: `${dn.levels.length}. Mahnung`, days: 10, fee: 10, text: DUN_TEXT[2] }] }); setOpen(dn.levels.length); }}>＋ Stufe</button>}
+      <button className="link" onClick={() => confirm("Mahnwesen auf Standard zurücksetzen?") && setRaw({})}>Zurücksetzen</button>
+    </div>
+  </>);
+}
+
+/* ======================= Artikel (Einstellungen + Reiter) ======================= */
+const ART_DEF = { prefix: "ART-", autoNo: true, defUnit: "Std", groups: ["Leistungen", "Material"] };
+const artCfg = () => ({ ...ART_DEF, ...ls.get("articleCfg", {}) });
+function ArticleSettings() {
+  const [cfg, setCfg] = useLsState("articleCfg", {});
+  const C = { ...ART_DEF, ...cfg };
+  const set = (p) => setCfg((x) => ({ ...C, ...x, ...p }));
+  const [ng, setNg] = useState("");
+  const [units] = useUnits();
+  return (<>
+    <p className="muted small">Einstellungen für den Reiter „Artikel“. Eigene Felder je Position (z. B. Seriennr.) legst du unter Rechnungen › Eigene Felder an – sie erscheinen auch bei jedem Artikel.</p>
+    <div className="grid2">
+      <label>Kürzel Artikelnummer<input value={C.prefix} onChange={(e) => set({ prefix: e.target.value })} /></label>
+      <label>Standard-Einheit<select value={C.defUnit} onChange={(e) => set({ defUnit: e.target.value })}>{units.map((u) => <option key={u}>{u}</option>)}</select></label>
+    </div>
+    <label className="check"><input type="checkbox" checked={!!C.autoNo} onChange={(e) => set({ autoNo: e.target.checked })} /> Artikelnummer automatisch vergeben ({C.prefix}001, {C.prefix}002 …)</label>
+    <div className="unitsed"><small className="muted">Artikelgruppen</small>
+      <div className="chips">{C.groups.map((g) => <span key={g} className="chip unitchip">{g}<button title="Entfernen" onClick={() => set({ groups: C.groups.filter((x) => x !== g) })}>×</button></span>)}</div>
+      <div className="libadd"><input value={ng} placeholder="Neue Gruppe, z. B. Beleuchtung" onChange={(e) => setNg(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && ng.trim() && !C.groups.includes(ng.trim())) { set({ groups: [...C.groups, ng.trim()] }); setNg(""); } }} />
+        <button className="btn sm" disabled={!ng.trim()} onClick={() => { if (!C.groups.includes(ng.trim())) set({ groups: [...C.groups, ng.trim()] }); setNg(""); }}>Hinzufügen</button></div>
+    </div>
+    <UnitsEditor />
+  </>);
+}
+function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
+  const [a, setA] = useState(init);
+  const set = (p) => setA((x) => ({ ...x, ...p }));
+  const [fields] = useLsState("invoiceFields", []);
+  const posFields = fields.filter((f) => f.scope === "position");
+  const C = artCfg();
+  return (
+    <Win id="artedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
+      <div className="panelhead"><b>{init.text || "Neuer Artikel"}</b><button className="btn primary" disabled={!a.text?.trim()} onClick={() => { onSave(a); onClose(); }}>Speichern</button><XBtn /></div>
+      <label>Bezeichnung<input value={a.text || ""} placeholder="z. B. Elektroinstallation, LED-Panel 60x60" onChange={(e) => set({ text: e.target.value })} /></label>
+      <div className="grid2">
+        <label>Artikelnummer<input value={a.number || ""} onChange={(e) => set({ number: e.target.value })} /></label>
+        <label>Gruppe<select value={a.group || ""} onChange={(e) => {
+          if (e.target.value !== "__new") return set({ group: e.target.value });
+          const n = (prompt("Neue Artikelgruppe:") || "").trim(); if (!n) return;
+          if (!C.groups.includes(n)) ls.set("articleCfg", { ...ls.get("articleCfg", {}), groups: [...C.groups, n] }); set({ group: n });
+        }}><option value="">– keine –</option>{[...new Set([...C.groups, a.group].filter(Boolean))].map((g) => <option key={g}>{g}</option>)}<option value="__new">＋ Neue Gruppe …</option></select></label>
+      </div>
+      <div className="grid2">
+        <label>Preis €<input inputMode="decimal" value={a.price ?? ""} onChange={(e) => set({ price: e.target.value.replace(",", ".") })} /></label>
+        <label>Einheit<UnitSelect value={a.unit || C.defUnit} onChange={(u) => set({ unit: u })} /></label>
+      </div>
+      {!!posFields.length && <div className="grid2">{posFields.map((f) => <label key={f.id}>{f.label}<input value={a.extra?.[f.id] || ""} onChange={(e) => set({ extra: { ...(a.extra || {}), [f.id]: e.target.value } })} /></label>)}</div>}
+      <label>Interne Notiz<textarea rows={2} value={a.note || ""} onChange={(e) => set({ note: e.target.value })} placeholder="z. B. Einkaufspreis, Lieferant" /></label>
+      <label className="check"><input type="checkbox" checked={a.inactive !== true} onChange={(e) => set({ inactive: !e.target.checked })} /> Aktiv (in Rechnungen vorschlagen)</label>
+      {init.text && <button className="link red" style={{ marginTop: 12 }} onClick={() => confirm(`Artikel „${a.text}“ löschen?`) && (onDelete(a), onClose())}>Artikel löschen</button>}
+    </Win>
+  );
+}
+function ArticlesPage({ setTab }) {
+  const [list, setList] = useLsState("articles", []);
+  const invoices = ls.get("invoices", []);
+  const C = artCfg();
+  const [edit, setEdit] = useState(null), [q, setQ] = useState(""), [grp, setGrp] = useState("alle"), [sort, setSort] = useState("name");
+  const nextNo = () => C.prefix + String(list.reduce((m, a) => Math.max(m, String(a.number || "").startsWith(C.prefix) ? parseInt(a.number.slice(C.prefix.length), 10) || 0 : 0), 0) + 1).padStart(3, "0");
+  const usage = (a) => { let n = 0, sum = 0; for (const i of invoices) if (i.kind === "rechnung" && !["entwurf", "storniert"].includes(i.status)) for (const it of i.items || []) if (it.text === a.text) { n++; sum += (Number(it.qty) || 0) * (Number(it.price) || 0); } return { n, sum }; };
+  const save = (a) => setList((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
+  const groups = [...new Set([...C.groups, ...list.map((a) => a.group).filter(Boolean)])];
+  const shown = list.filter((a) => grp === "alle" || (grp === "ohne" ? !a.group : a.group === grp))
+    .filter((a) => !q || norm(`${a.text} ${a.number} ${a.group} ${a.note}`).includes(norm(q)))
+    .map((a) => ({ a, u: usage(a) }))
+    .sort((x, y) => (sort === "umsatz" ? y.u.sum - x.u.sum : sort === "preis" ? (Number(y.a.price) || 0) - (Number(x.a.price) || 0) : (x.a.text || "").localeCompare(y.a.text || "", "de")));
+  return (
+    <div className="ctpage">
+      <div className="invbar">
+        <button className="btn primary" onClick={() => setEdit({ id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: grp !== "alle" && grp !== "ohne" ? grp : "" })}>＋ Artikel</button>
+        <span className="grow" />
+        <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">Name</option><option value="preis">Preis</option><option value="umsatz">Umsatz</option></select>
+        {setTab && <button className="chip" title="Einstellungen" onClick={() => { ls.set("openSettingsSec", "artikel"); setTab("settings"); }}>⚙︎</button>}
+      </div>
+      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Bezeichnung, Nummer, Gruppe suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="chips invfilter">
+        {[["alle", "Alle", list.length], ...groups.map((g) => [g, g, list.filter((a) => a.group === g).length]), ["ohne", "Ohne Gruppe", list.filter((a) => !a.group).length]]
+          .filter(([k, , n]) => k === "alle" || n || C.groups.includes(k)).map(([k, l, n]) => <button key={k} className={"chip" + (grp === k ? " on" : "")} onClick={() => setGrp(k)}>{l} <small>({n})</small></button>)}
+      </div>
+      <section className="tile ctlist">
+        {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Artikel. Mit „＋ Artikel“ anlegen oder beim Schreiben einer Rechnung mit ☆ merken – beim Tippen der Bezeichnung werden sie vorgeschlagen."}</p>}
+        {shown.map(({ a, u }) => (
+          <div key={a.id} className={"frow click" + (a.inactive ? " ended" : "")} onClick={() => setEdit(a)}>
+            <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>📦</span>
+            <div className="grow"><b>{a.text || "Ohne Bezeichnung"}</b>
+              <small className="muted block">{[a.number, a.group, a.inactive && "inaktiv", u.n ? `${u.n}× verrechnet · ${fmtMoney(u.sum)}` : "noch nicht verrechnet"].filter(Boolean).join(" · ")}</small></div>
+            <div className="right"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"}</b><small className="muted block">pro {a.unit || C.defUnit}</small></div>
+          </div>
+        ))}
+      </section>
+      {edit && <ArticleEditor a={edit} onSave={save} onDelete={(a) => setList((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
+    </div>
+  );
+}
+
+/* ======================= Mahnungen (Reiter) ======================= */
+function DunningPage({ setTab }) {
+  const [list, setList] = useLsState("invoices", []);
+  const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
+  const dn = dunning();
+  const [remind, setRemind] = useState(null), [other, setOther] = useState("");
+  const patch = (id, p) => setList((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  const inv = list.filter((x) => x.kind === "rechnung");
+  const over = inv.filter((x) => invState(x) === "überfällig").map((x) => {
+    const last = lastReminder(x), since = last ? -daysUntil(last.due) : -daysUntil(invDue(x));
+    return { x, last, since, ready: !last || since >= (dn.waitDays || 0), next: Math.min((x.reminders || []).length, dn.levels.length - 1) };
+  }).sort((a, b) => b.since - a.since);
+  const openNotOver = inv.filter((x) => invState(x) === "offen");
+  const history = inv.flatMap((x) => (x.reminders || []).map((r, i) => ({ x, r, i }))).sort((a, b) => (b.r.date || "").localeCompare(a.r.date || "") || b.i - a.i);
+  const year = todayISO().slice(0, 4);
+  const pdfOf = (x, i) => buildInvoicePdf({ ...x, reminders: (x.reminders || []).slice(0, i + 1) }, co, x.reminders[i]);
+  return (
+    <div className="invpage">
+      <div className="invstats">
+        <div className={"tile" + (over.length ? " alert" : "")}><small className="muted">Überfällig</small><b className={over.length ? "neg" : ""}>{fmtMoney(over.reduce((s, o) => s + invTotal(o.x), 0))}</b><small className="muted">{over.length} Rechnung{over.length === 1 ? "" : "en"}</small></div>
+        <div className="tile"><small className="muted">Jetzt mahnen</small><b>{over.filter((o) => o.ready).length}</b><small className="muted">Wartezeit {dn.waitDays} Tage je Stufe</small></div>
+        <div className="tile"><small className="muted">Mahnungen {year}</small><b>{history.filter((h) => (h.r.date || "").startsWith(year)).length}</b><small className="muted">versendet</small></div>
+        <div className="tile"><small className="muted">Mahnspesen {year}</small><b>{fmtMoney(history.filter((h) => (h.r.date || "").startsWith(year)).reduce((s, h) => s + (Number(h.r.fee) || 0), 0))}</b><small className="muted">verrechnet</small></div>
+      </div>
+      <div className="invbar">
+        <select className="chip" value={other} onChange={(e) => { const x = inv.find((i) => i.id === e.target.value); if (x) setRemind(x); setOther(""); }}>
+          <option value="">＋ Mahnung für eine offene Rechnung …</option>
+          {[...over.map((o) => o.x), ...openNotOver].map((x) => <option key={x.id} value={x.id}>{x.number} · {x.customer?.name} · {fmtMoney(invTotal(x))}</option>)}
+        </select>
+        <span className="grow" />
+        {setTab && <button className="chip" onClick={() => setTab("invoices")}>🧾 Rechnungen</button>}
+        {setTab && <button className="chip" title="Mahnwesen einstellen" onClick={() => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); }}>⚙︎</button>}
+      </div>
+      <section className="tile invlist">
+        <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b></div>
+        {!over.length && <p className="muted small" style={{ padding: "0 14px" }}>Keine überfälligen Rechnungen 🎉</p>}
+        {over.map(({ x, last, since, ready, next }) => (
+          <div key={x.id} className="invrow" onClick={() => setRemind(x)}>
+            <div className="invmain">
+              <div className="row1"><b>{x.customer?.name || "Ohne Kunde"}</b><b className="neg">{fmtMoney(invTotal(x))}</b></div>
+              <small className="muted block">{x.number} · fällig {fmtDate(invDueEff(x))} · {since} Tage überfällig{last ? ` · zuletzt ${remindName(last.level)} am ${fmtDate(last.date)}` : " · noch nicht gemahnt"}</small>
+            </div>
+            <span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? "fällig" : `in ${(dn.waitDays || 0) - since} T.`}</span>
+            <div className="invacts" onClick={(e) => e.stopPropagation()}>
+              <button className={"btn sm" + (ready ? " danger" : "")} onClick={() => setRemind(x)}>{remindName(next)} erstellen</button>
+              <button className="btn sm" onClick={() => patch(x.id, { status: "bezahlt", paidAt: todayISO() })}>✓ Bezahlt</button>
+            </div>
+          </div>
+        ))}
+      </section>
+      <section className="tile invlist">
+        <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Mahnverlauf</b><small>{history.length}</small></div>
+        {!history.length && <p className="muted small" style={{ padding: "0 14px" }}>Noch keine Mahnungen erstellt.</p>}
+        {history.map(({ x, r, i }) => { const s = invState(x); return (
+          <div key={x.id + i} className="invrow" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>
+            <div className="invmain">
+              <div className="row1"><b>{remindName(r.level)} · {x.customer?.name}</b><b>{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))}</b></div>
+              <small className="muted block">{fmtDate(r.date)} · {x.number} · Frist {fmtDate(r.due)}{Number(r.fee) ? ` · Spesen ${fmtMoney(Number(r.fee))}` : ""}</small>
+            </div>
+            <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>
+            <div className="invacts" onClick={(e) => e.stopPropagation()}>
+              <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>📄</button>
+              <button className="iconbtn" title="Teilen" onClick={async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number)}><IcoShare /></button>
+              {i === x.reminders.length - 1 && s !== "bezahlt" && <button className="link small red" onClick={() => confirm("Diese Mahnung aus dem Verlauf entfernen?") && patch(x.id, { reminders: x.reminders.slice(0, -1) })}>Zurücknehmen</button>}
+            </div>
+          </div>); })}
+      </section>
+      {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
     </div>
   );
 }
@@ -6020,4 +6346,21 @@ nav.bottom>button.subtab span.tabico{font-size:16px}
 
 .unitsed{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}.unitsed .chips{margin:6px 0}
 .unitchip{display:inline-flex;align-items:center;gap:4px;padding-right:4px}.unitchip button{border:0;background:none;color:var(--mut);cursor:pointer;font-size:15px;padding:0 4px}.unitchip button:hover{color:var(--red)}
+
+/* v0.23.0: Rechnungsdesign, Mahnungen, Artikel */
+.designmod{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media (min-width:1100px){.designmod{grid-template-columns:minmax(0,1fr) 380px;align-items:start}.designmod .pdfprev{position:sticky;top:16px}}
+.dmctl{display:flex;flex-direction:column;gap:8px}.dmctl>small{margin-top:6px}.dmctl .seg{margin:0}
+.presetrow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.presetcard{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--txt);font:inherit;font-size:12px;cursor:pointer}
+.presetcard.on{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 30%,transparent)}
+.pcmini{width:54px;height:70px;background:#fff;border-radius:4px;position:relative;display:block;box-shadow:0 1px 4px #0003;overflow:hidden}
+.pcmini i{position:absolute;left:7px;right:7px;height:4px;border-radius:2px;background:#d6d9de}.pcmini i:nth-child(1){top:12px;width:22px}.pcmini i:nth-child(2){top:30px}.pcmini i:nth-child(3){top:40px}
+.pc-modern::before{content:"";position:absolute;inset:0 0 auto 0;height:10px;background:var(--a)}.pc-modern i:nth-child(1){background:var(--a)}
+.pc-elegant i:nth-child(1){left:16px;background:var(--a)}.pc-minimal i{background:#e8eaed}
+.rangel{display:flex;align-items:center;gap:10px;margin:2px 0}.rangel input{flex:1;accent-color:var(--acc);padding:0;border:0;background:none;height:auto;min-height:0}.rangel b{width:30px;text-align:right;color:var(--txt)}
+.toggles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 12px;margin:6px 0}.toggles .check{margin:0}
+.pdfprev{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:10px;min-height:200px;transition:opacity .2s}.pdfprev.busy{opacity:.6}.pdfprev img{width:100%;display:block;border-radius:4px;box-shadow:0 2px 10px #0004;background:#fff}
+.dunlvl{padding:0}.dunhead{display:flex;align-items:center;gap:10px;padding:12px;cursor:pointer}.dunhead b{flex:1}.dunlvl>:not(.dunhead){margin-left:12px;margin-right:12px}.dunlvl .actions{margin-bottom:12px}
+code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
 `;

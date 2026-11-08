@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.23.0
+
+- Einstellungen › **Rechnungsdesign**: Designmodule mit Live-Vorschau – Vorlagen Klassisch/Modern/Minimal/Elegant, Akzentfarbe (auch eigene), Schrift (Helvetica/Times/Courier), Logo links/Mitte/rechts und Größe, Schrift- und Titelgröße, Tabelle Linien/Streifen/Schlicht, farbiges Kopfband, hervorgehobene Summe, Spalten/QR/Fußzeile/Absenderzeile/Artikelnr. ein-/ausblendbar, eigene Titel („Rechnung“/„Angebot“), Zusatzzeile. Gilt für Rechnungen, Angebote und Mahnungen.
+- Neuer Reiter **Mahnungen**: überfällige Rechnungen mit nächster Stufe und Wartezeit, Mahnung erstellen (auch für noch nicht überfällige Rechnungen), Mahnverlauf mit PDF/Teilen/Zurücknehmen, Kennzahlen (überfällig, Mahnungen, Mahnspesen).
+- Einstellungen › **Mahnungen**: Stufen (bis 6) mit Bezeichnung, Frist, Spesen und eigenem Text mit Platzhaltern ({nummer}, {datum}, {betrag}, {faellig}, {frist}, {kunde}), Wartezeit zwischen Stufen, Anrede, Schlusssatz, Vorschau je Stufe.
+- Neuer Reiter **Artikel**: Artikel mit Nummer (automatisch ART-001 …), Gruppe, Preis, Einheit, eigenen Positionsfeldern, Notiz, aktiv/inaktiv; Suche, Gruppenfilter, Sortierung, Nutzung/Umsatz je Artikel. Artikelnummer wird beim Auswählen in die Rechnung übernommen und gedruckt.
+- Einstellungen › **Artikel**: Nummernkürzel, automatische Nummern, Standard-Einheit, Artikelgruppen, Einheiten.
+
 ## v0.22.0
 
 - App umbenannt in **FinDocu** (Browser-Titel, Seitenleiste, Home-Bildschirm-Name, Manifest, Kalender-Abo-Name, Paketname, Texte). Gespeicherte Daten, Einstellungen und Kalender-Abos bleiben erhalten.
