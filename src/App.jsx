@@ -2134,24 +2134,85 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
   // leere Widgets: in der Ansicht unsichtbar, behalten aber ihren Platz (außer ganze Breite) – damit Ansicht = Anpassen-Modus
   const vis = editing ? shown : shown.filter((id) => els[id] || (cols > 1 && spanOf(id) < cols));
   const setW = (id, w) => setLayout((l) => ({ ...l, w: { ...(l.w || {}), [id]: w } }));
+  // Freie Platzierung (ab Desktop-Breite, 12 Spalten): jede Kachel hat x/y im Raster
+  const free = cols === 12;
+  const [rowsMap, setRowsMap] = useState({});
+  const [drag, setDrag] = useState(null); // { id, x, y }
+  const [lastMoved, setLastMoved] = useState(null);
+  const compact = !!layout.compact;
+  const onRows = (id, r) => setRowsMap((m) => (m[id] === r ? m : { ...m, [id]: r }));
+  const packFree = (ids, pos, first) => {
+    const placed = [], out = {};
+    const hit = (a) => placed.some((b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h);
+    // nach Position sortiert; die gerade verschobene Kachel gewinnt bei Gleichstand und verdrängt andere nach unten
+    const ordered = [...ids.filter((id) => pos[id]).sort((a, b) => pos[a].y - pos[b].y || (a === first ? -1 : b === first ? 1 : pos[a].x - pos[b].x)), ...ids.filter((id) => !pos[id])];
+    if (first && pos[first]) { const fy = pos[first].y, fx = pos[first].x, fw = Math.min(12, wOf(first)); const i = ordered.indexOf(first); ordered.splice(i, 1);
+      const j = ordered.findIndex((id) => pos[id] && pos[id].y >= fy && pos[id].x < fx + fw && fx < pos[id].x + Math.min(12, wOf(id)));
+      const k = ordered.findIndex((id) => !pos[id] || pos[id].y > fy || (pos[id].y === fy && pos[id].x >= fx));
+      ordered.splice(Math.min(j < 0 ? ordered.length : j, k < 0 ? ordered.length : k), 0, first); }
+    for (const id of ordered) {
+      const w = Math.min(12, wOf(id)), h = hOf(id) || rowsMap[id] || 12;
+      let r = null;
+      if (pos[id]) { r = { x: Math.max(0, Math.min(pos[id].x, 12 - w)), y: Math.max(0, pos[id].y), w, h }; let g = 0; while (hit(r) && g++ < 4000) r.y++; }
+      else for (let y = 0; !r && y < 4000; y++) for (let x = 0; x <= 12 - w; x++) { const t = { x, y, w, h }; if (!hit(t)) { r = t; break; } }
+      if (compact) while (r.y > 0 && !hit({ ...r, y: r.y - 1 })) r.y--;
+      placed.push(r); out[id] = r;
+    }
+    return out;
+  };
+  const basePos = layout.pos || {};
+  const place = free ? packFree(vis, drag ? { ...basePos, ...Object.fromEntries(Object.entries(packFree(vis, basePos, lastMoved)).map(([k, v]) => [k, { x: v.x, y: v.y }])), [drag.id]: { x: drag.x, y: drag.y } } : basePos, drag ? drag.id : lastMoved) : null;
+  const gridRef = useRef(null);
+  const startFreeDrag = (id, e) => {
+    e.preventDefault(); e.stopPropagation();
+    const g = gridRef.current.getBoundingClientRect(), colW = (g.width - gap * 11) / 12, ru = GRID_ROW + gap;
+    const start = place[id], sx = e.clientX, sy = e.clientY;
+    let cur = { id, x: start.x, y: start.y };
+    setDrag(cur); document.body.classList.add("rz-active");
+    let scrollT = null;
+    const move = (ev) => {
+      const x = Math.max(0, Math.min(12 - start.w, start.x + Math.round((ev.clientX - sx) / (colW + gap))));
+      const y = Math.max(0, start.y + Math.round((ev.clientY - sy + (window.scrollY - sy0)) / ru));
+      if (x !== cur.x || y !== cur.y) { cur = { id, x, y }; setDrag(cur); }
+      clearInterval(scrollT);
+      if (ev.clientY > window.innerHeight - 60) scrollT = setInterval(() => window.scrollBy(0, 14), 30);
+      else if (ev.clientY < 60) scrollT = setInterval(() => window.scrollBy(0, -14), 30);
+    };
+    const sy0 = window.scrollY;
+    const up = () => {
+      clearInterval(scrollT);
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
+      document.body.classList.remove("rz-active");
+      const all = packFree(vis, { ...Object.fromEntries(Object.entries(place).map(([k, v]) => [k, { x: v.x, y: v.y }])), [id]: { x: cur.x, y: cur.y } }, id);
+      const pos = Object.fromEntries(Object.entries(all).map(([k, v]) => [k, { x: v.x, y: v.y }]));
+      const ord = Object.keys(pos).sort((a, b) => pos[a].y - pos[b].y || pos[a].x - pos[b].x);
+      setLastMoved(id); setDrag(null);
+      setLayout((l) => ({ ...l, pos, order: [...ord, ...l.order.filter((x) => !ord.includes(x) && !l.hidden.includes(x))] }));
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+  };
   const setH = (id, h) => setLayout((l) => ({ ...l, h: { ...(l.h || {}), [id]: h } }));
 
   return (
     <>
       {editing && (
         <div className="editbar">
-          <div className="grow"><b>Übersicht anpassen</b><small className="muted block">⠿ ziehen zum Verschieben · Ecke ◢ ziehen für Breite & Höhe · ✕ blendet aus</small></div>
+          <div className="grow"><b>Übersicht anpassen</b><small className="muted block">{free ? "⠿ ziehen und frei platzieren – links, rechts, oben oder unten" : "⠿ ziehen zum Verschieben"} · Ecke ◢ ziehen für Breite & Höhe · ✕ blendet aus</small></div>
           {cols > 1 && <label className="gapctl" title="Abstand zwischen den Widgets">Abstand
             <input type="range" min="0" max="40" step="2" value={gap} onChange={(e) => setLayout((l) => ({ ...l, gap: +e.target.value }))} /><small>{gap}px</small></label>}
-          {cols > 1 && <label className="densectl" title="Ein: kleine Widgets füllen Lücken automatisch. Aus: Reihenfolge bleibt strikt, Lücken bleiben frei.">
-            <input type="checkbox" checked={dense} onChange={(e) => setLayout((l) => ({ ...l, dense: e.target.checked }))} />Lücken füllen</label>}
+          {cols > 1 && (free
+            ? <label className="densectl" title="Ein: Kacheln rutschen nach oben, wenn darüber Platz ist. Aus: Kacheln bleiben genau dort, wo du sie ablegst.">
+              <input type="checkbox" checked={compact} onChange={(e) => setLayout((l) => ({ ...l, compact: e.target.checked }))} />Nach oben rücken</label>
+            : <label className="densectl" title="Ein: kleine Widgets füllen Lücken automatisch. Aus: Reihenfolge bleibt strikt, Lücken bleiben frei.">
+              <input type="checkbox" checked={dense} onChange={(e) => setLayout((l) => ({ ...l, dense: e.target.checked }))} />Lücken füllen</label>)}
           <button className="link" onClick={() => confirm("Übersicht auf Standard zurücksetzen?") && setLayout(migrateLayout(null))}>Zurücksetzen</button>
           <button className="btn primary" onClick={() => setEditing(false)}>Fertig</button>
         </div>
       )}
-      <div className={"dash" + (cols > 1 ? " gridded" : "") + (cols > 1 && !dense ? " nodense" : "") + (editing ? " editing" : "")} style={cols > 1 ? { "--cols": cols, "--gap": gap + "px" } : undefined} data-wid-list={"w|" + vis.length}>
+      <div ref={gridRef} className={"dash" + (cols > 1 ? " gridded" : "") + (cols > 1 && !dense ? " nodense" : "") + (editing ? " editing" : "") + (free ? " freegrid" : "") + (drag ? " freedrag" : "")} style={cols > 1 ? { "--cols": cols, "--gap": gap + "px" } : undefined} data-wid-list={"w|" + vis.length}>
         {vis.map((id, i) => (
           <WidgetCell key={id} id={id} idx={i} title={meta(id)[0]} w={wOf(id)} h={hOf(id)} cols={cols} gap={gap} editing={editing} dnd={wdnd}
+            place={place?.[id]} dragging={drag?.id === id} onRows={(r) => onRows(id, r)} onFreeDrag={free ? (e) => startFreeDrag(id, e) : null}
             dropBefore={wdnd.lineAt("wid", "w", i)} dropAfter={i === vis.length - 1 && wdnd.lineAt("wid", "w", vis.length)}
             onResize={(w, h) => setLayout((l) => ({ ...l, w: { ...(l.w || {}), [id]: w }, h: { ...(l.h || {}), [id]: h } }))}
             onWidth={(w) => setW(id, w)} onAutoH={() => setH(id, null)}
@@ -2182,7 +2243,7 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
 /* Ein Widget im Raster: Breite in 12tel, Höhe in Rasterzeilen (oder automatisch nach Inhalt) */
 const GRID_ROW = 8;
 const isSpacer = (id) => typeof id === "string" && id.startsWith("spacer-");
-function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore, dropAfter, onResize, onWidth, onAutoH, onHide, children }) {
+function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore, dropAfter, onResize, onWidth, onAutoH, onHide, children, place, dragging, onRows, onFreeDrag }) {
   const ref = useRef(null), inner = useRef(null);
   const [autoRows, setAutoRows] = useState(12);
   const grid = cols > 1, fixed = grid && !!h;
@@ -2192,8 +2253,9 @@ function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore,
     const ro = new ResizeObserver(() => setAutoRows(Math.max(1, Math.ceil((el.getBoundingClientRect().height + gap) / (GRID_ROW + gap)))));
     ro.observe(el); return () => ro.disconnect();
   }, [grid, fixed, gap, editing]);
+  useEffect(() => { if (!fixed) onRows?.(autoRows); }, [autoRows, fixed]);
   const span = cols === 12 ? w : Math.max(1, Math.min(cols, Math.round(w / 2)));
-  const style = grid ? { gridColumn: `span ${span}`, gridRow: `span ${fixed ? h : autoRows}` } : undefined;
+  const style = !grid ? undefined : place ? { gridColumn: `${place.x + 1} / span ${place.w}`, gridRow: `${place.y + 1} / span ${place.h}` } : { gridColumn: `span ${span}`, gridRow: `span ${fixed ? h : autoRows}` };
   function startResize(e) {
     e.preventDefault(); e.stopPropagation();
     const box = ref.current.getBoundingClientRect(), gb = ref.current.parentElement.getBoundingClientRect();
@@ -2207,15 +2269,15 @@ function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore,
     const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); document.body.classList.remove("rz-active"); };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   }
-  const cls = "widget" + (dnd.isDragging("wid", "w", idx) ? " dragging" : "") + (dropBefore ? " dropbefore" : "") + (dropAfter ? " dropafter" : "") + (span >= cols ? " wfull" : "");
+  const cls = "widget" + (dnd.isDragging("wid", "w", idx) || dragging ? " dragging" : "") + (dropBefore ? " dropbefore" : "") + (dropAfter ? " dropafter" : "") + (span >= cols ? " wfull" : "");
   return (
-    <div ref={ref} className={cls} style={style} data-wid-item={"w|" + idx} data-grid="1">
+    <div ref={ref} className={cls} style={style} data-wid-item={"w|" + idx} data-grid="1" data-wid={id}>
       <div ref={inner} className={"winner" + (fixed ? " fixed" : "")}>
         <div className="wbody">{children}</div>
       </div>
       {editing && (
           <div className="wchip" title={title}>
-            <Handle onDown={(e) => dnd.start(e, { kind: "wid", list: "w", index: idx, label: title })} label={title + " verschieben"} />
+            <Handle onDown={(e) => (onFreeDrag ? onFreeDrag(e) : dnd.start(e, { kind: "wid", list: "w", index: idx, label: title }))} label={title + " verschieben"} />
             {grid && <>
               {[[4, "⅓"], [6, "½"], [8, "⅔"], [12, "1"]].map(([k, t]) => (
                 <button key={k} className={w === k ? "on" : ""} title={k === 12 ? "Ganze Breite" : t + " Breite"} onClick={() => onWidth(k)}>{t}</button>
@@ -6467,4 +6529,10 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
 .lookbox{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--card2);font-size:13px}.lookbox.ok{background:#16a34a1f}.lookbox.err{background:#ef44441f;color:var(--red)}
 .lookbox .link{margin-left:8px}
 .posbtns{display:flex;gap:8px;flex-wrap:wrap}.posbtns .btn{margin:0}
+
+/* v0.24.1: freie Platzierung der Widgets */
+.dash.freegrid{grid-auto-flow:row}
+.dash.freegrid.editing{background-image:linear-gradient(to right,color-mix(in srgb,var(--acc) 10%,transparent) 1px,transparent 1px);background-size:calc((100% + var(--gap)) / 12) 100%;border-radius:12px}
+.dash.freedrag .widget{transition:grid-column .12s,grid-row .12s}
+.widget.dragging{outline:2px dashed var(--acc);outline-offset:2px;opacity:.85;z-index:3}
 `;

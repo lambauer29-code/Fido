@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.24.1
+
+- Übersicht anpassen (Mac/iPad quer, ab 1024 px): Widgets **frei platzieren** – am Griff ⠿ in jede Spalte und Höhe ziehen (links, rechts, oben, unten). Andere Widgets weichen nach unten aus, Lücken bleiben erhalten. Hilfslinien zeigen die 12 Spalten. „Nach oben rücken“ (aus = Standard) schiebt Widgets bei Bedarf automatisch nach oben. Am Handy und schmalen Tablets bleibt die Reihenfolge-Ansicht.
+
 ## v0.24.0
 
 - **Artikelscan**: Strichcode (EAN/UPC, Code128 …) oder QR-Code mit der Kamera scannen (auch per Foto oder Eintippen).
