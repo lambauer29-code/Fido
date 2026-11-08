@@ -3267,6 +3267,13 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
   const plusBal = knownBal.filter((x) => x > 0).reduce((t, x) => t + x, 0), minusBal = knownBal.filter((x) => x < 0).reduce((t, x) => t + x, 0);
   const multi = !acc;
 
+  // Buchung mit Beleg: direkt den Beleg zeigen, sonst Bearbeiten-Fenster
+  async function openTx(t) {
+    if (!t.docId) return setTxOpen(t);
+    const d = docs.find((x) => x.id === t.docId), b = await db.getFile(t.docId);
+    if (!b) return setTxOpen(t);
+    openPdf(b, d?.fileName || "Beleg.pdf", d?.title || d?.fileName || "Beleg");
+  }
   async function onPick(file) {
     if (!file) return;
     try { setImp({ file, result: await parseFile(file, ls.get("mappings", {})) }); }
@@ -3393,13 +3400,13 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
         <div className={"txtable" + (!acc && sel.length > 1 ? " withacc" : "")}>
           <div className="txhead"><span>Datum</span><span>Empfänger</span><span>Kategorie</span>{!acc && sel.length > 1 && <span>Konto</span>}<span className="r">Betrag</span></div>
           {list.slice(0, limit).map((t) => (
-            <div key={t.id} className="txrow" onClick={() => setTxOpen(t)}>
+            <div key={t.id} className="txrow" onClick={() => openTx(t)}>
               <span className="muted">{fmtDate(t.date)}</span>
               <span className="txdesc">
                 {t.kind === "broker" ? <span className="caticon" style={{ width: 30, height: 30, background: "#14b8a622", fontSize: 14 }}>📈</span> : <CatIcon c={t.category} size={30} />}
                 <span className="grow"><b className="one">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
                   {t.kind !== "broker" && t.counterparty && t.purpose && <small className="muted one block">{t.purpose}</small>}</span>
-                {t.docId && <span title="Beleg verknüpft">📎</span>}
+                {t.docId && <><span title="Beleg verknüpft – Klick auf die Zeile öffnet ihn">📎</span><button className="iconbtn txedit" title="Buchung bearbeiten" aria-label="Buchung bearbeiten" onClick={(e) => { e.stopPropagation(); setTxOpen(t); }}><IcoEdit /></button></>}
               </span>
               <span className="one muted">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}</span>
               {!acc && sel.length > 1 && <span className="one muted">{accName(t.accountId)}</span>}
@@ -3413,13 +3420,14 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
           <h3>{new Date(g.date + "T12:00").toLocaleDateString("de-AT", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}</h3>
           <div className="dlist">
             {g.items.map((t) => (
-              <div key={t.id} className="ditem center" onClick={() => setTxOpen(t)}>
+              <div key={t.id} className="ditem center" onClick={() => openTx(t)}>
                 {t.kind === "broker" ? <span className="caticon" style={{ width: 40, height: 40, background: "#14b8a622", fontSize: 18 }}>📈</span> : <CatIcon c={t.category} />}
                 <div className="grow">
                   <b className="clamp">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
                   <small className="muted block one">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}{t.docId ? " · 📎 Beleg" : ""}{!acc && sel.length > 1 ? " · " + accName(t.accountId) : ""}</small>
                 </div>
                 <b className={"amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
+                {t.docId && <button className="iconbtn txedit" title="Buchung bearbeiten" aria-label="Buchung bearbeiten" onClick={(ev) => { ev.stopPropagation(); setTxOpen(t); }}><IcoEdit /></button>}
               </div>
             ))}
           </div>
@@ -4009,7 +4017,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
 
         {url && (doc.mimeType.startsWith("image/")
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
-          : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b>PDF-Dokument</b><small className="muted block">{doc.fileName}</small></div></div>)}
+          : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b className="clamp">{doc.fileName || doc.title}</b></div></div>)}
         <div className="seg scopeseg" style={{ margin: "6px 0 6px" }} role="group" aria-label="Privat oder Firma">
           {SCOPES.map(([k, i, l]) => <button key={k} className={docScope(d) === k ? "on" : ""} onClick={() => set({ scope: k, scopeManual: true })}>{i} {l}</button>)}
         </div>
@@ -7501,4 +7509,25 @@ html.fg input.switch{accent-color:var(--acc)}
 html.fg .switch:checked{background:var(--acc)}
 @media (max-width:1023px){html.fg .hero .hero-row{flex-wrap:wrap}html.fg .hero .hero-row>div{flex:1 1 calc(50% - 8px);min-width:0}}
 @media (min-width:768px){html.fg nav.bottom .acctree .accitem{font-size:14.5px;min-height:38px}html.fg nav.bottom .acctitle{font-size:11px}}
+
+.txedit{width:32px;height:32px;min-width:32px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:0;color:var(--mut);border-radius:10px;flex:none}
+.txedit svg{width:16px;height:16px}.txedit:hover{background:var(--card2);color:var(--acc)}
+/* Seitenleiste (iPad/Desktop) im Verhältnis zum Inhalt */
+@media (min-width:768px){
+  html.fg{--side:256px}
+  html.fg nav.bottom>button{font-size:18px;min-height:52px;padding:11px 14px;gap:14px}
+  html.fg nav.bottom .tabico .tabsvg{width:26px;height:26px}
+  html.fg nav.bottom>button span.tabico{font-size:24px}
+  html.fg nav.bottom .subtab{font-size:17px}
+  html.fg nav.bottom .subtab .tabico .tabsvg{width:22px;height:22px}
+  html.fg nav.bottom .brand b{font-size:21px}html.fg nav.bottom .brand small{font-size:13px}
+  html.fg nav.bottom .brand img{width:44px;height:44px}
+  html.fg nav.bottom .acctree .accitem{font-size:16.5px;min-height:44px}
+  html.fg nav.bottom .acctitle{font-size:12.5px}
+  html.fg nav.bottom .navhead{font-size:12.5px}
+  html.fg nav.bottom .busytab small{font-size:12px}
+}
+@media (min-width:1024px){html.fg{--side:300px}}
+html.fg .txrow{font-size:16px}html.fg .txrow b{font-size:17px;font-weight:500}html.fg .txrow small{font-size:15px}html.fg .txhead{font-size:12.5px}
+html.fg nav.bottom .acctree .accitem .ab{font-size:13.5px}
 `;

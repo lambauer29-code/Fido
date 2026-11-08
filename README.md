@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.40.1
+- Seitenleiste (iPad/Desktop) größer und im Verhältnis zum Inhalt: breiter, größere Schrift und Symbole, größere Konto-/Kategorie-Einträge
+- Buchung mit angehängtem Beleg (📎): Klick auf die Zeile öffnet direkt den Beleg; Bearbeiten über den Stift in der Zeile
+- Dokument-Fenster: statt „PDF-Dokument“ nur noch der Dateiname
+- Buchungstabelle am Desktop: einheitliche Schriftgrößen
+
 ## v0.40.0
 - **Neues Standard-Design** (vorher Testmodus „Finanz-App-Stil“) auf allen Geräten: Handy, iPad und Desktop
   - tiefschwarz bzw. weiß, Mint als Akzent, Schrift „Outfit“, große Titel, flache stark gerundete Karten, Linien-Symbole
