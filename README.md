@@ -2,6 +2,19 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.24.13
+
+- Rechnungs- und Mahnliste: Betrag, Status und Knöpfe stehen jetzt vertikal mittig in einer Linie; Status-Text exakt zentriert.
+- „Doch offen“ heißt jetzt „Noch offen“.
+
+## v0.24.12
+
+- Rechnungen/Mahnungen: Der Knopf „✓ Bezahlt“ heißt jetzt „Als bezahlt markieren“ – er ist eine Aktion, kein Status (der Status steht in der farbigen Markierung daneben).
+
+## v0.24.11
+
+- Rechnungen/Mahnungen: Symbol-Knöpfe vereinheitlicht – „⋯“ (Mehr) sauber zentriert als Symbol, PDF-Vorschau als Auge statt Emoji, gleiche Größe und Hover-Farbe.
+
 ## v0.24.10
 
 - Teilen-Menü: WhatsApp an 3. Stelle (E-Mail, Nachrichten, WhatsApp, AirDrop, Telegram, Herunterladen).

@@ -4909,7 +4909,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
             return (
               <div key={x.id} className="invrow" onClick={() => setEdit(x)}>
                 <div className="invmain">
-                  <div className="row1"><b>{x.customer?.name || "Ohne Kunde"}</b><b>{fmtMoney(invTotal(x))}</b></div>
+                  <div className="row1"><b>{x.customer?.name || "Ohne Kunde"}</b></div>
                   <small className="muted block">
                     {x.kind === "angebot" ? "Angebot " : ""}{x.number || "Entwurf"} · {fmtDate(x.date)}
                     {x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) && ` · fällig ${fmtDate(invDueEff(x))}`}
@@ -4919,15 +4919,16 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
                   </small>
                   {pay && <button className="link pos small" onClick={(e) => { e.stopPropagation(); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id }); }}>💡 Zahlungseingang vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}
                 </div>
-                <span className={"stpill " + cls}>{label}</span>
+                <b className="invamt">{fmtMoney(invTotal(x))}</b>
+            <span className={"stpill " + cls}>{label}</span>
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
-                  {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}>📄</button>}
+                  {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button>}
                   {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button>}
-                  {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" onClick={() => patch(x.id, { status: "bezahlt", paidAt: todayISO() })}>✓ Bezahlt</button>}
-                  {s === "bezahlt" && <button className="link small" onClick={() => patch(x.id, { status: "offen", paidAt: null })}>Doch offen</button>}
+                  {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" title="Zahlung ist eingegangen – Rechnung als bezahlt markieren" onClick={() => patch(x.id, { status: "bezahlt", paidAt: todayISO() })}>Als bezahlt markieren</button>}
+                  {s === "bezahlt" && <button className="link small" onClick={() => patch(x.id, { status: "offen", paidAt: null })}>Noch offen</button>}
                   {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>}
                   {x.kind === "angebot" && s === "offen" && <><button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button><button className="link small" onClick={() => patch(x.id, { status: "abgelehnt" })}>Abgelehnt</button></>}
-                  <details className="more"><summary className="iconbtn" title="Mehr">⋯</summary>
+                  <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
                     <div className="moremenu">
                       <button onClick={() => copyAsNew(x)}>Als neue {x.kind === "angebot" ? "Angebot" : "Rechnung"} kopieren</button>
                       {s !== "entwurf" && onArchive && <button onClick={async () => { await onArchive(await buildInvoicePdf(x, co), invFileName(x), x); }}>In Dokumente ablegen</button>}
@@ -5632,13 +5633,14 @@ function DunningPage({ setTab }) {
         {over.map(({ x, last, since, ready, next }) => (
           <div key={x.id} className="invrow" onClick={() => setRemind(x)}>
             <div className="invmain">
-              <div className="row1"><b>{x.customer?.name || "Ohne Kunde"}</b><b className="neg">{fmtMoney(invTotal(x))}</b></div>
+              <div className="row1"><b>{x.customer?.name || "Ohne Kunde"}</b></div>
               <small className="muted block">{x.number} · fällig {fmtDate(invDueEff(x))} · {since} Tage überfällig{last ? ` · zuletzt ${remindName(last.level)} am ${fmtDate(last.date)}` : " · noch nicht gemahnt"}</small>
             </div>
+            <b className="invamt neg">{fmtMoney(invTotal(x))}</b>
             <span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? "fällig" : `in ${(dn.waitDays || 0) - since} T.`}</span>
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
               <button className={"btn sm" + (ready ? " danger" : "")} onClick={() => setRemind(x)}>{remindName(next)} erstellen</button>
-              <button className="btn sm" onClick={() => patch(x.id, { status: "bezahlt", paidAt: todayISO() })}>✓ Bezahlt</button>
+              <button className="btn sm" title="Zahlung ist eingegangen – Rechnung als bezahlt markieren" onClick={() => patch(x.id, { status: "bezahlt", paidAt: todayISO() })}>Als bezahlt markieren</button>
             </div>
           </div>
         ))}
@@ -5649,12 +5651,13 @@ function DunningPage({ setTab }) {
         {history.map(({ x, r, i }) => { const s = invState(x); return (
           <div key={x.id + i} className="invrow" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>
             <div className="invmain">
-              <div className="row1"><b>{remindName(r.level)} · {x.customer?.name}</b><b>{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))}</b></div>
+              <div className="row1"><b>{remindName(r.level)} · {x.customer?.name}</b></div>
               <small className="muted block">{fmtDate(r.date)} · {x.number} · Frist {fmtDate(r.due)}{Number(r.fee) ? ` · Spesen ${fmtMoney(Number(r.fee))}` : ""}</small>
             </div>
+            <b className="invamt">{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))}</b>
             <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
-              <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>📄</button>
+              <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}><IcoEye /></button>
               <button className="iconbtn" title="Teilen" onClick={async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email)}><IcoShare /></button>
               {i === x.reminders.length - 1 && s !== "bezahlt" && <button className="link small red" onClick={() => confirm("Diese Mahnung aus dem Verlauf entfernen?") && patch(x.id, { reminders: x.reminders.slice(0, -1) })}>Zurücknehmen</button>}
             </div>
@@ -6691,4 +6694,16 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
 .sharepop button:hover{background:var(--acc);color:#fff}.sharepop button:hover small{color:#fffc}
 .sharepop button span{width:20px;text-align:center;font-size:16px}.sharepop button small{color:var(--mut);font-size:11px;margin-left:auto}
 .spmsg{font-size:12px;color:var(--mut);padding:6px 10px 2px}
+
+/* v0.24.11: einheitliche Symbol-Knöpfe in Rechnungen/Mahnungen */
+.invacts .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;min-width:36px;min-height:36px;padding:0;border-radius:10px;background:transparent;color:var(--mut);font-size:16px;line-height:1}
+.invacts .iconbtn:hover,.invacts .more[open]>summary{background:var(--card2);color:var(--acc)}
+.invacts .iconbtn svg{width:18px;height:18px}
+.more>summary.morebtn{list-style:none}
+
+/* v0.24.13: Betrag und Status mittig in der Zeile */
+.invrow{align-items:center}
+.invamt{flex:none;min-width:96px;text-align:right;font-size:15px;white-space:nowrap}
+.stpill{display:inline-flex;align-items:center;justify-content:center;line-height:1;height:24px;padding:0 10px}
+@media (max-width:899px){.invamt{min-width:0}}
 `;
