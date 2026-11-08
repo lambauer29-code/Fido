@@ -104,6 +104,7 @@ function DocActions({ d, prevOpen, onPreview, onEdit, onTrash }) {
   const stop = (f) => (e) => { e.stopPropagation(); f(); };
   return (
     <div className="dactions" onClick={(e) => e.stopPropagation()}>
+      <button title="Bearbeiten" aria-label="Bearbeiten" onClick={stop(onEdit)}><IcoEdit /></button>
       <button title="Drucken" aria-label="Drucken" onClick={stop(() => printDoc(d))}><IcoPrint /></button>
       <button title="In den Papierkorb" aria-label="Löschen" className="del" onClick={stop(() => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && onTrash(d))}><IcoTrash /></button>
     </div>
@@ -145,7 +146,6 @@ function DocPreview({ d, onOpen }) {
             {total > pages.length && pages.length >= want && <button className="btn sm" onClick={() => setWant(want + 5)}>Weitere Seiten</button>}
             <button className="btn sm" onClick={() => printDoc(d)} title="Drucken"><IcoPrint /></button>
             <button className="btn sm" onClick={() => openOriginal(d)}>Original öffnen</button>
-            <button className="btn sm primary" onClick={onOpen}>Bearbeiten</button>
           </div>
           {pages.map((src, i) => <img key={i} src={src} alt={`Seite ${i + 1}`} loading="lazy" />)}
           {(!pages.length || pages.length < Math.min(want, total || 1)) && <div className="dpload">Seite wird geladen …</div>}
@@ -1986,10 +1986,17 @@ function CalSyncSheet({ sync, setSync, items, token, onClose, notify }) {
 }
 
 /* ---------- Interaktiver Monatskalender ---------- */
+const isoWeek = (isoD) => { const d = new Date(isoD + "T12:00:00"); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); const w1 = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d - w1) / 864e5 - 3 + ((w1.getDay() + 6) % 7)) / 7); };
 function MonthCalendar({ items, onOpen, saveDoc, docs }) {
   const today = todayISO();
-  const [month, setMonth] = useState(() => today.slice(0, 7));
+  const [cursor, setCursor] = useState(today);          // Bezugsdatum für Woche/Monat/Jahr
+  const [view, setView] = useState(() => ls.get("calMode", "monat"));
+  useEffect(() => ls.set("calMode", view), [view]);
+  const month = cursor.slice(0, 7), setMonth = (m) => setCursor(m + "-01");
   const [selDay, setSelDay] = useState(today);
+  const iso = (d) => d.toLocaleDateString("sv-SE");
+  const addDays = (isoD, n) => { const d = new Date(isoD + "T12:00:00"); d.setDate(d.getDate() + n); return iso(d); };
+  const weekStart = (isoD) => { const d = new Date(isoD + "T12:00:00"); return addDays(isoD, -((d.getDay() + 6) % 7)); };
   const [dragOver, setDragOver] = useState("");
   const first = new Date(month + "-01T12:00:00");
   const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
@@ -1997,7 +2004,13 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
   const weeks = days.slice(35).every((d) => !d.startsWith(month)) ? days.slice(0, 35) : days;
   const byDay = {};
   for (const it of items) (byDay[it[0].date] ||= []).push(it);
-  const shift = (n) => { const d = new Date(first); d.setMonth(d.getMonth() + n); setMonth(d.toLocaleDateString("sv-SE").slice(0, 7)); };
+  const shift = (n) => {
+    if (view === "woche") return setCursor(addDays(cursor, 7 * n));
+    const d = new Date(cursor.slice(0, 7) + "-01T12:00:00");
+    if (view === "jahr") d.setFullYear(d.getFullYear() + n); else d.setMonth(d.getMonth() + n);
+    setCursor(iso(d));
+  };
+  const pick = (d) => { setSelDay(d); setCursor(d); };
   const moveTo = async (docId, dlId, date) => {
     const doc = docs.find((d) => d.id === docId); if (!doc) return;
     await saveDoc({ ...doc, deadlines: doc.deadlines.map((x) => (x.id === dlId ? { ...x, date } : x)) });
@@ -2034,7 +2047,7 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
             {[...overdue, ...upcoming].map(([dl, doc]) => {
               const n = daysUntil(dl.date);
               return (
-                <div key={dl.id} className={"frow calrow click " + tone(dl) + (dl.date === selDay ? " cur" : "")} onClick={() => { setSelDay(dl.date); setMonth(dl.date.slice(0, 7)); }}>
+                <div key={dl.id} className={"frow calrow click " + tone(dl) + (dl.date === selDay ? " cur" : "")} onClick={() => pick(dl.date)}>
                   <div className={"datebox" + (n < 0 ? " red" : n <= 7 ? " warn" : "")}><b>{new Date(dl.date + "T12:00").getDate()}</b><small>{new Date(dl.date + "T12:00").toLocaleDateString("de-AT", { month: "short" })}</small></div>
                   <div className="grow"><b>{dl.label}</b><small className="muted block">{doc.title}</small></div>
                   {payAmt(doc) != null && <b>{fmtMoney(payAmt(doc), doc.amount.currency)}</b>}
@@ -2047,12 +2060,69 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
         )}
       </div>
       <div className="calhead">
-        <button className="iconbtn" onClick={() => shift(-1)} aria-label="Vorheriger Monat">‹</button>
-        <b className="grow">{first.toLocaleDateString("de-AT", { month: "long", year: "numeric" })}</b>
-        <button className="chip" onClick={() => { setMonth(today.slice(0, 7)); setSelDay(today); }}>Heute</button>
-        <button className="iconbtn" onClick={() => shift(1)} aria-label="Nächster Monat">›</button>
+        <button className="iconbtn" onClick={() => shift(-1)} aria-label="Zurück">‹</button>
+        <b className="grow">{view === "jahr" ? cursor.slice(0, 4)
+          : view === "woche" ? (() => { const ws = weekStart(cursor), we = addDays(ws, 6); const kw = isoWeek(ws); return `KW ${kw} · ${fmtDate(ws).slice(0, 6)} – ${fmtDate(we)}`; })()
+          : first.toLocaleDateString("de-AT", { month: "long", year: "numeric" })}</b>
+        <div className="seg calmodes" role="group" aria-label="Ansicht">
+          {[["woche", "Woche"], ["monat", "Monat"], ["jahr", "Jahr"], ["kompakt", "Kompakt"]].map(([k, l]) => (
+            <button key={k} className={view === k ? "on" : ""} onClick={() => { setView(k); setCursor(selDay); }}>{l}</button>
+          ))}
+        </div>
+        <button className="chip" onClick={() => pick(today)}>Heute</button>
+        <button className="iconbtn" onClick={() => shift(1)} aria-label="Weiter">›</button>
       </div>
-      <div className="calgrid" role="grid">
+
+      {view === "woche" && (
+        <div className="calweek">
+          {Array.from({ length: 7 }, (_, i) => addDays(weekStart(cursor), i)).map((d) => {
+            const list = byDay[d] || [];
+            return (
+              <div key={d} className={"wday" + (d === today ? " today" : "") + (d === selDay ? " sel" : "") + (dragOver === d ? " over" : "")}
+                onClick={() => setSelDay(d)}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(d); }} onDragLeave={() => setDragOver("")}
+                onDrop={(e) => { e.preventDefault(); setDragOver(""); const [docId, dlId] = e.dataTransfer.getData("text/plain").split("|"); moveTo(docId, dlId, d); setSelDay(d); }}>
+                <div className="wdhead"><small>{new Date(d + "T12:00").toLocaleDateString("de-AT", { weekday: "short" })}</small><span className="calnum">{+d.slice(8)}</span></div>
+                {list.map(([dl, doc]) => (
+                  <div key={dl.id} className={"wev " + tone(dl)} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", `${doc.id}|${dl.id}`)}
+                    onClick={(e) => { e.stopPropagation(); onOpen(doc.id); }} title="Klicken: Dokument öffnen · Ziehen: verschieben">
+                    <b>{dl.label}</b><small>{doc.title}</small>{payAmt(doc) != null && <small className="amt">{fmtMoney(payAmt(doc), doc.amount.currency)}</small>}
+                  </div>
+                ))}
+                {!list.length && <small className="muted wempty">–</small>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "jahr" && (
+        <div className="calyear">
+          {Array.from({ length: 12 }, (_, m) => {
+            const ym = `${cursor.slice(0, 4)}-${String(m + 1).padStart(2, "0")}`;
+            const f = new Date(ym + "-01T12:00:00"), off = (f.getDay() + 6) % 7, n = new Date(f.getFullYear(), m + 1, 0).getDate();
+            const cnt = Object.keys(byDay).filter((k) => k.startsWith(ym)).reduce((t, k) => t + byDay[k].filter(([dl]) => !dl.done).length, 0);
+            return (
+              <div key={ym} className="ymonth">
+                <button className="ymhead" onClick={() => { setView("monat"); setCursor(ym + "-01"); }}>
+                  <b>{f.toLocaleDateString("de-AT", { month: "long" })}</b>{cnt > 0 && <small className="pill">{cnt}</small>}
+                </button>
+                <div className="ygrid">
+                  {["M", "D", "M", "D", "F", "S", "S"].map((w, i) => <span key={i} className="ywd">{w}</span>)}
+                  {Array.from({ length: off }, (_, i) => <span key={"e" + i} />)}
+                  {Array.from({ length: n }, (_, i) => {
+                    const d = `${ym}-${String(i + 1).padStart(2, "0")}`, list = byDay[d] || [];
+                    const t = list.length ? (list.some(([dl]) => tone(dl) === "over") ? "over" : list.some(([dl]) => tone(dl) === "soon") ? "soon" : list.every(([dl]) => dl.done) ? "done" : "has") : "";
+                    return <button key={d} className={"yday " + t + (d === today ? " today" : "") + (d === selDay ? " sel" : "")} onClick={() => pick(d)} title={list.map(([dl, doc]) => `${dl.label}: ${doc.title}`).join("\n") || undefined}>{i + 1}</button>;
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {(view === "monat" || view === "kompakt") && <div className={"calgrid" + (view === "kompakt" ? " compact" : "")} role="grid">
         {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w) => <div key={w} className="calwd">{w}</div>)}
         {weeks.map((d) => {
           const list = byDay[d] || [];
@@ -2075,7 +2145,7 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
             </div>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -4185,4 +4255,32 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .dprevbar.float small{color:var(--mut);font-size:12px;white-space:nowrap}
 .dprevbar.float .btn{margin:0;border-radius:999px;display:inline-flex;align-items:center}.dprevbar.float .btn svg{width:16px;height:16px}
 .dpages{padding-top:12px}
+
+/* Kalender-Modi */
+.calhead{flex-wrap:wrap}
+.calmodes{margin:0;width:auto}.calmodes button{padding:6px 12px;font-size:13px}
+.calgrid.compact .calday{min-height:46px;align-items:center;padding:4px}
+.calgrid.compact .calchip,.calgrid.compact .calmore{display:none}.calgrid.compact .caldots{display:flex}
+.calweek{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.wday{background:var(--card2);border-radius:12px;padding:8px;min-height:260px;display:flex;flex-direction:column;gap:6px;border:1.5px solid transparent;cursor:pointer;min-width:0}
+.wday.today .calnum{background:var(--acc);color:#fff}.wday.sel{border-color:var(--acc)}.wday.over{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,var(--card2))}
+.wdhead{display:flex;align-items:center;justify-content:space-between;color:var(--mut);text-transform:capitalize}
+.wev{background:color-mix(in srgb,var(--acc) 16%,transparent);border-radius:8px;padding:6px 8px;display:flex;flex-direction:column;gap:2px;cursor:grab;min-width:0}
+.wev b{font-size:12.5px}.wev small{font-size:11.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.wev .amt{color:var(--txt);font-weight:600}
+.wev.soon{background:color-mix(in srgb,var(--warn) 22%,transparent)}.wev.over{background:color-mix(in srgb,var(--red) 22%,transparent)}.wev.done{opacity:.5;text-decoration:line-through}
+.wempty{text-align:center;padding-top:20px}
+@media (max-width:700px){.calweek{grid-template-columns:1fr}.wday{min-height:0}}
+.calyear{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.ymonth{background:var(--card2);border-radius:14px;padding:10px}
+.ymhead{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;color:var(--txt);font:inherit;padding:2px 2px 8px;cursor:pointer;text-transform:capitalize}
+.ymhead .pill{margin-left:auto}
+.ygrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.ywd{font-size:10px;color:var(--mut);font-weight:700}
+.yday{border:0;background:transparent;color:var(--txt);font:inherit;font-size:11.5px;height:24px;border-radius:6px;cursor:pointer;padding:0}
+.yday:hover{background:var(--line)}
+.yday.has{background:color-mix(in srgb,var(--acc) 30%,transparent);font-weight:700}
+.yday.soon{background:color-mix(in srgb,var(--warn) 40%,transparent);font-weight:700}
+.yday.over{background:color-mix(in srgb,var(--red) 40%,transparent);font-weight:700}
+.yday.done{background:color-mix(in srgb,var(--mut) 25%,transparent)}
+.yday.today{outline:2px solid var(--acc)}.yday.sel{box-shadow:inset 0 0 0 2px var(--txt)}
 `;

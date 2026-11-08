@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.16.0 – Kalender-Ansichten
+- Fristen-Kalender: Woche (mit Kalenderwoche, Fristen ausgeschrieben, ziehbar), Monat, Jahr (12 Monate, farbige Tage, Monat antippen = Monatsansicht) und Kompakt (Monat mit Punkten). Ansicht wird gemerkt.
+- Dokumente: Bearbeiten-Symbol wieder in der Zeile; aus der schwebenden Vorschau-Leiste entfernt.
+
 ## v0.15.6
 - Drucken: Druckersymbol neben dem Papierkorb und in der Vorschau-Leiste – druckt alle Seiten (PDF oder Bild) über den normalen Druckdialog.
 
