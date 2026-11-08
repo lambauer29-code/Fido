@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.24.3
+
+- Seitenleiste **ein-/ausklappbar** (Mac/iPad): unten „« Einklappen“ bzw. „»“, oder ⌘\ (Strg+\ unter Windows). Eingeklappt nur Symbole (Name beim Darüberfahren), Inhalt nutzt die volle Breite; Zustand bleibt gespeichert.
+
 ## v0.24.2
 
 - Übersicht anpassen: Das gezogene Widget **schwebt** unter dem Mauszeiger/Finger mit, eine gestrichelte Fläche zeigt den Zielplatz im Raster; andere Widgets weichen live aus. Automatisches Scrollen am oberen/unteren Rand.

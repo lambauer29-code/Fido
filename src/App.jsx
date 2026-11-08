@@ -1475,6 +1475,13 @@ export default function App() {
   const [pdfView, setPdfView] = useState(null);
   pdfUi = setPdfView;
   const impRef = useRef(null), vcfApp = useRef(null);
+  const [sideMini, setSideMiniRaw] = useState(() => ls.get("sideMini", false));
+  const setSideMini = (v) => { setSideMiniRaw(v); ls.set("sideMini", v); };
+  useEffect(() => { document.documentElement.classList.toggle("side-mini", !!sideMini); }, [sideMini]);
+  useEffect(() => {
+    const k = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); setSideMiniRaw((v) => { ls.set("sideMini", !v); return !v; }); } };
+    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
+  }, []);
   const [bizReq, setBizReq] = useState(0);
   const [imp, setImp] = useState(null);
   shareUi = setShareData;
@@ -1767,14 +1774,14 @@ export default function App() {
                     });
                   }
                   setTab(t.key); if (t.key === "docs") { setDocAreaSel("alle"); setDocCat(""); }
-                }} aria-label={tabLabel(nav, t.key)}>
+                }} aria-label={tabLabel(nav, t.key)} title={sideMini ? tabLabel(nav, t.key) : undefined}>
                 <TabIcon t={t} /><span className="tl" style={t.color ? { color: t.color } : undefined}>{tabLabel(nav, t.key)}</span>
                 {t.key === "home" && <Badge docs={active} />}
                 {!!sub && <i className={"subtog side-only" + (open ? " open" : "")} role="button" aria-label="ein-/ausklappen"
                   onClick={(e) => { e.stopPropagation(); setNav((n) => ({ ...n, [flag]: !n[flag] })); }}>›</i>}
               </button>
               {t.side && kids.map((c) => (
-                <button key={c.key} className={"subtab side-only" + (tab === c.key ? " on" : "")} onClick={() => setTab(c.key)} aria-label={tabLabel(nav, c.key)}>
+                <button key={c.key} className={"subtab side-only" + (tab === c.key ? " on" : "")} onClick={() => setTab(c.key)} aria-label={tabLabel(nav, c.key)} title={sideMini ? tabLabel(nav, c.key) : undefined}>
                   <TabIcon t={c} /><span className="tl" style={c.color ? { color: c.color } : undefined}>{tabLabel(nav, c.key)}</span>
                   {c.key === "deadlines" && <DeadlineBadge docs={active} />}
                 </button>
@@ -1793,6 +1800,9 @@ export default function App() {
             </React.Fragment>
           );
         })}
+        <button className="sidetoggle side-only" onClick={() => setSideMini(!sideMini)} title={sideMini ? "Seitenleiste ausklappen (⌘\\)" : "Seitenleiste einklappen (⌘\\)"} aria-label={sideMini ? "Seitenleiste ausklappen" : "Seitenleiste einklappen"}>
+          <span className="tabico">{sideMini ? "»" : "«"}</span><span className="tl">Einklappen</span>
+        </button>
       </nav>
 
       <SideResizer />
@@ -6573,4 +6583,22 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
 .floatwidget.isnew .tile{margin:0;border:2px solid var(--acc)}
 .dash.freedrag .widget{transition:none}
 .addwidgets .wadd button{touch-action:none;cursor:grab}
+
+/* v0.24.3: Seitenleiste ein-/ausklappbar */
+.sidetoggle{display:none}
+@media (min-width:768px){
+  nav.bottom .sidetoggle.side-only{display:flex;align-items:center;gap:10px;margin-top:auto;border:0;background:none;color:var(--mut);font:inherit;font-size:13px;padding:10px 14px;border-radius:12px;cursor:pointer}
+  nav.bottom .sidetoggle:hover{background:var(--card2);color:var(--txt)}
+  nav.bottom .sidetoggle .tabico{font-size:18px;width:20px;filter:none!important;opacity:1!important}
+  html.side-mini{--side:68px!important}
+  html.side-mini nav.bottom{padding-left:8px;padding-right:8px;overflow-x:hidden}
+  html.side-mini nav.bottom .tl,html.side-mini nav.bottom .brand>div,html.side-mini nav.bottom .subnav,html.side-mini nav.bottom .navhead,html.side-mini nav.bottom .subtog{display:none!important}
+  html.side-mini nav.bottom .brand{justify-content:center;padding-left:0;padding-right:0}
+  html.side-mini nav.bottom>button{justify-content:center;padding-left:0!important;padding-right:0!important;position:relative;font-size:0}
+  html.side-mini nav.bottom>button .tabico{font-size:22px}
+  html.side-mini nav.bottom .subtab .tabico{font-size:16px}
+  html.side-mini nav.bottom .badge{position:absolute;top:2px;right:6px;margin:0;font-size:10px}
+  html.side-mini nav.bottom .navsep{margin:6px 4px}
+  html.side-mini .sideresize{display:none}
+}
 `;
