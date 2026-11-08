@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.32.0
+- Seitenleiste: laufender Import wird beim jeweiligen Reiter angezeigt (Lade-Kreis + Anzahl, Fortschrittszeile unter dem Reiter)
+- Konten: Ablagefeld für Kontoauszüge (CSV, PDF, CAMT, MT940, Excel …) inkl. Ordner – mehrere Dateien werden nacheinander importiert, mit Fortschritt
+- Kunden: Ablagefeld für vCard-Dateien (.vcf) inkl. Ordner
+- Kunden: Kontaktarten-Leiste seitlich verschiebbar und ein-/ausblendbar (⇄), gleiche Funktion wie bei den Dokumenten
+- Ablagefeld, Fortschrittsanzeige und anpassbare Leiste als gemeinsame Bausteine
+
 ## v0.31.1
 - Ablagefeld: ganze Ordner (inkl. Unterordner) hineinziehen oder über „Ordner wählen“ auswählen – PDFs und Fotos darin werden importiert, andere Dateien übersprungen
 

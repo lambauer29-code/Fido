@@ -1535,6 +1535,8 @@ export default function App() {
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
   }, []);
   const [bizReq, setBizReq] = useState(0);
+  const [upl, setUpl] = useState(null), [accBusy, setAccBusy] = useState(null), [ctBusy, setCtBusy] = useState(null);
+  const docPeak = useRef(0);
   const [imp, setImp] = useState(null);
   shareUi = setShareData;
   // bestehende Rechnungsbelege einmalig in „Ausgangsrechnung“ verschieben
@@ -1713,7 +1715,7 @@ export default function App() {
   async function onFiles(list, opts = {}) {
     const files = [...list];
     for (const [fi, f] of files.entries()) {
-      opts.onProgress?.(fi + 1, files.length, f.name);
+      setUpl({ i: fi + 1, n: files.length, name: f.name });
       let blob;
       try { blob = await prepareFile(f); } catch (e) { notify(`${f.name}: ${e.message}`); continue; }
       if (blob.size > 3.6 * 1024 * 1024) notify(`${f.name}: ${(blob.size / 1048576).toFixed(0)} MB – wird zum Auslesen automatisch verkleinert`);
@@ -1728,7 +1730,7 @@ export default function App() {
       if (opts.linkTx) { await linkTx(opts.linkTx, doc.id); notify("Beleg wird ausgelesen und ist der Buchung zugeordnet"); }
       queue.current = queue.current.then(() => analyze(doc, blob));
     }
-    opts.onProgress?.(null);
+    setUpl(null);
     if (files.length && !opts.linkTx) setTab("docs");
   }
   async function reanalyze(doc) {
@@ -1737,6 +1739,13 @@ export default function App() {
     queue.current = queue.current.then(() => analyze(doc, blob));
   }
 
+  const procN = docs.filter((d) => d.status === "processing" && !d.deletedAt).length;
+  if (!procN && !upl) docPeak.current = 0; else docPeak.current = Math.max(docPeak.current, procN + (upl ? upl.n - upl.i : 0), upl ? upl.n : 0);
+  const docBusy = upl || procN ? (() => { const total = Math.max(docPeak.current, 1), left = procN + (upl ? upl.n - upl.i : 0);
+    const proc = docs.filter((d) => d.status === "processing" && !d.deletedAt);
+    return { title: upl ? `Datei ${upl.i} von ${upl.n} wird hochgeladen …` : `KI liest ${procN} Dokument${procN === 1 ? "" : "e"} aus …`,
+      sub: upl ? upl.name : proc.slice(0, 3).map((d) => d.fileName || d.title).join(", ") + (procN > 3 ? ` und ${procN - 3} weitere` : ""), done: total - left, total, n: left }; })() : null;
+  const busyTab = { docs: docBusy, accounts: accBusy, kunden: ctBusy };
   const openDoc = docs.find((d) => d.id === openId);
   // Kalender-Abo: bei jeder Änderung der Fristen (verzögert) neu hochladen
   const calSig = useMemo(() => JSON.stringify(active.flatMap((d) => (d.deadlines || []).filter((x) => !x.done).map((x) => [x.id, x.date, x.label, d.title, payAmt(d)]))), [active]);
@@ -1793,11 +1802,11 @@ export default function App() {
           accounts={visAccounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
           cashForm={<CashForm compact accounts={accounts} categories={TX_CATS(categories)} onSave={saveCash} onScan={scanFor} addCategory={addCategory} />}
           editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => setScanOpen(true), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
-        {tab === "accounts" && <Accounts addCategory={addCategory} linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
+        {tab === "accounts" && <Accounts busy={accBusy} setBusy={setAccBusy} addCategory={addCategory} linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
           acc={selAcc} setAcc={setSelAcc} sel={effSel} allSel={allSel} setSel={setSelAccs} accActions={accActions} hiddenAccs={hiddenAccs} visAccounts={visAccounts} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
-        {tab === "docs" && <DocList onFiles={onFiles} trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
+        {tab === "docs" && <DocList onFiles={onFiles} docBusy={docBusy} trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup}
           deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
@@ -1806,7 +1815,7 @@ export default function App() {
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
         {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
         {tab === "artikel" && <ArticlesPage setTab={setTab} />}
-        {tab === "kunden" && <ContactsPage setTab={setTab} req={bizReq} />}
+        {tab === "kunden" && <ContactsPage setTab={setTab} req={bizReq} busy={ctBusy} setBusy={setCtBusy} />}
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
         {tab === "settings" && (
@@ -1892,9 +1901,11 @@ export default function App() {
                 }} aria-label={tabLabel(nav, t.key)}>
                 <TabIcon t={t} /><span className="tl" style={t.color ? { color: t.color } : undefined}>{tabLabel(nav, t.key)}</span>
                 {t.key === "home" && <Badge docs={active} />}
+                {busyTab[t.key] && <span className="busytab" title={busyTab[t.key].title}><span className="spin" />{busyTab[t.key].n > 0 && <small>{busyTab[t.key].n}</small>}</span>}
                 {!!sub && <i className={"subtog side-only" + (open ? " open" : "")} role="button" aria-label="ein-/ausklappen"
                   onClick={(e) => { e.stopPropagation(); setNav((n) => ({ ...n, [flag]: !n[flag] })); }}>›</i>}
               </button>
+              {t.side && busyTab[t.key] && tab !== t.key && <div className="side-only sidebusy" onClick={() => setTab(t.key)}><b>{busyTab[t.key].title}</b><span className="ibar"><span style={{ width: Math.max(4, Math.round((busyTab[t.key].done / Math.max(1, busyTab[t.key].total)) * 100)) + "%" }} /></span></div>}
               {t.side && kids.map((c) => (
                 <button key={c.key} className={"subtab side-only" + (tab === c.key ? " on" : "")} onClick={() => setTab(c.key)} aria-label={tabLabel(nav, c.key)}>
                   <TabIcon t={c} /><span className="tl" style={c.color ? { color: c.color } : undefined}>{tabLabel(nav, c.key)}</span>
@@ -2465,33 +2476,71 @@ async function filesFromDrop(dt) {
 }
 const isDocFile = (x) => !x.name.startsWith(".") && (/^image\/|pdf$/i.test(x.type) || /\.(pdf|jpe?g|png|heic|heif|webp)$/i.test(x.name));
 
-function DocDrop({ onFiles, onHide, busy }) {
+function DropField({ onFiles, onHide, busy, title = "Dateien oder Ordner hierher ziehen", what = "PDF & Fotos", isOk = isDocFile, accept = "application/pdf,image/*", emptyMsg = "Keine PDFs oder Fotos gefunden." }) {
   const [over, setOver] = useState(false);
   const ref = useRef(null), dirRef = useRef(null);
-  const take = (fl) => { const all = [...(fl || [])]; const f = all.filter(isDocFile); if (f.length) onFiles(f); else if (all.length) alert("Keine PDFs oder Fotos gefunden."); };
+  const take = (fl) => { const all = [...(fl || [])]; const f = all.filter((x) => !x.name.startsWith(".") && isOk(x)); if (f.length) onFiles(f); else if (all.length) alert(emptyMsg); };
   return (
     <div className={"docdrop" + (over ? " over" : "")} role="button" tabIndex={0} onClick={() => ref.current?.click()}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setOver(true); }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false); }}
       onDrop={async (e) => { e.preventDefault(); e.stopPropagation(); setOver(false); take(await filesFromDrop(e.dataTransfer)); }}>
       <span className="ddico">{busy ? <span className="spin big" /> : "📥"}</span>
-      <span className="grow"><b>{over ? "Loslassen zum Hochladen" : "Dateien oder Ordner hierher ziehen"}</b>
-        <small className="muted block">oder klicken · <a href="#" onClick={(e) => { e.preventDefault(); e.stopPropagation(); dirRef.current?.click(); }}>Ordner wählen</a> · PDF &amp; Fotos</small></span>
-      <button className="iconbtn ddx" title="Ablagefeld ausblenden" aria-label="Ablagefeld ausblenden" onClick={(e) => { e.stopPropagation(); onHide(); }}>✕</button>
-      <input ref={ref} type="file" accept="application/pdf,image/*" multiple hidden onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
+      <span className="grow"><b>{over ? "Loslassen zum Hochladen" : title}</b>
+        <small className="muted block">oder klicken · <a href="#" onClick={(e) => { e.preventDefault(); e.stopPropagation(); dirRef.current?.click(); }}>Ordner wählen</a> · {what}</small></span>
+      {onHide && <button className="iconbtn ddx" title="Ablagefeld ausblenden" aria-label="Ablagefeld ausblenden" onClick={(e) => { e.stopPropagation(); onHide(); }}>✕</button>}
+      <input ref={ref} type="file" accept={accept} multiple hidden onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
       <input ref={dirRef} type="file" webkitdirectory="" directory="" multiple hidden onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
     </div>
   );
 }
+function ImportBar({ title, sub, done, total }) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return (
+    <div className="importbar" role="status" aria-live="polite">
+      <span className="spin" aria-hidden="true" />
+      <span className="grow"><b>{title}</b>{sub && <small className="muted block">{sub}</small>}<span className="ibar"><span style={{ width: Math.max(4, pct) + "%" }} /></span></span>
+      {total > 0 && <small className="muted">{done} / {total}</small>}
+    </div>
+  );
+}
+/* Filter-/Chipleiste: Einträge seitlich verschiebbar und ein-/ausblendbar (gespeichert unter storeKey) */
+function ChipBar({ storeKey, items, lead = null, className = "" }) {
+  const [cfg, setCfg] = useLsState(storeKey, { order: [], hidden: [] });
+  const [edit, setEdit] = useState(false), [dragK, setDragK] = useState(null);
+  const defs = Object.fromEntries(items.filter(Boolean).map((x) => [x.k, x]));
+  const order = [...cfg.order.filter((k) => defs[k]), ...Object.keys(defs).filter((k) => !cfg.order.includes(k))];
+  const hidden = new Set(cfg.hidden);
+  const startDrag = (e, k) => {
+    if (e.button > 0) return; e.preventDefault();
+    const row = e.currentTarget.parentElement; let cur = [...order];
+    setDragK(k);
+    const move = (ev) => {
+      const els = [...row.querySelectorAll("[data-chipk]")];
+      let to = els.findIndex((el) => { const r = el.getBoundingClientRect(); return ev.clientY < r.bottom && ev.clientX < r.left + r.width / 2; });
+      if (to < 0) to = els.length;
+      const from = cur.indexOf(k); if (to > from) to--;
+      if (to !== from) { cur = [...cur]; cur.splice(from, 1); cur.splice(to, 0, k); setCfg((c) => ({ ...c, order: cur })); }
+    };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); setDragK(null); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
+  return (
+    <div className={"chips " + className + (edit ? " chipedit" : "")}>
+      {!edit && lead}
+      {order.map((k) => edit
+        ? <span key={k} data-chipk={k} className={"chipcfg" + (hidden.has(k) ? " off" : "") + (dragK === k ? " drag" : "")} onPointerDown={(e) => !e.target.closest("button") && startDrag(e, k)}>
+            <span className="chh" aria-hidden="true">⠿</span>{defs[k].label}
+            <button className="chipeye" title={hidden.has(k) ? "Einblenden" : "Ausblenden"} onClick={() => setCfg((c) => ({ ...c, hidden: hidden.has(k) ? c.hidden.filter((x) => x !== k) : [...c.hidden, k] }))}>{hidden.has(k) ? <IcoEyeOff /> : <IcoEye />}</button>
+          </span>
+        : !hidden.has(k) && <React.Fragment key={k}>{defs[k].el}</React.Fragment>)}
+      <button className={"chip chipset" + (edit ? " on" : "")} title="Leiste anordnen und ein-/ausblenden" onClick={() => setEdit(!edit)}>{edit ? "✓ Fertig" : "⇄"}</button>
+      {edit && <small className="muted chiphint">Am Griff ⠿ seitlich ziehen · Auge zum Ein-/Ausblenden</small>}
+    </div>
+  );
+}
 
-function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, onFiles }) {
+function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, onFiles, docBusy }) {
   const [showDrop, setShowDrop] = useLsState("docDrop", true);
-  const [chipCfg, setChipCfg] = useLsState("docChips", { order: [], hidden: [] });
-  const [chipEdit, setChipEdit] = useState(false), [dragK, setDragK] = useState(null);
-  const [upl, setUpl] = useState(null);
-  const procDocs = docs.filter((d) => d.status === "processing");
-  const peak = useRef(0);
-  if (!procDocs.length && !upl) peak.current = 0; else peak.current = Math.max(peak.current, procDocs.length + (upl ? upl.n - upl.i : 0));
-  const importFiles = (f) => onFiles(f, { onProgress: (i, n, name) => setUpl(i ? { i, n, name } : null) });
   const [q, setQ] = useState("");
   const [prevId, setPrevId] = useState(null);
   const [winPrev, setWinPrev] = useState(null);
@@ -2549,63 +2598,20 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
           <DocTree docGroups={docGroups} docs={docs} selected={cat} onSelect={setCat} onToggleGroup={toggleDocGroup} variant="card" />
         </div>
       )}
-      {(() => {
-        const defs = {
-          frist: deadlineTab && ["⏰ " + deadlineTab.label, <button className="chip" onClick={deadlineTab.open}>⏰ {deadlineTab.label}</button>],
-          steuer: ["🧾 Steuerrelevant", <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button>],
-          unbezahlt: ["💶 Unbezahlt", <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button>],
-          monat: ["Monat", <select className={"chip" + (month ? " on" : "")} value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{MONTHS_DE.map((m, i) => <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>)}</select>],
-          jahr: ["Jahr", <select className={"chip" + (year ? " on" : "")} value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</select>],
-          tags: ["Tags", <select className={"chip" + (tag ? " on" : "")} value={tag} onChange={(e) => setTag(e.target.value)}><option value="">Alle Tags</option>{tags.map((t) => <option key={t}>{t}</option>)}</select>],
-          sort: ["Sortierung", <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></select>],
-          pick: ["☑︎ Auswählen", <button className={pick ? "chip on" : "chip"} disabled={!list.length} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑︎ Auswählen"}</button>],
-          csv: ["⬇︎ CSV", <button className="chip" disabled={!list.length} onClick={() => exportCsv(list, `dokumente${year ? "-" + year : ""}${month ? "-" + month : ""}${taxOnly ? "-steuer" : ""}.csv`)}>⬇︎ CSV</button>],
-          drop: onFiles && ["📥 Ablagefeld", <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>],
-        };
-        const order = [...chipCfg.order.filter((k) => defs[k]), ...Object.keys(defs).filter((k) => defs[k] && !chipCfg.order.includes(k))];
-        const hidden = new Set(chipCfg.hidden);
-        const startDrag = (e, k) => {
-          if (e.button > 0) return; e.preventDefault();
-          const row = e.currentTarget.parentElement; let cur = [...order];
-          setDragK(k);
-          const move = (ev) => {
-            const els = [...row.querySelectorAll("[data-chipk]")];
-            let to = els.findIndex((el) => { const r = el.getBoundingClientRect(); return ev.clientY < r.bottom && ev.clientX < r.left + r.width / 2; });
-            if (to < 0) to = els.length;
-            const from = cur.indexOf(k); if (to > from) to--;
-            if (to !== from) { cur = [...cur]; cur.splice(from, 1); cur.splice(to, 0, k); setChipCfg((c) => ({ ...c, order: cur })); }
-          };
-          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); setDragK(null); };
-          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-        };
-        return (
-          <div className={"chips" + (chipEdit ? " chipedit" : "")}>
-            {cat && !chipEdit && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>}
-            {order.map((k) => chipEdit
-              ? <span key={k} data-chipk={k} className={"chipcfg" + (hidden.has(k) ? " off" : "") + (dragK === k ? " drag" : "")} onPointerDown={(e) => !e.target.closest("button") && startDrag(e, k)}>
-                  <span className="chh" aria-hidden="true">⠿</span>{defs[k][0]}
-                  <button className="chipeye" title={hidden.has(k) ? "Einblenden" : "Ausblenden"} onClick={() => setChipCfg((c) => ({ ...c, hidden: hidden.has(k) ? c.hidden.filter((x) => x !== k) : [...c.hidden, k] }))}>{hidden.has(k) ? <IcoEyeOff /> : <IcoEye />}</button>
-                </span>
-              : !hidden.has(k) && <React.Fragment key={k}>{defs[k][1]}</React.Fragment>)}
-            <button className={"chip chipset" + (chipEdit ? " on" : "")} title="Filter anordnen und ein-/ausblenden" onClick={() => setChipEdit(!chipEdit)}>{chipEdit ? "✓ Fertig" : "⚙︎"}</button>
-            {chipEdit && <small className="muted chiphint">Am Griff ⠿ seitlich ziehen · Auge zum Ein-/Ausblenden</small>}
-          </div>
-        );
-      })()}
-      {onFiles && showDrop && <DocDrop onFiles={importFiles} onHide={() => setShowDrop(false)} busy={!!upl || procDocs.length > 0} />}
-      {(upl || procDocs.length > 0) && (() => {
-        const total = Math.max(peak.current, 1), left = procDocs.length + (upl ? upl.n - upl.i + 1 : 0), pct = Math.round(((total - left) / total) * 100);
-        return (
-          <div className="importbar" role="status" aria-live="polite">
-            <span className="spin" aria-hidden="true" />
-            <span className="grow">
-              <b>{upl ? `Datei ${upl.i} von ${upl.n} wird hochgeladen …` : `KI liest ${procDocs.length} Dokument${procDocs.length === 1 ? "" : "e"} aus …`}</b>
-              <small className="muted block">{upl ? upl.name : procDocs.slice(0, 3).map((d) => d.fileName || d.title).join(", ") + (procDocs.length > 3 ? ` und ${procDocs.length - 3} weitere` : "")}</small>
-              <span className="ibar"><span style={{ width: Math.max(4, pct) + "%" }} /></span>
-            </span>
-            <small className="muted">{total - left} / {total}</small>
-          </div>);
-      })()}
+      <ChipBar storeKey="docChips" lead={cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>} items={[
+        deadlineTab && { k: "frist", label: "⏰ " + deadlineTab.label, el: <button className="chip" onClick={deadlineTab.open}>⏰ {deadlineTab.label}</button> },
+        { k: "steuer", label: "🧾 Steuerrelevant", el: <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button> },
+        { k: "unbezahlt", label: "💶 Unbezahlt", el: <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button> },
+        { k: "monat", label: "Monat", el: <select className={"chip" + (month ? " on" : "")} value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{MONTHS_DE.map((m, i) => <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>)}</select> },
+        { k: "jahr", label: "Jahr", el: <select className={"chip" + (year ? " on" : "")} value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</select> },
+        { k: "tags", label: "Tags", el: <select className={"chip" + (tag ? " on" : "")} value={tag} onChange={(e) => setTag(e.target.value)}><option value="">Alle Tags</option>{tags.map((t) => <option key={t}>{t}</option>)}</select> },
+        { k: "sort", label: "Sortierung", el: <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></select> },
+        { k: "pick", label: "☑︎ Auswählen", el: <button className={pick ? "chip on" : "chip"} disabled={!list.length} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑︎ Auswählen"}</button> },
+        { k: "csv", label: "⬇︎ CSV", el: <button className="chip" disabled={!list.length} onClick={() => exportCsv(list, `dokumente${year ? "-" + year : ""}${month ? "-" + month : ""}${taxOnly ? "-steuer" : ""}.csv`)}>⬇︎ CSV</button> },
+        onFiles && { k: "drop", label: "📥 Ablagefeld", el: <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button> },
+      ]} />
+      {onFiles && showDrop && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} />}
+      {docBusy && <ImportBar {...docBusy} />}
       <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>
 
       {!docs.length && (
@@ -3144,7 +3150,7 @@ const shortD = (iso) => (iso ? new Date(iso + "T12:00").toLocaleDateString("de-A
 const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json,.xlsx,.xlsm,.xls,.pdf,image/*";
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
-function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc: accProp, setAcc, sel: selProp = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
+function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc: accProp, setAcc, sel: selProp = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
   const [pick, setPick] = useState(false);
   // Maus auf einer Konto-Karte = Vorschau nur dieses Kontos (alles andere ausgeblendet)
   const [peek, setPeek] = useState("");
@@ -3188,8 +3194,13 @@ function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, 
   async function onPick(file) {
     if (!file) return;
     try { setImp({ file, result: await parseFile(file, ls.get("mappings", {})) }); }
-    catch (e) { notify("Datei nicht lesbar: " + e.message); }
+    catch (e) { notify("Datei nicht lesbar: " + e.message); nextImp(); }
   }
+  const [showDrop, setShowDrop] = useLsState("accDrop", true);
+  const impQ = useRef({ files: [], i: 0 });
+  const report = () => { const q = impQ.current; setBusy(q.i <= q.files.length && q.files.length ? { title: `Kontoauszug ${q.i} von ${q.files.length} wird importiert …`, sub: q.files[q.i - 1]?.name, done: q.i - 1, total: q.files.length, n: q.files.length - q.i + 1 } : null); };
+  const nextImp = () => { const q = impQ.current; if (q.i < q.files.length) { q.i++; report(); onPick(q.files[q.i - 1]); } else { impQ.current = { files: [], i: 0 }; setBusy(null); } };
+  const dropFiles = (files) => { impQ.current = { files, i: 0 }; nextImp(); };
 
   const dayGroups = [];
   for (const t of list.slice(0, limit)) { const g = dayGroups[dayGroups.length - 1]; if (g && g.date === t.date) g.items.push(t); else dayGroups.push({ date: t.date, items: [t] }); }
@@ -3289,6 +3300,10 @@ function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, 
             </div>); })}
         </div>
       )}
+      {showDrop ? <DropField onFiles={dropFiles} onHide={() => setShowDrop(false)} busy={!!busy} title="Kontoauszüge oder Ordner hierher ziehen" what="CSV, PDF, CAMT, MT940, Excel …"
+        accept={IMPORT_ACCEPT} isOk={(f) => /\.(csv|txt|tsv|xml|sta|mt940|940|ofx|qfx|qif|json|xlsx|xlsm|xls|pdf|jpe?g|png|heic|webp)$/i.test(f.name) || /^image\//.test(f.type)} emptyMsg="Keine Kontoauszug-Dateien gefunden." />
+        : <button className="chip ddshow" onClick={() => setShowDrop(true)}>📥 Ablagefeld einblenden</button>}
+      {busy && <ImportBar {...busy} />}
       {pick && <AccountPicker groups={groups} txs={txs} sel={allSel ? [] : sel} onClose={() => setPick(false)} onApply={(l) => { setSel(l); setPick(false); }} />}
       {!txs.length && (
         <div className="empty"><div style={{ fontSize: 48 }}>🏦</div>
@@ -3340,7 +3355,7 @@ function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, 
       {editAcc && <AccountSheet init={editAcc} txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm && a.id !== editAcc.id)} onClose={() => setEditAcc(null)}
         onSave={(a) => { setAccounts((l) => l.map((x) => (x.id === a.id ? a : x))); setEditAcc(null); notify("Konto gespeichert"); }} />}
       {newAcc && <AccountSheet txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
-      {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
+      {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => { setImp(null); if (impQ.current.files.length) setTimeout(nextImp, 50); }} />}
       {txOpen && <TxSheet addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
     </div>
   );
@@ -5612,7 +5627,15 @@ function ContactImportWin({ items: init, existing, onImport, onClose }) {
     </Win>
   );
 }
-function ContactsPage({ setTab, req = 0 }) {
+function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
+  const [showDrop, setShowDrop] = useLsState("ctDrop", true);
+  const dropVcf = async (files) => {
+    let all = [];
+    for (const [i, f] of files.entries()) { setBusy({ title: `Kontaktdatei ${i + 1} von ${files.length} wird gelesen …`, sub: f.name, done: i, total: files.length, n: files.length - i }); all = all.concat(parseVcf(await f.text())); }
+    setBusy(null);
+    if (!all.length) return alert("Keine Kontakte in den Dateien gefunden.");
+    setPicked(all.map((c) => ({ ...c, on: true })));
+  };
   const [list, setList] = useLsState("customers", []);
   const [types] = useContactTypes();
   const typeOf = (c) => types.find((t) => t.name === (c.type || "Kunde")) || { name: c.type || "Kunde", icon: "👤", color: "#888" };
@@ -5654,11 +5677,15 @@ function ContactsPage({ setTab, req = 0 }) {
       </div>
       {!("contacts" in navigator && "select" in (navigator.contacts || {})) && <p className="muted small hint">📱 <b>iPhone – direkt aus dem Adressbuch:</b> Einstellungen → Apps → Safari → Erweitert → Feature Flags → „Contact Picker API“ einschalten, dann FinDocu neu öffnen. Danach öffnet „Aus Handy-Kontakten“ die Kontaktauswahl des iPhones. <b>Ohne diese Einstellung:</b> Kontakte-App → Kontakte markieren → Teilen → „In Dateien sichern“ und die .vcf-Datei hier wählen. <b>Mac:</b> Kontakte → Ablage → Exportieren → vCard. <b>Android/Chrome:</b> funktioniert direkt.</p>}
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Name, E-Mail, Telefon, Ort suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-      <div className="chips invfilter">
-        <button className={"chip" + (type === "alle" ? " on" : "")} onClick={() => setType("alle")}>Alle <small>({list.length})</small></button>
-        {types.map((t) => <button key={t.id} className={"chip" + (type === t.name ? " on" : "")} style={type === t.name ? undefined : { color: t.color }} onClick={() => setType(t.name)}><TypeGlyph t={t} /> {t.name} <small>({list.filter((c) => (c.type || "Kunde") === t.name).length})</small></button>)}
-        {setTab && <button className="chip" title="Kategorien bearbeiten" onClick={() => { ls.set("openSettingsSec", "kontaktarten"); setTab("settings"); }}>⚙︎</button>}
-      </div>
+      <ChipBar storeKey="ctChips" className="invfilter" items={[
+        { k: "alle", label: "Alle", el: <button className={"chip" + (type === "alle" ? " on" : "")} onClick={() => setType("alle")}>Alle <small>({list.length})</small></button> },
+        ...types.map((t) => ({ k: "t:" + t.id, label: <><TypeGlyph t={t} /> {t.name}</>, el: <button className={"chip" + (type === t.name ? " on" : "")} style={type === t.name ? undefined : { color: t.color }} onClick={() => setType(t.name)}><TypeGlyph t={t} /> {t.name} <small>({list.filter((c) => (c.type || "Kunde") === t.name).length})</small></button> })),
+        setTab && { k: "set", label: "⚙︎ Arten bearbeiten", el: <button className="chip" title="Kontaktarten bearbeiten" onClick={() => { ls.set("openSettingsSec", "kontaktarten"); setTab("settings"); }}>⚙︎</button> },
+      ]} />
+      {showDrop ? <DropField onFiles={dropVcf} onHide={() => setShowDrop(false)} busy={!!busy} title="Kontaktdateien (.vcf) oder Ordner hierher ziehen" what="vCard (.vcf)"
+        accept=".vcf,text/vcard,text/x-vcard" isOk={(f) => /\.vcf$/i.test(f.name) || /vcard/i.test(f.type)} emptyMsg="Keine .vcf-Kontaktdateien gefunden." />
+        : <button className="chip ddshow" onClick={() => setShowDrop(true)}>📥 Ablagefeld einblenden</button>}
+      {busy && <ImportBar {...busy} />}
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📱 Aus Handy-Kontakten“ übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
         {shown.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
@@ -7150,4 +7177,13 @@ nav.bottom>button.sidetoggle{display:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (max-width:700px){.importbar{width:100%;min-width:0}}
 .docdrop small a{color:var(--acc);text-decoration:none;font-weight:600}.docdrop small a:hover{text-decoration:underline}
+
+.busytab{display:inline-flex;align-items:center;gap:4px;margin-left:auto;flex:none}
+.busytab .spin{width:14px;height:14px;border-width:2px}
+.busytab small{font-size:11px;font-weight:700;color:var(--acc)}
+.sidebusy{margin:2px 10px 6px 44px;padding:6px 8px;border-radius:10px;background:var(--card2);cursor:pointer}
+.sidebusy b{display:block;font-size:11.5px;font-weight:600;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebusy .ibar{margin-top:5px;height:4px}
+html.side-mini .sidebusy,html.side-mini .busytab small{display:none}
+.chip.ddshow{margin:6px 0 10px}
 `;
