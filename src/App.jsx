@@ -739,12 +739,13 @@ function NewCategoryWin({ groups, defGroup, existing, onCreate, onClose }) {
       </select></label>
       <CatStylePicker icon={st.icon} color={st.color} img={st.img} onChange={setSt} />
       <div className="asfoot"><span className="aspreview"><span className="label" style={{ color: st.color, background: st.color + "22" }}>{st.img ? <img className="catimg" src={st.img} alt="" /> : st.icon} {n || "Vorschau"}</span></span></div>
-      <p className="muted small">Später änderbar unter Einstellungen › Dokumente – Gruppen &amp; Kategorien.</p>
+      <p className="muted small">Später änderbar unter Einstellungen › Dokumente – Kategorien.</p>
     </Win>
   );
 }
 
-function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, notify }) {
+function DocNavSettings({ part = "groups", nav, setNav, docs, renameCategory, deleteCategory, notify }) {
+  const isG = part === "groups";
   const groups = nav.docGroups;
   const all = flattenCats(groups);
   const save = (g) => setNav((n) => ({ ...n, docGroups: g }));
@@ -770,14 +771,17 @@ function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, not
   };
 
   return (
-    <SetSec id="docgroups" title="Dokumente – Gruppen & Kategorien">
-      <p className="muted small">Auf das Symbol einer Kategorie tippen, um Symbol &amp; Farbe zu ändern. Am Griff <b>⠿</b> ziehen, um Kategorien zu sortieren oder in eine andere Gruppe zu verschieben – auch ganze Gruppen. Die Gruppe legt fest, ob ihre Dokumente als Finanzen, Verträge oder Sonstiges zählen („Sonstiges“ fließt nicht in Übersicht und Budgets).</p>
+    <SetSec id={isG ? "docgroups" : "doccats"} title={isG ? "Dokumente – Gruppen" : "Dokumente – Kategorien"}>
+      {isG
+        ? <p className="muted small">Gruppen sind die Überschriften in der Seitenleiste und bei den Dokumenten. Am Griff <b>⠿</b> ziehen zum Sortieren. Die Gruppe legt fest, ob ihre Dokumente als Finanzen, Verträge oder Sonstiges zählen („Sonstiges“ fließt nicht in Übersicht und Budgets).</p>
+        : <p className="muted small">Auf das Symbol einer Kategorie tippen, um Symbol &amp; Farbe zu ändern. Am Griff <b>⠿</b> ziehen, um Kategorien zu sortieren oder in eine andere Gruppe zu verschieben. Gruppen selbst bearbeitest du unter „Dokumente – Gruppen“.</p>}
       {groups.map((g, gi) => (
         <React.Fragment key={g.id}>
-          {dnd.lineAt("dgrp", "g", gi) && <div className="dropline" />}
-          <div className={"grpcfg" + (dnd.isDragging("dgrp", "g", gi) ? " dragging" : "") + (dnd.drag?.kind === "dcat" && dnd.drag.over?.list === g.id ? " dropover" : "")}
-            data-dgrp-item={`g|${gi}`} data-dcat-list={`${g.id}|${g.cats.length}`}>
-            <div className="grphead">
+          {isG && dnd.lineAt("dgrp", "g", gi) && <div className="dropline" />}
+          <div className={"grpcfg" + (isG ? "" : " catsonly") + (dnd.isDragging("dgrp", "g", gi) ? " dragging" : "") + (dnd.drag?.kind === "dcat" && dnd.drag.over?.list === g.id ? " dropover" : "")}
+            {...(isG ? { "data-dgrp-item": `g|${gi}` } : { "data-dcat-list": `${g.id}|${g.cats.length}` })}>
+            {!isG && <div className="grplabel"><b>{g.title || "Ohne Überschrift"}</b><small className="muted">{AREAS[g.area]?.[0]} {AREAS[g.area]?.[1]}</small></div>}
+            {isG && <><div className="grphead">
               <Handle onDown={(e) => dnd.start(e, { kind: "dgrp", list: "g", index: gi, label: `📁 ${g.title || "Gruppe"}` })} label="Gruppe verschieben" />
               <EditText className="grow" inputClass="grptitle" value={g.title || ""} placeholder="Ohne Überschrift (nur Trennlinie)" onSave={(t) => patch(gi, { title: t })} />
               <button className="iconbtn" onClick={() => delGroup(gi)} aria-label="Gruppe löschen" title="Gruppe löschen">🗑</button>
@@ -785,8 +789,9 @@ function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, not
             <div className="areapick">
               <small className="muted">zählt als</small>
               {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={g.area === k ? "on" : ""} onClick={() => patch(gi, { area: k })}>{i} {l}</button>)}
-            </div>
-            {g.cats.map((c, ci) => (
+              <small className="muted grpn">{g.cats.length} {g.cats.length === 1 ? "Kategorie" : "Kategorien"}</small>
+            </div></>}
+            {!isG && g.cats.map((c, ci) => (
               <React.Fragment key={c}>
                 {dnd.lineAt("dcat", g.id, ci) && <div className="dropline" />}
                 <div className={"acccfg catrow" + (dnd.isDragging("dcat", g.id, ci) ? " dragging" : "")} data-dcat-item={`${g.id}|${ci}`}>
@@ -808,21 +813,21 @@ function DocNavSettings({ nav, setNav, docs, renameCategory, deleteCategory, not
                 </div>}
               </React.Fragment>
             ))}
-            {dnd.lineAt("dcat", g.id, g.cats.length) && <div className="dropline" />}
-            {!g.cats.length && <div className="dropzone">Kategorie hierher ziehen</div>}
-            <div className="acccfg addcat">
+            {!isG && dnd.lineAt("dcat", g.id, g.cats.length) && <div className="dropline" />}
+            {!isG && !g.cats.length && <div className="dropzone">Kategorie hierher ziehen</div>}
+            {!isG && <div className="acccfg addcat">
               <span className="ki">＋</span>
               <EditText className="grow" value="" resetOnSave placeholder="Neue Kategorie, z. B. „KFZ“, „Haustier“" validate={check("")}
                 onSave={(t) => patch(gi, { cats: [...g.cats, t] })} />
-            </div>
+            </div>}
           </div>
         </React.Fragment>
       ))}
-      {dnd.lineAt("dgrp", "g", groups.length) && <div className="dropline" />}
-      <div className="actions" data-dgrp-list={`g|${groups.length}`}>
+      {isG && dnd.lineAt("dgrp", "g", groups.length) && <div className="dropline" />}
+      {isG && <div className="actions" data-dgrp-list={`g|${groups.length}`}>
         <button className="btn" onClick={addGroup}>＋ Gruppe / Überschrift</button>
         <button className="link" onClick={() => confirm("Dokument-Gruppen auf Standard zurücksetzen? (Kategorien bleiben erhalten)") && save(buildDocGroups(all))}>Zurücksetzen</button>
-      </div>
+      </div>}
       {dnd.ghost}
     </SetSec>
   );
@@ -1589,7 +1594,7 @@ export default function App() {
                 }} aria-label={tabLabel(nav, t.key)}>
                 <span>{TAB_DEFS[t.key][0]}</span>{tabLabel(nav, t.key)}
                 {t.key === "home" && <Badge docs={active} />}
-                {sub && <i className={"subtog side-only" + (open ? " open" : "")} role="button" aria-label="ein-/ausklappen"
+                {!!sub && <i className={"subtog side-only" + (open ? " open" : "")} role="button" aria-label="ein-/ausklappen"
                   onClick={(e) => { e.stopPropagation(); setNav((n) => ({ ...n, [flag]: !n[flag] })); }}>›</i>}
               </button>
               {t.key === "accounts" && t.side && nav.accOpen && accounts.length > 0 && (
@@ -3578,7 +3583,7 @@ function SetSec({ id, title, children }) {
   );
 }
 
-const SET_IDS = ["darstellung", "design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "rules", "trash", "backup", "verbindung"];
+const SET_IDS = ["darstellung", "design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -3706,7 +3711,7 @@ function DesignSettings({ design, setDesign, theme }) {
 
 function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
-  const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "rules", "trash", "backup", "verbindung"]);
+  const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
   useEffect(() => ls.set("settingsOrder", secOrder), [secOrder]);
   useEffect(() => ls.set("settingsClosed", secClosed), [secClosed]);
   const secDnd = useDnd((d, over) => setSecOrder((cur) => moveBetween({ s: mergeOrder(cur, SET_IDS) }, "s", d.index, "s", over.index).s));
@@ -3791,6 +3796,7 @@ function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs
         <label>Adresse<textarea rows={2} value={me.address} onChange={(e) => setMe({ ...me, address: e.target.value })} /></label>
         <label>Ort<input value={me.city} onChange={(e) => setMe({ ...me, city: e.target.value })} /></label>
       </SetSec></>,
+    "doccats": <><DocNavSettings part="cats" nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} /></>,
     "docgroups": <><DocNavSettings nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} /></>,
     "rules": <>{!!rules.length && (
         <SetSec id="rules" title={`Kategorie-Regeln (${rules.length})`}>
@@ -4703,4 +4709,9 @@ input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
 .cashsave{width:100%;margin:14px 0 0}
 .cashpage{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
 @media (min-width:1024px){.cashpage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}}
+
+/* v0.17.1: Gruppen und Kategorien getrennt */
+.grpcfg.catsonly{padding-top:8px}
+.grplabel{display:flex;align-items:baseline;gap:8px;padding:2px 4px 8px}.grplabel b{font-size:14px}.grplabel small{font-size:12px}
+.areapick .grpn{margin-left:auto}
 `;
