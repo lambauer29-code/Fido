@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.39.1
+- Finanz-App-Stil (Testmodus): Schriftgrößen nach den Vorbild-Screenshots vergrößert – Seitentitel 46 px, Kartentitel 24 px, Listentitel & Beträge 20 px, Untertitel 17 px, Chips/Buttons 17 px, Grundschrift 17 px, Saldo 44 px, Leiste 13 px
+- Saldo-Kacheln im Finanz-App-Stil zweispaltig (Beträge nicht mehr abgeschnitten), größere Kategorie-Einträge und Symbol-Kacheln
+
 ## v0.39.0
 - Zweites Handy-Testdesign „Finanz-App-Stil“ (Testmodus, standardmäßig aus): Einstellungen → Darstellung → Handy-Design „Finanz-App-Stil“ oder Link `?fg=1` (aus: `?fg=0`)
   - tiefschwarzer Hintergrund (bzw. weiß im Tagmodus), Mint als Akzentfarbe, grüne Plus-Beträge

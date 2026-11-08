@@ -7437,4 +7437,40 @@ nav.bottom .tabico .tabemo{font-size:inherit!important;filter:none!important;opa
   html.fg .stpill.st-paid{background:color-mix(in srgb,var(--ok) 20%,transparent);color:var(--ok)}
   html.fg .docdrop{border-color:var(--card2)}
 }
+
+/* ===== Finanz-App-Stil: Schriftgrößen nach Vorbild (Screenshots @3x ausgemessen) =====
+   Titel ~44pt · Abschnitts-/Kartentitel ~24pt · Listentitel & Beträge ~20pt · Untertitel ~17pt · Chips/Buttons ~17pt · Datumsbalken ~17pt · Leiste ~13pt */
+@media (max-width:767px){
+  html.fg body{font-size:17px;line-height:1.35}
+  html.fg header.top h1{font-size:46px}
+  html.fg .tilehead b{font-size:24px;font-weight:600}
+  html.fg .tilehead small,html.fg .tilehead .link,html.fg .tilehead button.link{font-size:15px;white-space:nowrap}
+  html.fg .frow b,html.fg .ditem b,html.fg .ditem .dtitle,html.fg .invrow .row1 b,html.fg .contactrow b,html.fg .ctrow b{font-size:20px;font-weight:500;line-height:1.25}
+  html.fg .frow .right b,html.fg .ditem b.amt,html.fg .invamt,html.fg .ditem .row1 .amt{font-size:20px;font-weight:500}
+  html.fg .frow small,html.fg .ditem small,html.fg .invrow small,html.fg .contactrow small,html.fg .ctrow small,html.fg .muted.block{font-size:17px;line-height:1.3}
+  html.fg .small{font-size:15px}
+  html.fg .label{font-size:14px;padding:4px 10px;border-radius:8px;font-weight:500}
+  html.fg .hero small{font-size:18px}
+  html.fg .hero-v{font-size:44px;font-weight:600;letter-spacing:-.01em}
+  html.fg .hero .hero-row small,html.fg .hero .stats small{font-size:14px}
+  html.fg .hero .hero-row b,html.fg .hero .stats b{font-size:18px}
+  html.fg .hero .hero-row>div,html.fg .hero .stats>div{background:var(--card2)!important;color:var(--txt)}
+  html.fg .chip{font-size:17px;min-height:46px;padding:0 16px;border-radius:16px}
+  html.fg .seg>button{font-size:16px;min-height:44px}
+  html.fg .btn{font-size:17px;min-height:46px}
+  html.fg .searchbar{min-height:52px}html.fg .searchbar input{font-size:18px}
+  html.fg main section>h3{font-size:17px;padding:10px 16px}
+  html.fg .acctree .accitem,html.fg .acctree.card .accitem{font-size:19px;min-height:50px}
+  html.fg .hero .hero-row{flex-wrap:wrap}
+  html.fg .hero .hero-row>div{flex:1 1 calc(50% - 8px);min-width:0}
+  html.fg .acctitle{font-size:14px}
+  html.fg .invstats .tile b{font-size:28px}html.fg .invstats .tile small{font-size:15px}
+  html.fg .docdrop b{font-size:17px}html.fg .docdrop small{font-size:15px}
+  html.fg label{font-size:16px}
+  html.fg input:not([type=checkbox]):not([type=radio]):not([type=range]),html.fg select,html.fg textarea{font-size:18px}
+  html.fg .caticon{width:48px!important;height:48px!important;font-size:24px!important}
+  html.fg nav.bottom>button span.tl{font-size:13px}
+  html.fg .fabmenu b{font-size:19px}html.fg .fabmenu small{font-size:15px}
+  html.fg .moremenu button{font-size:18px;padding:12px 12px}
+}
 `;
