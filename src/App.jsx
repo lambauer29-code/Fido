@@ -4612,6 +4612,7 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
         </Win>
       )}
       <div className="calhead">
+        <button className={"chip calupbtn" + (upOpen ? " on" : "") + (overdue.length ? " warn" : "")} onClick={() => setUpOpen(!upOpen)} title="Bevorstehende Fristen">⏰ Bevorstehend <b>{overdue.length + upcoming.length}</b></button>
         <button className="iconbtn" onClick={() => shift(-1)} aria-label="Zurück">‹</button>
         <b className="grow">{view === "jahr" ? cursor.slice(0, 4)
           : view === "woche" ? (() => { const ws = weekStart(cursor), we = addDays(ws, 6); const kw = isoWeek(ws); return `KW ${kw} · ${fmtDate(ws).slice(0, 6)} – ${fmtDate(we)}`; })()
@@ -4622,7 +4623,6 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
           ))}
         </div>
         <button className="chip" onClick={() => pick(today)}>Heute</button>
-        <button className={"chip calupbtn" + (upOpen ? " on" : "") + (overdue.length ? " warn" : "")} onClick={() => setUpOpen(!upOpen)} title="Bevorstehende Fristen">⏰ Bevorstehend <b>{overdue.length + upcoming.length}</b></button>
         <button className="iconbtn" onClick={() => shift(1)} aria-label="Weiter">›</button>
       </div>
 
@@ -9585,8 +9585,11 @@ html,body{min-height:100%}
 .calupcwin .calupclist{max-height:none;overflow:visible}
 .calupbtn b{margin-left:4px;background:var(--acc);color:#000;border-radius:999px;padding:0 7px;font-size:12px}
 .calupbtn.warn b{background:var(--red);color:#fff}
-@media (max-width:600px){.calhead{flex-wrap:wrap}.calhead .calupbtn{order:10;flex:1 1 100%;justify-content:center;display:flex;align-items:center}}
+@media (max-width:600px){.calhead{flex-wrap:wrap}.calhead .calupbtn{order:-1;flex:1 1 100%;justify-content:center;display:flex;align-items:center}}
 @media (max-width:600px){.calupcwin .calrow{display:grid;grid-template-columns:auto auto 1fr auto;grid-template-areas:"d t t btn" "d amt days btn";column-gap:10px;row-gap:2px;align-items:center}
 .calupcwin .calrow>.datebox{grid-area:d}.calupcwin .calrow>.grow{grid-area:t;min-width:0}.calupcwin .calrow>b{grid-area:amt;font-size:14px}
 .calupcwin .calrow>small.nowrap{grid-area:days;justify-self:start}.calupcwin .calrow>.iconbtn{grid-area:btn}}
+.calupcwin .calrow .datebox{width:46px;height:46px;padding:0;overflow:hidden}
+.calupcwin .calrow .datebox b{font-size:17px;line-height:1.05;color:inherit}.calupcwin .calrow .datebox small{font-size:10px;line-height:1.1;margin-top:2px}
+.calupcwin .calrow.over .datebox b{color:var(--red)}
 `;

@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.55.3
+- Kalender: Der Knopf „⏰ Bevorstehend“ steht jetzt ganz links vor dem ‹-Pfeil, am Handy in einer eigenen Zeile oben.
+- Bevorstehend-Fenster: Die Datumsfelder sind an die Schriftgröße angepasst und fester bemessen, nichts ragt mehr über den Rand.
+
 ## v0.55.2
 - Umtauschfrist-Kalender: „Bevorstehend“ ist jetzt ein schwebendes Fenster. Der Knopf „⏰ Bevorstehend“ in der Kalenderleiste zeigt die Anzahl offener Fristen und wird rot, wenn etwas überfällig ist. Das Fenster ist am Desktop verschieb- und größenveränderbar, am Handy ein Vollbild-Blatt. Ein Klick auf eine Zeile springt zum Tag im Kalender, › öffnet die Rechnung.
 
