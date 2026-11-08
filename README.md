@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.28.1
+- Dokument-Kategorien unter den Gruppen-Überschriften eingerückt (Seitenleiste und Dokumente), Untergruppen zusätzlich
+
 ## v0.28.0
 - Dokument-Gruppen: Untergruppen (eine Ebene) – „＋ Untergruppe“ je Hauptgruppe, Zuordnung über „gehört zu“; Anzeige eingerückt in Seitenleiste und Dokumenten
 - Neue Gruppe „Firma“ mit Kategorie „Ausgangsrechnung“; Rechnungsbelege landen dort (bestehende werden einmalig verschoben)

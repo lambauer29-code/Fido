@@ -685,7 +685,7 @@ function DocTree({ docGroups, docs, selected, onSelect, onToggleGroup, variant =
     </div>
   );
   return (
-    <div className={"acctree " + variant}>
+    <div className={"acctree doctree " + variant}>
       {shown.map((g, gi) => <React.Fragment key={g.id}>{gi > 0 && <div className="accdiv" />}{renderGroup(g, false)}</React.Fragment>)}
     </div>
   );
@@ -7017,4 +7017,8 @@ nav.bottom>button.sidetoggle{display:none}
 .grpcfg.subcfg{margin-left:26px;border-left:3px solid var(--line)}
 .subarrow{color:var(--mut);font-size:16px}
 .areapick select.chip{height:30px;padding:0 10px;font-size:13px;width:auto}
+
+.doctree .accgroup>.accitem{padding-left:26px}
+.doctree .subgrp>.accitem{padding-left:22px}
+.acctree.doctree .subgrp{margin-left:22px}
 `;
