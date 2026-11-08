@@ -3308,7 +3308,8 @@ function Analysis({ txs, accounts, hasCash }) {
   const wd = Array(7).fill(0); list.filter((t) => t.amount < 0).forEach((t) => { wd[(new Date(t.date).getDay() + 6) % 7] += -t.amount; });
   const wdMax = Math.max(1, ...wd);
   const biggest = list.filter((t) => t.amount < 0).sort((a, b) => a.amount - b.amount).slice(0, 5);
-  const periodLabel = custom ? `${fmtDate(cFrom)} – ${fmtDate(cTo)}` : mode === "year" ? year : mode === "12m" ? `${monthLabel(from)} – ${monthLabel(to)}` : new Date(cur + "-15").toLocaleDateString("de-AT", { month: "long", year: "numeric" });
+  const dayLabel = (d) => { const x = new Date(d + "T12:00:00"); return `${String(x.getDate()).padStart(2, "0")}. ${monthLabel(d.slice(0, 7))}`; };
+  const periodLabel = custom ? `${dayLabel(cFrom)} – ${dayLabel(cTo)}` : mode === "year" ? year : mode === "12m" ? `${monthLabel(from)} – ${monthLabel(to)}` : new Date(cur + "-15").toLocaleDateString("de-AT", { month: "long", year: "numeric" });
   const step = (n) => setCur((c) => { const m = mode === "year" ? addMon(c, 12 * n) : addMon(c, n); return m > thisMonth ? thisMonth : m; });
   const delta = (a, b) => { if (!b) return null; const d = Math.round(((a - b) / b) * 100); return d; };
   const Delta = ({ a, b, good = "down" }) => { const d = delta(a, b); if (d == null || !isFinite(d)) return null; const up = d > 0; const bad = good === "down" ? up : !up;
@@ -3356,7 +3357,11 @@ function Analysis({ txs, accounts, hasCash }) {
           </div>
         )}
         </div>
-        {custom ? <div className="anaper"><button className="link anarange" onClick={() => setCOpen(!cOpen)}><b>{periodLabel}</b></button></div> : <div className="anaper"><button className="iconbtn" aria-label="Zurück" onClick={() => step(-1)}>‹</button><b>{periodLabel}</b><button className="iconbtn" aria-label="Weiter" disabled={cur >= thisMonth} onClick={() => step(1)}>›</button></div>}
+        {custom ? <div className="anaper">
+            <button className="iconbtn" aria-label="Zeitraum zurück" onClick={() => setCRange({ from: dayShift(cFrom, -cDays), to: dayShift(cTo, -cDays) })}>‹</button>
+            <b className="anarange" role="button" tabIndex={0} title="Zeitraum ändern" onClick={() => setCOpen(!cOpen)}>{periodLabel}</b>
+            <button className="iconbtn" aria-label="Zeitraum weiter" disabled={cTo >= todayISO()} onClick={() => { const t = dayShift(cTo, cDays) > todayISO() ? todayISO() : dayShift(cTo, cDays); setCRange({ from: dayShift(t, -(cDays - 1)), to: t }); }}>›</button>
+          </div> : <div className="anaper"><button className="iconbtn" aria-label="Zurück" onClick={() => step(-1)}>‹</button><b>{periodLabel}</b><button className="iconbtn" aria-label="Weiter" disabled={cur >= thisMonth} onClick={() => step(1)}>›</button></div>}
       </div>
       {accounts.length > 1 && (
         <div className="chips anaaccs">
@@ -9388,7 +9393,7 @@ html,body{min-height:100%}
 .anacustom .anapresets{width:100%;justify-content:flex-start;gap:6px}.anacustom .anapresets .chip{padding:5px 11px;font-size:12.5px}
 .anacustom>small{width:100%}
 .anacaret{margin-left:5px;font-size:10px;opacity:.8}
-.anarange{padding:0;color:var(--txt)}.anarange b{white-space:nowrap}
+.anarange{cursor:pointer;white-space:nowrap}
 
 .anacustom .anapresets{display:flex;flex-wrap:wrap!important;overflow:visible!important}
 `;

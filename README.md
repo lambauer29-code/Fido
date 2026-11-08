@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.51.3
+- Analyse, eigener Zeitraum: Anzeige im gleichen Stil wie die anderen Zeiträume („01. Jän. 26 – 08. Nov. 26“) mit ‹ › zum Blättern um die gleiche Anzahl Tage; Klick auf das Datum öffnet die Auswahl.
+
 ## v0.51.2
 - Analyse: Fenster „Eigener Zeitraum“ zentriert unter dem Knopf (am Handy innerhalb des Bildschirms gehalten).
 
