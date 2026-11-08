@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.46.0
+- Fahrtenbuch: Hybrid- und Plug-in-Hybrid-Fahrzeuge (Benzin/Diesel). Plug-in und Elektro bekommen „⚡ Laden“ (kWh), der Verbrauch wird getrennt in l/100 km und kWh/100 km berechnet.
+- 📍 Standort: „In der Nähe“ zeigt Tankstellen (Österreich mit aktuellen Preisen vom E-Control Spritpreisrechner, sonst OpenStreetMap) bzw. Ladestationen (OpenStreetMap). Auswahl übernimmt Name, Adresse und Preis. Bei Fahrten setzt 📍 den aktuellen Ort bei Von/Nach ein. Neue Serverfunktion `api/nearby.js`.
+- Tanken/Laden/Ausgaben mit Konten verknüpfen: nicht buchen, neu buchen oder mit einer vorhandenen Kontobuchung verknüpfen (Vorschläge nach Betrag und Datum).
+- Belege direkt im Fahrtenbuch scannen oder hochladen: die KI füllt Betrag, Tankstelle, Datum und – wenn erkennbar – Liter und Preis aus; der Beleg wird auch an die Kontobuchung gehängt.
+
 ## v0.45.0
 - Analyse: Konto-Auswahl bricht jetzt in mehrere Zeilen um (statt seitlich zu scrollen).
 - Vermögen: einzelne Konten (und „Weitere Werte“) auswählbar – Verlauf, Verteilung und Konten rechnen nur mit der Auswahl.

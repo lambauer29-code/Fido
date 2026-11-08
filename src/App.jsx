@@ -1957,7 +1957,10 @@ function AppMain() {
           suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")}
           docs={active} onOpen={setOpenId} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
         {tab === "analyse" && <Analysis txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} accounts={visAccounts} hasCash={visAccounts.some((a) => a.kind === "cash")} />}
-        {tab === "fahrtenbuch" && <Fahrtenbuch accounts={visAccounts} notify={notify} onBook={async (t) => { const tx = await addManualTx(t); return tx; }} />}
+        {tab === "fahrtenbuch" && <Fahrtenbuch accounts={visAccounts} notify={notify} onBook={async (t) => { const tx = await addManualTx(t); return tx; }}
+          txs={txs} docs={active} onScan={scanFor} onOpen={setOpenId}
+          onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
+          onLink={async (txId, docId) => { await linkTx(txId, docId); const d = docsRef.current.find((x) => x.id === docId); if (d?.receiptFlow) await saveDoc({ ...d, receiptFlow: false, paid: true }); }} />}
         {tab === "firma" && <BizReport docs={active} setTab={setTab} />}
         {tab === "vermoegen" && <Wealth txs={txs} accounts={visAccounts} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
@@ -2480,65 +2483,143 @@ function BizReport({ docs, setTab }) {
 
 /* ======================= Fahrtenbuch (Stil Drivvo) ======================= */
 const FB_EMPTY = { vehicles: [], entries: [], reminders: [], settings: { kmRate: 0.5 } };
-const FUELS = ["Super 95", "Super 98", "Diesel", "Strom (kWh)", "Autogas (LPG)", "CNG"];
+const ENERGY = ["Super 95", "Super 98", "Diesel", "Strom (kWh)", "Autogas (LPG)", "CNG"];
+const FUELS = ["Super 95", "Super 98", "Diesel", "Hybrid (Benzin)", "Hybrid (Diesel)", "Plug-in-Hybrid (Benzin)", "Plug-in-Hybrid (Diesel)", "Strom (kWh)", "Autogas (LPG)", "CNG"];
+const isElec = (f) => /Strom/.test(f || "");
+const vehHasFuel = (v) => !/^Strom/.test(v?.fuel || "");
+const vehHasPlug = (v) => /Plug-in|^Strom/.test(v?.fuel || "");
+const vehDefFuel = (v) => { const f = v?.fuel || "Super 95"; return /^Strom/.test(f) ? "Strom (kWh)" : /Diesel/.test(f) ? "Diesel" : /Hybrid/.test(f) ? "Super 95" : f; };
+const ecFuel = (f) => (/Diesel/.test(f) ? "DIE" : /CNG/.test(f) ? "GAS" : "SUP");
+const unitOf = (f) => (isElec(f) ? "kWh" : "l");
 const FB_EXP = [["Service", "🔧"], ["Reparatur", "🛠️"], ["Reifen", "🛞"], ["Versicherung", "🛡️"], ["Motorbezogene Steuer", "🏛️"], ["Pickerl (§57a)", "✅"], ["Vignette & Maut", "🛣️"], ["Parken", "🅿️"], ["Autowäsche", "🧽"], ["Zubehör", "🧰"], ["Strafe", "🚨"], ["Sonstiges", "📁"]];
 const FB_ICON = { fuel: "⛽", expense: "🧾", trip: "🛣️" };
 const VEH_ICONS = ["🚗", "🚙", "🚐", "🛻", "🏍️", "🛵", "🚚", "⚡"];
 const kmFmt = (v) => (v == null || isNaN(v) ? "—" : Math.round(v).toLocaleString("de-AT") + " km");
 
-function fbStats(v, entries) {
-  const e = entries.filter((x) => x.vid === v.id);
-  const kms = [+v.startKm || 0, ...e.map((x) => +(x.type === "trip" ? x.endKm : x.km) || 0)];
-  const odo = Math.max(...kms);
-  const fuel = e.filter((x) => x.type === "fuel" && +x.km).sort((a, b) => a.km - b.km || a.date.localeCompare(b.date));
-  // Verbrauch nach Volltank-Methode
+function consOf(fuel) {
   const cons = []; let lastFull = null, acc = 0;
   for (const f of fuel) {
     if (lastFull != null) acc += +f.liters || 0;
     if (f.full) { if (lastFull != null && f.km > lastFull.km && acc > 0) cons.push({ date: f.date, km: f.km, v: (acc / (f.km - lastFull.km)) * 100, dist: f.km - lastFull.km }); lastFull = f; acc = 0; }
   }
-  const totDist = cons.reduce((s, c) => s + c.dist, 0);
-  const avg = totDist ? cons.reduce((s, c) => s + (c.v * c.dist) / 100, 0) / totDist * 100 : null;
+  const dist = cons.reduce((s, c) => s + c.dist, 0);
+  return { cons, avg: dist ? (cons.reduce((s, c) => s + (c.v * c.dist) / 100, 0) / dist) * 100 : null, last: cons[cons.length - 1]?.v ?? null };
+}
+function fbStats(v, entries) {
+  const e = entries.filter((x) => x.vid === v.id);
+  const kms = [+v.startKm || 0, ...e.map((x) => +(x.type === "trip" ? x.endKm : x.km) || 0)];
+  const odo = Math.max(...kms);
+  const fuel = e.filter((x) => x.type === "fuel" && +x.km).sort((a, b) => a.km - b.km || a.date.localeCompare(b.date));
+  // Verbrauch nach Volltank-Methode – Kraftstoff und Strom getrennt (Hybrid / Plug-in)
+  const liq = consOf(fuel.filter((x) => !isElec(x.fuel))), el = consOf(fuel.filter((x) => isElec(x.fuel)));
   const costs = e.filter((x) => x.type !== "trip").reduce((s, x) => s + (+x.total || 0), 0);
   const firstKm = Math.min(...kms);
   const perKm = odo > firstKm ? costs / (odo - firstKm) : null;
-  return { odo, cons, avg, last: cons[cons.length - 1]?.v ?? null, costs, perKm, e };
+  return { odo, cons: liq.cons, avg: liq.avg, last: liq.last, consE: el.cons, avgE: el.avg, lastE: el.last, costs, perKm, e };
 }
 
-function FbEntryWin({ init, vehicles, accounts, onSave, onDelete, onClose, lastKm, fuelPrice }) {
-  const [x, setX] = useState(() => ({ date: todayISO(), ...init }));
+// Standort ermitteln und Tankstellen / Ladestationen / Ort abfragen
+function getPos() {
+  return new Promise((ok, fail) => {
+    if (!navigator.geolocation) return fail(new Error("Standort wird von diesem Gerät nicht unterstützt"));
+    navigator.geolocation.getCurrentPosition((p) => ok(p.coords), (e) => fail(new Error(e.code === 1 ? "Standortzugriff verweigert – in den Browser-Einstellungen erlauben" : "Standort nicht verfügbar")), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+  });
+}
+async function nearby(kind, extra = {}) {
+  const c = await getPos();
+  const qs = new URLSearchParams({ kind, lat: c.latitude.toFixed(5), lon: c.longitude.toFixed(5), ...extra });
+  const r = await fetch("/api/nearby?" + qs, { headers: { "x-app-token": ls.get("appToken", "") } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+  return { ...j, lat: c.latitude, lon: c.longitude };
+}
+
+function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onDelete, onClose, lastKm, fuelPrice, onScan, onUpload, onOpen }) {
+  const [x, setX] = useState(() => ({ date: todayISO(), ...init, acct: init.txId ? "link" : init.acct || "none" }));
   const set = (p) => setX((o) => ({ ...o, ...p }));
   const v = vehicles.find((y) => y.id === x.vid) || vehicles[0];
   const isNew = !init.id;
   const t = x.type;
   const n = (k) => parseAmt(x[k]);
+  const [near, setNear] = useState(null); // { busy, err, stations, source, kind }
+  const [placeBusy, setPlaceBusy] = useState("");
+  const [txQ, setTxQ] = useState("");
+  const fileRef = useRef();
+  const elec = isElec(x.fuel || vehDefFuel(v));
   // Tanken: aus zwei Werten den dritten berechnen
-  const calc = (p) => {
-    const o = { ...x, ...p }, L = parseAmt(o.liters), P = parseAmt(o.price), T = parseAmt(o.total);
+  const calc = (p, base) => {
+    const o = { ...(base || x), ...p }, L = parseAmt(o.liters), P = parseAmt(o.price), T = parseAmt(o.total);
     if ("liters" in p || "price" in p) { if (L > 0 && P > 0) o.total = amtStr(L * P); }
     else if ("total" in p && T > 0) { if (P > 0) o.liters = amtStr(T / P); else if (L > 0) o.price = (T / L).toFixed(3).replace(".", ","); }
-    setX(o);
+    return o;
   };
-  const ok = x.vid && x.date && (t === "trip" ? n("endKm") > n("startKm") && (x.to || "").trim() : t === "fuel" ? n("total") > 0 && n("liters") > 0 : n("total") > 0 && (x.cat || "").trim());
+  const doc = x.docId ? docs.find((d) => d.id === x.docId) : null;
+  // Beleg ausgelesen → Felder füllen
+  const filled = useRef(null);
+  useEffect(() => {
+    if (!doc || doc.status !== "done" || filled.current === doc.id) return;
+    filled.current = doc.id;
+    setX((o) => {
+      let p = { ...o };
+      if (!o.total && doc.amount?.total) p.total = amtStr(doc.amount.total);
+      if (!o.station && (doc.merchant || doc.sender)) p.station = doc.merchant || doc.sender;
+      const d = doc.purchaseDate || doc.documentDate; if (d) p.date = pastOrToday(d, todayISO());
+      if (o.type === "fuel") {
+        const it = (doc.lineItems || []).find((i) => i.qty > 3 && i.unitPrice > 0.2 && i.unitPrice < 4) || (doc.lineItems || []).find((i) => /super|diesel|benzin|strom|kwh|lpg|cng/i.test(i.name));
+        if (it) { if (!o.liters) p.liters = amtStr(it.qty); if (!o.price && it.unitPrice) p.price = String(it.unitPrice).replace(".", ","); if (!o.total) p.total = amtStr(it.total); }
+      }
+      return p;
+    });
+  }, [doc?.status, doc?.id]);
+  const attach = async (file, opts = {}) => { set({ attName: file.name, attBusy: true }); const id = await onUpload(file, opts); set({ docId: id || null, attBusy: false }); };
+  const findNear = async () => {
+    const kind = elec ? "charge" : "fuel";
+    setNear({ busy: true, kind });
+    try { const j = await nearby(kind, kind === "fuel" ? { fuel: ecFuel(x.fuel || vehDefFuel(v)) } : {}); setNear({ ...j, kind, busy: false }); }
+    catch (e) { setNear({ kind, busy: false, err: e.message }); }
+  };
+  const pickStation = (s) => {
+    let o = { ...x, station: s.name + (s.address ? ` · ${s.address}` : ""), lat: s.lat, lon: s.lon };
+    if (s.price && !n("price")) o = calc({ price: String(s.price).replace(".", ",") }, o);
+    setX(o); setNear(null);
+  };
+  const fillPlace = async (field) => {
+    setPlaceBusy(field);
+    try { const j = await nearby("place"); set({ [field]: j.city && j.street ? `${j.city}, ${j.street}` : j.label || j.city }); }
+    catch (e) { alert(e.message); } finally { setPlaceBusy(""); }
+  };
+  // passende Kontobuchungen (Ausgang, Betrag & Datum in der Nähe)
+  const amt = n("total");
+  const cands = useMemo(() => txs.filter((tx) => tx.amount < 0 && (!tx.fbId || tx.fbId === x.id || tx.id === x.txId))
+    .map((tx) => ({ tx, score: (amt > 0 && Math.abs(-tx.amount - amt) < 0.01 ? 6 : amt > 0 && Math.abs(-tx.amount - amt) < 1 ? 2 : 0) + (Math.abs(new Date(tx.date) - new Date(x.date)) < 4 * 864e5 ? 3 : 0)
+      + (/tank|omv|bp|shell|eni|avanti|jet|turm|diskont|a1|ionity|smatrics|wien energie|energie|garage|autohaus|öamtc|arbö|asfinag|park/i.test(tx.counterparty + " " + tx.purpose) ? 1 : 0) }))
+    .filter(({ tx }) => !txQ || norm(`${tx.counterparty} ${tx.purpose} ${amtStr(-tx.amount)}`).includes(norm(txQ)))
+    .sort((a, b) => b.score - a.score || b.tx.date.localeCompare(a.tx.date)).slice(0, txQ ? 30 : 8), [txs.length, amt, x.date, txQ, x.txId]);
+  const linked = x.txId && txs.find((tx) => tx.id === x.txId);
+  const ok = x.vid && x.date && (t === "trip" ? n("endKm") > n("startKm") && (x.to || "").trim() : t === "fuel" ? n("total") > 0 && n("liters") > 0 : n("total") > 0 && (x.cat || "").trim())
+    && !(x.acct === "link" && !x.txId);
   const save = () => {
     if (!ok) return;
     const out = { ...x, id: x.id || uid() };
+    delete out.attBusy;
     ["km", "startKm", "endKm"].forEach((k) => { if (out[k] !== undefined && out[k] !== "") out[k] = Math.round(parseAmt(out[k])); });
     ["liters", "price", "total"].forEach((k) => { if (out[k] !== undefined && out[k] !== "") out[k] = parseAmt(out[k]); });
+    if (t === "fuel" && !out.fuel) out.fuel = vehDefFuel(v);
     onSave(out);
   };
-  const title = { fuel: "Tanken", expense: "Ausgabe", trip: "Fahrt" }[t];
+  const title = { fuel: elec ? "Laden" : "Tanken", expense: "Ausgabe", trip: "Fahrt" }[t];
+  const placeBtn = (f) => <button className="iconbtn fbgps" title="Aktuellen Ort einsetzen" aria-label="Aktuellen Ort einsetzen" disabled={!!placeBusy} onClick={() => fillPlace(f)}>{placeBusy === f ? <span className="spin" /> : "📍"}</button>;
   return (
     <Win id={"fb-" + t} onClose={onClose} small>
-      <div className="panelhead"><b>{FB_ICON[t]} {isNew ? title + " erfassen" : title}</b><XBtn /></div>
+      <div className="panelhead"><b>{t === "fuel" && elec ? "⚡" : FB_ICON[t]} {isNew ? title + " erfassen" : title}</b><XBtn /></div>
       {vehicles.length > 1 && <label>Fahrzeug<select value={x.vid} onChange={(e) => set({ vid: e.target.value })}>{vehicles.map((y) => <option key={y.id} value={y.id}>{y.icon || "🚗"} {y.name}</option>)}</select></label>}
       {t === "trip" ? (<>
         <div className="seg">{[["business", "💼 Geschäftlich"], ["private", "🏠 Privat"], ["commute", "🏭 Arbeitsweg"]].map(([k, l]) => <button key={k} className={x.purpose === k ? "on" : ""} onClick={() => set({ purpose: k })}>{l}</button>)}</div>
         <div className="grid2">
           <label>Datum<input type="date" value={x.date} max={todayISO()} onChange={(e) => set({ date: e.target.value })} /></label>
           <label>Uhrzeit<input type="time" value={x.time || ""} onChange={(e) => set({ time: e.target.value })} /></label>
-          <label>Von<input value={x.from || ""} placeholder="z. B. Linz" onChange={(e) => set({ from: e.target.value })} /></label>
-          <label>Nach<input value={x.to || ""} placeholder="z. B. Wels, Kunde Huber" onChange={(e) => set({ to: e.target.value })} /></label>
+          <label>Von<span className="fbinbtn"><input value={x.from || ""} placeholder="z. B. Linz" onChange={(e) => set({ from: e.target.value })} />{placeBtn("from")}</span></label>
+          <label>Nach<span className="fbinbtn"><input value={x.to || ""} placeholder="z. B. Wels, Kunde Huber" onChange={(e) => set({ to: e.target.value })} />{placeBtn("to")}</span></label>
           <label>km-Stand Beginn<input inputMode="numeric" value={x.startKm ?? ""} onChange={(e) => set({ startKm: e.target.value })} /></label>
           <label>km-Stand Ende<input inputMode="numeric" value={x.endKm ?? ""} onChange={(e) => set({ endKm: e.target.value })} /></label>
         </div>
@@ -2546,19 +2627,49 @@ function FbEntryWin({ init, vehicles, accounts, onSave, onDelete, onClose, lastK
           {x.purpose === "business" && n("endKm") > n("startKm") && <span className="muted"> · Kilometergeld {fmtMoney((n("endKm") - n("startKm")) * 0.5)}</span>}</div>
         <label>Zweck der Fahrt{x.purpose === "business" ? " (Pflicht fürs Finanzamt)" : ""}<input value={x.note || ""} placeholder="z. B. Montage bei Kunde, Materialeinkauf" onChange={(e) => set({ note: e.target.value })} /></label>
       </>) : (<>
+        <div className="fbbeleg">
+          {x.docId || x.attBusy ? (
+            <div className="expatt">
+              {doc?.thumb ? <img src={doc.thumb} alt="" /> : <span className="attpdf">📄</span>}
+              <div className="grow"><b>{x.attBusy ? "Beleg wird hochgeladen …" : doc?.status === "processing" ? "KI liest den Beleg …" : doc?.status === "error" ? "Auslesen fehlgeschlagen" : "Beleg angehängt"}</b>
+                <small className="muted block">{doc?.status === "done" ? (doc.merchant || doc.sender || doc.title) + (doc.amount?.total ? " · " + fmtMoney(doc.amount.total) : "") : x.attName || ""}</small></div>
+              {doc?.status === "processing" && <span className="spin" />}
+              {doc && <button className="btn sm" onClick={() => onOpen(doc.id)}>Öffnen</button>}
+              <button className="iconbtn" title="Beleg entfernen" aria-label="Beleg entfernen" onClick={() => set({ docId: null, attName: "" })}>✕</button>
+            </div>
+          ) : (
+            <div className="attbtns">
+              <button className="btn" onClick={() => onScan((f, o) => attach(f, { ...o, scanned: true }))}>📷 Beleg scannen</button>
+              <button className="btn" onClick={() => fileRef.current.click()}>🖼 Foto / PDF</button>
+              <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attach(f); }} />
+            </div>
+          )}
+        </div>
         <div className="grid2">
           <label>Datum<input type="date" value={x.date} max={todayISO()} onChange={(e) => set({ date: e.target.value })} /></label>
           <label>Kilometerstand<input inputMode="numeric" value={x.km ?? ""} placeholder={lastKm ? String(lastKm) : ""} onChange={(e) => set({ km: e.target.value })} /></label>
         </div>
         {t === "fuel" ? (<>
-          <label>Kraftstoff<select value={x.fuel || v?.fuel || FUELS[0]} onChange={(e) => set({ fuel: e.target.value })}>{FUELS.map((f) => <option key={f}>{f}</option>)}</select></label>
+          <label>{vehHasPlug(v) && vehHasFuel(v) ? "Kraftstoff / Strom" : "Kraftstoff"}<select value={x.fuel || vehDefFuel(v)} onChange={(e) => set({ fuel: e.target.value })}>{ENERGY.map((f) => <option key={f}>{f}</option>)}</select></label>
           <div className="grid3">
-            <label>Preis/{/Strom/.test(x.fuel || v?.fuel || "") ? "kWh" : "Liter"}<input inputMode="decimal" value={x.price ?? ""} placeholder={fuelPrice ? String(fuelPrice).replace(".", ",") : "1,659"} onChange={(e) => calc({ price: e.target.value })} /></label>
-            <label>{/Strom/.test(x.fuel || v?.fuel || "") ? "kWh" : "Liter"}<input inputMode="decimal" value={x.liters ?? ""} onChange={(e) => calc({ liters: e.target.value })} /></label>
-            <label>Gesamt €<input inputMode="decimal" value={x.total ?? ""} onChange={(e) => calc({ total: e.target.value })} /></label>
+            <label>Preis/{elec ? "kWh" : "Liter"}<input inputMode="decimal" value={x.price ?? ""} placeholder={fuelPrice ? String(fuelPrice).replace(".", ",") : elec ? "0,49" : "1,659"} onChange={(e) => setX(calc({ price: e.target.value }))} /></label>
+            <label>{elec ? "kWh" : "Liter"}<input inputMode="decimal" value={x.liters ?? ""} onChange={(e) => setX(calc({ liters: e.target.value }))} /></label>
+            <label>Gesamt €<input inputMode="decimal" value={x.total ?? ""} onChange={(e) => setX(calc({ total: e.target.value }))} /></label>
           </div>
-          <label className="check"><input type="checkbox" checked={x.full ?? true} onChange={(e) => set({ full: e.target.checked })} /> Vollgetankt (für die Verbrauchsberechnung)</label>
-          <label>Tankstelle<input value={x.station || ""} placeholder="z. B. OMV Linz Süd" onChange={(e) => set({ station: e.target.value })} /></label>
+          <label className="check"><input type="checkbox" checked={x.full ?? true} onChange={(e) => set({ full: e.target.checked })} /> {elec ? "Voll geladen" : "Vollgetankt"} (für die Verbrauchsberechnung)</label>
+          <label>{elec ? "Ladestation" : "Tankstelle"}<span className="fbinbtn"><input value={x.station || ""} placeholder={elec ? "z. B. SMATRICS Linz" : "z. B. OMV Linz Süd"} onChange={(e) => set({ station: e.target.value })} />
+            <button className="btn sm fbnear" disabled={near?.busy} onClick={findNear}>{near?.busy ? <span className="spin" /> : "📍"} In der Nähe</button></span></label>
+          {near && !near.busy && (
+            <div className="fbnearlist">
+              {near.err ? <p className="warn small">{near.err}</p> : !near.stations?.length ? <p className="muted small">Keine {near.kind === "charge" ? "Ladestationen" : "Tankstellen"} im Umkreis von 3 km gefunden.</p> : near.stations.slice(0, 8).map((s, i) => (
+                <div key={i} className="frow click" onClick={() => pickStation(s)}>
+                  <span className="fbic fuel">{near.kind === "charge" ? "⚡" : "⛽"}</span>
+                  <div className="grow"><b>{s.name}</b><small className="muted block">{[s.address, s.dist != null && (s.dist < 1 ? Math.round(s.dist * 1000) + " m" : s.dist.toFixed(1).replace(".", ",") + " km"), s.power && s.power, s.open === false && "geschlossen"].filter(Boolean).join(" · ")}</small></div>
+                  {s.price ? <b>{String(s.price.toFixed(3)).replace(".", ",")} €</b> : null}
+                </div>))}
+              {near.source && <small className="muted">Quelle: {near.source}{near.source.startsWith("E-Control") ? " – Preise nur für die günstigsten gemeldeten Stationen" : ""}</small>}
+            </div>
+          )}
         </>) : (<>
           <div className="fbcats">{FB_EXP.map(([c, i]) => <button key={c} className={"chip" + (x.cat === c ? " on" : "")} onClick={() => set({ cat: c })}>{i} {c}</button>)}</div>
           <div className="grid2">
@@ -2567,10 +2678,28 @@ function FbEntryWin({ init, vehicles, accounts, onSave, onDelete, onClose, lastK
           </div>
         </>)}
         <label>Notiz<input value={x.note || ""} onChange={(e) => set({ note: e.target.value })} /></label>
-        {isNew && accounts.length > 0 && (
+        {accounts.length > 0 && (
           <div className="fbbook">
-            <label className="check"><input type="checkbox" checked={!!x.book} onChange={(e) => set({ book: e.target.checked, bookAcc: x.bookAcc || ls.get("expAcc", "") || accounts[0].id })} /> Auch als Ausgabe im Konto buchen</label>
-            {x.book && <select value={x.bookAcc} onChange={(e) => set({ bookAcc: e.target.value })}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}</select>}
+            <small className="muted">Konto</small>
+            {linked && x.acct === "link" ? (
+              <div className="frow fblinked"><span className="fbic">🏦</span><div className="grow"><b>{linked.counterparty || "Buchung"}</b><small className="muted block">{fmtDate(linked.date)} · {accounts.find((a) => a.id === linked.accountId)?.name || ""}</small></div>
+                <b className="neg">{fmtMoney(linked.amount)}</b><button className="iconbtn" title="Verknüpfung lösen" aria-label="Verknüpfung lösen" onClick={() => set({ txId: null })}>✕</button></div>
+            ) : (<>
+              <div className="seg">{[["none", "Nicht buchen"], ["new", "Neu buchen"], ["link", "Vorhandene Buchung"]].map(([k, l]) => <button key={k} className={x.acct === k ? "on" : ""} onClick={() => set({ acct: k, bookAcc: x.bookAcc || ls.get("expAcc", "") || accounts[0].id })}>{l}</button>)}</div>
+              {x.acct === "new" && <select value={x.bookAcc} onChange={(e) => set({ bookAcc: e.target.value })}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}</select>}
+              {x.acct === "link" && (
+                <div className="fbtxpick">
+                  <div className="searchbar"><span>🔍</span><input type="search" value={txQ} placeholder="Buchung suchen – Name oder Betrag" onChange={(e) => setTxQ(e.target.value)} /></div>
+                  {cands.map(({ tx, score }) => (
+                    <div key={tx.id} className={"frow click" + (x.txId === tx.id ? " on" : "")} onClick={() => set({ txId: tx.id })}>
+                      <span className={"txradio" + (x.txId === tx.id ? " on" : "")} />
+                      <div className="grow"><b>{tx.counterparty || "Buchung"}{score >= 9 ? " ⭐" : ""}</b><small className="muted block">{fmtDate(tx.date)} · {accounts.find((a) => a.id === tx.accountId)?.name || ""}{tx.docId ? " · 📎" : ""}</small></div>
+                      <b className="neg">{fmtMoney(tx.amount)}</b>
+                    </div>))}
+                  {!cands.length && <p className="muted small">Keine passenden Buchungen gefunden.</p>}
+                </div>
+              )}
+            </>)}
           </div>
         )}
       </>)}
@@ -2606,7 +2735,7 @@ function VehicleWin({ init, onSave, onDelete, onClose }) {
   );
 }
 
-function Fahrtenbuch({ accounts, onBook, notify }) {
+function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, onUpload, onOpen, onLink }) {
   const [fb, setFb] = useLsState("fbook", FB_EMPTY);
   const vehicles = fb.vehicles || [], entries = fb.entries || [], reminders = fb.reminders || [];
   const [vid, setVid] = useLsState("fbVid", "");
@@ -2636,21 +2765,26 @@ function Fahrtenbuch({ accounts, onBook, notify }) {
     return { dd, dk, cls: due ? "due" : soon ? "soon" : "" }; };
   const dueN = myRem.filter((r) => remState(r).cls).length;
   const saveEntry = async (x) => {
-    const { book, bookAcc, ...e } = x;
-    upd((o) => ({ entries: (o.entries || []).some((y) => y.id === e.id) ? o.entries.map((y) => (y.id === e.id ? e : y)) : [...(o.entries || []), e] }));
-    if (book && bookAcc && e.total > 0) {
-      const tx = await onBook({ accountId: bookAcc, date: e.date, amount: -Math.abs(e.total), counterparty: e.station || (e.type === "fuel" ? "Tankstelle" : e.cat), purpose: `${v.name}: ${e.type === "fuel" ? `Tanken ${amtStr(e.liters)} l` : e.cat}${e.note ? " · " + e.note : ""}`, category: "Auto & Mobilität" });
-      upd((o) => ({ entries: o.entries.map((y) => (y.id === e.id ? { ...y, txId: tx?.id } : y)) }));
-      ls.set("expAcc", bookAcc);
+    const { acct, bookAcc, attName, ...e } = x;
+    if (e.type !== "trip") {
+      if (acct === "new" && !e.txId && bookAcc && e.total > 0) {
+        const tx = await onBook({ accountId: bookAcc, date: e.date, amount: -Math.abs(e.total), counterparty: (e.station || "").split(" · ")[0] || (e.type === "fuel" ? (isElec(e.fuel) ? "Ladestation" : "Tankstelle") : e.cat),
+          purpose: `${v.name}: ${e.type === "fuel" ? `${isElec(e.fuel) ? "Laden" : "Tanken"} ${amtStr(e.liters)} ${unitOf(e.fuel)}` : e.cat}${e.note ? " · " + e.note : ""}`, category: "Auto & Mobilität" });
+        e.txId = tx?.id; ls.set("expAcc", bookAcc);
+      }
+      if (acct === "none") e.txId = null;
+      if (e.txId && e.docId) await onLink(e.txId, e.docId);
     }
+    upd((o) => ({ entries: (o.entries || []).some((y) => y.id === e.id) ? o.entries.map((y) => (y.id === e.id ? e : y)) : [...(o.entries || []), e] }));
     notify(e.type === "trip" ? `Fahrt gespeichert · ${kmFmt(e.endKm - e.startKm)}` : `${e.type === "fuel" ? "Tanken" : e.cat} gespeichert · ${fmtMoney(e.total)}`);
     setEdit(null);
   };
-  const newEntry = (type) => setEdit({ type, vid: v.id, ...(type === "trip" ? { purpose: ls.get("fbPurpose", "business"), startKm: st.odo || "" } : type === "fuel" ? { fuel: v.fuel, full: true } : {}) });
+  const newEntry = (type) => setEdit({ type, vid: v.id, ...(type === "trip" ? { purpose: ls.get("fbPurpose", "business"), startKm: st.odo || "" } : type === "fuel" ? { fuel: vehDefFuel(v), full: true } : {}) });
+  const newCharge = () => setEdit({ type: "fuel", vid: v.id, fuel: "Strom (kWh)", full: true });
   // Berichte
   const months = Array.from({ length: 12 }, (_, i) => addMon(month, i - 11));
   const costChart = months.map((m) => ({ k: m, label: monthLabel(m).split(" ")[0], b: st.e.filter((x) => x.type !== "trip" && x.date.startsWith(m)).reduce((s, x) => s + (+x.total || 0), 0) }));
-  const byCat = {}; st.e.filter((x) => x.type !== "trip" && x.date.startsWith(year)).forEach((x) => { const k = x.type === "fuel" ? "Treibstoff" : x.cat || "Sonstiges"; byCat[k] = (byCat[k] || 0) + (+x.total || 0); });
+  const byCat = {}; st.e.filter((x) => x.type !== "trip" && x.date.startsWith(year)).forEach((x) => { const k = x.type === "fuel" ? (isElec(x.fuel) ? "Strom" : "Treibstoff") : x.cat || "Sonstiges"; byCat[k] = (byCat[k] || 0) + (+x.total || 0); });
   const catList = Object.entries(byCat).sort((a, b) => b[1] - a[1]); const catTot = catList.reduce((s, x) => s + x[1], 0);
   const trips = st.e.filter((x) => x.type === "trip");
   const tripKm = (l) => l.reduce((s, x) => s + Math.max(0, x.endKm - x.startKm), 0);
@@ -2667,10 +2801,10 @@ function Fahrtenbuch({ accounts, onBook, notify }) {
     const icon = x.type === "expense" ? (FB_EXP.find((c) => c[0] === x.cat)?.[1] || "🧾") : FB_ICON[x.type];
     return (
       <div key={x.id} className="frow click fbrow" onClick={() => setEdit({ ...x, liters: amtStr(x.liters), total: amtStr(x.total), price: x.price != null ? String(x.price).replace(".", ",") : "" })}>
-        <span className={"fbic " + x.type}>{icon}</span>
+        <span className={"fbic " + x.type}>{x.type === "fuel" && isElec(x.fuel) ? "⚡" : icon}</span>
         <div className="grow">
-          <b>{x.type === "fuel" ? `Tanken · ${amtStr(x.liters)} ${/Strom/.test(x.fuel || "") ? "kWh" : "l"}` : x.type === "trip" ? `${x.from || "?"} → ${x.to}` : x.cat}</b>
-          <small className="muted block">{fmtDate(x.date)}{x.time ? " " + x.time : ""} · {x.type === "trip" ? `${kmFmt(x.endKm - x.startKm)} · ${{ business: "geschäftlich", private: "privat", commute: "Arbeitsweg" }[x.purpose] || ""}${x.note ? " · " + x.note : ""}` : `${kmFmt(x.km)}${x.station ? " · " + x.station : ""}${x.type === "fuel" && x.price ? ` · ${fmtMoney(x.price).replace(/(\d),(\d\d)\b/, "$1,$2")}/l` : ""}${x.txId ? " · 🏦 gebucht" : ""}`}</small>
+          <b>{x.type === "fuel" ? `${isElec(x.fuel) ? "Laden" : "Tanken"} · ${amtStr(x.liters).replace(",00", "")} ${unitOf(x.fuel)}` : x.type === "trip" ? `${x.from || "?"} → ${x.to}` : x.cat}</b>
+          <small className="muted block">{fmtDate(x.date)}{x.time ? " " + x.time : ""} · {x.type === "trip" ? `${kmFmt(x.endKm - x.startKm)} · ${{ business: "geschäftlich", private: "privat", commute: "Arbeitsweg" }[x.purpose] || ""}${x.note ? " · " + x.note : ""}` : `${kmFmt(x.km)}${x.station ? " · " + x.station : ""}${x.type === "fuel" && x.price ? ` · ${String(x.price).replace(".", ",")} €/${unitOf(x.fuel)}` : ""}${x.txId ? " · 🏦" : ""}${x.docId ? " · 📎" : ""}`}</small>
         </div>
         <div className="right">{x.type === "trip" ? (x.purpose === "business" ? <b className="pos">{fmtMoney((x.endKm - x.startKm) * kmRate)}</b> : <b>{kmFmt(x.endKm - x.startKm)}</b>) : <b className="neg">{fmtMoney(-x.total)}</b>}</div>
       </div>);
@@ -2690,13 +2824,15 @@ function Fahrtenbuch({ accounts, onBook, notify }) {
         </div>
         <div className="fbodo"><small className="muted">Kilometerstand</small><div className="kpiv big">{kmFmt(st.odo)}</div></div>
         <div className="fbstats">
-          <div><small className="muted">Ø Verbrauch</small><b>{st.avg != null ? st.avg.toFixed(1).replace(".", ",") : "—"}</b><small className="muted">{/Strom/.test(v.fuel || "") ? "kWh" : "l"}/100 km</small></div>
-          <div><small className="muted">Letzter</small><b>{st.last != null ? st.last.toFixed(1).replace(".", ",") : "—"}</b><small className="muted">{/Strom/.test(v.fuel || "") ? "kWh" : "l"}/100 km</small></div>
+          {vehHasFuel(v) && <div><small className="muted">Ø Verbrauch</small><b>{st.avg != null ? st.avg.toFixed(1).replace(".", ",") : "—"}</b><small className="muted">l/100 km{st.last != null ? ` · zuletzt ${st.last.toFixed(1).replace(".", ",")}` : ""}</small></div>}
+          {vehHasPlug(v) && <div><small className="muted">Ø Strom</small><b>{st.avgE != null ? st.avgE.toFixed(1).replace(".", ",") : "—"}</b><small className="muted">kWh/100 km{st.lastE != null ? ` · zuletzt ${st.lastE.toFixed(1).replace(".", ",")}` : ""}</small></div>}
+          {!(vehHasFuel(v) && vehHasPlug(v)) && <div><small className="muted">Letzte Füllung</small><b>{lastFuel ? fmtMoney(lastFuel.total) : "—"}</b><small className="muted">{lastFuel ? fmtDate(lastFuel.date) : "noch keine"}</small></div>}
           <div><small className="muted">Kosten/km</small><b>{st.perKm != null ? fmtMoney(st.perKm) : "—"}</b><small className="muted">gesamt</small></div>
           <div><small className="muted">{new Date(month + "-15").toLocaleDateString("de-AT", { month: "long" })}</small><b>{fmtMoney(monthCost)}</b><small className="muted">Kosten</small></div>
         </div>
         <div className="fbquick">
-          <button onClick={() => newEntry("fuel")}><span>⛽</span>Tanken</button>
+          {vehHasFuel(v) && <button onClick={() => newEntry("fuel")}><span>⛽</span>Tanken</button>}
+          {vehHasPlug(v) && <button onClick={newCharge}><span>⚡</span>Laden</button>}
           <button onClick={() => newEntry("trip")}><span>🛣️</span>Fahrt</button>
           <button onClick={() => newEntry("expense")}><span>🧾</span>Ausgabe</button>
           <button onClick={() => setRemEdit({ vid: v.id })}><span>⏰</span>Erinnerung</button>
@@ -2729,8 +2865,9 @@ function Fahrtenbuch({ accounts, onBook, notify }) {
       {view === "bericht" && (<>
         <div className="anagrid">
           <section className="tile"><div className="tilehead"><b>Kosten pro Monat</b><small>gesamt {fmtMoney(st.costs)}</small></div><MiniBars data={costChart} h={130} /></section>
-          <section className="tile"><div className="tilehead"><b>Verbrauch</b><small>l/100 km</small></div>
-            {st.cons.length >= 2 ? <LineChart points={st.cons.slice(-24).map((c) => ({ m: c.date.slice(0, 7), v: Math.round(c.v * 10) / 10 }))} h={130} /> : <p className="muted small">Ab zwei vollen Tankfüllungen wird der Verbrauch berechnet.</p>}
+          <section className="tile"><div className="tilehead"><b>Verbrauch</b><small>{vehHasFuel(v) ? "l/100 km" : "kWh/100 km"}</small></div>
+            {st.cons.length >= 2 ? <LineChart points={st.cons.slice(-24).map((c) => ({ m: c.date.slice(0, 7), v: Math.round(c.v * 10) / 10 }))} h={130} /> : st.consE.length >= 2 ? null : <p className="muted small">Ab zwei vollen Tank-/Ladefüllungen wird der Verbrauch berechnet.</p>}
+            {st.consE.length >= 2 && <><small className="muted">Strom kWh/100 km</small><LineChart points={st.consE.slice(-24).map((c) => ({ m: c.date.slice(0, 7), v: Math.round(c.v * 10) / 10 }))} h={110} /></>}
             {lastFuel?.price && <small className="muted">Letzter Preis: {String(lastFuel.price).replace(".", ",")} €/l ({fmtDate(lastFuel.date)})</small>}
           </section>
           <section className="tile"><div className="tilehead"><b>Kosten {year} nach Art</b></div>
@@ -2749,7 +2886,7 @@ function Fahrtenbuch({ accounts, onBook, notify }) {
           </section>
         </div>
       </>)}
-      {edit && <FbEntryWin init={edit} vehicles={vehicles} accounts={accounts} lastKm={st.odo} fuelPrice={lastFuel?.price} onClose={() => setEdit(null)} onSave={(x) => { if (x.type === "trip") ls.set("fbPurpose", x.purpose); saveEntry(x); }}
+      {edit && <FbEntryWin init={edit} vehicles={vehicles} accounts={accounts} txs={txs} docs={docs} onScan={onScan} onUpload={onUpload} onOpen={onOpen} lastKm={st.odo} fuelPrice={lastFuel?.price} onClose={() => setEdit(null)} onSave={(x) => { if (x.type === "trip") ls.set("fbPurpose", x.purpose); saveEntry(x); }}
         onDelete={(id) => { upd((o) => ({ entries: o.entries.filter((y) => y.id !== id) })); setEdit(null); }} />}
       {vEdit && <VehicleWin init={vEdit} onClose={() => setVEdit(null)} onSave={(nv) => { upd((o) => ({ vehicles: o.vehicles.some((y) => y.id === nv.id) ? o.vehicles.map((y) => (y.id === nv.id ? nv : y)) : [...o.vehicles, nv] })); setVid(nv.id); setVEdit(null); }}
         onDelete={(id) => { upd((o) => ({ vehicles: o.vehicles.filter((y) => y.id !== id), entries: o.entries.filter((y) => y.vid !== id), reminders: (o.reminders || []).filter((y) => y.vid !== id) })); setVEdit(null); }} />}
@@ -8730,7 +8867,8 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 .fbodo{margin:14px 0 6px}
 .fbstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.fbstats>div{display:flex;flex-direction:column;background:var(--card2);border-radius:12px;padding:10px;min-width:0}.fbstats b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:560px){.fbstats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.fbquick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+.fbquick{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin-top:12px}
+@media (max-width:520px){.fbquick{gap:6px}.fbquick button{font-size:11px;padding:10px 2px}.fbquick button span{font-size:20px}}
 .fbquick button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 4px;border-radius:14px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
 .fbquick button span{font-size:22px}.fbquick button:first-child{background:color-mix(in srgb,var(--acc) 18%,var(--card));border-color:color-mix(in srgb,var(--acc) 45%,transparent)}
 .fbseg{margin:0;overflow-x:auto;scrollbar-width:none}.fbseg button{white-space:nowrap;flex:1 0 auto}
@@ -8741,4 +8879,12 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 .fbkmhint{margin:10px 0 0;font-size:15px}
 .fbbook{margin-top:10px}.fbbook select{margin-top:6px}
 .fbbtns{display:flex;gap:8px;margin-top:16px}.fbbtns .btn{flex:1}
+
+.fbinbtn{display:flex;gap:6px;align-items:center;margin-top:4px}.fbinbtn input{flex:1;min-width:0;margin:0}
+.fbgps{flex:none;width:40px;height:40px}.fbnear{flex:none;white-space:nowrap;margin:0;display:inline-flex;gap:4px;align-items:center}
+.fbnearlist{border:1px solid var(--line);border-radius:14px;padding:4px 10px 8px;margin-top:8px;max-height:320px;overflow:auto}
+.fbbeleg{margin:10px 0 2px}.fbbeleg .expatt{margin:0}
+.fbbook .seg{margin-top:4px}.fbbook select{margin-top:8px}
+.fbtxpick{margin-top:8px;border:1px solid var(--line);border-radius:14px;padding:6px 10px;max-height:300px;overflow:auto}
+.fblinked{border:1px solid var(--line);border-radius:12px;padding:6px 8px;margin-top:4px}
 `;
