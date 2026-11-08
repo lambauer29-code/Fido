@@ -204,14 +204,14 @@ function DocActions({ d, prevOpen, onPreview, onEdit, onTrash }) {
 }
 
 /* Ausklappbare Vorschau in der Dokumentliste */
-function DocPreview({ d, onOpen }) {
+function DocPreview({ d, onOpen, getBlob, onPrint, onOriginal }) {
   const [pages, setPages] = useState([]), [total, setTotal] = useState(0), [want, setWant] = useState(3), [err, setErr] = useState("");
   const pdfRef = useRef(null);
   useEffect(() => {
     let dead = false, url;
     (async () => {
       try {
-        const b = await db.getFile(d.id); if (!b) throw new Error("Originaldatei nicht gefunden");
+        const b = getBlob ? await getBlob() : await db.getFile(d.id); if (!b) throw new Error("Originaldatei nicht gefunden");
         if (b.type !== "application/pdf") { url = URL.createObjectURL(b); if (!dead) { setPages([url]); setTotal(1); } return; }
         if (!pdfRef.current) pdfRef.current = await (await loadPdfjs()).getDocument({ data: await b.arrayBuffer() }).promise;
         const pdf = pdfRef.current; if (dead) return; setTotal(pdf.numPages);
@@ -236,8 +236,8 @@ function DocPreview({ d, onOpen }) {
           <div className="dprevbar float">
             <small>{total > 1 ? `${pages.length} von ${total} Seiten` : "1 Seite"}</small>
             {total > pages.length && pages.length >= want && <button className="btn sm" onClick={() => setWant(want + 5)}>Weitere Seiten</button>}
-            <button className="btn sm" onClick={() => printDoc(d)} title="Drucken"><IcoPrint /></button>
-            <button className="btn sm" onClick={() => openOriginal(d)}>Original öffnen</button>
+            <button className="btn sm" onClick={() => (onPrint ? onPrint() : printDoc(d))} title="Drucken"><IcoPrint /></button>
+            <button className="btn sm" onClick={() => (onOriginal ? onOriginal() : openOriginal(d))}>Original öffnen</button>
           </div>
           {pages.map((src, i) => <img key={i} src={src} alt={`Seite ${i + 1}`} loading="lazy" />)}
           {(!pages.length || pages.length < Math.min(want, total || 1)) && <div className="dpload">Seite wird geladen …</div>}
@@ -6354,6 +6354,15 @@ const fillDun = (t, inv, r) => String(t || "").replace(/\{nummer\}/g, inv.number
   .replace(/\{frist\}/g, fmtDate(r.due)).replace(/\{faellig\}/g, fmtDate(invDue(inv))).replace(/\{kunde\}/g, inv.customer?.name || "");
 const hexRgb = (h, rgb) => { const m = String(h || "#0b63f6").replace("#", ""); const n = parseInt(m.length === 3 ? m.split("").map((x) => x + x).join("") : m, 16) || 0x0b63f6; return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
 
+/* Rechnung/Mahnung als Vorschau direkt unter der Zeile (wie bei Dokumenten) */
+function InvPreview({ x, co, make, name }) {
+  const mk = make || (() => buildInvoicePdf(x, co));
+  const key = "inv:" + x.id + ":" + JSON.stringify([x.number, x.date, x.status, (x.items || []).length, (x.reminders || []).length, name]);
+  const nm = name || invFileName(x);
+  return <div className="invprev" onClick={(e) => e.stopPropagation()}>
+    <DocPreview key={key} d={{ id: key, title: nm }} getBlob={mk} onPrint={async () => openPdf(await mk(), nm, "", x.customer?.email)} onOriginal={async () => openPdf(await mk(), nm, "", x.customer?.email)} />
+  </div>;
+}
 async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   co = { ...CO_DEFAULT, ...co };
   const D = { ...DESIGN_DEF, ...design };
@@ -7000,6 +7009,7 @@ const unpayInv = async (x, book, patch) => {
 
 /* ---------- Seite ---------- */
 function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }) {
+  const [prevInv, setPrevInv] = useState(null);
   const [list, setList] = useLsState("invoices", []);
   const [templates, setTemplates] = useLsState("invoiceTemplates", []);
   const [customers, setCustomers] = useLsState("customers", []);
@@ -7140,10 +7150,10 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           {!shown.length && <p className="muted small">{list.length ? "Keine Einträge für diesen Filter." : "Noch keine Rechnungen. Mit „＋ Rechnung“ legst du die erste an – die Nummer wird beim Ausstellen fortlaufend vergeben."}</p>}
           {shown.map((x) => {
             const s = st(x), [label, cls] = STATE_UI[s] || [s, ""], pay = payFor(x);
-            return (
-              <div key={x.id} className="invrow" onClick={() => setEdit(x)}>
+            return (<React.Fragment key={x.id}>
+              <div className={"invrow" + (prevInv === x.id ? " prevopen" : "")} onClick={() => setEdit(x)}>
                 <div className="invmain">
-                  <div className="row1"><b>{x.customer?.name || "Ohne Kunde"}</b></div>
+                  <div className="row1"><b className="invname" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevInv(prevInv === x.id ? null : x.id); }}>{x.customer?.name || "Ohne Kunde"}</b></div>
                   <small className="muted block">
                     {x.kind === "angebot" ? "Angebot " : ""}{x.number || "Entwurf"} · {fmtDate(x.date)}
                     {x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) && ` · fällig ${fmtDate(invDueEff(x))}`}
@@ -7170,7 +7180,8 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                   </details>
                 </div>
               </div>
-            );
+              {prevInv === x.id && <InvPreview x={x} co={co} />}
+            </React.Fragment>);
           })}
         </section>
       )}
@@ -7910,7 +7921,7 @@ function DunningPage({ setTab, book }) {
   const [list, setList] = useLsState("invoices", []);
   const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
   const dn = dunning();
-  const [remind, setRemind] = useState(null), [other, setOther] = useState(""), [payX, setPayX] = useState(null);
+  const [remind, setRemind] = useState(null), [other, setOther] = useState(""), [payX, setPayX] = useState(null), [prevInv, setPrevInv] = useState(null);
   const patch = (id, p) => setList((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
   const inv = list.filter((x) => x.kind === "rechnung");
   const over = inv.filter((x) => invState(x) === "überfällig").map((x) => {
@@ -7948,10 +7959,10 @@ function DunningPage({ setTab, book }) {
       <section className="tile invlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b></div>
         {!over.length && <p className="muted small" style={{ padding: "0 14px" }}>Keine überfälligen Rechnungen 🎉</p>}
-        {over.map(({ x, last, since, ready, next }) => (
-          <div key={x.id} className="invrow" onClick={() => setRemind(x)}>
+        {over.map(({ x, last, since, ready, next }) => (<React.Fragment key={x.id}>
+          <div className={"invrow" + (prevInv === x.id ? " prevopen" : "")} onClick={() => setRemind(x)}>
             <div className="invmain">
-              <div className="row1"><b>{x.customer?.name || "Ohne Kunde"}</b></div>
+              <div className="row1"><b className="invname" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevInv(prevInv === x.id ? null : x.id); }}>{x.customer?.name || "Ohne Kunde"}</b></div>
               <small className="muted block">{x.number} · fällig {fmtDate(invDueEff(x))} · {since} Tage überfällig{last ? ` · zuletzt ${remindName(last.level)} am ${fmtDate(last.date)}` : " · noch nicht gemahnt"}</small>
             </div>
             <b className="invamt neg">{fmtMoney(invTotal(x))}</b>
@@ -7961,15 +7972,17 @@ function DunningPage({ setTab, book }) {
               <StatusMenu x={x} s={invState(x)} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />
             </div>
           </div>
-        ))}
+          {prevInv === x.id && <InvPreview x={x} co={co} />}
+        </React.Fragment>))}
       </section>
       <section className="tile invlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Mahnverlauf</b><small>{history.length}</small></div>
         {!history.length && <p className="muted small" style={{ padding: "0 14px" }}>Noch keine Mahnungen erstellt.</p>}
         {history.map(({ x, r, i }) => { const s = invState(x); return (
-          <div key={x.id + i} className="invrow" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>
+          <React.Fragment key={x.id + i}>
+          <div className={"invrow" + (prevInv === x.id + ":" + i ? " prevopen" : "")} onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>
             <div className="invmain">
-              <div className="row1"><b>{remindName(r.level)} · {x.customer?.name}</b></div>
+              <div className="row1"><b className="invname" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevInv(prevInv === x.id + ":" + i ? null : x.id + ":" + i); }}>{remindName(r.level)} · {x.customer?.name}</b></div>
               <small className="muted block">{fmtDate(r.date)} · {x.number} · Frist {fmtDate(r.due)}{Number(r.fee) ? ` · Spesen ${fmtMoney(Number(r.fee))}` : ""}</small>
             </div>
             <b className="invamt">{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))}</b>
@@ -7980,7 +7993,9 @@ function DunningPage({ setTab, book }) {
               {i === x.reminders.length - 1 && s !== "bezahlt" && <button className="link small red" onClick={() => confirm("Diese Mahnung aus dem Verlauf entfernen?") && patch(x.id, { reminders: x.reminders.slice(0, -1) })}>Zurücknehmen</button>}
               {i === x.reminders.length - 1 && <StatusMenu x={x} s={s} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />}
             </div>
-          </div>); })}
+          </div>
+          {prevInv === x.id + ":" + i && <InvPreview x={x} co={co} make={() => pdfOf(x, i)} name={invFileName(x, r)} />}
+          </React.Fragment>); })}
       </section>
       {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
       {payX && <PayWin inv={payX} book={book} onClose={() => setPayX(null)} onDone={(p) => patch(payX.id, p)} />}
@@ -9592,4 +9607,9 @@ html,body{min-height:100%}
 .calupcwin .calrow .datebox{width:46px;height:46px;padding:0;overflow:hidden}
 .calupcwin .calrow .datebox b{font-size:17px;line-height:1.05;color:inherit}.calupcwin .calrow .datebox small{font-size:10px;line-height:1.1;margin-top:2px}
 .calupcwin .calrow.over .datebox b{color:var(--red)}
+.invname{cursor:pointer}.invname:hover{text-decoration:underline;text-underline-offset:3px}
+.invprev{padding:0 14px 14px}.invprev .dprev{margin:0}
+.invrow.prevopen{background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.cactions .chip{display:inline-flex!important;align-items:center;gap:6px;line-height:1.2;vertical-align:middle;height:auto!important}
+.dprevbar .btn{white-space:nowrap}@media (max-width:600px){.invprev{padding:0 6px 10px}}
 `;

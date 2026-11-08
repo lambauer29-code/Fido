@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.56.0
+- **Rechnungen & Mahnungen wie Dokumente:** Ein Klick auf den Namen öffnet die Rechnung als Vorschau direkt unter der Zeile, mit Drucken und „Original öffnen“. Ein zweiter Klick schließt sie wieder. Im Mahnverlauf zeigt die Vorschau das jeweilige Mahnschreiben. Ein Klick auf die übrige Zeile funktioniert wie bisher: bearbeiten, Mahnung erstellen oder PDF öffnen.
+- Kunden: E-Mail- und Telefon-Chips sind jetzt genauso vertikal zentriert wie „Rechnung“ und „vCard“.
+
 ## v0.55.3
 - Kalender: Der Knopf „⏰ Bevorstehend“ steht jetzt ganz links vor dem ‹-Pfeil, am Handy in einer eigenen Zeile oben.
 - Bevorstehend-Fenster: Die Datumsfelder sind an die Schriftgröße angepasst und fester bemessen, nichts ragt mehr über den Rand.
