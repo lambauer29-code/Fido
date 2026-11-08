@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.14.1
+- Seitenleiste: Zeile „Mehrfachauswahl“ entfernt (Schalter bleibt unter Einstellungen › Konten & Gruppen).
+- Konto-Karten: Klick zeigt nur dieses Konto, solange die Maus darauf bleibt (Doppelklick = fest auswählen; am Handy antippen = an/aus).
+
 ## v0.14.0 – Kalender & Apple-Kalender-Abo
 - Fristen: interaktiver Monatskalender (Standard) oder Liste. Fristen aus Bons/Rechnungen erscheinen automatisch; per Ziehen auf einen anderen Tag verschieben, Tag antippen = Details, abhaken, Datum ändern.
 - „🍎 Mit Apple Kalender verbinden“: Kalender-Abo (webcal) – Fido lädt Änderungen automatisch hoch, Apple Kalender holt sie selbst ab. Benötigt einen kostenlosen Vercel-Blob-Speicher (Storage › Blob › mit Projekt verbinden, dann Redeploy). Funktioniert auch mit Google Kalender/Outlook.

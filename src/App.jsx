@@ -1296,8 +1296,7 @@ export default function App() {
               </button>
               {t.key === "accounts" && t.side && nav.accOpen && accounts.length > 0 && (
                 <div className="subnav side-only">
-                  <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={hiddenAccs} showChecks={nav.showChecks !== false}
-                    onToggleChecks={() => setNav((n) => ({ ...n, showChecks: n.showChecks === false }))} {...accActions} />
+                  <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={hiddenAccs} showChecks={nav.showChecks !== false} {...accActions} />
                 </div>
               )}
               {t.key === "docs" && t.side && nav.docsOpen && active.length > 0 && (
@@ -2110,8 +2109,12 @@ const shortD = (iso) => (iso ? new Date(iso + "T12:00").toLocaleDateString("de-A
 const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json,.xlsx,.xlsm,.xls,.pdf,image/*";
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
-function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc, setAcc, sel = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
+function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc: accProp, setAcc, sel: selProp = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
   const [pick, setPick] = useState(false);
+  // Konto-Karte anklicken = nur dieses Konto zeigen, solange die Maus darauf bleibt
+  const [peek, setPeek] = useState("");
+  const sel = peek ? [peek] : selProp, acc = peek || accProp;
+  const cardAccounts = visAccounts.filter((a) => selProp.includes(a.id));
   const [newAcc, setNewAcc] = useState(false);
   useEffect(() => { if (newAccReq) { setNewAcc(true); clearNewAccReq(); } }, [newAccReq]);
   const cashAccs = accounts.filter((a) => a.kind === "cash");
@@ -2225,10 +2228,12 @@ function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, 
           <select className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
         </div>
       )}
-      {sel.length > 1 && (
-        <div className="selcards">
-          {selAccounts.map((a) => { const b = accountBalance(a, txs); return (
-            <div key={a.id} className="selcard" onClick={() => setAcc(a.id)}>
+      {selProp.length > 1 && (
+        <div className={"selcards" + (peek ? " peeking" : "")}>
+          {cardAccounts.map((a) => { const b = accountBalance(a, txs); return (
+            <div key={a.id} className={"selcard" + (peek === a.id ? " peek" : "")} title="Klicken: nur dieses Konto anzeigen, solange die Maus darauf bleibt · Doppelklick: Konto auswählen"
+              onClick={() => setPeek(peek === a.id ? "" : a.id)} onMouseLeave={() => peek === a.id && setPeek("")}
+              onDoubleClick={() => { setPeek(""); setAcc(a.id); }}>
               <div className="row1"><small className="muted">{kindIcon(a.kind)} {groups.find((g) => g.accounts.some((x) => x.id === a.id))?.title || ""}</small>
                 <button className="x" title="Aus Auswahl entfernen" onClick={(e) => { e.stopPropagation(); accActions.onToggle(a.id); }}>×</button></div>
               <b className="one">{a.name}</b>
@@ -3951,4 +3956,7 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .calrow.done b{text-decoration:line-through;opacity:.6}.calrow.over b{color:var(--red)}
 .steps{margin:6px 0 0;padding-left:18px}.steps li{margin:3px 0}
 .dlbar .seg button{display:inline-flex;flex-direction:row;align-items:center;gap:6px;white-space:nowrap;padding:8px 14px}
+
+.selcard.peek{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 35%,transparent)}
+.selcards.peeking .selcard:not(.peek){opacity:.55}
 `;
