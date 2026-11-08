@@ -957,11 +957,31 @@ function defaultRect(defW, small) {
   return { w, h: H - 48, x: W - w - 24, y: 24 };
 }
 const WinCtx = React.createContext(null);
+/* Hintergrund sperren, solange ein Fenster offen ist (iOS: body fixieren, Scrollposition merken) */
+let lockCount = 0, lockY = 0;
+function useScrollLock() {
+  useEffect(() => {
+    const html = document.documentElement, b = document.body;
+    if (lockCount++ === 0) {
+      lockY = window.scrollY;
+      html.classList.add("win-open");
+      b.style.position = "fixed"; b.style.top = `-${lockY}px`; b.style.left = "0"; b.style.right = "0"; b.style.width = "100%";
+    }
+    return () => {
+      if (--lockCount === 0) {
+        html.classList.remove("win-open");
+        b.style.position = b.style.top = b.style.left = b.style.right = b.style.width = "";
+        window.scrollTo(0, lockY);
+      }
+    };
+  }, []);
+}
 const XBtn = () => { const close = React.useContext(WinCtx); return <button className="xbtn" onClick={() => close?.()} aria-label="Schließen" title="Schließen">✕</button>; };
 /* Schwebendes Fenster. Klick daneben / Esc / ✕ schließt – bei ungespeicherten Änderungen wird erst nachgefragt.
    dirty: true/false erzwingt, undefined = automatisch (sobald im Fenster etwas eingegeben wurde) */
 function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern" }) {
   const wide = useMedia("(min-width:768px)");
+  useScrollLock();
   const rootRef = useRef(null);
   const [touched, setTouched] = useState(false);
   const [ask, setAsk] = useState(false);
@@ -4714,4 +4734,9 @@ input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
 .grpcfg.catsonly{padding-top:8px}
 .grplabel{display:flex;align-items:baseline;gap:8px;padding:2px 4px 8px}.grplabel b{font-size:14px}.grplabel small{font-size:12px}
 .areapick .grpn{margin-left:auto}
+
+/* v0.17.2: Fenster offen → Hintergrund fest, schwebende Knöpfe am Handy ausblenden */
+html.win-open,html.win-open body{overscroll-behavior:none}
+@media (max-width:767px){html.win-open .topactions,html.win-open .fab{display:none}}
+.sheet .panel{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 `;
