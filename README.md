@@ -2,6 +2,20 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.10.1
+- Einstellungen: überflüssige Kachel „Fristen“ entfernt (Fristen bleiben über die Seitenleiste erreichbar).
+
+## v0.10.0 – Raster, Design & Dokument-Aktionen
+- Übersicht als freies Raster: Widgets per Ecke ◢ in Breite und Höhe ziehen, Schnellbreiten ⅓ ½ ⅔ 1, „↕A“ = Höhe nach Inhalt, kleine Widgets rücken automatisch neben große, Abstand-Regler.
+- Einstellungen › Design: 9 Farbstile (angelehnt an N26, Monzo, Revolut, Notion, Evernote u. a.) + Farbpalette für Guthaben & Schulden (inkl. eigener Farbe), optional Ausgaben einfärben.
+- Einstellungs-Bereiche alle gleich breit.
+- Dokumentliste: Symbole Bearbeiten · Vorschau · Original öffnen · Löschen. Detail-Fenster ohne „Öffnen“.
+- Alle Fenster: ✕ zum Schließen statt „Zurück/Abbrechen“.
+- „Erkannten Text anzeigen“ ersetzt durch Text-Status mit Kopieren bzw. „Mit Claude auslesen“.
+- Konten am Desktop: Tabelle (Datum · Empfänger · Kategorie · Konto · Betrag), Kontostand-Karte quer.
+- „≈“ vor Kontoständen entfernt.
+- API: Fallback für Modelle ohne erzwungenes tool_choice (Fehler „tool_choice … not supported“).
+
 ## v0.9.3 – Übersicht mit Widgets
 - Übersicht anpassen (Raster-Symbol oben rechts): Karten per Griff ⠿ verschieben, Breite wählen (1 Spalte / 2 Spalten / ganze Breite), mit ✕ ausblenden, unter „Weitere Widgets“ wieder hinzufügen. Wird gespeichert.
 - Neue Widgets: Neueste Dokumente, Letzte Buchungen, Verträge & Fixkosten, Steuer (Jahr), Schnellzugriff.

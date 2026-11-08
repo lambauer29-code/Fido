@@ -1,3 +1,4 @@
+import { callTool } from "./_claude.js";
 // Vercel Serverless Function: schickt ein Dokument (PDF oder Bild) an Claude
 // und bekommt strukturierte Metadaten zurück. Der API-Key bleibt am Server.
 //
@@ -111,26 +112,9 @@ export default async function handler(req, res) {
 Rufe das Tool dokument_speichern auf.`;
 
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: process.env.CLAUDE_MODEL || "claude-sonnet-5-5",
-        max_tokens: 8000,
-        tools: [tool(cats)],
-        tool_choice: { type: "tool", name: "dokument_speichern" },
-        messages: [{ role: "user", content: [fileBlock, { type: "text", text: prompt }] }]
-      })
-    });
-    const json = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: json?.error?.message || "Claude-API-Fehler" });
-    const use = json.content?.find((c) => c.type === "tool_use");
-    if (!use) return res.status(502).json({ error: "Keine strukturierte Antwort erhalten" });
-    return res.status(200).json(use.input);
+    const out = await callTool({ tool: tool(cats), content: [fileBlock, { type: "text", text: prompt }], maxTokens: 8000 });
+    if (out.error) return res.status(out.status || 500).json({ error: out.error });
+    return res.status(200).json(out.data);
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }

@@ -1,3 +1,4 @@
+import { callTool } from "./_claude.js";
 // Vercel Function: liest Kontoauszüge/Depotauszüge, die kein Standardformat haben
 // (PDF, Foto, exotisches CSV/TXT) mit Claude aus und liefert Umsätze als JSON.
 export default async function handler(req, res) {
@@ -49,20 +50,9 @@ Rufe das Tool umsaetze_speichern auf.` });
   };
 
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
-        model: process.env.CLAUDE_MODEL || "claude-sonnet-5-5", max_tokens: 32000,
-        tools: [tool], tool_choice: { type: "tool", name: tool.name },
-        messages: [{ role: "user", content }]
-      })
-    });
-    const json = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: json?.error?.message || "Claude-API-Fehler" });
-    const use = json.content?.find((c) => c.type === "tool_use");
-    if (!use) return res.status(502).json({ error: "Keine strukturierte Antwort" });
-    return res.status(200).json(use.input);
+    const out = await callTool({ tool, content, maxTokens: 32000 });
+    if (out.error) return res.status(out.status || 500).json({ error: out.error });
+    return res.status(200).json(out.data);
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }

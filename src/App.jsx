@@ -62,6 +62,28 @@ async function makeThumb(blob) {
   }
   return canvas.toDataURL("image/jpeg", 0.7);
 }
+/* Originaldatei in neuem Tab öffnen (Fenster sofort öffnen, sonst blockiert Safari) */
+async function openOriginal(d) {
+  const w = window.open("", "_blank");
+  const b = await db.getFile(d.id);
+  if (!b) { w?.close(); return false; }
+  const url = URL.createObjectURL(b);
+  if (w) w.location.href = url; else window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return true;
+}
+function DocActions({ d, prevOpen, onPreview, onEdit, onTrash }) {
+  const stop = (f) => (e) => { e.stopPropagation(); f(); };
+  return (
+    <div className="dactions" onClick={(e) => e.stopPropagation()}>
+      <button title="Bearbeiten" aria-label="Bearbeiten" onClick={stop(onEdit)}><IcoEdit /></button>
+      <button title={prevOpen ? "Vorschau schließen" : "Vorschau"} aria-label="Vorschau" className={prevOpen ? "on" : ""} onClick={stop(onPreview)}><IcoEye /></button>
+      <button title="Original öffnen" aria-label="Original öffnen" onClick={stop(() => openOriginal(d))}><IcoOpen /></button>
+      <button title="In den Papierkorb" aria-label="Löschen" className="del" onClick={stop(() => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && onTrash(d))}><IcoTrash /></button>
+    </div>
+  );
+}
+
 /* Ausklappbare Vorschau in der Dokumentliste */
 function DocPreview({ d, onOpen }) {
   const [pages, setPages] = useState([]), [total, setTotal] = useState(0), [want, setWant] = useState(3), [err, setErr] = useState("");
@@ -98,7 +120,8 @@ function DocPreview({ d, onOpen }) {
           <small className="muted">{total > 1 ? `${pages.length} von ${total} Seiten` : "1 Seite"}</small>
           <span className="grow" />
           {total > pages.length && pages.length >= want && <button className="btn sm" onClick={() => setWant(want + 5)}>Weitere Seiten</button>}
-          <button className="btn sm primary" onClick={onOpen}>Öffnen</button>
+          <button className="btn sm" onClick={() => openOriginal(d)}>Original öffnen</button>
+          <button className="btn sm primary" onClick={onOpen}>Bearbeiten</button>
         </div>
       </>}
     </div>
@@ -170,6 +193,9 @@ const Ico = ({ d, size = 18 }) => (
 const IcoEye = () => <Ico d={<><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>} />;
 const IcoEyeOff = () => <Ico d={<><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.5M6.6 6.6C3.8 8.3 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="M3 3l18 18" /></>} />;
 const IcoLayout = () => <Ico d={<><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></>} />;
+const IcoEdit = () => <Ico d={<><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></>} />;
+const IcoOpen = () => <Ico d={<><path d="M14 4h6v6" /><path d="M10 14L20 4" /><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></>} />;
+const IcoTrash = () => <Ico d={<><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V4h6v3" /></>} />;
 const IcoSun = () => <Ico d={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} />;
 const IcoMoon = () => <Ico d={<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z" />} />;
 const IcoChev = ({ open }) => <span className={"pchev" + (open ? " open" : "")}><Ico size={16} d={<path d="M6 9l6 6 6-6" />} /></span>;
@@ -784,7 +810,7 @@ function AccountTree({ groups, txs, selected, onSelect, onToggleGroup, variant =
             return (
               <button key={a.id} className={"accitem" + (selected === a.id ? " on" : "")} onClick={() => onSelect(selected === a.id ? "" : a.id)}>
                 <span className="ki">{kindIcon(a.kind)}</span><span className="an">{a.name}</span>
-                {bal != null ? <span className={"ab" + (bal < 0 ? " red" : "")} title={balEstimated(a) ? "Aus Umsätzen berechnet – für den genauen Stand Kontostand eintragen oder Import mit Saldo-Spalte" : undefined}>{balEstimated(a) && <i className="est">≈</i>}{fmtMoney(bal)}</span>
+                {bal != null ? <span className={"ab " + (bal < 0 ? "neg" : "pos")} title={balEstimated(a) ? "Aus Umsätzen berechnet – für den genauen Stand Kontostand eintragen oder Import mit Saldo-Spalte" : undefined}>{fmtMoney(bal)}</span>
                   : <span className="ab muted" title="Kontostand unbekannt – im Konto eintragen oder per Import mit Saldo übernehmen">—</span>}
               </button>
             );
@@ -830,6 +856,9 @@ export default function App() {
   const [theme, setTheme] = useState(() => effectiveTheme(ls.get("theme", "auto")));
   const [newAccReq, setNewAccReq] = useState(false);
   const [homeEdit, setHomeEdit] = useState(false);
+  const [design, setDesignRaw] = useState(() => ls.get("design", { preset: "fido" }));
+  const setDesign = (d) => { ls.set("design", d); setDesignRaw(d); };
+  useEffect(() => applyDesign(design, theme), [design, theme]);
   useEffect(() => {
     ls.set("theme", themeMode);
     const upd = () => setTheme(effectiveTheme(themeMode)); upd();
@@ -1080,12 +1109,12 @@ export default function App() {
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
           acc={selAcc} setAcc={setSelAcc} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
-        {tab === "docs" && <DocList reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
+        {tab === "docs" && <DocList trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} />}
         {tab === "settings" && (
-          <Settings themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
+          <Settings design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
             docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} notify={notify} />
         )}
@@ -1177,21 +1206,26 @@ function Donut({ parts, total }) {
   );
 }
 const HOME_WIDGETS = {
-  hero: ["Monatssaldo", "full", "💰", "Einnahmen, Ausgaben, Fixkosten"],
-  alerts: ["Offene Rechnungen", "full", "🧾", "Hinweis auf unbezahlte Rechnungen"],
-  konten: ["Konten", "1", "🏦", "Kontostände aller Konten"],
-  bargeld: ["Bargeld", "1", "💶", "Bestand der Geldbörse"],
-  kategorien: ["Ausgaben nach Kategorie", "1", "🍩", "Donut-Diagramm des Monats"],
-  verlauf: ["Verlauf", "1", "📊", "6 Monate Einnahmen/Ausgaben"],
-  budgets: ["Budgets", "1", "🎯", "Budget pro Kategorie"],
-  fristen: ["Nächste Fristen", "1", "⏰", "Zahlungen & Kündigungen"],
-  docs: ["Neueste Dokumente", "1", "📄", "Zuletzt hinzugefügt"],
-  contracts: ["Verträge & Fixkosten", "1", "📑", "Teuerste laufende Verträge"],
-  tx: ["Letzte Buchungen", "1", "💳", "Neueste Kontoumsätze"],
-  tax: ["Steuer", "1", "🧮", "Steuerrelevante Belege des Jahres"],
-  quick: ["Schnellzugriff", "1", "⚡", "Scannen, Datei, Buchung, Konto"],
+  hero: ["Monatssaldo", 12, "💰", "Einnahmen, Ausgaben, Fixkosten"],
+  alerts: ["Offene Rechnungen", 12, "🧾", "Hinweis auf unbezahlte Rechnungen"],
+  konten: ["Konten", 4, "🏦", "Kontostände aller Konten"],
+  bargeld: ["Bargeld", 4, "💶", "Bestand der Geldbörse"],
+  kategorien: ["Ausgaben nach Kategorie", 4, "🍩", "Donut-Diagramm des Monats"],
+  verlauf: ["Verlauf", 4, "📊", "6 Monate Einnahmen/Ausgaben"],
+  budgets: ["Budgets", 4, "🎯", "Budget pro Kategorie"],
+  fristen: ["Nächste Fristen", 4, "⏰", "Zahlungen & Kündigungen"],
+  docs: ["Neueste Dokumente", 4, "📄", "Zuletzt hinzugefügt"],
+  contracts: ["Verträge & Fixkosten", 4, "📑", "Teuerste laufende Verträge"],
+  tx: ["Letzte Buchungen", 4, "💳", "Neueste Kontoumsätze"],
+  tax: ["Steuer", 4, "🧮", "Steuerrelevante Belege des Jahres"],
+  quick: ["Schnellzugriff", 4, "⚡", "Scannen, Datei, Buchung, Konto"],
 };
-const HOME_DEFAULT = { order: ["hero", "alerts", "konten", "bargeld", "kategorien", "verlauf", "budgets", "fristen"], hidden: ["docs", "contracts", "tx", "tax", "quick"], size: {} };
+const HOME_DEFAULT = { order: ["hero", "alerts", "konten", "bargeld", "kategorien", "verlauf", "budgets", "fristen"], hidden: ["docs", "contracts", "tx", "tax", "quick"], w: {}, h: {}, gap: 16 };
+function migrateLayout(l) {
+  if (!l) return JSON.parse(JSON.stringify(HOME_DEFAULT));
+  if (l.size && !l.w) { const conv = { "1": 4, "2": 8, full: 12 }; l = { ...l, w: Object.fromEntries(Object.entries(l.size).map(([k, v]) => [k, conv[v] || 4])) }; }
+  return { gap: 16, h: {}, w: {}, ...l };
+}
 
 function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount, editing = false, setEditing = () => {}, actions }) {
   const bankAccs = accounts.filter((a) => a.kind !== "cash");
@@ -1257,12 +1291,12 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
       ) : null;
   const w_konten = !!bankAccs.length ? (
         <section className="tile">
-          <div className="tilehead"><b>Konten</b><small>{bankTotal != null ? (bankAccs.some(balEstimated) ? "≈ " : "") + fmtMoney(bankTotal) : ""}</small></div>
+          <div className="tilehead"><b>Konten</b><small>{bankTotal != null ? fmtMoney(bankTotal) : ""}</small></div>
           {bankAccs.map((a) => { const bal = accountBalance(a, txs); return (
             <div key={a.id} className="frow click" onClick={() => openAccount(a.id)}>
               <span className="caticon" style={{ width: 40, height: 40, background: "#0b63f622", fontSize: 20 }}>{kindIcon(a.kind)}</span>
               <div className="grow"><b>{a.name}</b><small className="muted block">{balEstimated(a) ? "aus Umsätzen berechnet" : a.openingDate ? "Stand " + fmtDate(a.openingDate) + " + neuere Buchungen" : "Kontostand"}</small></div>
-              <div className="right"><b className={bal < 0 ? "red" : ""}>{bal != null ? (balEstimated(a) ? "≈ " : "") + fmtMoney(bal) : "—"}</b></div>
+              <div className="right"><b className={bal == null ? "" : bal < 0 ? "neg" : "pos"}>{bal != null ? fmtMoney(bal) : "—"}</b></div>
             </div>); })}
         </section>
       ) : null;
@@ -1273,7 +1307,7 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
             <div key={a.id} className="frow click" onClick={() => openAccount(a.id)}>
               <span className="caticon" style={{ width: 40, height: 40, background: "#16a34a22", fontSize: 20 }}>💶</span>
               <div className="grow"><b>{a.name}</b><small className="muted block">{txs.filter((t) => t.accountId === a.id).length} Buchungen{a.atm ? " · inkl. Bankomat-Behebungen" : ""}</small></div>
-              <div className="right"><b className={cashBalance(a, txs) < 0 ? "red" : ""}>{fmtMoney(cashBalance(a, txs))}</b><small className="muted block">Bestand</small></div>
+              <div className="right"><b className={cashBalance(a, txs) < 0 ? "neg" : "pos"}>{fmtMoney(cashBalance(a, txs))}</b><small className="muted block">Bestand</small></div>
             </div>
           ))}
           {cashBalance(cashAccs[0], txs) < 0 && <p className="warn small">Bestand negativ – vermutlich fehlt eine Behebung oder der Startbestand.</p>}
@@ -1364,7 +1398,7 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
         <div key={t.id} className="frow click" onClick={() => openAccount(t.accountId)}>
           <CatIcon c={t.category || "Sonstiges"} />
           <div className="grow"><b className="clamp">{t.counterparty || t.purpose || "Buchung"}</b><small className="muted block">{fmtDate(t.date)}{accName(t.accountId) ? " · " + accName(t.accountId) : ""}</small></div>
-          <b className={t.amount > 0 ? "ok" : ""}>{(t.amount > 0 ? "+" : "") + fmtMoney(t.amount, t.currency)}</b>
+          <b className={t.amount > 0 ? "pos" : "out"}>{(t.amount > 0 ? "+" : "") + fmtMoney(t.amount, t.currency)}</b>
         </div>
       ))}
     </section>) : null;
@@ -1407,48 +1441,43 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
 
   const els = { hero: w_hero, alerts: w_alerts, konten: w_konten, bargeld: w_bargeld, kategorien: w_kategorien, verlauf: w_verlauf,
     budgets: w_budgets, fristen: w_fristen, docs: w_docs, contracts: w_contracts, tx: w_tx, tax: w_tax, quick: w_quick };
-  const [layout, setLayoutRaw] = useState(() => ls.get("homeLayout", null) || HOME_DEFAULT);
+  const [layout, setLayoutRaw] = useState(() => migrateLayout(ls.get("homeLayout", null)));
   const setLayout = (f) => setLayoutRaw((l) => { const n = typeof f === "function" ? f(l) : f; ls.set("homeLayout", n); return n; });
   const ids = Object.keys(HOME_WIDGETS);
   const order = [...layout.order.filter((x) => ids.includes(x)), ...ids.filter((x) => !layout.order.includes(x) && !layout.hidden.includes(x))];
   const shown = order.filter((x) => !layout.hidden.includes(x));
-  const hiddenIds = ids.filter((x) => layout.hidden.includes(x) || !order.includes(x)).filter((x) => !shown.includes(x));
-  const sizeOf = (id) => layout.size?.[id] || HOME_WIDGETS[id][1];
+  const hiddenIds = ids.filter((x) => !shown.includes(x));
+  const wOf = (id) => layout.w?.[id] || HOME_WIDGETS[id][1];
+  const hOf = (id) => layout.h?.[id] || null;
+  const gap = layout.gap ?? 16;
+  const lg = useMedia("(min-width:1024px)"), md = useMedia("(min-width:700px)");
+  const cols = lg ? 12 : md ? 6 : 1;
   const wdnd = useDnd((d, over) => setLayout((l) => ({ ...l, order: [...moveBetween({ w: shown }, "w", d.index, "w", over.index).w, ...hiddenIds] })));
   const vis = editing ? shown : shown.filter((id) => els[id]);
+  const setW = (id, w) => setLayout((l) => ({ ...l, w: { ...(l.w || {}), [id]: w } }));
+  const setH = (id, h) => setLayout((l) => ({ ...l, h: { ...(l.h || {}), [id]: h } }));
 
   return (
     <>
       {editing && (
         <div className="editbar">
-          <div className="grow"><b>Übersicht anpassen</b><small className="muted block">Am Griff ⠿ ziehen · Breite wählen · ✕ blendet aus</small></div>
-          <button className="link" onClick={() => confirm("Übersicht auf Standard zurücksetzen?") && setLayout(HOME_DEFAULT)}>Zurücksetzen</button>
+          <div className="grow"><b>Übersicht anpassen</b><small className="muted block">⠿ ziehen zum Verschieben · Ecke ◢ ziehen für Breite & Höhe · ✕ blendet aus</small></div>
+          {cols > 1 && <label className="gapctl" title="Abstand zwischen den Widgets">Abstand
+            <input type="range" min="0" max="40" step="2" value={gap} onChange={(e) => setLayout((l) => ({ ...l, gap: +e.target.value }))} /><small>{gap}px</small></label>}
+          <button className="link" onClick={() => confirm("Übersicht auf Standard zurücksetzen?") && setLayout(migrateLayout(null))}>Zurücksetzen</button>
           <button className="btn primary" onClick={() => setEditing(false)}>Fertig</button>
         </div>
       )}
-      <div className={"dash" + (editing ? " editing" : "")} data-wid-list={"w|" + vis.length}>
-        {vis.map((id, i) => {
-          const sz = sizeOf(id), last = i === vis.length - 1;
-          const cls = "widget w-" + sz + (wdnd.isDragging("wid", "w", i) ? " dragging" : "") +
-            (wdnd.lineAt("wid", "w", i) ? " dropbefore" : "") + (last && wdnd.lineAt("wid", "w", vis.length) ? " dropafter" : "");
-          return (
-            <div key={id} className={cls} data-wid-item={"w|" + i} data-grid="1">
-              {editing && (
-                <div className="wbar">
-                  <Handle onDown={(e) => wdnd.start(e, { kind: "wid", list: "w", index: i, label: HOME_WIDGETS[id][0] })} label="Widget verschieben" />
-                  <b className="grow">{HOME_WIDGETS[id][0]}</b>
-                  <div className="wsize" role="group" aria-label="Breite">
-                    {[["1", "▯", "1 Spalte"], ["2", "▭", "2 Spalten"], ["full", "▬", "Ganze Breite"]].map(([k, ic, t]) => (
-                      <button key={k} className={sz === k ? "on" : ""} title={t} onClick={() => setLayout((l) => ({ ...l, size: { ...(l.size || {}), [id]: k } }))}>{ic}</button>
-                    ))}
-                  </div>
-                  <button className="wx" title="Ausblenden" onClick={() => setLayout((l) => ({ ...l, order: shown.filter((x) => x !== id), hidden: [...l.hidden.filter((x) => x !== id), id] }))}>✕</button>
-                </div>
-              )}
-              <div className="wbody">{els[id] || <section className="tile wempty"><b>{HOME_WIDGETS[id][0]}</b><small className="muted block">derzeit keine Daten – wird automatisch angezeigt, sobald es etwas gibt</small></section>}</div>
-            </div>
-          );
-        })}
+      <div className={"dash" + (cols > 1 ? " gridded" : "") + (editing ? " editing" : "")} style={cols > 1 ? { "--cols": cols, "--gap": gap + "px" } : undefined} data-wid-list={"w|" + vis.length}>
+        {vis.map((id, i) => (
+          <WidgetCell key={id} id={id} idx={i} title={HOME_WIDGETS[id][0]} w={wOf(id)} h={hOf(id)} cols={cols} gap={gap} editing={editing} dnd={wdnd}
+            dropBefore={wdnd.lineAt("wid", "w", i)} dropAfter={i === vis.length - 1 && wdnd.lineAt("wid", "w", vis.length)}
+            onResize={(w, h) => setLayout((l) => ({ ...l, w: { ...(l.w || {}), [id]: w }, h: { ...(l.h || {}), [id]: h } }))}
+            onWidth={(w) => setW(id, w)} onAutoH={() => setH(id, null)}
+            onHide={() => setLayout((l) => ({ ...l, order: shown.filter((x) => x !== id), hidden: [...l.hidden.filter((x) => x !== id), id] }))}>
+            {els[id] || <section className="tile wempty"><b>{HOME_WIDGETS[id][0]}</b><small className="muted block">derzeit keine Daten – wird automatisch angezeigt, sobald es etwas gibt</small></section>}
+          </WidgetCell>
+        ))}
         {wdnd.ghost}
       </div>
       {editing && (
@@ -1468,8 +1497,59 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
   );
 }
 
+/* Ein Widget im Raster: Breite in 12tel, Höhe in Rasterzeilen (oder automatisch nach Inhalt) */
+const GRID_ROW = 8;
+function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore, dropAfter, onResize, onWidth, onAutoH, onHide, children }) {
+  const ref = useRef(null), inner = useRef(null);
+  const [autoRows, setAutoRows] = useState(12);
+  const grid = cols > 1, fixed = grid && !!h;
+  useEffect(() => {
+    if (!grid || fixed || !inner.current) return;
+    const el = inner.current;
+    const ro = new ResizeObserver(() => setAutoRows(Math.max(1, Math.ceil((el.getBoundingClientRect().height + gap) / (GRID_ROW + gap)))));
+    ro.observe(el); return () => ro.disconnect();
+  }, [grid, fixed, gap, editing]);
+  const span = cols === 12 ? w : Math.max(1, Math.min(cols, Math.round(w / 2)));
+  const style = grid ? { gridColumn: `span ${span}`, gridRow: `span ${fixed ? h : autoRows}` } : undefined;
+  function startResize(e) {
+    e.preventDefault(); e.stopPropagation();
+    const box = ref.current.getBoundingClientRect(), gb = ref.current.parentElement.getBoundingClientRect();
+    const colW = (gb.width - gap * (cols - 1)) / cols, unit = cols === 12 ? 1 : 2;
+    document.body.classList.add("rz-active");
+    const move = (ev) => {
+      const nc = Math.max(cols === 12 ? 2 : 1, Math.min(cols, Math.round((Math.min(ev.clientX, gb.right) - box.left + gap) / (colW + gap))));
+      const nh = Math.max(6, Math.round((ev.clientY - box.top + gap) / (GRID_ROW + gap)));
+      onResize(nc * unit, nh);
+    };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); document.body.classList.remove("rz-active"); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  }
+  const cls = "widget" + (dnd.isDragging("wid", "w", idx) ? " dragging" : "") + (dropBefore ? " dropbefore" : "") + (dropAfter ? " dropafter" : "") + (span >= cols ? " wfull" : "");
+  return (
+    <div ref={ref} className={cls} style={style} data-wid-item={"w|" + idx} data-grid="1">
+      <div ref={inner} className={"winner" + (fixed ? " fixed" : "")}>
+        {editing && (
+          <div className="wbar">
+            <Handle onDown={(e) => dnd.start(e, { kind: "wid", list: "w", index: idx, label: title })} label="Widget verschieben" />
+            <b className="grow">{title}</b>
+            {grid && <div className="wsize" role="group" aria-label="Breite">
+              {[[4, "⅓"], [6, "½"], [8, "⅔"], [12, "1"]].map(([k, t]) => (
+                <button key={k} className={w === k ? "on" : ""} title={k === 12 ? "Ganze Breite" : t + " Breite"} onClick={() => onWidth(k)}>{t}</button>
+              ))}
+              <button className={!h ? "on" : ""} title="Höhe automatisch nach Inhalt" onClick={onAutoH}>↕A</button>
+            </div>}
+            <button className="wx" title="Ausblenden" onClick={onHide}>✕</button>
+          </div>
+        )}
+        <div className="wbody">{children}</div>
+      </div>
+      {editing && grid && <span className="wresize" onPointerDown={startResize} title="Ziehen: Breite & Höhe ändern" />}
+    </div>
+  );
+}
+
 /* ---------- Dokumente (Docutain-Look) ---------- */
-function DocList({ reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup }) {
+function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup }) {
   const [q, setQ] = useState("");
   const [prevId, setPrevId] = useState(null);
   const [tag, setTag] = useState("");
@@ -1543,6 +1623,7 @@ function DocList({ reanalyze, docs, categories, onOpen, area = "alle", setArea, 
                 <small className="muted">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
                 <div className="row1"><Label c={d.category} />{amt(d)}</div>
                 {status(d)}
+                <DocActions d={d} prevOpen={false} onPreview={() => openOriginal(d)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
               </div>
             </div>
           ))}
@@ -1564,8 +1645,7 @@ function DocList({ reanalyze, docs, categories, onOpen, area = "alle", setArea, 
                 </div>
                 {status(d)}
               </div>
-              <button className={"prevbtn" + (prevId === d.id ? " on" : "")} title={prevId === d.id ? "Vorschau schließen" : "Vorschau anzeigen"} aria-expanded={prevId === d.id}
-                onClick={(e) => { e.stopPropagation(); setPrevId(prevId === d.id ? null : d.id); }}><IcoChev open={prevId === d.id} /></button>
+              <DocActions d={d} prevOpen={prevId === d.id} onPreview={() => setPrevId(prevId === d.id ? null : d.id)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
             </div>
             {prevId === d.id && <DocPreview d={d} onOpen={() => onOpen(d.id)} />}
             </div>
@@ -1708,7 +1788,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [] }) {
 
       {letterFor && (
         <Win id="letter" onClose={() => setLetterFor(null)}>
-            <div className="panelhead"><button className="link" onClick={() => setLetterFor(null)}>‹ Zurück</button><b>Kündigung</b><span /></div>
+            <div className="panelhead"><b>Kündigung</b><button className="xbtn" onClick={() => setLetterFor(null)} aria-label="Schließen" title="Schließen">✕</button></div>
             {!me.name && <p className="warn small">Tipp: Name und Adresse unter „Einstellungen“ eintragen, dann ist das Schreiben komplett.</p>}
             <pre className="fulltext letter">{letter}</pre>
             <div className="actions">
@@ -1754,6 +1834,7 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
   const pending = recurring.filter((r) => !subs.confirmed.includes(r.key) && !subs.dismissed.includes(r.key));
   const accName = (id) => accounts.find((a) => a.id === id)?.name || "Konto";
   const [editAcc, setEditAcc] = useState(null);
+  const wideTx = useMedia("(min-width:1024px)");
   const selA = accounts.find((a) => a.id === acc);
   const selBal = selA ? accountBalance(selA, txs) : null;
   const knownBal = accounts.map((a) => accountBalance(a, txs)).filter((x) => x != null);
@@ -1809,11 +1890,11 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
       <div className="hero">
         {selA ? <>
           <small>Kontostand · {selA.name}</small>
-          <div className="hero-v">{selBal != null ? (balEstimated(selA) ? "≈ " : "") + fmtMoney(selBal) : "—"}</div>
+          <div className="hero-v">{selBal != null ? fmtMoney(selBal) : "—"}</div>
           {balEstimated(selA) && <button className="herolink" onClick={() => setEditAcc(selA)}>{selBal != null ? "aus Umsätzen berechnet · Kontostand eintragen ›" : "Kontostand eintragen ›"}</button>}
         </> : <>
           <small>Gesamtstand · {knownBal.length} von {accounts.length} Konten</small>
-          <div className="hero-v">{knownBal.length ? (accounts.some(balEstimated) ? "≈ " : "") + fmtMoney(knownBal.reduce((s, x) => s + x, 0)) : "—"}</div>
+          <div className="hero-v">{knownBal.length ? fmtMoney(knownBal.reduce((s, x) => s + x, 0)) : "—"}</div>
         </>}
         <div className="hero-row">
           <div><small>Eingänge{month ? " " + monthLabel(month) : ""}</small><b>↑ {fmtMoney(inc)}</b></div>
@@ -1840,7 +1921,26 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
 
       {!!txs.length && <div className="searchbar"><span>🔍</span><input type="search" placeholder="Umsätze durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>}
 
-      {dayGroups.map((g) => (
+      {wideTx ? (
+        <div className={"txtable" + (!acc && accounts.length > 1 ? " withacc" : "")}>
+          <div className="txhead"><span>Datum</span><span>Empfänger / Beschreibung</span><span>Kategorie</span>{!acc && accounts.length > 1 && <span>Konto</span>}<span className="r">Betrag</span></div>
+          {list.slice(0, limit).map((t) => (
+            <div key={t.id} className="txrow" onClick={() => setTxOpen(t)}>
+              <span className="muted">{fmtDate(t.date)}</span>
+              <span className="txdesc">
+                {t.kind === "broker" ? <span className="caticon" style={{ width: 30, height: 30, background: "#14b8a622", fontSize: 14 }}>📈</span> : <CatIcon c={t.category} size={30} />}
+                <span className="grow"><b className="one">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
+                  {t.kind !== "broker" && t.counterparty && t.purpose && <small className="muted one block">{t.purpose}</small>}</span>
+                {t.docId && <span title="Beleg verknüpft">📎</span>}
+              </span>
+              <span className="one muted">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}</span>
+              {!acc && accounts.length > 1 && <span className="one muted">{accName(t.accountId)}</span>}
+              <b className={"r amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
+            </div>
+          ))}
+          {!list.length && <p className="muted small" style={{ padding: 16 }}>Keine Buchungen.</p>}
+        </div>
+      ) : dayGroups.map((g) => (
         <section key={g.date}>
           <h3>{new Date(g.date + "T12:00").toLocaleDateString("de-AT", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}</h3>
           <div className="dlist">
@@ -1851,7 +1951,7 @@ function Accounts({ txs, accounts, setAccounts, importTxs, updateTx, deleteAccou
                   <b className="clamp">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
                   <small className="muted block one">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}{t.docId ? " · 📎 Beleg" : ""}{!acc && accounts.length > 1 ? " · " + accName(t.accountId) : ""}</small>
                 </div>
-                <b className={"amt" + (t.amount > 0 ? " ok" : "")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
+                <b className={"amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
               </div>
             ))}
           </div>
@@ -1947,8 +2047,10 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
 
   return (
     <Win id="import" onClose={onClose}>
-        <div className="panelhead"><button className="link" onClick={onClose}>Abbrechen</button><b>Import</b>
-          <button className="btn primary" disabled={busy || !txs.length} onClick={doImport}>Importieren</button></div>
+        <div className="panelhead"><b>Import</b>
+          <button className="btn primary" disabled={busy || !txs.length} onClick={doImport}>Importieren</button>
+          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
+        </div>
 
         <div className="tile">
           <div className="frow">
@@ -2017,7 +2119,7 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
               <div key={i} className="frow">
                 <div className="grow"><b className="clamp small">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || "–"}</b>
                   <small className="muted block one">{fmtDate(t.date)}{t.kind !== "broker" && t.counterparty && t.purpose ? " · " + t.purpose : ""}</small></div>
-                <b className={"amt" + (t.amount > 0 ? " ok" : "")}>{fmtMoney(t.amount, t.currency)}</b>
+                <b className={"amt " + (t.amount > 0 ? "pos" : "out")}>{fmtMoney(t.amount, t.currency)}</b>
               </div>
             ))}
             {txs.length > 8 && <p className="muted small">… und {txs.length - 8} weitere</p>}
@@ -2037,8 +2139,10 @@ function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, dele
     ["Gebühren", t.fee ? fmtMoney(t.fee) : ""], ["Steuern", t.tax ? fmtMoney(t.tax) : ""]].filter(([, v]) => v != null && v !== "" && v !== false);
   return (
     <Win id="tx" onClose={onClose}>
-        <div className="panelhead"><button className="link" onClick={onClose}>‹ Zurück</button><b>Buchung</b>
-          <button className="btn primary" disabled={cat === t.category} onClick={() => { updateTx({ ...t, category: cat }, rule); onClose(); }}>Speichern</button></div>
+        <div className="panelhead"><b>Buchung</b>
+          <button className="btn primary" disabled={cat === t.category} onClick={() => { updateTx({ ...t, category: cat }, rule); onClose(); }}>Speichern</button>
+          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
+        </div>
         <div className="tile center-text">
           <div className={"hero-v" + (t.amount > 0 ? " ok" : "")} style={{ color: t.amount > 0 ? "var(--ok)" : "var(--txt)" }}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</div>
           <b>{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose}</b>
@@ -2121,10 +2225,10 @@ function Scanner({ onDone, onClose }) {
         <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { onShot(e.target.files[0], edit?.idx ?? pages.length); e.target.value = ""; }} />
         <input ref={galRef} type="file" accept="image/*" hidden onChange={(e) => { onShot(e.target.files[0], edit?.idx ?? pages.length); e.target.value = ""; }} />
         <div className="panelhead">
-          <button className="link" onClick={onClose}>Abbrechen</button>
           <b>{edit ? "Ecken anpassen" : "Scannen"}</b>
           {edit ? <button className="btn primary" onClick={confirmCrop}>Weiter</button>
             : <button className="btn primary" disabled={!pages.length} onClick={finish}>Fertig{pages.length > 1 ? ` (${pages.length})` : ""}</button>}
+          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
         </div>
 
         {!edit && !pages.length && (
@@ -2224,8 +2328,10 @@ function AccountSheet({ init, onSave, onClose, onDelete, hasAtmAccount, txs = []
   }
   return (
     <Win id="account" onClose={onClose} small>
-        <div className="panelhead"><button className="link" onClick={onClose}>Abbrechen</button><b>{init ? "Konto bearbeiten" : "Neues Konto"}</b>
-          <button className="btn primary" disabled={!name.trim()} onClick={save}>{init ? "Speichern" : "Anlegen"}</button></div>
+        <div className="panelhead"><b>{init ? "Konto bearbeiten" : "Neues Konto"}</b>
+          <button className="btn primary" disabled={!name.trim()} onClick={save}>{init ? "Speichern" : "Anlegen"}</button>
+          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
+        </div>
         <fieldset>
           <legend>Art</legend>
           <div className="kindgrid">
@@ -2259,8 +2365,10 @@ function ManualTxSheet({ init, accounts, categories, onSave, onClose }) {
   const ok = val > 0 && date && text.trim();
   return (
     <Win id="manual" onClose={onClose} small>
-        <div className="panelhead"><button className="link" onClick={onClose}>Abbrechen</button><b>Buchung erfassen</b>
-          <button className="btn primary" disabled={!ok} onClick={() => onSave({ accountId, date, amount: dir === "out" ? -val : val, counterparty: text.trim(), purpose: "", category: dir === "in" && category === "Lebensmittel & Haushalt" ? "Einnahmen" : category })}>Speichern</button></div>
+        <div className="panelhead"><b>Buchung erfassen</b>
+          <button className="btn primary" disabled={!ok} onClick={() => onSave({ accountId, date, amount: dir === "out" ? -val : val, counterparty: text.trim(), purpose: "", category: dir === "in" && category === "Lebensmittel & Haushalt" ? "Einnahmen" : category })}>Speichern</button>
+          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
+        </div>
         <div className="seg">
           <button className={dir === "out" ? "on" : ""} onClick={() => setDir("out")}>Ausgabe</button>
           <button className={dir === "in" ? "on" : ""} onClick={() => setDir("in")}>Einnahme</button>
@@ -2325,13 +2433,14 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
   return (
     <Win id="detail" onClose={onClose}>
         <div className="panelhead">
-          <button className="link" onClick={onClose}>‹ Zurück</button>
+          <b>Dokument</b>
           <button className="btn primary" disabled={!dirty} onClick={() => saveDoc(d)}>Speichern</button>
+          <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
         </div>
 
         {url && (doc.mimeType.startsWith("image/")
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
-          : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b>PDF-Dokument</b><small className="muted block">{doc.fileName}</small><button className="btn" style={{ marginTop: 8 }} onClick={() => window.open(url)}>Öffnen</button></div></div>)}
+          : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b>PDF-Dokument</b><small className="muted block">{doc.fileName}</small></div></div>)}
         <div className="seg areaseg" style={{ margin: "6px 0 10px" }}>
           {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={docArea(d) === k ? "on" : ""} onClick={() => set({ areaManual: k })}>{i} {l}</button>)}
         </div>
@@ -2429,12 +2538,18 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
         {d.summary && <p className="summary">{d.summary}</p>}
         <label>Notizen<textarea rows={3} value={d.notes || ""} onChange={(e) => set({ notes: e.target.value })} /></label>
 
-        {d.fullText && (
-          <>
-            <button className="link" onClick={() => setShowText(!showText)}>{showText ? "Text ausblenden" : "Erkannten Text anzeigen"}</button>
-            {showText && <pre className="fulltext">{d.fullText}</pre>}
-          </>
-        )}
+        <div className="textinfo">
+          {d.fullText ? <>
+            <span className="ok">✓ Text durchsuchbar</span><small className="muted">{d.fullText.length.toLocaleString("de-AT")} Zeichen – wird bei der Suche mit durchsucht</small>
+            <span className="grow" />
+            <button className="link" onClick={async () => { try { await navigator.clipboard.writeText(d.fullText); notify("Text kopiert"); } catch { setShowText(true); } }}>📋 Text kopieren</button>
+            <button className="link" onClick={() => setShowText(!showText)}>{showText ? "Ausblenden" : "Anzeigen"}</button>
+          </> : <>
+            <span className="muted">Kein Text ausgelesen</span><span className="grow" />
+            <button className="link" onClick={() => reanalyze(doc)}>↻ Mit Claude auslesen</button>
+          </>}
+        </div>
+        {showText && d.fullText && <pre className="fulltext">{d.fullText}</pre>}
 
         <div className="actions">
           {blob && <button className="btn" onClick={() => download(blob, `${safeName}.${ext}`)}>⬇︎ Datei</button>}
@@ -2469,16 +2584,97 @@ function SetSec({ id, title, children }) {
   );
 }
 
-function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+const SET_IDS = ["darstellung", "design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "rules", "trash", "backup", "verbindung"];
+// gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
+function mergeOrder(cur, ids) {
+  const out = cur.filter((x) => ids.includes(x));
+  ids.forEach((id, i) => {
+    if (out.includes(id)) return;
+    const prev = ids.slice(0, i).reverse().find((x) => out.includes(x));
+    out.splice(prev ? out.indexOf(prev) + 1 : 0, 0, id);
+  });
+  return out;
+}
+
+/* ---------- Design: Voreinstellungen (angelehnt an bekannte Finanz- & Dokumenten-Apps) ---------- */
+const DESIGN_PRESETS = [
+  { id: "fido", name: "Fido Blau", note: "Standard", acc: "#0b63f6", acc2: "#00b3a4", hero: ["#0b3d91", "#0b63f6", "#00b3a4"] },
+  { id: "petrol", name: "Petrol", note: "inspiriert von N26", acc: "#088177", acc2: "#36a18b", hero: ["#00413e", "#088177", "#36a18b"] },
+  { id: "koralle", name: "Koralle", note: "inspiriert von Monzo", acc: "#e8384f", acc2: "#007a8b", hero: ["#001e3a", "#007a8b", "#fe4b60"] },
+  { id: "violett", name: "Midnight Violett", note: "inspiriert von Revolut", acc: "#494fdf", acc2: "#00a87e", hero: ["#191c1f", "#2d318f", "#494fdf"] },
+  { id: "mint", name: "Fintech Mint", note: "dunkler Neobank-Look", acc: "#00a884", acc2: "#2b6cff", hero: ["#0a0f1e", "#0f2f3a", "#00d4a0"],
+    dark: { bg: "#0a0f1e", card: "#111829", card2: "#172036", line: "#222c45" } },
+  { id: "gold", name: "Premium Gold", note: "Private-Banking-Stil", acc: "#a67931", acc2: "#088177", hero: ["#151515", "#3a2f1d", "#c89d58"] },
+  { id: "papier", name: "Papier", note: "inspiriert von Notion", acc: "#2383e2", acc2: "#e16259", hero: ["#37352f", "#55524a", "#8a8578"],
+    light: { bg: "#f7f6f3", card: "#ffffff", card2: "#f1f0ec", line: "#e9e8e4", txt: "#37352f", mut: "#787774" },
+    dark: { bg: "#191919", card: "#202020", card2: "#2a2a2a", line: "#333333", txt: "#e9e9e7", mut: "#9b9a97" } },
+  { id: "archiv", name: "Archiv-Grün", note: "inspiriert von Evernote", acc: "#00a82d", acc2: "#166a8f", hero: ["#0e3b2b", "#166a8f", "#2dbe60"],
+    light: { bg: "#f4eee5", card: "#fffdf9", card2: "#f8f3ea", line: "#e8dfd0" } },
+  { id: "scanner", name: "Scanner Blau", note: "Dokumenten-Scanner-Stil", acc: "#1a73e8", acc2: "#f9ab00", hero: ["#0d2a5c", "#1a73e8", "#4fa3ff"] },
+];
+const POS_SWATCHES = ["#16a34a", "#22c55e", "#00a87e", "#0d9488", "#36a18b", "#0b63f6", "#2eaadc", "#494fdf", "#a67931"];
+const NEG_SWATCHES = ["#e5484d", "#dc2626", "#fe4b60", "#e16259", "#b55b64", "#ec7e00", "#f59e0b", "#9333ea", "#475569"];
+const mixWhite = (hex, p) => { const n = parseInt(hex.slice(1), 16), f = (c) => Math.round(c + (255 - c) * p); return "#" + [n >> 16, (n >> 8) & 255, n & 255].map((c) => f(c).toString(16).padStart(2, "0")).join(""); };
+function applyDesign(design, theme) {
+  const st = document.documentElement.style, pr = DESIGN_PRESETS.find((x) => x.id === design.preset) || DESIGN_PRESETS[0];
+  const set = (k, v) => (v ? st.setProperty(k, v) : st.removeProperty(k));
+  const dark = theme === "dark", def = pr.id === "fido";
+  set("--acc", def ? null : dark ? mixWhite(pr.acc, 0.22) : pr.acc);
+  set("--acc2", def ? null : pr.acc2);
+  set("--hero", def ? null : `linear-gradient(135deg,${pr.hero[0]} 0%,${pr.hero[1]} 55%,${pr.hero[2]} 100%)`);
+  const surf = (dark ? pr.dark : pr.light) || {};
+  for (const k of ["bg", "card", "card2", "line", "txt", "mut"]) set("--" + k, surf[k]);
+  set("--pos", design.pos ? (dark ? mixWhite(design.pos, 0.18) : design.pos) : null);
+  set("--neg", design.neg ? (dark ? mixWhite(design.neg, 0.18) : design.neg) : null);
+  document.body.classList.toggle("outneg", !!design.outNeg);
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = surf.bg || (dark ? "#0d1117" : "#f3f5f9");
+}
+function Swatches({ value, list, def, onPick }) {
+  const custom = value && !list.includes(value);
+  return (
+    <div className="swatches">
+      <button className={"sw def" + (!value ? " on" : "")} onClick={() => onPick(null)} title="Standard" style={{ background: def }}>A</button>
+      {list.map((c) => <button key={c} className={"sw" + (value === c ? " on" : "")} style={{ background: c }} title={c} onClick={() => onPick(c)} />)}
+      <label className={"sw custom" + (custom ? " on" : "")} title="Eigene Farbe wählen" style={custom ? { background: value } : undefined}>
+        <input type="color" value={value || def} onChange={(e) => onPick(e.target.value)} />＋
+      </label>
+    </div>
+  );
+}
+function DesignSettings({ design, setDesign }) {
+  const pick = (k, v) => setDesign({ ...design, [k]: v });
+  return (
+    <>
+      <p className="muted small">Farbstil der App – Voreinstellungen angelehnt an bekannte Finanz- und Dokumenten-Apps. Tag-/Nachtmodus funktioniert mit jedem Stil.</p>
+      <div className="presets">
+        {DESIGN_PRESETS.map((pr) => (
+          <button key={pr.id} className={"preset" + ((design.preset || "fido") === pr.id ? " on" : "")} onClick={() => pick("preset", pr.id)}>
+            <span className="pv" style={{ background: `linear-gradient(135deg,${pr.hero[0]},${pr.hero[1]} 55%,${pr.hero[2]})` }}>
+              <i style={{ background: pr.acc }} /><i style={{ background: pr.acc2 }} />{pr.light?.bg && <i style={{ background: pr.light.bg }} />}
+            </span>
+            <b>{pr.name}</b><small>{pr.note}</small>
+          </button>
+        ))}
+      </div>
+      <h4 className="subhead">Farben für Guthaben & Schulden</h4>
+      <div className="colorrow"><span><b>Guthaben</b><small className="muted block">positive Kontostände, Eingänge</small></span><b className="pos">+{fmtMoney(1234.56)}</b></div>
+      <Swatches value={design.pos} list={POS_SWATCHES} def="#16a34a" onPick={(c) => pick("pos", c)} />
+      <div className="colorrow"><span><b>Schulden</b><small className="muted block">negative Kontostände</small></span><b className="neg">{fmtMoney(-567.89)}</b></div>
+      <Swatches value={design.neg} list={NEG_SWATCHES} def="#e5484d" onPick={(c) => pick("neg", c)} />
+      <label className="switchrow">
+        <span><b>Ausgaben in Schulden-Farbe</b><small className="muted block">Auch einzelne Abbuchungen einfärben (sonst neutral)</small></span>
+        <input type="checkbox" className="switch" checked={!!design.outNeg} onChange={(e) => pick("outNeg", e.target.checked)} />
+      </label>
+    </>
+  );
+}
+
+function Settings({ design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
-  const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "rules", "trash", "backup", "verbindung"]);
+  const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "rules", "trash", "backup", "verbindung"]);
   useEffect(() => ls.set("settingsOrder", secOrder), [secOrder]);
   useEffect(() => ls.set("settingsClosed", secClosed), [secClosed]);
-  const secDnd = useDnd((d, over) => setSecOrder((cur) => {
-    const ids = ["darstellung", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "rules", "trash", "backup", "verbindung"];
-    const full = [...cur.filter((x) => ids.includes(x)), ...ids.filter((x) => !cur.includes(x))];
-    return moveBetween({ s: full }, "s", d.index, "s", over.index).s;
-  }));
+  const secDnd = useDnd((d, over) => setSecOrder((cur) => moveBetween({ s: mergeOrder(cur, SET_IDS) }, "s", d.index, "s", over.index).s));
   const impRef = useRef();
   const [imp, setImp] = useState(null);
   const [health, setHealth] = useState(null);
@@ -2525,6 +2721,7 @@ function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmou
           ))}
         </div>
       </SetSec></>,
+    "design": <><SetSec id="design" title="Design"><DesignSettings design={design} setDesign={setDesign} /></SetSec></>,
     "datenschutz": <><SetSec id="datenschutz" title="Datenschutz">
         <label className="switchrow">
           <span><b>Geldbeträge anzeigen</b><small className="muted block">Aus = alle Beträge werden als „€ •••“ verdeckt (z. B. wenn jemand mitschaut). Schnell umschalten auch mit dem Augen-Symbol oben rechts.</small></span>
@@ -2613,18 +2810,13 @@ function Settings({ themeMode, setThemeMode, importTxs, hideAmounts, setHideAmou
         )}
       </SetSec></>
   };
-  const ids = Object.keys(sections);
-  const order = [...secOrder.filter((x) => ids.includes(x)), ...ids.filter((x) => !secOrder.includes(x))];
+  const order = mergeOrder(secOrder, SET_IDS);
   const ctx = { order, collapsed: secClosed, dnd: secDnd,
     toggle: (id) => setSecClosed((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id])) };
   const allClosed = order.every((id) => secClosed.includes(id));
   return (
     <SetCtx.Provider value={ctx}>
     <div className="settings" data-sec-list={"s|" + order.length}>
-      <div className="tile frow click" onClick={() => setTab("deadlines")}>
-        <span className="caticon" style={{ width: 40, height: 40, background: "#e5484d22", fontSize: 18 }}>⏰</span>
-        <div className="grow"><b>Fristen</b><small className="muted block">Zahlungen, Kündigungen, Termine</small></div><span className="muted">›</span>
-      </div>
 
 
       <div className="secbar">
@@ -3064,4 +3256,73 @@ fieldset.ssec{padding:0}
 .quick button span{font-size:22px}
 .thumb.sm{width:36px;height:46px;border-radius:6px}
 .hero-v.sm{font-size:26px;font-weight:700;margin:4px 0 8px}
+/* v0.10 Design */
+.pos{color:var(--pos,var(--ok))}.neg{color:var(--neg,var(--red))}
+body.outneg .amt.out,body.outneg b.out{color:var(--neg,var(--red))}
+.presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
+.preset{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px;border-radius:14px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font:inherit;cursor:pointer;text-align:left}
+.preset.on{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 30%,transparent)}
+.preset .pv{width:100%;height:54px;border-radius:10px;display:flex;align-items:flex-end;gap:4px;padding:6px;margin-bottom:6px}
+.preset .pv i{width:14px;height:14px;border-radius:50%;border:2px solid #fff8}
+.preset b{font-size:14px}.preset small{font-size:12px;color:var(--mut)}
+.subhead{margin:18px 0 6px;font-size:14px}
+.colorrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+.colorrow>b{font-size:17px;font-variant-numeric:tabular-nums}
+.swatches{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 4px}
+.sw{width:32px;height:32px;border-radius:50%;border:2px solid var(--card);box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0;position:relative;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700}
+.sw.on{box-shadow:0 0 0 2px var(--txt)}
+.sw.custom{background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red);color:#fff;text-shadow:0 1px 2px #0008;font-size:16px}
+.sw.custom input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;padding:0;border:0}
+/* Einstellungen: alle Bereiche gleich breit */
+.settings{width:100%}
+fieldset.ssec{width:100%;min-width:0;box-sizing:border-box}
+
+.dactions{display:flex;gap:2px;align-self:center;flex:none}
+.dactions button{width:34px;height:34px;border-radius:10px;border:0;background:transparent;color:var(--mut);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.dactions button:hover,.dactions button.on{background:var(--card2);color:var(--acc)}
+.dactions button.del:hover{color:var(--red)}
+.gbody .dactions{margin-top:6px;justify-content:flex-end}
+@media (max-width:520px){.ditem .dactions{flex-direction:column;gap:0}.ditem .dactions button{width:30px;height:28px}}
+.panelhead{gap:8px;justify-content:flex-start}.panelhead>b:first-child{margin-right:auto}
+.xbtn{flex:none;width:34px;height:34px;border-radius:50%;border:0;background:var(--card2);color:var(--mut);font-size:15px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.xbtn:hover{color:var(--txt);background:var(--line)}
+.textinfo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:12px 0 6px;font-size:13px}
+.textinfo .link{font-size:13px}
+
+/* Konten am Desktop: Tabelle statt Handy-Karten */
+.txtable{background:var(--card);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;margin-top:8px}
+.txhead,.txrow{display:grid;grid-template-columns:92px minmax(0,1fr) 190px 130px;gap:14px;align-items:center;padding:0 16px}
+.txtable.withacc .txhead,.txtable.withacc .txrow{grid-template-columns:92px minmax(0,1fr) 170px 150px 130px}
+.txhead{font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;height:40px;border-bottom:1px solid var(--line);background:var(--card2)}
+.txrow{min-height:52px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px}
+.txrow:last-child{border-bottom:0}.txrow:hover{background:var(--card2)}
+.txdesc{display:flex;align-items:center;gap:10px;min-width:0}.txdesc b{font-weight:600}
+.txtable .r{text-align:right;font-variant-numeric:tabular-nums}
+.one{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (min-width:1024px){
+  .maincol .hero{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:36px;align-items:center;padding:22px 26px}
+  .maincol .hero>small,.maincol .hero>.hero-v,.maincol .hero>.herolink{grid-column:1;justify-self:start}
+  .maincol .hero>.hero-row{grid-column:2;grid-row:1/span 3;margin:0}
+  .maincol .hero>.herolink{margin:4px 0 0}
+}
+
+/* v0.10 Übersicht: freies Raster */
+.dash.gridded{display:grid;grid-template-columns:repeat(var(--cols),minmax(0,1fr));grid-auto-rows:8px;grid-auto-flow:row dense;gap:var(--gap)!important;align-items:start}
+.dash.gridded>.widget{grid-column:auto;margin:0;align-self:stretch}
+.winner{display:flex;flex-direction:column}
+.winner.fixed{height:100%}
+.winner.fixed .wbody{flex:1;min-height:0;display:flex}
+.winner.fixed .wbody>*{flex:1;min-height:0;overflow:auto;margin:0!important}
+.dash.gridded .wbody>.tile,.dash.gridded .wbody>.hero{margin:0}
+.dash.editing.gridded .widget{outline-offset:2px}
+.wresize{position:absolute;right:-4px;bottom:-4px;width:22px;height:22px;cursor:nwse-resize;touch-action:none;z-index:3;border-radius:6px;background:var(--card);border:1px solid var(--acc);
+  background-image:linear-gradient(135deg,transparent 45%,var(--acc) 45% 55%,transparent 55%,transparent 65%,var(--acc) 65% 75%,transparent 75%)}
+body.rz-active,body.rz-active *{cursor:nwse-resize!important;user-select:none!important}
+.wsize button{width:auto;min-width:28px;padding:0 6px;font-size:13px}
+.gapctl{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mut);white-space:nowrap}
+.gapctl input{width:110px;padding:0;border:0;background:transparent;accent-color:var(--acc)}
+.gapctl small{min-width:34px}
+@media (max-width:900px){.editbar{flex-wrap:wrap}.gapctl{order:5;width:100%}}
+.widget.wfull.dropbefore::before,.widget.wfull.dropafter::after{left:0;right:0;width:auto;height:4px;bottom:auto;top:-10px}
+.widget.wfull.dropafter::after{top:auto;bottom:-10px}
 `;
