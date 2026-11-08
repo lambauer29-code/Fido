@@ -7,6 +7,7 @@ export default function handler(req, res) {
     key: !!process.env.ANTHROPIC_API_KEY,
     tokenRequired: !!token,
     tokenOk: !token || req.headers["x-app-token"] === token,
-    model: process.env.CLAUDE_MODEL || "claude-sonnet-5-5"
+    model: process.env.CLAUDE_MODEL || "claude-sonnet-5-5",
+    calendar: !!process.env.BLOB_READ_WRITE_TOKEN
   });
 }

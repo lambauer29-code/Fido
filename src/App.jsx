@@ -267,7 +267,7 @@ function icsEvent(dl, doc) {
   const next = new Date(dl.date + "T12:00:00"); next.setDate(next.getDate() + 1);
   const d2 = next.toLocaleDateString("sv-SE").replace(/-/g, "");
   const stamp = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-  const amount = doc.amount?.total != null ? ` (${fmtMoney(doc.amount.total, doc.amount.currency)})` : "";
+  const amount = payAmt(doc) != null ? ` (${fmtMoney(payAmt(doc), doc.amount.currency)})` : "";
   const sum = icsEsc(`${dl.label}: ${doc.title}${amount}`);
   return [
     "BEGIN:VEVENT", `UID:${dl.id}@dokumente`, `DTSTAMP:${stamp}`,
@@ -800,7 +800,7 @@ function SideResizer() {
   return <div className="sideresize" onPointerDown={down} onDoubleClick={reset} title="Ziehen = Breite ändern · Doppelklick = Standard" />;
 }
 
-function AccountTree({ onAll, showChecks = true, groups, txs, sel = [], onToggle, onOnly, onGroupSel, onHide, onToggleGroup, hidden = [], onUnhide, variant = "" }) {
+function AccountTree({ onToggleChecks, onAll, showChecks = true, groups, txs, sel = [], onToggle, onOnly, onGroupSel, onHide, onToggleGroup, hidden = [], onUnhide, variant = "" }) {
   const shown = groups.filter((g) => g.accounts.length);
   if (!shown.length && !hidden.length) return null;
   const Box = ({ state, onClick, label }) => !showChecks ? null : (
@@ -810,6 +810,11 @@ function AccountTree({ onAll, showChecks = true, groups, txs, sel = [], onToggle
   );
   return (
     <div className={"acctree " + variant}>
+      {onToggleChecks && (
+        <button className={"selmode" + (showChecks ? " on" : "")} onClick={onToggleChecks} title={showChecks ? "Mehrfachauswahl ausschalten" : "Mehrfachauswahl einschalten"} aria-pressed={showChecks}>
+          <span className="cbox">{showChecks ? "✓" : ""}</span>Mehrfachauswahl
+        </button>
+      )}
       {shown.map((g, gi) => {
         const ids = g.accounts.map((a) => a.id), n = ids.filter((id) => sel.includes(id)).length;
         return (
@@ -928,6 +933,13 @@ export default function App() {
   CAT_STYLE = nav.catStyle || {};
   useEffect(() => ls.set("categories", categories), [categories]);
   const setCategories = (list) => setNav((n) => ({ ...n, docGroups: buildDocGroups(list) }));
+  // neue Kategorie ohne die eigenen Gruppen zu verlieren: in die erste Finanzen-Gruppe
+  const addCategory = (name) => setNav((n) => {
+    if (n.docGroups.some((g) => g.cats.includes(name))) return n;
+    let done = false;
+    const docGroups = n.docGroups.map((g) => (!done && g.area === "finanzen" ? ((done = true), { ...g, cats: [...g.cats, name] }) : g));
+    return { ...n, docGroups: done ? docGroups : [...docGroups, { id: "d-" + uid(), title: "Weitere", area: "finanzen", cats: [name] }] };
+  });
   const toggleDocGroup = (id) => setNav((n) => ({ ...n, docGroups: n.docGroups.map((g) => (g.id === id ? { ...g, collapsed: !g.collapsed } : g)) }));
   const [selAccs, setSelAccsRaw] = useState(() => ls.get("selAccs", []));
   const setSelAccs = (v) => setSelAccsRaw((cur) => { const n = typeof v === "function" ? v(cur) : v; ls.set("selAccs", n); return n; });
@@ -939,6 +951,8 @@ export default function App() {
   const [theme, setTheme] = useState(() => effectiveTheme(ls.get("theme", "auto")));
   const [newAccReq, setNewAccReq] = useState(false);
   const [homeEdit, setHomeEdit] = useState(false);
+  const [calSync, setCalSyncRaw] = useState(() => ls.get("calSync", { on: false, key: "", at: "" }));
+  const setCalSync = (v) => { ls.set("calSync", v); setCalSyncRaw(v); };
   const [design, setDesignRaw] = useState(() => ls.get("design", { preset: "fido" }));
   const setDesign = (d) => { ls.set("design", d); setDesignRaw(d); };
   useEffect(() => applyDesign(design, theme), [design, theme]);
@@ -1181,6 +1195,18 @@ export default function App() {
   }
 
   const openDoc = docs.find((d) => d.id === openId);
+  // Kalender-Abo: bei jeder Änderung der Fristen (verzögert) neu hochladen
+  const calSig = useMemo(() => JSON.stringify(active.flatMap((d) => (d.deadlines || []).filter((x) => !x.done).map((x) => [x.id, x.date, x.label, d.title, payAmt(d)]))), [active]);
+  const calFirst = useRef(true);
+  useEffect(() => {
+    if (!calSync.on || !calSync.key) return;
+    if (calFirst.current) { calFirst.current = false; if (calSync.at && Date.now() - new Date(calSync.at) < 6e5) return; }
+    const t = setTimeout(async () => {
+      const items = active.flatMap((doc) => (doc.deadlines || []).filter((x) => !x.done).map((dl) => [dl, doc]));
+      try { const at = await pushCalendar(calSync.key, items, token); setCalSync({ ...calSync, at }); } catch {}
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [calSig, calSync.on]);
   const visAccounts = accounts.filter((a) => !a.hidden), hiddenAccs = accounts.filter((a) => a.hidden);
   const groups = resolveGroups(nav, visAccounts);
   // Auswahl: leere Liste = alle sichtbaren Konten
@@ -1222,13 +1248,13 @@ export default function App() {
         {tab === "home" && <Home docs={active} txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={visAccounts.some((a) => a.kind === "cash")}
           accounts={visAccounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
           editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => setScanOpen(true), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
-        {tab === "accounts" && <Accounts linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
+        {tab === "accounts" && <Accounts addCategory={addCategory} linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
           acc={selAcc} setAcc={setSelAcc} sel={effSel} allSel={allSel} setSel={setSelAccs} accActions={accActions} hiddenAccs={hiddenAccs} visAccounts={visAccounts} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
         {tab === "docs" && <DocList trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup} />}
-        {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} />}
+        {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} />}
         {tab === "settings" && (
           <Settings theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
@@ -1270,7 +1296,8 @@ export default function App() {
               </button>
               {t.key === "accounts" && t.side && nav.accOpen && accounts.length > 0 && (
                 <div className="subnav side-only">
-                  <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={hiddenAccs} showChecks={nav.showChecks !== false} {...accActions} />
+                  <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={hiddenAccs} showChecks={nav.showChecks !== false}
+                    onToggleChecks={() => setNav((n) => ({ ...n, showChecks: n.showChecks === false }))} {...accActions} />
                 </div>
               )}
               {t.key === "docs" && t.side && nav.docsOpen && active.length > 0 && (
@@ -1716,12 +1743,12 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
 
       <div className="seg scopeseg" role="group" aria-label="Privat oder Firma">
         {[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => (
-          <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small>{k === "alle" ? docs.length : docs.filter((d) => docScope(d) === k).length}</small></button>
+          <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small className="cnt">({k === "alle" ? docs.length : docs.filter((d) => docScope(d) === k).length})</small></button>
         ))}
       </div>
       <div className="seg areaseg">
         {[["alle", "Alle", docs.length], ...Object.entries(AREAS).map(([k, [i, l]]) => [k, `${i} ${l}`, docs.filter((d) => docArea(d) === k).length])].map(([k, l, n]) => (
-          <button key={k} className={area === k ? "on" : ""} onClick={() => setArea(k)}>{l} <small>{n}</small></button>
+          <button key={k} className={area === k ? "on" : ""} onClick={() => setArea(k)}>{l} <small className="cnt">({n})</small></button>
         ))}
       </div>
       {area === "sonstiges" && <p className="muted small" style={{ margin: "4px 2px 8px" }}>Dokumente in „Sonstiges“ zählen nicht in Übersicht, Budgets und Auswertungen.</p>}
@@ -1790,8 +1817,12 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
 }
 
 /* ---------- Fristen ---------- */
-function Deadlines({ docs, onOpen, saveDoc }) {
+function Deadlines({ docs, onOpen, saveDoc, calSync, setCalSync, token, notify }) {
   const [showDone, setShowDone] = useState(false);
+  const [mode, setMode] = useState(() => ls.get("deadlineView", "cal"));
+  useEffect(() => ls.set("deadlineView", mode), [mode]);
+  const [syncOpen, setSyncOpen] = useState(false);
+  const allItems = docs.flatMap((doc) => (doc.deadlines || []).map((dl) => [dl, doc])).sort((a, b) => a[0].date.localeCompare(b[0].date));
   const items = docs.flatMap((doc) => (doc.deadlines || []).map((dl) => [dl, doc]))
     .filter(([dl]) => showDone || !dl.done)
     .sort((a, b) => a[0].date.localeCompare(b[0].date));
@@ -1810,12 +1841,20 @@ function Deadlines({ docs, onOpen, saveDoc }) {
 
   return (
     <>
-      <div className="filters">
-        <button className="btn" onClick={() => downloadIcs(items.filter(([dl]) => !dl.done), "fristen.ics")} disabled={!items.length}>📅 Alle in Kalender</button>
-        <label className="check"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Erledigte zeigen</label>
+      <div className="filters dlbar">
+        <div className="seg" role="group" aria-label="Ansicht">
+          <button className={mode === "cal" ? "on" : ""} onClick={() => setMode("cal")}>📅 Kalender</button>
+          <button className={mode === "list" ? "on" : ""} onClick={() => setMode("list")}>☰ Liste</button>
+        </div>
+        <span className="grow" />
+        <button className={"btn" + (calSync.on ? " synced" : "")} onClick={() => setSyncOpen(true)}>🍎 {calSync.on ? "Apple Kalender verbunden" : "Mit Apple Kalender verbinden"}</button>
+        <button className="btn" onClick={() => downloadIcs(allItems.filter(([dl]) => !dl.done), "fristen.ics")} disabled={!allItems.length} title="Einmalig als .ics herunterladen">⬇︎ .ics</button>
+        {mode === "list" && <label className="check"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Erledigte zeigen</label>}
       </div>
-      {!items.length && <div className="empty"><p>Keine offenen Fristen 🎉</p></div>}
-      {groups.map(([name, g]) => !!g.length && (
+      {syncOpen && <CalSyncSheet sync={calSync} setSync={setCalSync} items={allItems.filter(([dl]) => !dl.done)} token={token} notify={notify} onClose={() => setSyncOpen(false)} />}
+      {mode === "cal" && <MonthCalendar items={allItems} docs={docs} onOpen={onOpen} saveDoc={saveDoc} />}
+      {mode === "list" && !items.length && <div className="empty"><p>Keine offenen Fristen 🎉</p></div>}
+      {mode === "list" && groups.map(([name, g]) => !!g.length && (
         <section key={name}>
           <h3 className={name === "Überfällig" ? "red" : ""}>{name}</h3>
           <ul className="list">
@@ -1843,6 +1882,136 @@ function Deadlines({ docs, onOpen, saveDoc }) {
         </section>
       ))}
     </>
+  );
+}
+
+/* ---------- Kalender-Abo (Apple Kalender, Google, Outlook) ---------- */
+function buildIcs(items) {
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Fido//Fristen//DE", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "X-WR-CALNAME:Fido – Fristen", "X-WR-TIMEZONE:Europe/Vienna", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H",
+    ...items.map(([dl, doc]) => icsEvent(dl, doc)), "END:VCALENDAR"].join("\r\n");
+}
+const calKeyNew = () => Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => b.toString(16).padStart(2, "0")).join("");
+async function pushCalendar(key, items, token) {
+  const r = await fetch("/api/cal", { method: "POST", headers: { "content-type": "application/json", "x-app-token": token }, body: JSON.stringify({ k: key, ics: buildIcs(items) }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j.at || new Date().toISOString();
+}
+
+function CalSyncSheet({ sync, setSync, items, token, onClose, notify }) {
+  const [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const host = location.host;
+  const url = sync.key ? `webcal://${host}/api/cal?k=${sync.key}` : "";
+  async function enable() {
+    setBusy(true); setErr("");
+    const key = sync.key || calKeyNew();
+    try { const at = await pushCalendar(key, items, token); setSync({ on: true, key, at }); notify("Kalender-Abo eingerichtet"); }
+    catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+  async function disable() {
+    if (!confirm("Kalender-Abo beenden? Apple Kalender zeigt die Fristen danach nicht mehr an.")) return;
+    try { await fetch(`/api/cal?k=${sync.key}`, { method: "DELETE", headers: { "x-app-token": token } }); } catch {}
+    setSync({ on: false, key: "", at: "" });
+  }
+  return (
+    <Win id="calsync" onClose={onClose} small>
+      <div className="panelhead"><b>Mit Apple Kalender verbinden</b><button className="xbtn" onClick={onClose} aria-label="Schließen">✕</button></div>
+      {!sync.on ? <>
+        <p>Fido stellt deine Fristen als <b>Kalender-Abo</b> bereit. Apple Kalender (iPhone, iPad, Mac) holt Änderungen dann selbst ab – neue Bons, Zahlungsfristen, Garantie- und Kündigungstermine erscheinen automatisch.</p>
+        <p className="muted small">Die Fristen werden dafür verschlüsselt übertragen und in deinem Vercel-Speicher unter einem geheimen Link abgelegt. Wer den Link kennt, kann die Termine sehen – nicht weitergeben.</p>
+        {err && <div className="healthbox"><p className="red">✕ {err}</p>
+          {/Blob/.test(err) && <ol className="small steps">
+            <li>vercel.com → dein Projekt → <b>Storage</b> → <b>Create</b> → <b>Blob</b> (kostenlos)</li>
+            <li>Speicher mit dem Projekt verbinden („Connect Project“) – die Variable <code>BLOB_READ_WRITE_TOKEN</code> wird automatisch gesetzt</li>
+            <li>Unter <b>Deployments</b> → ⋯ → <b>Redeploy</b>, dann hier nochmal „Einrichten“</li>
+          </ol>}</div>}
+        <button className="btn primary" disabled={busy} onClick={enable}>{busy ? "Richte ein …" : "🍎 Kalender-Abo einrichten"}</button>
+      </> : <>
+        <p className="ok">✓ Abo aktiv · zuletzt aktualisiert {sync.at ? new Date(sync.at).toLocaleString("de-AT") : "–"}</p>
+        <a className="btn primary" href={url}>🍎 In Apple Kalender abonnieren</a>
+        <p className="muted small">Am iPhone/iPad/Mac antippen → „Abonnieren“. Tipp: in den Kalender-Einstellungen „Aktualisieren: Alle 15 Minuten“ bzw. „Stündlich“ wählen.</p>
+        <label>Link (auch für Google Kalender / Outlook)
+          <div className="row1" style={{ gap: 6 }}><input readOnly value={url.replace("webcal://", "https://")} onFocus={(e) => e.target.select()} />
+            <button className="btn" onClick={async () => { try { await navigator.clipboard.writeText(url.replace("webcal://", "https://")); notify("Link kopiert"); } catch {} }}>Kopieren</button></div>
+        </label>
+        <div className="actions">
+          <button className="btn" disabled={busy} onClick={async () => { setBusy(true); try { setSync({ ...sync, at: await pushCalendar(sync.key, items, token) }); notify("Kalender aktualisiert"); } catch (e) { setErr(e.message); } setBusy(false); }}>↻ Jetzt aktualisieren</button>
+          <button className="btn danger" onClick={disable}>Abo beenden</button>
+        </div>
+        {err && <p className="red small">✕ {err}</p>}
+      </>}
+      <p className="muted small" style={{ marginTop: 14 }}>Ohne Abo: „⬇︎ .ics“ lädt alle offenen Fristen einmalig herunter – öffnen fügt sie zum Kalender hinzu.</p>
+    </Win>
+  );
+}
+
+/* ---------- Interaktiver Monatskalender ---------- */
+function MonthCalendar({ items, onOpen, saveDoc, docs }) {
+  const today = todayISO();
+  const [month, setMonth] = useState(() => today.slice(0, 7));
+  const [selDay, setSelDay] = useState(today);
+  const [dragOver, setDragOver] = useState("");
+  const first = new Date(month + "-01T12:00:00");
+  const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
+  const days = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d.toLocaleDateString("sv-SE"); });
+  const weeks = days.slice(35).every((d) => !d.startsWith(month)) ? days.slice(0, 35) : days;
+  const byDay = {};
+  for (const it of items) (byDay[it[0].date] ||= []).push(it);
+  const shift = (n) => { const d = new Date(first); d.setMonth(d.getMonth() + n); setMonth(d.toLocaleDateString("sv-SE").slice(0, 7)); };
+  const moveTo = async (docId, dlId, date) => {
+    const doc = docs.find((d) => d.id === docId); if (!doc) return;
+    await saveDoc({ ...doc, deadlines: doc.deadlines.map((x) => (x.id === dlId ? { ...x, date } : x)) });
+  };
+  const toggle = (dl, doc) => saveDoc({ ...doc, deadlines: doc.deadlines.map((x) => (x.id === dl.id ? { ...x, done: !x.done } : x)), paid: /zahl|fällig/i.test(dl.label) && !dl.done ? true : doc.paid });
+  const tone = (dl) => (dl.done ? "done" : dl.date < today ? "over" : daysUntil(dl.date) <= 7 ? "soon" : "");
+  const sel = byDay[selDay] || [];
+  return (
+    <div className="cal">
+      <div className="calhead">
+        <button className="iconbtn" onClick={() => shift(-1)} aria-label="Vorheriger Monat">‹</button>
+        <b className="grow">{first.toLocaleDateString("de-AT", { month: "long", year: "numeric" })}</b>
+        <button className="chip" onClick={() => { setMonth(today.slice(0, 7)); setSelDay(today); }}>Heute</button>
+        <button className="iconbtn" onClick={() => shift(1)} aria-label="Nächster Monat">›</button>
+      </div>
+      <div className="calgrid" role="grid">
+        {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w) => <div key={w} className="calwd">{w}</div>)}
+        {weeks.map((d) => {
+          const list = byDay[d] || [];
+          return (
+            <div key={d} role="gridcell" tabIndex={0}
+              className={"calday" + (d.startsWith(month) ? "" : " other") + (d === today ? " today" : "") + (d === selDay ? " sel" : "") + (dragOver === d ? " over" : "")}
+              onClick={() => setSelDay(d)} onKeyDown={(e) => e.key === "Enter" && setSelDay(d)}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(d); }} onDragLeave={() => setDragOver("")}
+              onDrop={(e) => { e.preventDefault(); setDragOver(""); const [docId, dlId] = e.dataTransfer.getData("text/plain").split("|"); moveTo(docId, dlId, d); setSelDay(d); }}>
+              <span className="calnum">{+d.slice(8)}</span>
+              <div className="calev">
+                {list.slice(0, 3).map(([dl, doc]) => (
+                  <span key={dl.id} className={"calchip " + tone(dl)} draggable title={`${dl.label}: ${doc.title} – zum Verschieben ziehen`}
+                    onDragStart={(e) => e.dataTransfer.setData("text/plain", `${doc.id}|${dl.id}`)}
+                    onClick={(e) => { e.stopPropagation(); onOpen(doc.id); }}>{dl.label}</span>
+                ))}
+                {list.length > 3 && <span className="calmore">+{list.length - 3}</span>}
+                {!!list.length && <span className="caldots">{list.slice(0, 4).map(([dl]) => <i key={dl.id} className={tone(dl)} />)}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="calsel">
+        <h3>{new Date(selDay + "T12:00").toLocaleDateString("de-AT", { weekday: "long", day: "numeric", month: "long" })}</h3>
+        {!sel.length && <p className="muted small">Keine Fristen an diesem Tag.</p>}
+        {sel.map(([dl, doc]) => (
+          <div key={dl.id} className={"frow calrow " + tone(dl)}>
+            <input type="checkbox" checked={!!dl.done} onChange={() => toggle(dl, doc)} aria-label="Erledigt" />
+            <div className="grow click" onClick={() => onOpen(doc.id)}><b>{dl.label}</b><small className="muted block">{doc.title}</small></div>
+            {payAmt(doc) != null && <b>{fmtMoney(payAmt(doc), doc.amount.currency)}</b>}
+            <input type="date" value={dl.date} onChange={(e) => e.target.value && moveTo(doc.id, dl.id, e.target.value)} aria-label="Datum ändern" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1941,7 +2110,7 @@ const shortD = (iso) => (iso ? new Date(iso + "T12:00").toLocaleDateString("de-A
 const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json,.xlsx,.xlsm,.xls,.pdf,image/*";
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
-function Accounts({ linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc, setAcc, sel = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
+function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc, setAcc, sel = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
   const [pick, setPick] = useState(false);
   const [newAcc, setNewAcc] = useState(false);
   useEffect(() => { if (newAccReq) { setNewAcc(true); clearNewAccReq(); } }, [newAccReq]);
@@ -1987,7 +2156,7 @@ function Accounts({ linkTx, attachNew, txs, accounts, setAccounts, importTxs, up
   for (const t of list.slice(0, limit)) { const g = dayGroups[dayGroups.length - 1]; if (g && g.date === t.date) g.items.push(t); else dayGroups.push({ date: t.date, items: [t] }); }
 
   return (
-    <div className="split">
+    <div className={"split" + (!pending.length && !(pf.count > 0) ? " noside" : "")}>
       <aside className="side">
 
       {!!pending.length && (
@@ -2056,7 +2225,7 @@ function Accounts({ linkTx, attachNew, txs, accounts, setAccounts, importTxs, up
           <select className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
         </div>
       )}
-      {!allSel && sel.length > 1 && (
+      {sel.length > 1 && (
         <div className="selcards">
           {selAccounts.map((a) => { const b = accountBalance(a, txs); return (
             <div key={a.id} className="selcard" onClick={() => setAcc(a.id)}>
@@ -2119,7 +2288,7 @@ function Accounts({ linkTx, attachNew, txs, accounts, setAccounts, importTxs, up
         onSave={(a) => { setAccounts((l) => l.map((x) => (x.id === a.id ? a : x))); setEditAcc(null); notify("Konto gespeichert"); }} />}
       {newAcc && <AccountSheet txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
       {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
-      {txOpen && <TxSheet linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
+      {txOpen && <TxSheet addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
     </div>
   );
 }
@@ -2283,8 +2452,10 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
   );
 }
 
-function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, deleteTx, linkTx, attachNew }) {
+function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, deleteTx, linkTx, attachNew, addCategory, accounts = [] }) {
   useEsc(onClose);
+  const [accId, setAccId] = useState(t.accountId);
+  const [extraCats, setExtraCats] = useState([]);
   const [pickDoc, setPickDoc] = useState(false);
   const [dq, setDq] = useState("");
   const [cat, setCat] = useState(t.category);
@@ -2296,7 +2467,7 @@ function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, dele
   return (
     <Win id="tx" onClose={onClose}>
         <div className="panelhead"><b>Buchung</b>
-          <button className="btn primary" disabled={cat === t.category} onClick={() => { updateTx({ ...t, category: cat }, rule); onClose(); }}>Speichern</button>
+          <button className="btn primary" disabled={cat === t.category && accId === t.accountId} onClick={() => { updateTx({ ...t, category: cat, accountId: accId }, rule); onClose(); }}>Speichern</button>
           <button className="xbtn" onClick={onClose} aria-label="Schließen" title="Schließen">✕</button>
         </div>
         <div className="tile center-text">
@@ -2305,8 +2476,18 @@ function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, dele
         </div>
         {t.kind !== "broker" && (
           <fieldset>
-            <legend>Kategorie</legend>
-            <select value={cat} onChange={(e) => setCat(e.target.value)}>{[...new Set([...categories, t.category])].map((c) => <option key={c}>{c}</option>)}</select>
+            <legend>Kategorie & Konto</legend>
+            <select value={cat} onChange={(e) => {
+              if (e.target.value !== "__new") return setCat(e.target.value);
+              const n = (prompt("Name der neuen Kategorie:") || "").trim();
+              if (!n) return;
+              addCategory?.(n); setExtraCats((x) => [...x, n]); setCat(n);
+            }}>
+              {[...new Set([...categories, ...extraCats, t.category])].map((c) => <option key={c}>{c}</option>)}
+              <option value="__new">＋ Neue Kategorie …</option>
+            </select>
+            {accounts.length > 1 && <label>Konto
+              <select value={accId} onChange={(e) => setAccId(e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}{a.hidden ? " (ausgeblendet)" : ""}</option>)}</select></label>}
             {t.counterparty && <label className="check"><input type="checkbox" checked={rule} onChange={(e) => setRule(e.target.checked)} /> Immer so für „{t.counterparty}“</label>}
           </fieldset>
         )}
@@ -3736,4 +3917,38 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .editbar{top:calc(env(safe-area-inset-top) + 66px)}@media (min-width:1024px){.editbar{top:86px}}
 @media (min-width:768px){.fabmenu{top:80px}}
 .editbar{z-index:25!important}
+
+/* v0.13 */
+.seg small.cnt{margin-left:5px;opacity:.75}
+.selmode{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;color:var(--mut);font:inherit;font-size:11.5px;padding:4px 8px 6px;cursor:pointer;text-align:left}
+.selmode .cbox{width:15px;height:15px;font-size:10px;line-height:12px;pointer-events:none}
+.selmode:hover{color:var(--txt)}
+@media (min-width:1024px){.split.noside{grid-template-columns:minmax(0,1fr)!important}.split.noside>.side{display:none}}
+@media (min-width:1024px) and (max-width:1279px){.split{grid-template-columns:minmax(0,1fr)!important}.split>.side{order:3;position:static}}
+@media (min-width:700px){.selcards{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}}
+
+/* v0.14 Kalender */
+.dlbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.dlbar .seg{margin:0;width:auto}.dlbar .btn{margin:0}
+.btn.synced{border-color:var(--ok);color:var(--ok)}
+.cal{background:var(--card);border-radius:18px;box-shadow:var(--shadow);padding:12px;margin-top:10px}
+.calhead{display:flex;align-items:center;gap:8px;padding:4px 4px 10px}.calhead b{font-size:17px;text-transform:capitalize}
+.calgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.calwd{font-size:11px;font-weight:700;color:var(--mut);text-align:center;padding:4px 0;text-transform:uppercase;letter-spacing:.05em}
+.calday{min-height:96px;border-radius:12px;background:var(--card2);padding:6px;display:flex;flex-direction:column;gap:4px;cursor:pointer;border:1.5px solid transparent;min-width:0;outline:none}
+.calday:hover{border-color:var(--line)}.calday.other{opacity:.45}
+.calday.today .calnum{background:var(--acc);color:#fff}
+.calday.sel{border-color:var(--acc)}.calday.over{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,var(--card2))}
+.calnum{font-size:12px;font-weight:700;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+.calev{display:flex;flex-direction:column;gap:3px;min-width:0}
+.calchip{font-size:11px;line-height:1.25;padding:2px 6px;border-radius:6px;background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:grab}
+.calchip.soon{background:color-mix(in srgb,var(--warn) 25%,transparent)}.calchip.over{background:color-mix(in srgb,var(--red) 25%,transparent)}
+.calchip.done{text-decoration:line-through;opacity:.55}
+.calmore{font-size:11px;color:var(--mut);padding-left:4px}
+.caldots{display:none;gap:3px}.caldots i{width:6px;height:6px;border-radius:50%;background:var(--acc)}.caldots i.soon{background:var(--warn)}.caldots i.over{background:var(--red)}.caldots i.done{background:var(--mut)}
+@media (max-width:700px){.calday{min-height:52px;padding:4px;align-items:center}.calchip,.calmore{display:none}.caldots{display:flex}}
+.calsel{margin-top:14px;border-top:1px solid var(--line);padding-top:6px}.calsel h3{text-transform:capitalize}
+.calrow{gap:10px}.calrow input[type=date]{width:auto;padding:6px 8px;font-size:13px}.calrow input[type=checkbox]{width:18px;height:18px}
+.calrow.done b{text-decoration:line-through;opacity:.6}.calrow.over b{color:var(--red)}
+.steps{margin:6px 0 0;padding-left:18px}.steps li{margin:3px 0}
+.dlbar .seg button{display:inline-flex;flex-direction:row;align-items:center;gap:6px;white-space:nowrap;padding:8px 14px}
 `;
