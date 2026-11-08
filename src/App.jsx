@@ -74,6 +74,58 @@ async function openOriginal(d) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
   return true;
 }
+/* Teilen: Originaldateien über das System-Teilen-Menü (Nachrichten, WhatsApp, Mail, AirDrop …) */
+const EXT = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/heic": "heic", "image/webp": "webp" };
+const safeName = (t) => (t || "Dokument").replace(/[–—]/g, "-").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 80);
+async function docFiles(list) {
+  const out = [], used = new Set();
+  for (const d of list) {
+    const b = await db.getFile(d.id); if (!b) continue;
+    let n = safeName(d.title) + "." + (EXT[b.type] || (d.fileName || "").split(".").pop() || "bin"), k = 2;
+    while (used.has(n)) n = n.replace(/(\.\w+)$/, ` (${k++})$1`);
+    used.add(n); out.push(new File([b], n, { type: b.type || "application/octet-stream" }));
+  }
+  return out;
+}
+let shareUi = null; // wird von der App gesetzt: öffnet das Ersatz-Fenster
+async function shareDocs(list) {
+  if (!list.length) return;
+  const files = await docFiles(list);
+  if (!files.length) return alert("Originaldatei nicht gefunden");
+  const title = list.length === 1 ? list[0].title : `${list.length} Dokumente`;
+  if (navigator.canShare?.({ files })) {
+    try { await navigator.share({ files, title }); return; }
+    catch (e) { if (e.name === "AbortError") return; }
+  }
+  shareUi?.({ files, title, docs: list });
+}
+function downloadFiles(files) {
+  files.forEach((f, i) => setTimeout(() => {
+    const a = document.createElement("a"), u = URL.createObjectURL(f);
+    a.href = u; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 30000);
+  }, i * 350));
+}
+function ShareWin({ data, onClose }) {
+  const { files, title, docs } = data;
+  const summary = docs.map((d) => `• ${d.title}${d.documentDate ? " (" + fmtDate(d.documentDate) + ")" : ""}`).join("\n");
+  const size = files.reduce((s, f) => s + f.size, 0);
+  const via = (url) => { downloadFiles(files); setTimeout(() => window.open(url, "_blank"), 400); };
+  return (
+    <Win id="share" onClose={onClose} small center dirty={false}>
+      <div className="panelhead"><b>Teilen</b><XBtn /></div>
+      <p className="muted small">{files.length} Datei{files.length === 1 ? "" : "en"} · {(size / 1048576).toFixed(1).replace(".", ",")} MB – {title}</p>
+      <p className="small">Dieser Browser kann Dateien nicht direkt an andere Apps geben. Die Dateien werden heruntergeladen und die App geöffnet – dort die Dateien anhängen bzw. hineinziehen.</p>
+      <div className="sharegrid">
+        <button onClick={() => via(`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent("Im Anhang:\n" + summary + "\n")}`)}><span>✉️</span>E-Mail</button>
+        <button onClick={() => via(`https://wa.me/?text=${encodeURIComponent(title)}`)}><span>💬</span>WhatsApp</button>
+        <button onClick={() => via(`https://t.me/share/url?url=${encodeURIComponent(" ")}&text=${encodeURIComponent(title)}`)}><span>✈️</span>Telegram</button>
+        <button onClick={() => downloadFiles(files)}><span>⬇️</span>Herunterladen</button>
+      </div>
+      <p className="muted small">Tipp: Am iPhone, iPad und Mac (Safari) öffnet „Teilen“ direkt das System-Menü mit Nachrichten, WhatsApp, Mail, AirDrop usw.</p>
+    </Win>
+  );
+}
 /* Drucken: Seiten als Bilder in einen unsichtbaren Rahmen legen und den Druckdialog öffnen (klappt auch in Safari) */
 async function printDoc(d, notify) {
   const b = await db.getFile(d.id);
@@ -108,6 +160,7 @@ function DocActions({ d, prevOpen, onPreview, onEdit, onTrash }) {
     <div className="dactions" onClick={(e) => e.stopPropagation()}>
       <button title="Bearbeiten" aria-label="Bearbeiten" onClick={stop(onEdit)}><IcoEdit /></button>
       <button title="Drucken" aria-label="Drucken" onClick={stop(() => printDoc(d))}><IcoPrint /></button>
+      <button title="Teilen (Nachrichten, WhatsApp, Mail …)" aria-label="Teilen" onClick={stop(() => shareDocs([d]))}><IcoShare /></button>
       <button title="In den Papierkorb" aria-label="Löschen" className="del" onClick={stop(() => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && onTrash(d))}><IcoTrash /></button>
     </div>
   );
@@ -264,6 +317,7 @@ const IcoEdit = () => <Ico d={<><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 
 const IcoOpen = () => <Ico d={<><path d="M14 4h6v6" /><path d="M10 14L20 4" /><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></>} />;
 const IcoTrash = () => <Ico d={<><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V4h6v3" /></>} />;
 const IcoCalSync = () => <Ico size={17} d={<><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /><path d="M9.5 15.5l2 2 3.5-4" /></>} />;
+const IcoShare = () => <Ico d={<><path d="M12 15V3" /><path d="M8 7l4-4 4 4" /><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8" /></>} />;
 const IcoPrint = () => <Ico d={<><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M6 14h12v7H6z" /><path d="M17 12h.01" /></>} />;
 const IcoSun = () => <Ico d={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} />;
 const IcoMoon = () => <Ico d={<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z" />} />;
@@ -1357,6 +1411,8 @@ export default function App() {
       return d;
     }));
   }
+  const [shareData, setShareData] = useState(null);
+  shareUi = setShareData;
   const scanCb = useRef(null);
   const scanFor = (cb) => { scanCb.current = cb; setScanOpen(true); };
   async function saveCash(t, att) {
@@ -1638,6 +1694,7 @@ export default function App() {
         <Detail doc={openDoc} categories={categories} docGroups={nav.docGroups} addCategoryEx={addCategoryEx} onClose={() => setOpenId(null)} bookCash={bookCash} txs={txs} accounts={accounts} linkTx={linkTx}
           saveDoc={saveDoc} trashDoc={trashDoc} reanalyze={reanalyze} notify={notify} />
       )}
+      {shareData && <ShareWin data={shareData} onClose={() => setShareData(null)} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
     </IconLibCtx.Provider>
@@ -2067,6 +2124,8 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
   const [q, setQ] = useState("");
   const [prevId, setPrevId] = useState(null);
   const [winPrev, setWinPrev] = useState(null);
+  const [pick, setPick] = useState(null); // Set der ausgewählten IDs (null = Auswahl aus)
+  const togglePick = (id) => setPick((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [tag, setTag] = useState("");
   const [year, setYear] = useState("");
   const [sort, setSort] = useState("date");
@@ -2126,6 +2185,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         <select className="chip" value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</select>
         <select className="chip" value={tag} onChange={(e) => setTag(e.target.value)}><option value="">Alle Tags</option>{tags.map((t) => <option key={t}>{t}</option>)}</select>
         <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></select>
+        <button className={pick ? "chip on" : "chip"} disabled={!list.length} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑︎ Auswählen"}</button>
         <button className="chip" disabled={!list.length} onClick={() => exportCsv(list, `dokumente${year ? "-" + year : ""}${taxOnly ? "-steuer" : ""}.csv`)}>⬇︎ CSV</button>
       </div>
       <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>
@@ -2147,7 +2207,8 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
       {view === "grid" ? (
         <div className="grid">
           {list.map((d) => (
-            <div key={d.id} className="gcard" onClick={() => setWinPrev(d)}>
+            <div key={d.id} className={"gcard" + (pick?.has(d.id) ? " picked" : "")} onClick={() => (pick ? togglePick(d.id) : setWinPrev(d))}>
+              {pick && <span className={"pickbox" + (pick.has(d.id) ? " on" : "")}>✓</span>}
               <div className="gthumbwrap">
                 <Thumb d={d} className="gthumb" />
                 <CardBar d={d} />
@@ -2166,7 +2227,8 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         <div className="dlist">
           {list.map((d) => (
             <div key={d.id} className={"dwrap" + (prevId === d.id ? " open" : "")}>
-            <div className="ditem" onClick={() => onOpen(d.id)}>
+            <div className={"ditem" + (pick?.has(d.id) ? " picked" : "")} onClick={() => (pick ? togglePick(d.id) : onOpen(d.id))}>
+              {pick && <span className={"pickbox inline" + (pick.has(d.id) ? " on" : "")}>✓</span>}
               <Thumb d={d} />
               <div className="grow">
                 <div className="row1"><b className="clamp dtitle" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevId(prevId === d.id ? null : d.id); }}>{d.title}</b>{amt(d)}</div>
@@ -2184,6 +2246,15 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
             {prevId === d.id && <DocPreview d={d} onOpen={() => onOpen(d.id)} />}
             </div>
           ))}
+        </div>
+      )}
+      {pick && (
+        <div className="pickbar">
+          <b>{pick.size} ausgewählt</b>
+          <button className="link" onClick={() => setPick(pick.size === list.length ? new Set() : new Set(list.map((d) => d.id)))}>{pick.size === list.length ? "Keine" : "Alle"}</button>
+          <span className="grow" />
+          <button className="btn primary" disabled={!pick.size} onClick={() => shareDocs(list.filter((d) => pick.has(d.id)))}><IcoShare /> Teilen</button>
+          <button className="btn" onClick={() => setPick(null)}>Fertig</button>
         </div>
       )}
     </>
@@ -4739,4 +4810,20 @@ input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
 html.win-open,html.win-open body{overscroll-behavior:none}
 @media (max-width:767px){html.win-open .topactions,html.win-open .fab{display:none}}
 .sheet .panel{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+
+/* v0.18.0: Teilen + Mehrfachauswahl */
+.dactions button svg{width:20px;height:20px}
+.gcard{position:relative}
+.pickbox{position:absolute;top:8px;left:8px;z-index:4;width:26px;height:26px;border-radius:50%;border:2px solid #fff;background:#0006;color:transparent;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;box-shadow:0 1px 4px #0005}
+.pickbox.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.pickbox.inline{position:static;flex:none;align-self:center;border-color:var(--mut);background:transparent}
+.pickbox.inline.on{border-color:var(--acc);background:var(--acc)}
+.gcard.picked,.ditem.picked{outline:2px solid var(--acc);outline-offset:-2px}
+.pickbar{position:sticky;bottom:calc(env(safe-area-inset-bottom) + 12px);z-index:25;margin:16px 0 0;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:16px;
+  background:color-mix(in srgb,var(--card) 90%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);box-shadow:0 8px 28px #0005}
+.pickbar .btn{margin:0;display:inline-flex;align-items:center;gap:6px}.pickbar .btn svg{width:16px;height:16px}
+@media (max-width:767px){.pickbar{bottom:calc(env(safe-area-inset-bottom) + 76px)}}
+.sharegrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.sharegrid button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--txt);font:inherit;font-size:12px;cursor:pointer}
+.sharegrid button span{font-size:24px}.sharegrid button:hover{border-color:var(--acc)}
 `;
