@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.31.1
+- Ablagefeld: ganze Ordner (inkl. Unterordner) hineinziehen oder über „Ordner wählen“ auswählen – PDFs und Fotos darin werden importiert, andere Dateien übersprungen
+
+## v0.31.0
+- Dokumente: Fortschrittsanzeige beim Import – „Datei x von y wird hochgeladen …“, danach „KI liest n Dokumente aus …“ mit Dateinamen, Balken und Zähler
+- Ablagefeld zeigt während des Imports einen Lade-Kreis
+
 ## v0.30.2
 - Mahnungen: Auswahlfeld durch Button „＋ Mahnung“ ersetzt – öffnet eine Liste der offenen/überfälligen Rechnungen (Hinweis, wenn keine offen ist)
 - Buttons „Rechnungen“ und ⚙︎ in Mahnungen in derselben Größe wie bei den Rechnungen

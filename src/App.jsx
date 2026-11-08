@@ -1712,7 +1712,8 @@ export default function App() {
 
   async function onFiles(list, opts = {}) {
     const files = [...list];
-    for (const f of files) {
+    for (const [fi, f] of files.entries()) {
+      opts.onProgress?.(fi + 1, files.length, f.name);
       let blob;
       try { blob = await prepareFile(f); } catch (e) { notify(`${f.name}: ${e.message}`); continue; }
       if (blob.size > 3.6 * 1024 * 1024) notify(`${f.name}: ${(blob.size / 1048576).toFixed(0)} MB – wird zum Auslesen automatisch verkleinert`);
@@ -1727,6 +1728,7 @@ export default function App() {
       if (opts.linkTx) { await linkTx(opts.linkTx, doc.id); notify("Beleg wird ausgelesen und ist der Buchung zugeordnet"); }
       queue.current = queue.current.then(() => analyze(doc, blob));
     }
+    opts.onProgress?.(null);
     if (files.length && !opts.linkTx) setTab("docs");
   }
   async function reanalyze(doc) {
@@ -2446,18 +2448,37 @@ function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore,
 }
 
 /* ---------- Dokumente (Docutain-Look) ---------- */
-function DocDrop({ onFiles, onHide }) {
+// alle Dateien aus abgelegten Ordnern (auch Unterordner) einsammeln
+async function filesFromDrop(dt) {
+  const items = [...(dt.items || [])].map((it) => it.webkitGetAsEntry?.()).filter(Boolean);
+  if (!items.length) return [...(dt.files || [])];
+  const out = [];
+  const walk = async (e) => {
+    if (e.isFile) { await new Promise((ok) => e.file((f) => { out.push(f); ok(); }, ok)); return; }
+    if (e.isDirectory) {
+      const rd = e.createReader();
+      for (;;) { const batch = await new Promise((ok) => rd.readEntries(ok, () => ok([]))); if (!batch.length) break; for (const c of batch) await walk(c); }
+    }
+  };
+  for (const e of items) await walk(e);
+  return out;
+}
+const isDocFile = (x) => !x.name.startsWith(".") && (/^image\/|pdf$/i.test(x.type) || /\.(pdf|jpe?g|png|heic|heif|webp)$/i.test(x.name));
+
+function DocDrop({ onFiles, onHide, busy }) {
   const [over, setOver] = useState(false);
-  const ref = useRef(null);
-  const take = (fl) => { const f = [...(fl || [])].filter((x) => /^image\/|pdf$/i.test(x.type) || /\.(pdf|jpe?g|png|heic|heif|webp)$/i.test(x.name)); if (f.length) onFiles(f); };
+  const ref = useRef(null), dirRef = useRef(null);
+  const take = (fl) => { const all = [...(fl || [])]; const f = all.filter(isDocFile); if (f.length) onFiles(f); else if (all.length) alert("Keine PDFs oder Fotos gefunden."); };
   return (
     <div className={"docdrop" + (over ? " over" : "")} role="button" tabIndex={0} onClick={() => ref.current?.click()}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setOver(true); }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false); }}
-      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setOver(false); take(e.dataTransfer.files); }}>
-      <span className="ddico">📥</span>
-      <span className="grow"><b>{over ? "Loslassen zum Hochladen" : "Dateien hierher ziehen"}</b><small className="muted block">oder klicken · PDF &amp; Fotos, mehrere möglich</small></span>
+      onDrop={async (e) => { e.preventDefault(); e.stopPropagation(); setOver(false); take(await filesFromDrop(e.dataTransfer)); }}>
+      <span className="ddico">{busy ? <span className="spin big" /> : "📥"}</span>
+      <span className="grow"><b>{over ? "Loslassen zum Hochladen" : "Dateien oder Ordner hierher ziehen"}</b>
+        <small className="muted block">oder klicken · <a href="#" onClick={(e) => { e.preventDefault(); e.stopPropagation(); dirRef.current?.click(); }}>Ordner wählen</a> · PDF &amp; Fotos</small></span>
       <button className="iconbtn ddx" title="Ablagefeld ausblenden" aria-label="Ablagefeld ausblenden" onClick={(e) => { e.stopPropagation(); onHide(); }}>✕</button>
       <input ref={ref} type="file" accept="application/pdf,image/*" multiple hidden onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
+      <input ref={dirRef} type="file" webkitdirectory="" directory="" multiple hidden onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
     </div>
   );
 }
@@ -2466,6 +2487,11 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
   const [showDrop, setShowDrop] = useLsState("docDrop", true);
   const [chipCfg, setChipCfg] = useLsState("docChips", { order: [], hidden: [] });
   const [chipEdit, setChipEdit] = useState(false), [dragK, setDragK] = useState(null);
+  const [upl, setUpl] = useState(null);
+  const procDocs = docs.filter((d) => d.status === "processing");
+  const peak = useRef(0);
+  if (!procDocs.length && !upl) peak.current = 0; else peak.current = Math.max(peak.current, procDocs.length + (upl ? upl.n - upl.i : 0));
+  const importFiles = (f) => onFiles(f, { onProgress: (i, n, name) => setUpl(i ? { i, n, name } : null) });
   const [q, setQ] = useState("");
   const [prevId, setPrevId] = useState(null);
   const [winPrev, setWinPrev] = useState(null);
@@ -2566,7 +2592,20 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
           </div>
         );
       })()}
-      {onFiles && showDrop && <DocDrop onFiles={onFiles} onHide={() => setShowDrop(false)} />}
+      {onFiles && showDrop && <DocDrop onFiles={importFiles} onHide={() => setShowDrop(false)} busy={!!upl || procDocs.length > 0} />}
+      {(upl || procDocs.length > 0) && (() => {
+        const total = Math.max(peak.current, 1), left = procDocs.length + (upl ? upl.n - upl.i + 1 : 0), pct = Math.round(((total - left) / total) * 100);
+        return (
+          <div className="importbar" role="status" aria-live="polite">
+            <span className="spin" aria-hidden="true" />
+            <span className="grow">
+              <b>{upl ? `Datei ${upl.i} von ${upl.n} wird hochgeladen …` : `KI liest ${procDocs.length} Dokument${procDocs.length === 1 ? "" : "e"} aus …`}</b>
+              <small className="muted block">{upl ? upl.name : procDocs.slice(0, 3).map((d) => d.fileName || d.title).join(", ") + (procDocs.length > 3 ? ` und ${procDocs.length - 3} weitere` : "")}</small>
+              <span className="ibar"><span style={{ width: Math.max(4, pct) + "%" }} /></span>
+            </span>
+            <small className="muted">{total - left} / {total}</small>
+          </div>);
+      })()}
       <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>
 
       {!docs.length && (
@@ -7100,4 +7139,15 @@ nav.bottom>button.sidetoggle{display:none}
 .chipeye{display:inline-flex;align-items:center;justify-content:center;color:var(--mut)}.chipeye svg{width:16px;height:16px}.chipcfg.off .chipeye{color:var(--txt)}
 .newdun>summary.btn{list-style:none;display:inline-flex;align-items:center}.newdun>summary::-webkit-details-marker{display:none}
 .newdun .moremenu{left:0;right:auto;min-width:280px;top:calc(100% + 6px)}
+
+.importbar{display:flex;align-items:center;gap:12px;width:25%;min-width:280px;box-sizing:border-box;margin:-8px 0 16px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.importbar b{font-size:13px}.importbar small{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.importbar .grow{min-width:0}
+.ibar{display:block;height:5px;border-radius:9px;background:var(--card2);margin-top:6px;overflow:hidden}
+.ibar>span{display:block;height:100%;background:var(--acc);border-radius:9px;transition:width .4s}
+.spin{display:inline-block;width:18px;height:18px;border:2.5px solid color-mix(in srgb,var(--acc) 25%,transparent);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;flex:none}
+.spin.big{width:26px;height:26px;border-width:3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (max-width:700px){.importbar{width:100%;min-width:0}}
+.docdrop small a{color:var(--acc);text-decoration:none;font-weight:600}.docdrop small a:hover{text-decoration:underline}
 `;
