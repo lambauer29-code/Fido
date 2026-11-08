@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.14.3
+- Kontostand-Karte hat jetzt immer denselben Aufbau (ein Konto oder mehrere) – kein Springen mehr beim Darüberfahren über die Konto-Karten. Einzelkonto zeigt Eingänge, Ausgänge, Saldo, Buchungen.
+
 ## v0.14.2
 - Konto-Karten: Maus darüber = Vorschau nur dieses Kontos (Karte, Summen, Buchungen; andere Karten abgeblendet), Maus weg = zurück. Klick = Konto fest auswählen. Touch: 1. Tippen Vorschau, 2. Tippen auswählen.
 

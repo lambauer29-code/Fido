@@ -2198,22 +2198,28 @@ function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, 
 
       </aside>
       <div className="maincol">
-      <div className="hero">
-        {selA ? <>
-          <small>Kontostand · {selA.name}</small>
-          <div className="hero-v">{selBal != null ? fmtMoney(selBal) : "—"}</div>
-          {balEstimated(selA) && <button className="herolink" onClick={() => setEditAcc(selA)}>{selBal != null ? "aus Umsätzen berechnet · Kontostand eintragen ›" : "Kontostand eintragen ›"}</button>}
-        </> : <>
-          <small>{allSel ? `Gesamtstand · alle ${visAccounts.length} Konten` : `Zusammenfassung · ${sel.length} von ${visAccounts.length} Konten`}</small>
-          <div className="hero-v">{knownBal.length ? fmtMoney(knownBal.reduce((s, x) => s + x, 0)) : "—"}</div>
-          {!allSel && <small className="heronames">{selAccounts.map((a) => a.name).join(" · ")}</small>}
-        </>}
-        <div className={"hero-row" + (multi ? " four" : "")}>
-          {multi && <div><small>Guthaben</small><b>{fmtMoney(plusBal)}</b></div>}
-          {multi && <div><small>Schulden</small><b>{fmtMoney(minusBal)}</b></div>}
-          <div><small>Eingänge{month ? " " + monthLabel(month) : ""}</small><b>↑ {fmtMoney(inc)}</b></div>
-          <div><small>Ausgänge{month ? " " + monthLabel(month) : ""}</small><b>↓ {fmtMoney(out)}</b></div>
-          {!multi && <div><small>Buchungen</small><b>{list.length}</b></div>}
+      {/* gleicher Aufbau für ein Konto und mehrere – damit beim Wechseln (z. B. Maus über Karte) nichts springt */}
+      <div className="hero hero-stable">
+        <small>{selA ? `Kontostand · ${selA.name}` : allSel ? `Gesamtstand · alle ${visAccounts.length} Konten` : `Zusammenfassung · ${sel.length} von ${visAccounts.length} Konten`}</small>
+        <div className="hero-v">{selA ? (selBal != null ? fmtMoney(selBal) : "—") : knownBal.length ? fmtMoney(knownBal.reduce((s, x) => s + x, 0)) : "—"}</div>
+        <div className="hsub">
+          {selA ? (balEstimated(selA)
+            ? <button className="herolink" onClick={() => setEditAcc(selA)}>{selBal != null ? "aus Umsätzen berechnet · Kontostand eintragen ›" : "Kontostand eintragen ›"}</button>
+            : <span>Stand {selA.openingDate ? fmtDate(selA.openingDate) : ""} + neuere Buchungen</span>)
+            : !allSel ? <span>{selAccounts.map((a) => a.name).join(" · ")}</span> : <span>&nbsp;</span>}
+        </div>
+        <div className="hero-row four">
+          {selA ? <>
+            <div><small>Eingänge{month ? " " + monthLabel(month) : ""}</small><b>↑ {fmtMoney(inc)}</b></div>
+            <div><small>Ausgänge{month ? " " + monthLabel(month) : ""}</small><b>↓ {fmtMoney(out)}</b></div>
+            <div><small>Saldo{month ? " " + monthLabel(month) : ""}</small><b>{(inc - out >= 0 ? "+" : "") + fmtMoney(inc - out)}</b></div>
+            <div><small>Buchungen</small><b>{list.length}</b></div>
+          </> : <>
+            <div><small>Guthaben</small><b>{fmtMoney(plusBal)}</b></div>
+            <div><small>Schulden</small><b>{fmtMoney(minusBal)}</b></div>
+            <div><small>Eingänge{month ? " " + monthLabel(month) : ""}</small><b>↑ {fmtMoney(inc)}</b></div>
+            <div><small>Ausgänge{month ? " " + monthLabel(month) : ""}</small><b>↓ {fmtMoney(out)}</b></div>
+          </>}
         </div>
       </div>
       {!!accounts.length && (
@@ -2225,7 +2231,7 @@ function Accounts({ addCategory, linkTx, attachNew, txs, accounts, setAccounts, 
         <div className="chips">
           <button className="chip on chipdrop" onClick={() => setPick(true)}>{allSel ? "Alle Konten" : acc ? accName(acc) : `${sel.length} Konten`} <span aria-hidden="true">▾</span></button>
           {!allSel && <button className="chip" onClick={() => setSel([])}>✕ Alle anzeigen</button>}
-          {selA && <button className="chip" onClick={() => setEditAcc(selA)}>✎ Konto bearbeiten</button>}
+          {selA && !peek && <button className="chip" onClick={() => setEditAcc(selA)}>✎ Konto bearbeiten</button>}
           <select className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
         </div>
       )}
@@ -3969,4 +3975,11 @@ nav .acctree .accitem .ab{font-size:11.5px}
 
 .selcards.peeking .selcard:not(.peek){opacity:.4}
 .maincol:has(.selcards.peeking) .hero{box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 45%,transparent),0 8px 24px #0003}
+
+/* stabile Kontostand-Karte */
+.maincol .hero.hero-stable{display:block!important}
+.hero-stable .hsub{height:24px;margin:2px 0 14px;display:flex;align-items:center;min-width:0;font-size:12.5px;opacity:.9}
+.hero-stable .hsub>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hero-stable .hsub .herolink{margin:0;padding:2px 10px;font-size:12.5px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.hero-stable .hero-row{margin:0!important}
 `;
