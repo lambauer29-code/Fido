@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.24.6
+
+- Fix: Knöpfe „＋ Position“ / „📷 Artikel scannen“ rutschten in schmalen Fenstern an den rechten Rand und waren abgeschnitten.
+- Rechnung: neues Auswahlfeld **Zahlung – Offen / Bezahlt** mit Datum und Zahlungsart (Überweisung, Bar, Bankomat/Karte, PayPal …). Auch bei bereits ausgestellten Rechnungen umstellbar (wird sofort gespeichert). Bezahlte Rechnungen zeigen im PDF „Bezahlt am …“ und „Betrag dankend erhalten“ statt Zahlungsaufforderung und QR-Code.
+- Fix: Standard-Einleitungstext fehlte im PDF, wenn die Firmendaten vor dem Update angelegt wurden.
+
 ## v0.24.5
 
 - Seitenleiste: Der Pfeil zum Ein-/Ausklappen bleibt immer an derselben Stelle (unten links, Mitte der eingeklappten Leiste).

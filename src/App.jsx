@@ -4284,6 +4284,7 @@ const fillDun = (t, inv, r) => String(t || "").replace(/\{nummer\}/g, inv.number
 const hexRgb = (h, rgb) => { const m = String(h || "#0b63f6").replace("#", ""); const n = parseInt(m.length === 3 ? m.split("").map((x) => x + x).join("") : m, 16) || 0x0b63f6; return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
 
 async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
+  co = { ...CO_DEFAULT, ...co };
   const D = { ...DESIGN_DEF, ...design };
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const pdf = await PDFDocument.create();
@@ -4355,7 +4356,7 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
     ? [["Datum", fmtDate(remind.date)], [docWord + " Nr.", inv.number], [docWord + "sdatum", fmtDate(inv.date)], ["Zahlbar bis", fmtDate(remind.due)]]
     : [[docWord + " Nr.", inv.number || "ENTWURF"], [inv.kind === "angebot" ? "Datum" : docWord + "sdatum", fmtDate(inv.date)],
        ...(inv.kind === "angebot" ? [["Gültig bis", fmtDate(addDays(inv.date, inv.validDays ?? co.validDays ?? 30))]]
-         : [["Leistung", inv.serviceTo ? `${fmtDate(inv.serviceFrom)} – ${fmtDate(inv.serviceTo)}` : fmtDate(inv.serviceFrom || inv.date)], ["Zahlbar bis", fmtDate(invDue(inv))]]),
+         : [["Leistung", inv.serviceTo ? `${fmtDate(inv.serviceFrom)} – ${fmtDate(inv.serviceTo)}` : fmtDate(inv.serviceFrom || inv.date)], (inv.status === "bezahlt" || inv.prePaid) ? ["Bezahlt am", fmtDate(inv.paidAt || inv.date)] : ["Zahlbar bis", fmtDate(invDue(inv))]]),
        ...(c.number ? [["Kundennr.", c.number]] : []), ...invF.map((f) => [f.label, inv.extra[f.id]])];
   info.forEach(([k, v], i) => { txt(k, W - M - 190, H - 158 - i * 14, { size: 9, color: grey }); right(v, W - M, H - 158 - i * 14, { size: 9.5, bold: i === 0 }); });
 
@@ -4419,7 +4420,13 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   y -= 26;
 
   // Zahlung + QR
-  if (inv.kind !== "angebot" && co.iban) {
+  const isPaid = !remind && inv.kind !== "angebot" && (inv.status === "bezahlt" || inv.prePaid);
+  if (isPaid) {
+    newPageIfNeeded(40);
+    page.drawRectangle({ x: M, y: y - 8, width: 260, height: 24, color: rgb(0.86, 0.96, 0.89) });
+    txt(`Betrag dankend erhalten${inv.paidAt ? " am " + fmtDate(inv.paidAt) : ""}${inv.payMethod ? " (" + inv.payMethod + ")" : ""}.`, M + 8, y, { size: fs, bold: true, color: rgb(0.08, 0.45, 0.2) });
+    y -= 34;
+  } else if (inv.kind !== "angebot" && co.iban) {
     newPageIfNeeded(110);
     const ref = inv.number || "";
     if (D.showQR) try {
@@ -4607,7 +4614,8 @@ function MasterDataWin({ articles, setArticles, onClose }) {
 }
 
 /* ---------- Editor ---------- */
-function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, onFinalize, setArticles }) {
+const PAY_METHODS = ["Überweisung", "Bar", "Bankomat/Karte", "PayPal", "Sonstiges"];
+function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, onFinalize, setArticles, onPatch }) {
   const [inv, setInv] = useState(init);
   const [fields] = useLsState("invoiceFields", []);
   const invFields = fields.filter((f) => f.scope === "rechnung"), posFields = fields.filter((f) => f.scope === "position");
@@ -4712,6 +4720,29 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
         <label>Einleitung<textarea rows={2} value={inv.intro ?? (isA ? co.introA : co.intro)} onChange={(e) => set({ intro: e.target.value })} /></label>
         <label>Schlusstext<textarea rows={2} value={inv.outro ?? co.outro} onChange={(e) => set({ outro: e.target.value })} /></label>
       </fieldset>
+      {!isA && init.status !== "storniert" && (() => {
+        const paid = locked ? inv.status === "bezahlt" : !!inv.prePaid;
+        const setPay = (p) => {
+          const next = { paidAt: p.paidAt ?? inv.paidAt ?? todayISO(), payMethod: p.payMethod ?? inv.payMethod ?? "Überweisung" };
+          const isPaid = p.paid ?? paid;
+          if (locked) { const q = { status: isPaid ? "bezahlt" : "offen", paidAt: isPaid ? next.paidAt : null, payMethod: isPaid ? next.payMethod : null }; setInv((x) => ({ ...x, ...q })); onPatch?.(inv.id, q); }
+          else set({ prePaid: isPaid, paidAt: isPaid ? next.paidAt : null, payMethod: isPaid ? next.payMethod : null });
+        };
+        return (
+          <fieldset className="payfs">
+            <legend>Zahlung</legend>
+            <div className="seg">
+              <button className={!paid ? "on" : ""} onClick={() => setPay({ paid: false })}>⏳ Offen</button>
+              <button className={paid ? "on" : ""} onClick={() => setPay({ paid: true })}>✓ Bezahlt</button>
+            </div>
+            {paid && <div className="grid2">
+              <label>Bezahlt am<input type="date" value={inv.paidAt || todayISO()} onChange={(e) => setPay({ paidAt: e.target.value })} /></label>
+              <label>Zahlungsart<select value={inv.payMethod || "Überweisung"} onChange={(e) => setPay({ payMethod: e.target.value })}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select></label>
+            </div>}
+            <small className="muted">{locked ? "Wird sofort gespeichert." : paid ? "Die Rechnung wird beim Ausstellen gleich als bezahlt geführt – auf dem PDF steht „Betrag dankend erhalten“ statt Zahlungsaufforderung." : "Zahlungsaufforderung mit Frist und QR-Code wird gedruckt."}</small>
+          </fieldset>
+        );
+      })()}
       {!isA && !locked && (
         <fieldset>
           <legend>Wiederkehrend</legend>
@@ -4795,7 +4826,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
   const finalize = (inv) => setList((l) => {
     const number = nextInvNumber(l, inv.kind, co, inv.date);
     notify?.(`${inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${number} ausgestellt`);
-    return l.map((x) => (x.id === inv.id ? { ...x, number, status: "offen", issuedAt: new Date().toISOString() } : x));
+    return l.map((x) => (x.id === inv.id ? { ...x, number, status: x.prePaid && x.kind === "rechnung" ? "bezahlt" : "offen", paidAt: x.prePaid ? x.paidAt || x.date : x.paidAt, issuedAt: new Date().toISOString() } : x));
   });
   const patch = (id, p) => setList((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
   const toInvoice = (a) => { patch(a.id, { status: "angenommen" }); setEdit({ ...a, id: uid(), kind: "rechnung", status: "entwurf", number: "", date: todayISO(), serviceFrom: todayISO(), fromOffer: a.number, intro: undefined, dueDays: co.dueDays, reminders: [] }); };
@@ -4869,7 +4900,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
                   <small className="muted block">
                     {x.kind === "angebot" ? "Angebot " : ""}{x.number || "Entwurf"} · {fmtDate(x.date)}
                     {x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) && ` · fällig ${fmtDate(invDueEff(x))}`}
-                    {s === "bezahlt" && x.paidAt && ` · bezahlt ${fmtDate(x.paidAt)}`}
+                    {s === "bezahlt" && x.paidAt && ` · bezahlt ${fmtDate(x.paidAt)}${x.payMethod ? " (" + x.payMethod + ")" : ""}`}
                     {(x.reminders || []).length > 0 && ` · ${remindName(lastReminder(x).level)} ${fmtDate(lastReminder(x).date)}`}
                     {x.fromOffer && ` · aus ${x.fromOffer}`}{x.fromTemplate && " · 🔁"}
                   </small>
@@ -4897,7 +4928,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0 }) {
           })}
         </section>
       )}
-      {edit && <InvoiceEditor inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
+      {edit && <InvoiceEditor onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
       {coOpen && <CompanyWin co={co} setCo={setCo} onClose={() => setCoOpen(false)} />}
       {mdOpen && <MasterDataWin articles={articles} setArticles={setArticles} onClose={() => setMdOpen(false)} />}
       {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
@@ -6624,4 +6655,9 @@ code{background:var(--card2);padding:1px 5px;border-radius:5px;font-size:12px}
   nav.bottom .sidetoggle.side-only{align-self:flex-start;margin-left:4px;margin-right:0}
   html.side-mini nav.bottom .sidetoggle.side-only{align-self:flex-start;margin-left:6px}
 }
+
+/* v0.24.6: Positionen-Layout, Zahlungsstatus */
+.itemsfs>*:not(legend){clear:both}
+.posbtns{width:100%;margin-top:4px}.posbtns .btn{white-space:nowrap;flex:none}
+.payfs .seg{margin:0 0 6px}
 `;
