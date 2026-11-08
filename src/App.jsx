@@ -169,6 +169,7 @@ const Ico = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>);
 const IcoEye = () => <Ico d={<><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>} />;
 const IcoEyeOff = () => <Ico d={<><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.5M6.6 6.6C3.8 8.3 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="M3 3l18 18" /></>} />;
+const IcoLayout = () => <Ico d={<><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></>} />;
 const IcoSun = () => <Ico d={<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>} />;
 const IcoMoon = () => <Ico d={<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z" />} />;
 const IcoChev = ({ open }) => <span className={"pchev" + (open ? " open" : "")}><Ico size={16} d={<path d="M6 9l6 6 6-6" />} /></span>;
@@ -413,6 +414,8 @@ function findDropTarget(x, y, kind) {
   if (item) {
     const [list, idx] = item.getAttribute(`data-${kind}-item`).split("|");
     const r = item.getBoundingClientRect();
+    const pr = item.parentElement.getBoundingClientRect();
+    if (item.dataset.grid && r.width < pr.width * 0.8) return { list, index: +idx + (x > r.left + r.width / 2 ? 1 : 0) };
     return { list, index: +idx + (y > r.top + r.height / 2 ? 1 : 0) };
   }
   const lst = el.closest(`[data-${kind}-list]`);
@@ -826,6 +829,7 @@ export default function App() {
   const [themeMode, setThemeMode] = useState(() => ls.get("theme", "auto"));
   const [theme, setTheme] = useState(() => effectiveTheme(ls.get("theme", "auto")));
   const [newAccReq, setNewAccReq] = useState(false);
+  const [homeEdit, setHomeEdit] = useState(false);
   useEffect(() => {
     ls.set("theme", themeMode);
     const upd = () => setTheme(effectiveTheme(themeMode)); upd();
@@ -1059,6 +1063,7 @@ export default function App() {
       <header className="top">
         <h1>{tabLabel(nav, tab)}</h1>
         <div className="topicons">
+          {tab === "home" && <button className={"eyebtn" + (homeEdit ? " on" : "")} onClick={() => setHomeEdit(!homeEdit)} aria-label="Übersicht anpassen" title="Übersicht anpassen"><IcoLayout /></button>}
           <button className="eyebtn" onClick={() => setHideAmounts(!hideAmounts)} aria-label={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"} title={hideAmounts ? "Beträge anzeigen" : "Beträge ausblenden"}>{hideAmounts ? <IcoEyeOff /> : <IcoEye />}</button>
           <button className="eyebtn" onClick={() => setThemeMode(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Tagmodus" : "Nachtmodus"} title={theme === "dark" ? "Tagmodus" : "Nachtmodus"}>{theme === "dark" ? <IcoSun /> : <IcoMoon />}</button>
         </div>
@@ -1069,7 +1074,8 @@ export default function App() {
 
       <main>
         {tab === "home" && <Home docs={active} txs={txs} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={accounts.some((a) => a.kind === "cash")}
-          accounts={accounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
+          accounts={accounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
+          editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => setScanOpen(true), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
         {tab === "accounts" && <Accounts txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
@@ -1170,7 +1176,24 @@ function Donut({ parts, total }) {
     </svg>
   );
 }
-function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount }) {
+const HOME_WIDGETS = {
+  hero: ["Monatssaldo", "full", "💰", "Einnahmen, Ausgaben, Fixkosten"],
+  alerts: ["Offene Rechnungen", "full", "🧾", "Hinweis auf unbezahlte Rechnungen"],
+  konten: ["Konten", "1", "🏦", "Kontostände aller Konten"],
+  bargeld: ["Bargeld", "1", "💶", "Bestand der Geldbörse"],
+  kategorien: ["Ausgaben nach Kategorie", "1", "🍩", "Donut-Diagramm des Monats"],
+  verlauf: ["Verlauf", "1", "📊", "6 Monate Einnahmen/Ausgaben"],
+  budgets: ["Budgets", "1", "🎯", "Budget pro Kategorie"],
+  fristen: ["Nächste Fristen", "1", "⏰", "Zahlungen & Kündigungen"],
+  docs: ["Neueste Dokumente", "1", "📄", "Zuletzt hinzugefügt"],
+  contracts: ["Verträge & Fixkosten", "1", "📑", "Teuerste laufende Verträge"],
+  tx: ["Letzte Buchungen", "1", "💳", "Neueste Kontoumsätze"],
+  tax: ["Steuer", "1", "🧮", "Steuerrelevante Belege des Jahres"],
+  quick: ["Schnellzugriff", "1", "⚡", "Scannen, Datei, Buchung, Konto"],
+};
+const HOME_DEFAULT = { order: ["hero", "alerts", "konten", "bargeld", "kategorien", "verlauf", "budgets", "fristen"], hidden: ["docs", "contracts", "tx", "tax", "quick"], size: {} };
+
+function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount, editing = false, setEditing = () => {}, actions }) {
   const bankAccs = accounts.filter((a) => a.kind !== "cash");
   const bankBals = bankAccs.map((a) => accountBalance(a, txs)).filter((x) => x != null);
   const bankTotal = bankBals.length ? bankBals.reduce((x, y) => x + y, 0) : null;
@@ -1214,9 +1237,8 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
   const out = sumBy(thisMonth, "ausgabe"), inc = sumBy(thisMonth, "einnahme");
   const monthName = new Date(thisMonth + "-15").toLocaleDateString("de-AT", { month: "long" });
 
-  return (
-    <div className="dash">
-      <div className="hero">
+  const w_hero = (
+<div className="hero">
         <small>Saldo {monthName}</small>
         <div className="hero-v">{(inc - out >= 0 ? "+" : "") + fmtMoney(inc - out)}</div>
         <div className="hero-row">
@@ -1225,16 +1247,15 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
           <div onClick={() => setTab("contracts")}><small>Fixkosten</small><b>{fmtMoney(fix)}</b></div>
         </div>
       </div>
-
-      {!!openInv.length && (
+);
+  const w_alerts = !!openInv.length ? (
         <div className="tile alert" onClick={() => setTab("deadlines")}>
           <CatIcon c="Rechnungen" size={36} />
           <div className="grow"><b>{openInv.length} offene Rechnung{openInv.length > 1 ? "en" : ""}</b><small>Jetzt prüfen und per QR bezahlen</small></div>
           <b>{fmtMoney(openInv.reduce((s, d) => s + d.amount.total, 0))}</b>
         </div>
-      )}
-
-      {!!bankAccs.length && (
+      ) : null;
+  const w_konten = !!bankAccs.length ? (
         <section className="tile">
           <div className="tilehead"><b>Konten</b><small>{bankTotal != null ? (bankAccs.some(balEstimated) ? "≈ " : "") + fmtMoney(bankTotal) : ""}</small></div>
           {bankAccs.map((a) => { const bal = accountBalance(a, txs); return (
@@ -1244,9 +1265,8 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
               <div className="right"><b className={bal < 0 ? "red" : ""}>{bal != null ? (balEstimated(a) ? "≈ " : "") + fmtMoney(bal) : "—"}</b></div>
             </div>); })}
         </section>
-      )}
-
-      {!!cashAccs.length && (
+      ) : null;
+  const w_bargeld = !!cashAccs.length ? (
         <section className="tile">
           <div className="tilehead"><b>Bargeld</b><button className="link" onClick={() => onManual({ accountId: cashAccs[0].id })}>＋ Barausgabe</button></div>
           {cashAccs.map((a) => (
@@ -1258,9 +1278,9 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
           ))}
           {cashBalance(cashAccs[0], txs) < 0 && <p className="warn small">Bestand negativ – vermutlich fehlt eine Behebung oder der Startbestand.</p>}
         </section>
-      )}
-
-      <section className="tile">
+      ) : null;
+  const w_kategorien = (
+<section className="tile">
         <div className="tilehead"><b>Ausgaben nach Kategorie</b><small>{monthName}</small></div>
         {parts.length ? (
           <div className="donutwrap">
@@ -1273,8 +1293,9 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
           </div>
         ) : <p className="muted small">Noch keine Ausgaben in diesem Monat.</p>}
       </section>
-
-      <section className="tile">
+);
+  const w_verlauf = (
+<section className="tile">
         <div className="tilehead"><b>Verlauf</b><small>6 Monate</small></div>
         <div className="chart">
           {series.map((s) => (
@@ -1289,8 +1310,8 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
         </div>
         <div className="legend"><span className="dot out" />Ausgaben <span className="dot inc" />Einnahmen</div>
       </section>
-
-      {!!budgetRows.length && (
+);
+  const w_budgets = !!budgetRows.length ? (
         <section className="tile">
           <div className="tilehead"><b>Budgets</b><small>{monthName}</small></div>
           {budgetRows.map(({ c, spent, budget }) => (
@@ -1303,9 +1324,9 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
             </div>
           ))}
         </section>
-      )}
-
-      <section className="tile">
+      ) : null;
+  const w_fristen = (
+<section className="tile">
         <div className="tilehead"><b>Nächste Fristen</b><button className="link" onClick={() => setTab("deadlines")}>Alle</button></div>
         {!upcoming.length && <p className="muted small">Keine offenen Fristen 🎉</p>}
         {upcoming.map(([dl, doc]) => {
@@ -1319,8 +1340,131 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
           );
         })}
       </section>
+);
+
+  // weitere Widgets
+  const recentDocs = [...docs].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")).slice(0, 5);
+  const w_docs = recentDocs.length ? (
+    <section className="tile">
+      <div className="tilehead"><b>Neueste Dokumente</b><button className="link" onClick={() => setTab("docs")}>Alle</button></div>
+      {recentDocs.map((d) => (
+        <div key={d.id} className="frow click" onClick={() => onOpen(d.id)}>
+          <Thumb d={d} className="thumb sm" />
+          <div className="grow"><b className="clamp">{d.title}</b><small className="muted block">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small></div>
+          {d.amount?.total != null && <b>{fmtMoney(d.amount.total, d.amount.currency)}</b>}
+        </div>
+      ))}
+    </section>) : null;
+  const recentTx = [...txs].filter((t) => t.kind !== "broker").sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
+  const accName = (id) => accounts.find((a) => a.id === id)?.name || "";
+  const w_tx = recentTx.length ? (
+    <section className="tile">
+      <div className="tilehead"><b>Letzte Buchungen</b><button className="link" onClick={() => setTab("accounts")}>Alle</button></div>
+      {recentTx.map((t) => (
+        <div key={t.id} className="frow click" onClick={() => openAccount(t.accountId)}>
+          <CatIcon c={t.category || "Sonstiges"} />
+          <div className="grow"><b className="clamp">{t.counterparty || t.purpose || "Buchung"}</b><small className="muted block">{fmtDate(t.date)}{accName(t.accountId) ? " · " + accName(t.accountId) : ""}</small></div>
+          <b className={t.amount > 0 ? "ok" : ""}>{(t.amount > 0 ? "+" : "") + fmtMoney(t.amount, t.currency)}</b>
+        </div>
+      ))}
+    </section>) : null;
+  const topContracts = [...contracts].sort((a, b) => monthlyCost(b.contract) - monthlyCost(a.contract)).slice(0, 5);
+  const w_contracts = topContracts.length ? (
+    <section className="tile">
+      <div className="tilehead"><b>Verträge & Fixkosten</b><button className="link" onClick={() => setTab("contracts")}>{fmtMoney(fix)} / Monat ›</button></div>
+      {topContracts.map((d) => (
+        <div key={d.id} className="frow click" onClick={() => onOpen(d.id)}>
+          <CatIcon c={d.category} />
+          <div className="grow"><b className="clamp">{d.contract.provider || d.title}</b><small className="muted block">{d.contract.name || d.category}{d.contract.cancel_by ? " · kündbar bis " + fmtDate(d.contract.cancel_by) : ""}</small></div>
+          <b>{fmtMoney(monthlyCost(d.contract))}</b>
+        </div>
+      ))}
+    </section>) : null;
+  const year = thisMonth.slice(0, 4);
+  const taxDocs = docs.filter((d) => d.taxRelevant && (d.documentDate || d.createdAt || "").startsWith(year));
+  const w_tax = (
+    <section className="tile">
+      <div className="tilehead"><b>Steuer {year}</b><small>{taxDocs.length} Beleg{taxDocs.length === 1 ? "" : "e"}</small></div>
+      <div className="hero-v sm">{fmtMoney(taxDocs.reduce((s, d) => s + (isEUR(d) ? d.amount?.total || 0 : 0), 0))}</div>
+      {taxDocs.slice(0, 3).map((d) => (
+        <div key={d.id} className="frow click" onClick={() => onOpen(d.id)}>
+          <CatIcon c={d.category} /><div className="grow"><b className="clamp">{d.title}</b></div>
+          {d.amount?.total != null && <b>{fmtMoney(d.amount.total, d.amount.currency)}</b>}
+        </div>
+      ))}
+      {!taxDocs.length && <p className="muted small">Noch keine steuerrelevanten Belege in diesem Jahr.</p>}
+    </section>);
+  const w_quick = actions ? (
+    <section className="tile">
+      <div className="tilehead"><b>Schnellzugriff</b></div>
+      <div className="quick">
+        <button onClick={actions.scan}><span>📷</span>Scannen</button>
+        <button onClick={actions.upload}><span>📄</span>Datei</button>
+        <button onClick={actions.manual}><span>💶</span>Buchung</button>
+        <button onClick={actions.newAcc}><span>🏦</span>Konto</button>
+      </div>
+    </section>) : null;
+
+  const els = { hero: w_hero, alerts: w_alerts, konten: w_konten, bargeld: w_bargeld, kategorien: w_kategorien, verlauf: w_verlauf,
+    budgets: w_budgets, fristen: w_fristen, docs: w_docs, contracts: w_contracts, tx: w_tx, tax: w_tax, quick: w_quick };
+  const [layout, setLayoutRaw] = useState(() => ls.get("homeLayout", null) || HOME_DEFAULT);
+  const setLayout = (f) => setLayoutRaw((l) => { const n = typeof f === "function" ? f(l) : f; ls.set("homeLayout", n); return n; });
+  const ids = Object.keys(HOME_WIDGETS);
+  const order = [...layout.order.filter((x) => ids.includes(x)), ...ids.filter((x) => !layout.order.includes(x) && !layout.hidden.includes(x))];
+  const shown = order.filter((x) => !layout.hidden.includes(x));
+  const hiddenIds = ids.filter((x) => layout.hidden.includes(x) || !order.includes(x)).filter((x) => !shown.includes(x));
+  const sizeOf = (id) => layout.size?.[id] || HOME_WIDGETS[id][1];
+  const wdnd = useDnd((d, over) => setLayout((l) => ({ ...l, order: [...moveBetween({ w: shown }, "w", d.index, "w", over.index).w, ...hiddenIds] })));
+  const vis = editing ? shown : shown.filter((id) => els[id]);
+
+  return (
+    <>
+      {editing && (
+        <div className="editbar">
+          <div className="grow"><b>Übersicht anpassen</b><small className="muted block">Am Griff ⠿ ziehen · Breite wählen · ✕ blendet aus</small></div>
+          <button className="link" onClick={() => confirm("Übersicht auf Standard zurücksetzen?") && setLayout(HOME_DEFAULT)}>Zurücksetzen</button>
+          <button className="btn primary" onClick={() => setEditing(false)}>Fertig</button>
+        </div>
+      )}
+      <div className={"dash" + (editing ? " editing" : "")} data-wid-list={"w|" + vis.length}>
+        {vis.map((id, i) => {
+          const sz = sizeOf(id), last = i === vis.length - 1;
+          const cls = "widget w-" + sz + (wdnd.isDragging("wid", "w", i) ? " dragging" : "") +
+            (wdnd.lineAt("wid", "w", i) ? " dropbefore" : "") + (last && wdnd.lineAt("wid", "w", vis.length) ? " dropafter" : "");
+          return (
+            <div key={id} className={cls} data-wid-item={"w|" + i} data-grid="1">
+              {editing && (
+                <div className="wbar">
+                  <Handle onDown={(e) => wdnd.start(e, { kind: "wid", list: "w", index: i, label: HOME_WIDGETS[id][0] })} label="Widget verschieben" />
+                  <b className="grow">{HOME_WIDGETS[id][0]}</b>
+                  <div className="wsize" role="group" aria-label="Breite">
+                    {[["1", "▯", "1 Spalte"], ["2", "▭", "2 Spalten"], ["full", "▬", "Ganze Breite"]].map(([k, ic, t]) => (
+                      <button key={k} className={sz === k ? "on" : ""} title={t} onClick={() => setLayout((l) => ({ ...l, size: { ...(l.size || {}), [id]: k } }))}>{ic}</button>
+                    ))}
+                  </div>
+                  <button className="wx" title="Ausblenden" onClick={() => setLayout((l) => ({ ...l, order: shown.filter((x) => x !== id), hidden: [...l.hidden.filter((x) => x !== id), id] }))}>✕</button>
+                </div>
+              )}
+              <div className="wbody">{els[id] || <section className="tile wempty"><b>{HOME_WIDGETS[id][0]}</b><small className="muted block">derzeit keine Daten – wird automatisch angezeigt, sobald es etwas gibt</small></section>}</div>
+            </div>
+          );
+        })}
+        {wdnd.ghost}
+      </div>
+      {editing && (
+        <section className="tile addwidgets">
+          <div className="tilehead"><b>Weitere Widgets</b><small>{hiddenIds.length ? "antippen zum Hinzufügen" : "alle Widgets sind sichtbar"}</small></div>
+          <div className="wadd">
+            {hiddenIds.map((id) => (
+              <button key={id} onClick={() => setLayout((l) => ({ ...l, order: [...shown, id], hidden: l.hidden.filter((x) => x !== id) }))}>
+                <span>{HOME_WIDGETS[id][2]}</span><div><b>{HOME_WIDGETS[id][0]}</b><small>{HOME_WIDGETS[id][3]}</small></div><i>＋</i>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       {!docs.length && <div className="empty"><div style={{ fontSize: 48 }}>📥</div><p>Tippe auf <b>＋</b> und füge dein erstes Dokument hinzu.</p></div>}
-    </div>
+    </>
   );
 }
 
@@ -2884,4 +3028,40 @@ fieldset.ssec{padding:0}
 .ssecbody{padding:0 14px 14px;border-top:1px solid var(--line)}
 .ssecbody>p:first-child{margin-top:12px}
 .ssec.dragging{opacity:.35}
+
+/* v0.9.3 Übersicht: Widgets */
+.widget{position:relative;min-width:0}
+.dash>.w-2{grid-column:span 2}.dash>.w-full{grid-column:1/-1}
+@media (min-width:768px) and (max-width:1023px){.dash>.w-2{grid-column:auto}}
+@media (min-width:700px){.dash .widget .tile,.dash .widget .hero{margin:0}.dash .widget .tile.alert{height:100%}}
+.dash.editing .widget{outline:2px dashed var(--line);outline-offset:4px;border-radius:18px}
+.dash.editing .wbody{pointer-events:none;opacity:.85}
+@media (max-width:699px){.dash.editing .widget{margin:0 0 18px}}
+.wbar{display:flex;align-items:center;gap:6px;margin:0 0 6px;padding:2px 2px 2px 0}
+.wbar b{font-size:13px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wsize{display:flex;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:2px}
+.wsize button{border:0;background:transparent;color:var(--mut);width:30px;height:28px;border-radius:8px;cursor:pointer;font-size:14px}
+.wsize button.on{background:var(--card);color:var(--acc);box-shadow:var(--shadow)}
+@media (max-width:699px){.wsize{display:none}}
+.wx{border:0;background:var(--card2);color:var(--mut);width:32px;height:32px;border-radius:10px;cursor:pointer}
+.wx:hover{color:var(--red)}
+.wempty{min-height:90px;display:flex;flex-direction:column;justify-content:center;gap:4px;opacity:.7}
+.widget.dropbefore::before,.widget.dropafter::after{content:"";position:absolute;top:0;bottom:0;width:4px;border-radius:2px;background:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 25%,transparent);z-index:2}
+.widget.dropbefore::before{left:-11px}.widget.dropafter::after{right:-11px}
+.widget.w-full.dropbefore::before,.widget.w-full.dropafter::after{left:0;right:0;width:auto;height:4px;bottom:auto;top:-11px}
+.widget.w-full.dropafter::after{top:auto;bottom:-11px}
+@media (max-width:767px){.widget.dropbefore::before,.widget.dropafter::after{left:0;right:0;width:auto;height:4px;bottom:auto;top:-10px}.widget.dropafter::after{top:auto;bottom:-10px}}
+.editbar{position:sticky;top:calc(env(safe-area-inset-top) + 6px);z-index:4;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--acc);border-radius:16px;padding:10px 12px 10px 16px;margin:0 0 16px;box-shadow:var(--shadow)}
+.editbar .btn{margin:0}
+.addwidgets{margin-top:18px}
+.wadd{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.wadd button{display:flex;align-items:center;gap:10px;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;color:var(--txt);font:inherit;cursor:pointer}
+.wadd button:hover{border-color:var(--acc)}
+.wadd span{font-size:22px}.wadd div{flex:1;min-width:0}.wadd b{display:block;font-size:14px}.wadd small{color:var(--mut);font-size:12px}.wadd i{font-style:normal;color:var(--acc);font-size:20px}
+.eyebtn.on{background:var(--card2);color:var(--acc)}
+.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.quick button{display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px 4px;color:var(--txt);font:inherit;font-size:13px;cursor:pointer}
+.quick button span{font-size:22px}
+.thumb.sm{width:36px;height:46px;border-radius:6px}
+.hero-v.sm{font-size:26px;font-weight:700;margin:4px 0 8px}
 `;
