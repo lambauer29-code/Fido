@@ -4978,11 +4978,11 @@ function StatusMenu({ x, s, book, onPay, onUnpay, onPatch }) {
     <details className="more stmenu" onClick={(e) => e.stopPropagation()}>
       <summary className={"stpill " + cls} title="Status ändern">{label} <span className="stcaret">▾</span></summary>
       <div className="moremenu" onClick={(e) => { if (e.target.closest("button")) e.currentTarget.closest("details").open = false; }}>
-        <button className={s === "bezahlt" ? "cur" : ""} onClick={() => s !== "bezahlt" && onPay(x)}>{s === "bezahlt" ? "✓ " : ""}Bezahlt</button>
-        <button className={["offen", "überfällig"].includes(s) ? "cur" : ""} onClick={() => s === "bezahlt" ? onUnpay(x) : s === "storniert" ? onPatch(x.id, { status: "offen" }) : null}>{["offen", "überfällig"].includes(s) ? "✓ " : ""}Offen{s === "überfällig" ? " (überfällig)" : ""}</button>
+        <button className={s === "bezahlt" ? "cur" : ""} onClick={() => s !== "bezahlt" && onPay(x)}>Bezahlt</button>
+        <button className={["offen", "überfällig"].includes(s) ? "cur" : ""} onClick={() => s === "bezahlt" ? onUnpay(x) : s === "storniert" ? onPatch(x.id, { status: "offen" }) : null}>Offen{s === "überfällig" ? " (überfällig)" : ""}</button>
         {s === "bezahlt" && !x.paidTx && book?.accounts?.length > 0 && <button onClick={() => onPay(x)}>🔗 Buchung zuordnen</button>}
         {s !== "storniert" ? <button className="red" onClick={() => confirm(`Rechnung ${x.number} stornieren? Sie bleibt im Verlauf, zählt aber nicht mehr zum Umsatz.`) && onPatch(x.id, { status: "storniert" })}>Stornieren</button>
-          : <button className="cur">✓ Storniert</button>}
+          : <button className="cur">Storniert</button>}
       </div>
     </details>
   );
@@ -5145,7 +5145,6 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
                   {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button>}
                   {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button>}
-                  {x.kind === "rechnung" && ["offen", "überfällig"].includes(s) && <button className="btn sm" title="Zahlungseingang auf ein Konto buchen und Rechnung als bezahlt markieren" onClick={() => setPayFor2(x)}>Als bezahlt markieren</button>}
                   {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>}
                   {x.kind === "angebot" && s === "offen" && <><button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button><button className="link small" onClick={() => patch(x.id, { status: "abgelehnt" })}>Abgelehnt</button></>}
                   {x.kind === "rechnung" && s !== "entwurf" && <StatusMenu x={x} s={s} book={book} onPay={setPayFor2} onUnpay={unpay} onPatch={patch} />}

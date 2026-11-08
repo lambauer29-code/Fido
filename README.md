@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.27.2
+- Button „Als bezahlt markieren“ in der Rechnungsliste entfernt – geht jetzt nur noch über die Status-Pill
+- Häkchen im Status-Menü entfernt (aktueller Status bleibt farbig hervorgehoben)
+
 ## v0.27.1
 - Status-Pill sitzt jetzt am Ende der Zeile (vor „…“), Menü öffnet nach links
 - Mahnungen: Status-Pill mit Menü (Bezahlt, Offen, Buchung zuordnen, Stornieren) bei „Zu mahnen“ und im Mahnverlauf (letzte Mahnung je Rechnung)
