@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.15.0 – Verträge für große Displays
+- Abos aus Kontoumsätzen als Tabelle (Anbieter, Kategorie, Intervall, Betrag, pro Monat, pro Jahr, zuletzt), sortierbar, mit ✕ entfernbar; schmal automatisch als Liste.
+- „Vermutlich beendet“: Abos ohne Buchung seit deutlich mehr als einem Intervall zählen nicht mehr zu den Fixkosten (einblendbar).
+- Vertragsordner zweispaltig ab breiten Bildschirmen; statt großer Leer-Meldung ein kompakter Hinweis.
+
+## v0.14.5
+- Dokumentliste: Klick auf den Titel öffnet/schließt die Vorschau.
+- Dokument-Fenster öffnet ab iPad-Breite immer mittig (Größe wird gemerkt).
+
 ## v0.14.3
 - Kontostand-Karte hat jetzt immer denselben Aufbau (ein Konto oder mehrere) – kein Springen mehr beim Darüberfahren über die Konto-Karten. Einzelkonto zeigt Eingänge, Ausgänge, Saldo, Buchungen.
 

@@ -132,6 +132,9 @@ const Thumb = ({ d, className = "thumb" }) => (
   <div className={className}>{d.thumb ? <img src={d.thumb} alt="" /> : <span>{d.mimeType === "application/pdf" ? "PDF" : "🖼"}</span>}</div>
 );
 
+// Abo aus Umsätzen „vermutlich beendet“, wenn die letzte Buchung deutlich länger her ist als ein Intervall
+const SUB_MAXDAYS = { monatlich: 62, vierteljährlich: 125, halbjährlich: 220, jährlich: 420 };
+const subStale = (r) => !!r.last && daysUntil(r.last) < -(SUB_MAXDAYS[r.interval] || 62);
 const INTERVAL_FACTOR ={ monatlich: 1, vierteljährlich: 1 / 3, halbjährlich: 1 / 6, jährlich: 1 / 12 };
 const INTERVAL_SHORT = { monatlich: "/ Monat", vierteljährlich: "/ Quartal", halbjährlich: "/ Halbjahr", jährlich: "/ Jahr" };
 const TRASH_DAYS = 30;
@@ -737,9 +740,13 @@ function defaultRect(defW, small) {
   const w = Math.min(defW || 580, W - 48);
   return { w, h: H - 48, x: W - w - 24, y: 24 };
 }
-function Win({ id, onClose, children, className = "", defW, small = false }) {
+function Win({ id, onClose, children, className = "", defW, small = false, center = false }) {
   const wide = useMedia("(min-width:768px)");
-  const [rect, setRect] = useState(() => clampRect(ls.get("win:" + id, null) || defaultRect(defW, small)));
+  const [rect, setRect] = useState(() => {
+    const r = ls.get("win:" + id, null) || defaultRect(defW, small);
+    // center: gemerkte Größe, aber immer mittig öffnen
+    return clampRect(center ? { ...r, x: Math.round((innerWidth - r.w) / 2), y: Math.max(16, Math.round((innerHeight - r.h) / 2)) } : r);
+  });
   const [z, setZ] = useState(() => ++winZ);
   useEffect(() => { const t = setTimeout(() => ls.set("win:" + id, rect), 150); return () => clearTimeout(t); }, [rect, id]);
   useEffect(() => { const h = () => setRect((r) => clampRect(r)); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, []);
@@ -1013,7 +1020,7 @@ export default function App() {
   const recurring = useMemo(() => detectRecurring(txs), [txs]);
   const confirmedSubs = useMemo(() => recurring.filter((r) => subs.confirmed.includes(r.key) &&
     !activeContracts(active).some((d) => norm(d.contract.provider).split(" ")[0] && r.key.includes(norm(d.contract.provider).split(" ")[0]))), [recurring, subs, active]);
-  const fixExtra = confirmedSubs.reduce((s, r) => s + r.amount * (INTERVAL_FACTOR[r.interval] || 0), 0);
+  const fixExtra = confirmedSubs.filter((r) => !subStale(r)).reduce((s, r) => s + r.amount * (INTERVAL_FACTOR[r.interval] || 0), 0);
 
   // Umsätze importieren: IDs (Dubletten-Schutz), Kategorien, Abgleich mit Rechnungen
   async function importTxs(accountId, list, ownIbans, meta) {
@@ -1256,7 +1263,7 @@ export default function App() {
         {tab === "docs" && <DocList trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
-        {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} />}
+        {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} />}
         {tab === "settings" && (
           <Settings theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
@@ -1795,7 +1802,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
             <div className="ditem" onClick={() => onOpen(d.id)}>
               <Thumb d={d} />
               <div className="grow">
-                <div className="row1"><b className="clamp">{d.title}</b>{amt(d)}</div>
+                <div className="row1"><b className="clamp dtitle" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevId(prevId === d.id ? null : d.id); }}>{d.title}</b>{amt(d)}</div>
                 <small className="muted block">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
                 <div className="labels">
                   <Label c={d.category} />
@@ -2025,32 +2032,44 @@ function activeContracts(docs) {
   }
   return Object.values(by);
 }
-function Contracts({ docs, onOpen, me, notify, extra = [] }) {
+function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs }) {
   const [letterFor, setLetterFor] = useState(null);
+  const [showStale, setShowStale] = useState(false);
+  const [sortBy, setSortBy] = useState("monat");
   useEsc(() => letterFor && setLetterFor(null));
   const list = activeContracts(docs).sort((a, b) => monthlyCost(b.contract) - monthlyCost(a.contract));
   const ended = docs.filter((d) => d.contract && d.contract.active === false);
-  const month = list.reduce((s, d) => s + monthlyCost(d.contract), 0) + extra.reduce((s, r) => s + r.amount * (INTERVAL_FACTOR[r.interval] || 0), 0);
+  const live = extra.filter((r) => !subStale(r)), stale = extra.filter(subStale);
+  const perMonth = (r) => r.amount * (INTERVAL_FACTOR[r.interval] || 0);
+  const month = list.reduce((s, d) => s + monthlyCost(d.contract), 0) + live.reduce((s, r) => s + perMonth(r), 0);
   const soon = list.filter((d) => d.contract.cancelBy && daysUntil(d.contract.cancelBy) >= 0 && daysUntil(d.contract.cancelBy) <= 60);
   const letter = letterFor ? cancelLetter(letterFor.contract, me) : "";
+  const sorter = { monat: (a, b) => perMonth(b) - perMonth(a), name: (a, b) => a.name.localeCompare(b.name), zuletzt: (a, b) => (b.last || "").localeCompare(a.last || "") }[sortBy];
+  const rows = [...live, ...(showStale ? stale : [])].sort(sorter);
+  const remove = (r) => setSubs?.({ ...subs, confirmed: subs.confirmed.filter((k) => k !== r.key), dismissed: [...subs.dismissed, r.key] });
 
   return (
-    <div className="dash">
+    <div className="cdash">
       <div className="hero">
         <small>Fixkosten pro Monat</small>
         <div className="hero-v">{fmtMoney(month)}</div>
-        <div className="hero-row">
+        <div className="hero-row four">
           <div><small>Pro Jahr</small><b>{fmtMoney(month * 12)}</b></div>
-          <div><small>Verträge</small><b>{list.length + extra.length}</b></div>
+          <div><small>Verträge & Abos</small><b>{list.length + live.length}</b></div>
           <div><small>Bald kündbar</small><b>{soon.length}</b></div>
+          <div><small>Vermutlich beendet</small><b>{stale.length}</b></div>
         </div>
       </div>
 
-      {!list.length && <div className="empty"><p>Noch keine Verträge erkannt.<br />Lade einen Vertrag, eine Polizze oder eine Abo-Rechnung hoch.</p></div>}
-
-      {!!list.length && (
+      {!list.length ? (
+        <div className="tile hintrow">
+          <span className="caticon" style={{ width: 40, height: 40, background: "#8b5cf622", fontSize: 18 }}>📑</span>
+          <div className="grow"><b>Noch keine Vertragsdokumente</b><small className="muted block">Lade einen Vertrag, eine Polizze oder eine Abo-Rechnung hoch – Kündigungsfristen und Kündigungsschreiben gibt es dann automatisch.</small></div>
+        </div>
+      ) : (
         <section className="tile">
-          <div className="tilehead"><b>Vertragsordner</b><small>nach Kosten</small></div>
+          <div className="tilehead"><b>Vertragsordner</b><small>{list.length} · nach Kosten</small></div>
+          <div className="cgrid">
           {list.map((d) => {
             const c = d.contract, n = c.cancelBy ? daysUntil(c.cancelBy) : null;
             return (
@@ -2072,18 +2091,34 @@ function Contracts({ docs, onOpen, me, notify, extra = [] }) {
               </div>
             );
           })}
+          </div>
         </section>
       )}
       {!!extra.length && (
-        <section className="tile">
-          <div className="tilehead"><b>Aus Kontoumsätzen</b><small>bestätigte Abos</small></div>
-          {extra.map((r) => (
-            <div key={r.key} className="frow">
-              <CatIcon c={r.category || "Sonstiges"} />
-              <div className="grow"><b>{r.name}</b><small className="muted block">{r.count}× gebucht · zuletzt {fmtDate(r.last)}</small></div>
-              <div className="right"><b>{fmtMoney(r.amount)}</b><small className="muted block">{(INTERVAL_SHORT[r.interval] || "").replace("/ ", "")}</small></div>
-            </div>
-          ))}
+        <section className="tile subtile">
+          <div className="tilehead"><b>Aus Kontoumsätzen</b>
+            <span className="subctl">
+              <select className="chip" value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sortieren">
+                <option value="monat">nach Kosten</option><option value="name">nach Name</option><option value="zuletzt">zuletzt gebucht</option>
+              </select>
+              {!!stale.length && <button className={"chip" + (showStale ? " on" : "")} onClick={() => setShowStale(!showStale)}>{showStale ? "Beendete ausblenden" : `+ ${stale.length} vermutlich beendet`}</button>}
+            </span>
+          </div>
+          <div className="subtable">
+            <div className="subhead"><span>Anbieter</span><span>Kategorie</span><span>Intervall</span><span className="r">Betrag</span><span className="r">pro Monat</span><span className="r">pro Jahr</span><span>Zuletzt</span><span /></div>
+            {rows.map((r) => (
+              <div key={r.key} className={"subrow" + (subStale(r) ? " stale" : "")}>
+                <span className="sname"><CatIcon c={r.category || "Sonstiges"} size={32} /><span className="grow"><b className="one">{r.name}</b><small className="muted block">{r.count}× gebucht{subStale(r) ? " · vermutlich beendet" : ""}</small></span></span>
+                <span className="muted one">{r.category || "–"}</span>
+                <span className="muted">{(INTERVAL_SHORT[r.interval] || "").replace("/ ", "") || r.interval}</span>
+                <b className="r">{fmtMoney(r.amount)}</b>
+                <span className="r">{fmtMoney(perMonth(r))}</span>
+                <span className="r muted">{fmtMoney(perMonth(r) * 12)}</span>
+                <span className={"muted" + (subStale(r) ? " red" : "")}>{fmtDate(r.last)}</span>
+                <span className="r">{setSubs && <button className="iconbtn" title="Nicht mehr als Fixkosten zählen" onClick={() => remove(r)}>✕</button>}</span>
+              </div>
+            ))}
+          </div>
         </section>
       )}
       {!!ended.length && <p className="muted small" style={{ marginTop: 16 }}>{ended.length} beendete Verträge (im Dokument unter „Vertrag / Abo“ abgewählt)</p>}
@@ -2818,7 +2853,7 @@ function Detail({ doc, categories, onClose, saveDoc, trashDoc, reanalyze, notify
   const numIn = (v) => { const s = String(v).replace(",", "."); return s === "" ? null : Number(s); };
 
   return (
-    <Win id="detail" onClose={onClose}>
+    <Win id="detail" onClose={onClose} center>
         <div className="panelhead">
           <b>Dokument</b>
           <button className="btn primary" disabled={!dirty} onClick={() => saveDoc(d)}>Speichern</button>
@@ -3984,4 +4019,28 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .hero-stable .hsub .herolink{margin:0;padding:2px 10px;font-size:12.5px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .hero-stable .hero-row{margin:0!important}
 .dlbar .btn,.win a.btn.primary{display:inline-flex;align-items:center;gap:7px}
+.dtitle{cursor:pointer}.dtitle:hover{color:var(--acc)}
+
+/* v0.15 Verträge */
+.cdash{display:flex;flex-direction:column;gap:14px;container-type:inline-size}
+.cdash>.hero,.cdash>.tile{margin:0}
+.hintrow{display:flex;align-items:center;gap:12px}
+.cgrid{display:grid;grid-template-columns:1fr;gap:0 24px}
+@container (min-width:900px){.cgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.subctl{display:flex;gap:6px;align-items:center}.subctl .chip{margin:0}
+.subtable{margin:4px -4px 0}
+.subhead,.subrow{display:grid;grid-template-columns:minmax(200px,2fr) minmax(0,1.2fr) 90px 110px 110px 110px 100px 40px;gap:12px;align-items:center;padding:0 8px}
+.subhead{font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;height:36px;border-bottom:1px solid var(--line)}
+.subrow{min-height:54px;border-bottom:1px solid var(--line);font-size:14px}.subrow:last-child{border-bottom:0}
+.subrow:hover{background:var(--card2);border-radius:10px}
+.subrow.stale{opacity:.6}
+.sname{display:flex;align-items:center;gap:10px;min-width:0}.sname .grow{min-width:0}
+.subtable .r{text-align:right;font-variant-numeric:tabular-nums}
+@container (max-width:900px){
+  .subhead{display:none}
+  .subrow{grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"n b x" "n m x";row-gap:0;padding:8px}
+  .subrow>span:nth-child(2),.subrow>span:nth-child(3),.subrow>span:nth-child(6),.subrow>span:nth-child(7){display:none}
+  .subrow>.sname{grid-area:n}.subrow>b{grid-area:b}.subrow>span:nth-child(5){grid-area:m;font-size:12px;color:var(--mut)}.subrow>span:nth-child(8){grid-area:x}
+}
+.subhead>span:nth-child(7),.subrow>span:nth-child(7){padding-left:16px}
 `;
