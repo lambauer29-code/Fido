@@ -1114,7 +1114,7 @@ export default function App() {
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} />}
         {tab === "settings" && (
-          <Settings design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
+          <Settings theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
             docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} notify={notify} />
         )}
@@ -1443,12 +1443,17 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
     budgets: w_budgets, fristen: w_fristen, docs: w_docs, contracts: w_contracts, tx: w_tx, tax: w_tax, quick: w_quick };
   const [layout, setLayoutRaw] = useState(() => migrateLayout(ls.get("homeLayout", null)));
   const setLayout = (f) => setLayoutRaw((l) => { const n = typeof f === "function" ? f(l) : f; ls.set("homeLayout", n); return n; });
-  const ids = Object.keys(HOME_WIDGETS);
+  const spacers = layout.order.filter(isSpacer);
+  const ids = [...Object.keys(HOME_WIDGETS), ...spacers];
   const order = [...layout.order.filter((x) => ids.includes(x)), ...ids.filter((x) => !layout.order.includes(x) && !layout.hidden.includes(x))];
   const shown = order.filter((x) => !layout.hidden.includes(x));
-  const hiddenIds = ids.filter((x) => !shown.includes(x));
-  const wOf = (id) => layout.w?.[id] || HOME_WIDGETS[id][1];
-  const hOf = (id) => layout.h?.[id] || null;
+  const hiddenIds = ids.filter((x) => !shown.includes(x) && !isSpacer(x));
+  const meta = (id) => HOME_WIDGETS[id] || ["Leerfeld", 4, "⬚", "Freier Platz"];
+  for (const sp of spacers) els[sp] = <div className={"spacer" + (editing ? " show" : "")}>{editing && <span>Leerfeld – bleibt in der Ansicht leer</span>}</div>;
+  const wOf = (id) => layout.w?.[id] || meta(id)[1];
+  const hOf = (id) => layout.h?.[id] || (isSpacer(id) ? 12 : null);
+  const dense = layout.dense !== false;
+  const addSpacer = () => { const id = "spacer-" + Date.now().toString(36); setLayout((l) => ({ ...l, order: [...shown, id], h: { ...(l.h || {}), [id]: 12 } })); };
   const gap = layout.gap ?? 16;
   const lg = useMedia("(min-width:1024px)"), md = useMedia("(min-width:700px)");
   const cols = lg ? 12 : md ? 6 : 1;
@@ -1464,26 +1469,29 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
           <div className="grow"><b>Übersicht anpassen</b><small className="muted block">⠿ ziehen zum Verschieben · Ecke ◢ ziehen für Breite & Höhe · ✕ blendet aus</small></div>
           {cols > 1 && <label className="gapctl" title="Abstand zwischen den Widgets">Abstand
             <input type="range" min="0" max="40" step="2" value={gap} onChange={(e) => setLayout((l) => ({ ...l, gap: +e.target.value }))} /><small>{gap}px</small></label>}
+          {cols > 1 && <label className="densectl" title="Ein: kleine Widgets füllen Lücken automatisch. Aus: Reihenfolge bleibt strikt, Lücken bleiben frei.">
+            <input type="checkbox" checked={dense} onChange={(e) => setLayout((l) => ({ ...l, dense: e.target.checked }))} />Lücken füllen</label>}
           <button className="link" onClick={() => confirm("Übersicht auf Standard zurücksetzen?") && setLayout(migrateLayout(null))}>Zurücksetzen</button>
           <button className="btn primary" onClick={() => setEditing(false)}>Fertig</button>
         </div>
       )}
-      <div className={"dash" + (cols > 1 ? " gridded" : "") + (editing ? " editing" : "")} style={cols > 1 ? { "--cols": cols, "--gap": gap + "px" } : undefined} data-wid-list={"w|" + vis.length}>
+      <div className={"dash" + (cols > 1 ? " gridded" : "") + (cols > 1 && !dense ? " nodense" : "") + (editing ? " editing" : "")} style={cols > 1 ? { "--cols": cols, "--gap": gap + "px" } : undefined} data-wid-list={"w|" + vis.length}>
         {vis.map((id, i) => (
-          <WidgetCell key={id} id={id} idx={i} title={HOME_WIDGETS[id][0]} w={wOf(id)} h={hOf(id)} cols={cols} gap={gap} editing={editing} dnd={wdnd}
+          <WidgetCell key={id} id={id} idx={i} title={meta(id)[0]} w={wOf(id)} h={hOf(id)} cols={cols} gap={gap} editing={editing} dnd={wdnd}
             dropBefore={wdnd.lineAt("wid", "w", i)} dropAfter={i === vis.length - 1 && wdnd.lineAt("wid", "w", vis.length)}
             onResize={(w, h) => setLayout((l) => ({ ...l, w: { ...(l.w || {}), [id]: w }, h: { ...(l.h || {}), [id]: h } }))}
             onWidth={(w) => setW(id, w)} onAutoH={() => setH(id, null)}
-            onHide={() => setLayout((l) => ({ ...l, order: shown.filter((x) => x !== id), hidden: [...l.hidden.filter((x) => x !== id), id] }))}>
-            {els[id] || <section className="tile wempty"><b>{HOME_WIDGETS[id][0]}</b><small className="muted block">derzeit keine Daten – wird automatisch angezeigt, sobald es etwas gibt</small></section>}
+            onHide={() => setLayout((l) => ({ ...l, order: shown.filter((x) => x !== id), hidden: isSpacer(id) ? l.hidden : [...l.hidden.filter((x) => x !== id), id] }))}>
+            {els[id] || <section className="tile wempty"><b>{meta(id)[0]}</b><small className="muted block">derzeit keine Daten – wird automatisch angezeigt, sobald es etwas gibt</small></section>}
           </WidgetCell>
         ))}
         {wdnd.ghost}
       </div>
       {editing && (
         <section className="tile addwidgets">
-          <div className="tilehead"><b>Weitere Widgets</b><small>{hiddenIds.length ? "antippen zum Hinzufügen" : "alle Widgets sind sichtbar"}</small></div>
+          <div className="tilehead"><b>Weitere Widgets</b><small>antippen zum Hinzufügen</small></div>
           <div className="wadd">
+            <button className="spaceradd" onClick={addSpacer}><span>⬚</span><div><b>Leerfeld</b><small>freier Platz – beliebig oft, Größe frei ziehbar</small></div><i>＋</i></button>
             {hiddenIds.map((id) => (
               <button key={id} onClick={() => setLayout((l) => ({ ...l, order: [...shown, id], hidden: l.hidden.filter((x) => x !== id) }))}>
                 <span>{HOME_WIDGETS[id][2]}</span><div><b>{HOME_WIDGETS[id][0]}</b><small>{HOME_WIDGETS[id][3]}</small></div><i>＋</i>
@@ -1499,6 +1507,7 @@ function Home({ docs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts 
 
 /* Ein Widget im Raster: Breite in 12tel, Höhe in Rasterzeilen (oder automatisch nach Inhalt) */
 const GRID_ROW = 8;
+const isSpacer = (id) => typeof id === "string" && id.startsWith("spacer-");
 function WidgetCell({ id, idx, title, w, h, cols, gap, editing, dnd, dropBefore, dropAfter, onResize, onWidth, onAutoH, onHide, children }) {
   const ref = useRef(null), inner = useRef(null);
   const [autoRows, setAutoRows] = useState(12);
@@ -2617,59 +2626,100 @@ const NEG_SWATCHES = ["#e5484d", "#dc2626", "#fe4b60", "#e16259", "#b55b64", "#e
 const mixWhite = (hex, p) => { const n = parseInt(hex.slice(1), 16), f = (c) => Math.round(c + (255 - c) * p); return "#" + [n >> 16, (n >> 8) & 255, n & 255].map((c) => f(c).toString(16).padStart(2, "0")).join(""); };
 function applyDesign(design, theme) {
   const st = document.documentElement.style, pr = DESIGN_PRESETS.find((x) => x.id === design.preset) || DESIGN_PRESETS[0];
+  const ov = design.over?.[pr.id] || {};
   const set = (k, v) => (v ? st.setProperty(k, v) : st.removeProperty(k));
-  const dark = theme === "dark", def = pr.id === "fido";
-  set("--acc", def ? null : dark ? mixWhite(pr.acc, 0.22) : pr.acc);
-  set("--acc2", def ? null : pr.acc2);
-  set("--hero", def ? null : `linear-gradient(135deg,${pr.hero[0]} 0%,${pr.hero[1]} 55%,${pr.hero[2]} 100%)`);
-  const surf = (dark ? pr.dark : pr.light) || {};
+  const dark = theme === "dark", def = pr.id === "fido" && !ov.acc && !ov.acc2;
+  const acc = ov.acc || pr.acc, acc2 = ov.acc2 || pr.acc2;
+  set("--acc", def ? null : dark ? mixWhite(acc, 0.22) : acc);
+  set("--acc2", def ? null : acc2);
+  set("--hero", def ? null : `linear-gradient(135deg,${pr.hero[0]} 0%,${ov.acc || pr.hero[1]} 55%,${ov.acc2 || pr.hero[2]} 100%)`);
+  const surf = { ...((dark ? pr.dark : pr.light) || {}) };
+  const bgOv = dark ? ov.bgDark : ov.bgLight;
+  if (bgOv) { surf.bg = bgOv; surf.card = surf.card || (dark ? mixWhite(bgOv, 0.05) : "#ffffff"); }
   for (const k of ["bg", "card", "card2", "line", "txt", "mut"]) set("--" + k, surf[k]);
   set("--pos", design.pos ? (dark ? mixWhite(design.pos, 0.18) : design.pos) : null);
   set("--neg", design.neg ? (dark ? mixWhite(design.neg, 0.18) : design.neg) : null);
   document.body.classList.toggle("outneg", !!design.outNeg);
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = surf.bg || (dark ? "#0d1117" : "#f3f5f9");
 }
-function Swatches({ value, list, def, onPick }) {
-  const custom = value && !list.includes(value);
+/* Farbwähler-Kreis: live Vorschau beim Ziehen, „change“ (Picker geschlossen) = übernehmen */
+function ColorDot({ value, title, onInput, onCommit, className = "", children, style }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current; if (!el || !onCommit) return;
+    const h = (e) => onCommit(e.target.value); el.addEventListener("change", h); return () => el.removeEventListener("change", h);
+  }, [onCommit]);
+  return (
+    <label className={"cdot " + className} title={title} style={style} onClick={(e) => e.stopPropagation()}>
+      <input ref={ref} type="color" value={value} onChange={(e) => onInput?.(e.target.value)} />{children}
+    </label>
+  );
+}
+function Swatches({ value, list, custom = [], def, onPick, onAdd, onRemove }) {
+  const isCustom = value && !list.includes(value) && !custom.includes(value);
   return (
     <div className="swatches">
       <button className={"sw def" + (!value ? " on" : "")} onClick={() => onPick(null)} title="Standard" style={{ background: def }}>A</button>
       {list.map((c) => <button key={c} className={"sw" + (value === c ? " on" : "")} style={{ background: c }} title={c} onClick={() => onPick(c)} />)}
-      <label className={"sw custom" + (custom ? " on" : "")} title="Eigene Farbe wählen" style={custom ? { background: value } : undefined}>
-        <input type="color" value={value || def} onChange={(e) => onPick(e.target.value)} />＋
-      </label>
+      {custom.map((c) => (
+        <span key={c} className="swwrap">
+          <button className={"sw" + (value === c ? " on" : "")} style={{ background: c }} title={c + " (eigene Farbe)"} onClick={() => onPick(c)} />
+          <button className="swdel" title="Eigene Farbe entfernen" onClick={() => onRemove(c)}>×</button>
+        </span>
+      ))}
+      <ColorDot className={"sw custom" + (isCustom ? " on" : "")} title="Eigene Farbe hinzufügen" value={value || def}
+        onInput={(c) => onPick(c)} onCommit={(c) => onAdd(c)}>＋</ColorDot>
     </div>
   );
 }
-function DesignSettings({ design, setDesign }) {
+function DesignSettings({ design, setDesign, theme }) {
   const pick = (k, v) => setDesign({ ...design, [k]: v });
+  const cur = design.preset || "fido";
+  const setOv = (pid, k, v) => setDesign({ ...design, preset: pid, over: { ...(design.over || {}), [pid]: { ...(design.over?.[pid] || {}), [k]: v } } });
+  const resetOv = (pid) => { const o = { ...(design.over || {}) }; delete o[pid]; setDesign({ ...design, over: o }); };
+  const addTo = (listKey, k) => (c) => {
+    const l = design[listKey] || [], base = k === "pos" ? POS_SWATCHES : NEG_SWATCHES;
+    setDesign({ ...design, [k]: c, [listKey]: base.includes(c) || l.includes(c) ? l : [...l, c].slice(-8) });
+  };
+  const rmFrom = (listKey, k) => (c) => setDesign({ ...design, [listKey]: (design[listKey] || []).filter((x) => x !== c), [k]: design[k] === c ? null : design[k] });
+  const bgKey = theme === "dark" ? "bgDark" : "bgLight";
   return (
     <>
-      <p className="muted small">Farbstil der App – Voreinstellungen angelehnt an bekannte Finanz- und Dokumenten-Apps. Tag-/Nachtmodus funktioniert mit jedem Stil.</p>
+      <p className="muted small">Farbstil der App – Voreinstellungen angelehnt an bekannte Finanz- und Dokumenten-Apps. Auf die Kreise tippen, um einzelne Farben anzupassen (Akzent · Zweitfarbe · Hintergrund {theme === "dark" ? "Nacht" : "Tag"}).</p>
       <div className="presets">
-        {DESIGN_PRESETS.map((pr) => (
-          <button key={pr.id} className={"preset" + ((design.preset || "fido") === pr.id ? " on" : "")} onClick={() => pick("preset", pr.id)}>
-            <span className="pv" style={{ background: `linear-gradient(135deg,${pr.hero[0]},${pr.hero[1]} 55%,${pr.hero[2]})` }}>
-              <i style={{ background: pr.acc }} /><i style={{ background: pr.acc2 }} />{pr.light?.bg && <i style={{ background: pr.light.bg }} />}
-            </span>
-            <b>{pr.name}</b><small>{pr.note}</small>
-          </button>
-        ))}
+        {DESIGN_PRESETS.map((pr) => {
+          const ov = design.over?.[pr.id] || {};
+          const acc = ov.acc || pr.acc, acc2 = ov.acc2 || pr.acc2;
+          const bg = ov[bgKey] || (theme === "dark" ? pr.dark?.bg || "#0d1117" : pr.light?.bg || "#f3f5f9");
+          const changed = Object.keys(ov).length > 0;
+          return (
+            <div key={pr.id} role="button" tabIndex={0} className={"preset" + (cur === pr.id ? " on" : "")} onClick={() => pick("preset", pr.id)}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && pick("preset", pr.id)}>
+              <span className="pv" style={{ background: `linear-gradient(135deg,${pr.hero[0]},${ov.acc || pr.hero[1]} 55%,${ov.acc2 || pr.hero[2]})` }}>
+                <ColorDot value={acc} title="Akzentfarbe ändern" style={{ background: acc }} onInput={(c) => setOv(pr.id, "acc", c)} />
+                <ColorDot value={acc2} title="Zweitfarbe ändern" style={{ background: acc2 }} onInput={(c) => setOv(pr.id, "acc2", c)} />
+                <ColorDot value={bg} title={`Hintergrund (${theme === "dark" ? "Nacht" : "Tag"}) ändern`} style={{ background: bg }} onInput={(c) => setOv(pr.id, bgKey, c)} />
+              </span>
+              <b>{pr.name}</b><small>{pr.note}</small>
+              {changed && <button className="link small presetreset" onClick={(e) => { e.stopPropagation(); resetOv(pr.id); }}>↺ Originalfarben</button>}
+            </div>
+          );
+        })}
       </div>
       <h4 className="subhead">Farben für Guthaben & Schulden</h4>
-      <div className="colorrow"><span><b>Guthaben</b><small className="muted block">positive Kontostände, Eingänge</small></span><b className="pos">+{fmtMoney(1234.56)}</b></div>
-      <Swatches value={design.pos} list={POS_SWATCHES} def="#16a34a" onPick={(c) => pick("pos", c)} />
-      <div className="colorrow"><span><b>Schulden</b><small className="muted block">negative Kontostände</small></span><b className="neg">{fmtMoney(-567.89)}</b></div>
-      <Swatches value={design.neg} list={NEG_SWATCHES} def="#e5484d" onPick={(c) => pick("neg", c)} />
+      <div className="colorrow"><span><b>Guthaben</b><small className="muted block">positive Kontostände, Eingänge, Einnahmen im Verlauf</small></span><b className="pos">+{fmtMoney(1234.56)}</b></div>
+      <Swatches value={design.pos} list={POS_SWATCHES} custom={design.posList} def="#16a34a" onPick={(c) => pick("pos", c)} onAdd={addTo("posList", "pos")} onRemove={rmFrom("posList", "pos")} />
+      <div className="colorrow"><span><b>Schulden</b><small className="muted block">negative Kontostände, Ausgaben im Verlauf</small></span><b className="neg">{fmtMoney(-567.89)}</b></div>
+      <Swatches value={design.neg} list={NEG_SWATCHES} custom={design.negList} def="#e5484d" onPick={(c) => pick("neg", c)} onAdd={addTo("negList", "neg")} onRemove={rmFrom("negList", "neg")} />
       <label className="switchrow">
-        <span><b>Ausgaben in Schulden-Farbe</b><small className="muted block">Auch einzelne Abbuchungen einfärben (sonst neutral)</small></span>
+        <span><b>Ausgaben in Schulden-Farbe</b><small className="muted block">Auch einzelne Abbuchungen in Listen einfärben (sonst neutral)</small></span>
         <input type="checkbox" className="switch" checked={!!design.outNeg} onChange={(e) => pick("outNeg", e.target.checked)} />
       </label>
     </>
   );
 }
 
-function Settings({ design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+function Settings({ theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
   const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "docgroups", "rules", "trash", "backup", "verbindung"]);
   useEffect(() => ls.set("settingsOrder", secOrder), [secOrder]);
@@ -2721,7 +2771,7 @@ function Settings({ design, setDesign, themeMode, setThemeMode, importTxs, hideA
           ))}
         </div>
       </SetSec></>,
-    "design": <><SetSec id="design" title="Design"><DesignSettings design={design} setDesign={setDesign} /></SetSec></>,
+    "design": <><SetSec id="design" title="Design"><DesignSettings design={design} setDesign={setDesign} theme={theme} /></SetSec></>,
     "datenschutz": <><SetSec id="datenschutz" title="Datenschutz">
         <label className="switchrow">
           <span><b>Geldbeträge anzeigen</b><small className="muted block">Aus = alle Beträge werden als „€ •••“ verdeckt (z. B. wenn jemand mitschaut). Schnell umschalten auch mit dem Augen-Symbol oben rechts.</small></span>
@@ -2874,7 +2924,7 @@ textarea{resize:vertical}label{display:block;color:var(--mut);font-size:13px;mar
 .chart .col{flex:1;display:flex;flex-direction:column;align-items:center;height:100%}
 .chart .pair{flex:1;width:100%;display:flex;gap:3px;align-items:flex-end;justify-content:center}
 .chart .v{width:40%;max-width:14px;border-radius:4px 4px 0 0;min-height:3px}.chart small{color:var(--mut);font-size:10px;margin-top:4px}
-.v.out,.dot.out{background:var(--acc)}.v.inc,.dot.inc{background:var(--acc2)}
+.v.out,.dot.out{background:var(--neg,var(--red))}.v.inc,.dot.inc{background:var(--pos,var(--ok))}
 .legend{color:var(--mut);font-size:12px;margin-top:8px;display:flex;gap:6px;align-items:center}.legend .dot{margin-left:6px}
 
 /* Dokumenten-Look */
@@ -3325,4 +3375,28 @@ body.rz-active,body.rz-active *{cursor:nwse-resize!important;user-select:none!im
 @media (max-width:900px){.editbar{flex-wrap:wrap}.gapctl{order:5;width:100%}}
 .widget.wfull.dropbefore::before,.widget.wfull.dropafter::after{left:0;right:0;width:auto;height:4px;bottom:auto;top:-10px}
 .widget.wfull.dropafter::after{top:auto;bottom:-10px}
+
+/* v0.10.2 Farbwahl */
+.cdot{position:relative;display:inline-flex;align-items:center;justify-content:center;margin:0!important;padding:0;width:20px;height:20px;border-radius:50%;border:2px solid #fffc;box-shadow:0 1px 3px #0005;cursor:pointer;flex:none;color:#fff;font-size:0}
+.cdot input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;padding:0;margin:0!important;border:0}
+.cdot:hover{transform:scale(1.15)}
+.preset .pv .cdot{width:20px;height:20px}
+.preset{position:relative}
+.presetreset{margin-top:2px;font-size:12px!important}
+.swatches{align-items:center}
+.swatches .sw,.swatches .cdot.sw{width:32px;height:32px;margin:0!important;flex:none;box-sizing:border-box;border:2px solid var(--card);box-shadow:0 0 0 1px var(--line);transform:none;font-size:16px}
+.swatches .cdot.sw.on,.swatches .sw.on{box-shadow:0 0 0 2px var(--txt)}
+.swwrap{position:relative;display:inline-flex}
+.swdel{position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;border:0;background:var(--txt);color:var(--bg);font-size:11px;line-height:16px;padding:0;cursor:pointer;display:none}
+.swwrap:hover .swdel{display:block}
+@media (hover:none){.swdel{display:block}}
+
+/* Leerfelder */
+.spacer{height:100%;min-height:40px}
+.spacer.show{border:2px dashed var(--line);border-radius:18px;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:13px;background:repeating-linear-gradient(135deg,transparent 0 10px,color-mix(in srgb,var(--line) 40%,transparent) 10px 11px)}
+.dash.gridded.nodense{grid-auto-flow:row}
+.densectl{display:flex;align-items:center;gap:6px;margin:0;font-size:13px;color:var(--mut);white-space:nowrap;cursor:pointer}
+.densectl input{width:auto;margin:0;accent-color:var(--acc)}
+.wadd .spaceradd{border-style:dashed}
+@media (max-width:699px){.widget:has(.spacer){display:none}}
 `;

@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.10.3
+- Übersicht: „Leerfeld“-Widget (beliebig oft, Größe frei ziehbar, in der Ansicht unsichtbar) für freie Zeilen/Lücken.
+- Schalter „Lücken füllen“: aus = Reihenfolge strikt, Lücken bleiben frei.
+
+## v0.10.2
+- Design: Kreise in den Vorgaben antippen = Akzent, Zweitfarbe und Hintergrund (Tag/Nacht getrennt) frei wählen, „↺ Originalfarben“ setzt zurück.
+- Eigene Guthaben-/Schulden-Farben werden als zusätzliche Kreise gespeichert (bis 8, mit × entfernbar); ＋-Kreis gleich groß.
+- Verlauf-Widget nutzt die gewählten Guthaben-/Schulden-Farben.
+
 ## v0.10.1
 - Einstellungen: überflüssige Kachel „Fristen“ entfernt (Fristen bleiben über die Seitenleiste erreichbar).
 
