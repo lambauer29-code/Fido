@@ -511,7 +511,8 @@ export function detectRecurring(txs) {
     const interval = g >= 25 && g <= 35 ? "monatlich" : g >= 80 && g <= 100 ? "vierteljährlich" : g >= 170 && g <= 200 ? "halbjährlich" : g >= 340 && g <= 390 ? "jährlich" : null;
     if (!interval) continue;
     const lastTx = similar[similar.length - 1];
-    res.push({ key, name: lastTx.counterparty || key, amount: Math.round(med * 100) / 100, interval, count: similar.length, last: lastTx.date, category: lastTx.category });
+    res.push({ key, name: lastTx.counterparty || key, amount: Math.round(med * 100) / 100, interval, count: similar.length, last: lastTx.date, category: lastTx.category,
+      txIds: [...list].sort((a, b) => b.date.localeCompare(a.date)).map((t) => t.id) });
   }
   return res.sort((a, b) => b.amount - a.amount);
 }

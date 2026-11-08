@@ -135,6 +135,8 @@ const Thumb = ({ d, className = "thumb" }) => (
 // Abo aus Umsätzen „vermutlich beendet“, wenn die letzte Buchung deutlich länger her ist als ein Intervall
 const SUB_MAXDAYS = { monatlich: 62, vierteljährlich: 125, halbjährlich: 220, jährlich: 420 };
 const subStale = (r) => !!r.last && daysUntil(r.last) < -(SUB_MAXDAYS[r.interval] || 62);
+// ✓ bestätigt = zählt immer · ✕ deaktiviert = zählt nie · sonst automatisch nach letzter Buchung
+const subInactive = (r, subs = {}) => (subs.ended || []).includes(r.key) || (!(subs.verified || []).includes(r.key) && subStale(r));
 const INTERVAL_FACTOR ={ monatlich: 1, vierteljährlich: 1 / 3, halbjährlich: 1 / 6, jährlich: 1 / 12 };
 const INTERVAL_SHORT = { monatlich: "/ Monat", vierteljährlich: "/ Quartal", halbjährlich: "/ Halbjahr", jährlich: "/ Jahr" };
 const TRASH_DAYS = 30;
@@ -1020,7 +1022,7 @@ export default function App() {
   const recurring = useMemo(() => detectRecurring(txs), [txs]);
   const confirmedSubs = useMemo(() => recurring.filter((r) => subs.confirmed.includes(r.key) &&
     !activeContracts(active).some((d) => norm(d.contract.provider).split(" ")[0] && r.key.includes(norm(d.contract.provider).split(" ")[0]))), [recurring, subs, active]);
-  const fixExtra = confirmedSubs.filter((r) => !subStale(r)).reduce((s, r) => s + r.amount * (INTERVAL_FACTOR[r.interval] || 0), 0);
+  const fixExtra = confirmedSubs.filter((r) => !subInactive(r, subs)).reduce((s, r) => s + r.amount * (INTERVAL_FACTOR[r.interval] || 0), 0);
 
   // Umsätze importieren: IDs (Dubletten-Schutz), Kategorien, Abgleich mit Rechnungen
   async function importTxs(accountId, list, ownIbans, meta) {
@@ -1263,7 +1265,7 @@ export default function App() {
         {tab === "docs" && <DocList trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup} />}
         {tab === "deadlines" && <Deadlines docs={active} onOpen={setOpenId} saveDoc={saveDoc} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
-        {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} />}
+        {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
         {tab === "settings" && (
           <Settings theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
@@ -2032,14 +2034,52 @@ function activeContracts(docs) {
   }
   return Object.values(by);
 }
-function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs }) {
+/* Buchungen eines Vertrags/Abos – ausklappbar */
+function TxFold({ list, accounts }) {
+  const [all, setAll] = useState(false);
+  const accName = (id) => accounts.find((a) => a.id === id)?.name || "";
+  const shown = all ? list : list.slice(0, 12);
+  const sum = list.reduce((s, t) => s + t.amount, 0);
+  const years = {};
+  for (const t of list) years[t.date.slice(0, 4)] = (years[t.date.slice(0, 4)] || 0) + t.amount;
+  return (
+    <div className="txfold">
+      <div className="txfoldsum">
+        <span>{list.length} Buchungen · gesamt <b>{fmtMoney(sum)}</b></span>
+        <span className="muted">{Object.entries(years).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 4).map(([y, v]) => `${y}: ${fmtMoney(v)}`).join(" · ")}</span>
+      </div>
+      {shown.map((t) => (
+        <div key={t.id} className="txfoldrow">
+          <span className="muted">{fmtDate(t.date)}</span>
+          <span className="one">{t.purpose || t.bookingText || t.counterparty || "–"}</span>
+          <span className="muted one">{accName(t.accountId)}{t.docId ? " · 📎" : ""}</span>
+          <b className={"r " + (t.amount > 0 ? "pos" : "")}>{fmtMoney(t.amount, t.currency)}</b>
+        </div>
+      ))}
+      {list.length > shown.length && <button className="link" onClick={() => setAll(true)}>Alle {list.length} Buchungen zeigen</button>}
+      {!list.length && <p className="muted small">Keine passenden Buchungen gefunden.</p>}
+    </div>
+  );
+}
+
+function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = [], accounts = [] }) {
+  const [open, setOpen] = useState({});
+  const toggleOpen = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
+  const txById = useMemo(() => Object.fromEntries(txs.map((t) => [t.id, t])), [txs]);
+  // Buchungen zu einem Vertragsdokument: Anbieter im Empfänger/Verwendungszweck
+  const txFor = (c) => { const w = norm(c.provider || "").split(" ").filter((x) => x.length > 2)[0]; return !w ? [] : txs.filter((t) => t.kind !== "broker" && norm(`${t.counterparty} ${t.purpose}`).includes(w)).sort((a, b) => b.date.localeCompare(a.date)); };
   const [letterFor, setLetterFor] = useState(null);
   const [showStale, setShowStale] = useState(false);
   const [sortBy, setSortBy] = useState("monat");
   useEsc(() => letterFor && setLetterFor(null));
   const list = activeContracts(docs).sort((a, b) => monthlyCost(b.contract) - monthlyCost(a.contract));
   const ended = docs.filter((d) => d.contract && d.contract.active === false);
-  const live = extra.filter((r) => !subStale(r)), stale = extra.filter(subStale);
+  const inactive = (r) => subInactive(r, subs);
+  const live = extra.filter((r) => !inactive(r)), stale = extra.filter(inactive);
+  const isOk = (r) => (subs?.verified || []).includes(r.key), isEnded = (r) => (subs?.ended || []).includes(r.key);
+  const toggleIn = (k, list) => (list || []).includes(k) ? list.filter((x) => x !== k) : [...(list || []), k];
+  const verify = (r) => setSubs({ ...subs, verified: toggleIn(r.key, subs.verified), ended: (subs.ended || []).filter((k) => k !== r.key) });
+  const endIt = (r) => setSubs({ ...subs, ended: toggleIn(r.key, subs.ended), verified: (subs.verified || []).filter((k) => k !== r.key) });
   const perMonth = (r) => r.amount * (INTERVAL_FACTOR[r.interval] || 0);
   const month = list.reduce((s, d) => s + monthlyCost(d.contract), 0) + live.reduce((s, r) => s + perMonth(r), 0);
   const soon = list.filter((d) => d.contract.cancelBy && daysUntil(d.contract.cancelBy) >= 0 && daysUntil(d.contract.cancelBy) <= 60);
@@ -2057,7 +2097,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs }) {
           <div><small>Pro Jahr</small><b>{fmtMoney(month * 12)}</b></div>
           <div><small>Verträge & Abos</small><b>{list.length + live.length}</b></div>
           <div><small>Bald kündbar</small><b>{soon.length}</b></div>
-          <div><small>Vermutlich beendet</small><b>{stale.length}</b></div>
+          <div><small>Beendet / inaktiv</small><b>{stale.length}</b></div>
         </div>
       </div>
 
@@ -2086,8 +2126,11 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs }) {
                   {c.cancelBy
                     ? <span className={"pill " + (n < 0 ? "red" : n <= 30 ? "warn" : "")}>⏰ bis {fmtDate(c.cancelBy)}{n >= 0 ? ` · ${n} T.` : " · verpasst"}</span>
                     : c.noticePeriod ? <span className="pill">Frist: {c.noticePeriod}</span> : <span className="pill muted">Kündigungsfrist unbekannt</span>}
+                  <span className="grow" />
+                  <button className="link" onClick={() => toggleOpen(d.id)}>{open[d.id] ? "Buchungen ▴" : `Buchungen (${txFor(c).length}) ▾`}</button>
                   <button className="link" onClick={() => setLetterFor(d)}>Kündigen ›</button>
                 </div>
+                {open[d.id] && <TxFold list={txFor(c)} accounts={accounts} />}
               </div>
             );
           })}
@@ -2101,22 +2144,28 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs }) {
               <select className="chip" value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sortieren">
                 <option value="monat">nach Kosten</option><option value="name">nach Name</option><option value="zuletzt">zuletzt gebucht</option>
               </select>
-              {!!stale.length && <button className={"chip" + (showStale ? " on" : "")} onClick={() => setShowStale(!showStale)}>{showStale ? "Beendete ausblenden" : `+ ${stale.length} vermutlich beendet`}</button>}
+              {!!stale.length && <button className={"chip" + (showStale ? " on" : "")} onClick={() => setShowStale(!showStale)}>{showStale ? "Inaktive ausblenden" : `+ ${stale.length} beendet / inaktiv`}</button>}
             </span>
           </div>
           <div className="subtable">
-            <div className="subhead"><span>Anbieter</span><span>Kategorie</span><span>Intervall</span><span className="r">Betrag</span><span className="r">pro Monat</span><span className="r">pro Jahr</span><span>Zuletzt</span><span /></div>
+            <div className="subhead"><span>Anbieter</span><span>Kategorie</span><span>Intervall</span><span className="r">Betrag</span><span className="r">pro Monat</span><span className="r">pro Jahr</span><span>Zuletzt</span><span className="r">Status</span></div>
             {rows.map((r) => (
-              <div key={r.key} className={"subrow" + (subStale(r) ? " stale" : "")}>
-                <span className="sname"><CatIcon c={r.category || "Sonstiges"} size={32} /><span className="grow"><b className="one">{r.name}</b><small className="muted block">{r.count}× gebucht{subStale(r) ? " · vermutlich beendet" : ""}</small></span></span>
+              <React.Fragment key={r.key}>
+              <div className={"subrow" + (inactive(r) ? " stale" : "") + (open[r.key] ? " open" : "")}>
+                <span className="sname click" onClick={() => toggleOpen(r.key)} title="Buchungen ein-/ausklappen"><IcoChev open={!!open[r.key]} /><CatIcon c={r.category || "Sonstiges"} size={32} /><span className="grow"><b className="one">{r.name}</b><small className="muted block">{r.count}× gebucht{isEnded(r) ? " · deaktiviert" : isOk(r) ? " · bestätigt" : subStale(r) ? " · vermutlich beendet" : ""}</small></span></span>
                 <span className="muted one">{r.category || "–"}</span>
                 <span className="muted">{(INTERVAL_SHORT[r.interval] || "").replace("/ ", "") || r.interval}</span>
                 <b className="r">{fmtMoney(r.amount)}</b>
                 <span className="r">{fmtMoney(perMonth(r))}</span>
                 <span className="r muted">{fmtMoney(perMonth(r) * 12)}</span>
-                <span className={"muted" + (subStale(r) ? " red" : "")}>{fmtDate(r.last)}</span>
-                <span className="r">{setSubs && <button className="iconbtn" title="Nicht mehr als Fixkosten zählen" onClick={() => remove(r)}>✕</button>}</span>
+                <span className={"muted" + (subStale(r) && !isOk(r) ? " red" : "")}>{fmtDate(r.last)}</span>
+                <span className="subact">{setSubs && <>
+                  <button className={"iconbtn ok" + (isOk(r) ? " on" : "")} title={isOk(r) ? "Bestätigung aufheben" : "Bestätigen: läuft noch, zählt zu den Fixkosten"} aria-pressed={isOk(r)} onClick={() => verify(r)}>✓</button>
+                  <button className={"iconbtn no" + (isEnded(r) ? " on" : "")} title={isEnded(r) ? "Wieder aktivieren" : "Deaktivieren: Vertrag beendet, zählt nicht mehr"} aria-pressed={isEnded(r)} onClick={() => endIt(r)}>✕</button>
+                </>}</span>
               </div>
+              {open[r.key] && <TxFold list={(r.txIds || []).map((id) => txById[id]).filter(Boolean)} accounts={accounts} />}
+              </React.Fragment>
             ))}
           </div>
         </section>
@@ -4029,7 +4078,7 @@ nav .acctree .accitem .ab{font-size:11.5px}
 @container (min-width:900px){.cgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .subctl{display:flex;gap:6px;align-items:center}.subctl .chip{margin:0}
 .subtable{margin:4px -4px 0}
-.subhead,.subrow{display:grid;grid-template-columns:minmax(200px,2fr) minmax(0,1.2fr) 90px 110px 110px 110px 100px 40px;gap:12px;align-items:center;padding:0 8px}
+.subhead,.subrow{display:grid;grid-template-columns:minmax(200px,2fr) minmax(0,1.2fr) 90px 110px 110px 110px 100px 84px;gap:12px;align-items:center;padding:0 8px}
 .subhead{font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;height:36px;border-bottom:1px solid var(--line)}
 .subrow{min-height:54px;border-bottom:1px solid var(--line);font-size:14px}.subrow:last-child{border-bottom:0}
 .subrow:hover{background:var(--card2);border-radius:10px}
@@ -4043,4 +4092,23 @@ nav .acctree .accitem .ab{font-size:11.5px}
   .subrow>.sname{grid-area:n}.subrow>b{grid-area:b}.subrow>span:nth-child(5){grid-area:m;font-size:12px;color:var(--mut)}.subrow>span:nth-child(8){grid-area:x}
 }
 .subhead>span:nth-child(7),.subrow>span:nth-child(7){padding-left:16px}
+
+.subact{display:flex;gap:4px;justify-content:flex-end}
+.subact .iconbtn{width:36px;height:36px;font-size:15px}
+.subact .iconbtn.ok.on{background:color-mix(in srgb,var(--ok) 22%,transparent);color:var(--ok)}
+.subact .iconbtn.no.on{background:color-mix(in srgb,var(--red) 22%,transparent);color:var(--red)}
+.subact .iconbtn.ok:hover{color:var(--ok)}.subact .iconbtn.no:hover{color:var(--red)}
+.subrow.stale .subact{opacity:1}.subrow.stale{opacity:1}.subrow.stale>span:not(.subact),.subrow.stale>b{opacity:.55}
+
+/* ausklappbare Buchungen */
+.sname.click{cursor:pointer}.sname .pchev{color:var(--mut);flex:none}
+.subrow.open{background:var(--card2);border-radius:10px 10px 0 0;border-bottom-color:transparent}
+.txfold{background:var(--card2);border-radius:0 0 12px 12px;padding:6px 14px 10px 50px;margin:0 0 8px;border-bottom:1px solid var(--line)}
+.crow .txfold{border-radius:12px;padding:6px 14px 10px;margin:4px 0 10px}
+.txfoldsum{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:space-between;font-size:12.5px;padding:4px 0 8px;border-bottom:1px solid var(--line)}
+.txfoldrow{display:grid;grid-template-columns:84px minmax(0,1fr) minmax(0,180px) 100px;gap:12px;align-items:center;font-size:13px;min-height:32px;border-bottom:1px dashed color-mix(in srgb,var(--line) 70%,transparent)}
+.txfoldrow:last-of-type{border-bottom:0}
+.txfoldrow .r{text-align:right;font-variant-numeric:tabular-nums}
+@container (max-width:700px){.txfold{padding-left:14px}.txfoldrow{grid-template-columns:74px minmax(0,1fr) 90px}.txfoldrow>span:nth-child(3){display:none}}
+.cmeta{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 `;

@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.15.2
+- Verträge: Buchungen je Abo/Vertrag ausklappbar (Pfeil bzw. Name antippen) – mit Summe gesamt und pro Jahr, Konto, Verwendungszweck und Beleg-Hinweis. Vertragsdokumente: „Buchungen (n) ▾“.
+
+## v0.15.1
+- Abos aus Kontoumsätzen: ✓ bestätigen (zählt immer zu den Fixkosten, auch wenn länger nicht gebucht) und ✕ deaktivieren (Vertrag beendet, zählt nicht mehr; unter „beendet / inaktiv“ wieder aktivierbar).
+
 ## v0.15.0 – Verträge für große Displays
 - Abos aus Kontoumsätzen als Tabelle (Anbieter, Kategorie, Intervall, Betrag, pro Monat, pro Jahr, zuletzt), sortierbar, mit ✕ entfernbar; schmal automatisch als Liste.
 - „Vermutlich beendet“: Abos ohne Buchung seit deutlich mehr als einem Intervall zählen nicht mehr zu den Fixkosten (einblendbar).
