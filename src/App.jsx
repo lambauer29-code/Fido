@@ -1734,6 +1734,8 @@ function AppMain() {
     else notify(`Ausgabe ${fmtMoney(tx.amount)} gespeichert`);
     return tx;
   }
+  const receiptFor = (txId, file, o = {}) => onFiles([file], { ...o, receipt: true, stay: true, linkTx: txId });
+  const scanReceiptFor = (txId) => scanFor((file, o) => receiptFor(txId, file, { ...o, scanned: true }));
   function attachNew(txId, how) { pendingLink.current = txId; if (how === "scan") startScan(); else fileInput.current.click(); }
   // Kategorie umbenennen/löschen: Dokumente, Umsätze, Budgets, Regeln mitziehen
   async function renameCategory(from, to) {
@@ -1846,7 +1848,17 @@ function AppMain() {
         delete uniFiles.current[doc.id];
         if (done.docType === "Kontoauszug") { notify(`KI hat einen Kontoauszug erkannt: „${done.title}“ – Umsätze werden importiert`); uf.__ai = true; enqueueStmt(uf); }
       }
-      if (doc.receiptFlow) { /* Beleg aus dem Reiter „Ausgabe“: Buchung entsteht beim Speichern des Formulars */ }
+      if (doc.receiptFlow) {
+        // Reiter „Ausgabe“: Buchung entsteht erst beim Speichern. Aus der Buchungsdetailansicht gescannt: Buchung existiert schon → Positionen übernehmen
+        const lt = txsRef.current.find((t) => t.docId === done.id);
+        if (lt) {
+          await saveDoc({ ...done, receiptFlow: false, paid: true, paidDate: lt.date });
+          const its = (done.lineItems || []).map((i) => ({ name: i.name, qty: +i.qty || 1, total: Math.round((+i.total || 0) * 100) / 100, category: i.category || "Sonstiges" }));
+          if (!lt.items?.length && its.length) { const n = { ...lt, items: its, ...(!lt.counterparty && done.merchant ? { counterparty: done.merchant } : {}) }; setTxs((p) => p.map((x) => (x.id === n.id ? n : x))); await db.putTxs([n]); }
+          const diff = done.amount?.total != null && Math.abs(Math.abs(lt.amount) - done.amount.total) > 0.01;
+          notify(`Beleg ausgelesen${its.length && !lt.items?.length ? ` · ${its.length} Position${its.length === 1 ? "" : "en"} übernommen` : ""}${diff ? ` · Achtung: Beleg ${fmtMoney(done.amount.total)} ≠ Buchung ${fmtMoney(Math.abs(lt.amount))}` : ""}`);
+        }
+      }
       else if (doc.payCash && done.amount?.total && done.direction !== "einnahme") await bookCash({ ...done, direction: "ausgabe" });
       else if (!txsRef.current.some((t) => t.docId === done.id)) {
         const [l] = matchInvoices([done], txsRef.current);
@@ -1970,7 +1982,7 @@ function AppMain() {
             onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
             suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")} />}
           editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => startScan(), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
-        {tab === "accounts" && <Accounts goTab={setTab} resetCp={resetCp} busy={accBusy} setBusy={setAccBusy} addCategory={addCategory} linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
+        {tab === "accounts" && <Accounts goTab={setTab} resetCp={resetCp} scanReceiptFor={scanReceiptFor} receiptFor={receiptFor} busy={accBusy} setBusy={setAccBusy} addCategory={addCategory} linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
           acc={selAcc} setAcc={setSelAcc} sel={effSel} allSel={allSel} setSel={setSelAccs} accActions={accActions} hiddenAccs={hiddenAccs} visAccounts={visAccounts} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
@@ -4890,7 +4902,7 @@ const shortD = (iso) => (iso ? new Date(iso + "T12:00").toLocaleDateString("de-A
 const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json,.xlsx,.xlsm,.xls,.pdf,image/*";
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
-function Accounts({ goTab, resetCp, busy, setBusy = () => {}, addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc: accProp, setAcc, sel: selProp = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
+function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = () => {}, addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc: accProp, setAcc, sel: selProp = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
   const [pick, setPick] = useState(false);
   // Maus auf einer Konto-Karte = Vorschau nur dieses Kontos (alles andere ausgeblendet)
   const [peek, setPeek] = useState("");
@@ -5128,7 +5140,7 @@ function Accounts({ goTab, resetCp, busy, setBusy = () => {}, addCategory, linkT
         onSave={(a) => { setAccounts((l) => l.map((x) => (x.id === a.id ? a : x))); setEditAcc(null); notify("Konto gespeichert"); }} />}
       {newAcc && <AccountSheet txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
       {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => { setImp(null); if (impQ.current.files.length) setTimeout(nextImp, 50); }} />}
-      {txOpen && <TxSheet txs={txs} recurring={recurring} subs={subs} goTab={goTab} resetCp={resetCp} onSearch={(v) => { setQ(v); setMonth(""); }} onAccount={(id) => setAcc?.(id)} onColl={(id) => { setColl(id); setSel?.([]); }} addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txs.find((x) => x.id === txOpen.id) || txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
+      {txOpen && <TxSheet scanReceiptFor={scanReceiptFor} receiptFor={receiptFor} txs={txs} recurring={recurring} subs={subs} goTab={goTab} resetCp={resetCp} onSearch={(v) => { setQ(v); setMonth(""); }} onAccount={(id) => setAcc?.(id)} onColl={(id) => { setColl(id); setSel?.([]); }} addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txs.find((x) => x.id === txOpen.id) || txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
     </div>
   );
 }
@@ -5315,7 +5327,7 @@ function sepaInfo(t) {
 }
 function txColls() { return ls.get("txColls", []); }
 
-function TxSheet({ t, txs = [], categories, docs, onOpen, updateTx, updateTxs, resetCp, onClose, accName, deleteTx, linkTx, attachNew, addCategory, accounts = [], recurring = [], subs, goTab, onSearch, onAccount, onColl }) {
+function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, onOpen, updateTx, updateTxs, resetCp, onClose, accName, deleteTx, linkTx, attachNew, addCategory, accounts = [], recurring = [], subs, goTab, onSearch, onAccount, onColl }) {
   const linkedInv = t.invoiceId ? ls.get("invoices", []).find((i) => i.id === t.invoiceId) : null;
   const doc = t.docId && docs.find((d) => d.id === t.docId);
   const key = cpKey(t), acc = accounts.find((a) => a.id === t.accountId);
@@ -5325,6 +5337,15 @@ function TxSheet({ t, txs = [], categories, docs, onOpen, updateTx, updateTxs, r
   const [noteOpen, setNoteOpen] = useState(false), [note, setNote] = useState(t.note || "");
   const [collOpen, setCollOpen] = useState(false), [colls, setColls] = useState(txColls), [newColl, setNewColl] = useState("");
   const [pickDoc, setPickDoc] = useState(false), [dq, setDq] = useState(""), [showPrev, setShowPrev] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false); const fileRef = useRef();
+  const onQr = (text) => {
+    setQrOpen(false);
+    const q = parseReceiptQR(text);
+    if (!q) return alert("Kein Kassenbon-QR erkannt (RKSV/TSE). Tipp: Beleg stattdessen scannen – die KI liest ihn aus.");
+    const diff = q.total != null && Math.abs(Math.abs(t.amount) - q.total) > 0.01;
+    save({ ...t, receiptQr: q });
+    if (diff) alert(`QR-Code gespeichert.\nAchtung: Kassenbon ${fmtMoney(q.total)} ≠ Buchung ${fmtMoney(Math.abs(t.amount))}`);
+  };
   const withOrig = (n) => ({ ...n, orig: t.orig || { category: t.category, counterparty: t.counterparty, purpose: t.purpose, date: t.date, amount: t.amount, accountId: t.accountId } });
   const save = (n, applyRule = false) => updateTx(n, applyRule);
   const isTransfer = t.category === "Umbuchung";
@@ -5427,11 +5448,19 @@ function TxSheet({ t, txs = [], categories, docs, onOpen, updateTx, updateTxs, r
           </div>
         ) : t.kind !== "broker" && (
           <div className="txkv col"><span>Beleg / Rechnung</span>
-            <div className="attachbtns">
-              <button className="btn sm" onClick={() => { attachNew(t.id, "scan"); onClose(); }}>📷 Scannen</button>
-              <button className="btn sm" onClick={() => { attachNew(t.id, "file"); onClose(); }}>📄 Datei</button>
-              <button className="btn sm" onClick={() => setPickDoc(!pickDoc)}>🗂 Vorhandenes</button>
+            <div className="expscan">
+              <button className="expbig" onClick={() => { scanReceiptFor ? scanReceiptFor(t.id) : attachNew(t.id, "scan"); onClose(); }}>
+                <span className="expico">📷</span><b>Beleg scannen</b><small>KI liest Firma, Betrag & Positionen</small>
+              </button>
+              <button className="expbig" onClick={() => setQrOpen(true)}>
+                <span className="expico">▦</span><b>QR-Code</b><small>Registrierkassen-QR (RKSV)</small>
+              </button>
+              <button className="expbig" onClick={() => fileRef.current.click()}>
+                <span className="expico">🖼</span><b>Foto / PDF</b><small>aus Galerie oder Dateien</small>
+              </button>
+              <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const x = e.target.files[0]; e.target.value = ""; if (x) { receiptFor ? receiptFor(t.id, x) : attachNew(t.id, "file"); onClose(); } }} />
             </div>
+            <button className="link txadd" onClick={() => setPickDoc(!pickDoc)}>🗂 Vorhandenes Dokument zuordnen</button>
             {pickDoc && (() => {
               const qn = norm(dq), amtAbs = Math.abs(t.amount);
               const cand = docs.filter((d) => !qn || norm(`${d.title} ${d.sender}`).includes(qn))
@@ -5443,6 +5472,12 @@ function TxSheet({ t, txs = [], categories, docs, onOpen, updateTx, updateTxs, r
             })()}
           </div>
         )}
+        {!!t.items?.length && (
+          <div className="txkv col"><span>Positionen ({t.items.length})</span>
+            <div className="txitems">{t.items.map((it, i) => <div key={i} className="txitem"><CatIcon c={it.category} size={26} /><div className="grow"><b className="one">{it.name}</b><small className="muted">{it.qty !== 1 ? String(it.qty).replace(".", ",") + " × · " : ""}{it.category}</small></div><b>{fmtMoney(it.total)}</b></div>)}</div>
+          </div>
+        )}
+        {t.receiptQr && <div className="txkv"><span>Kassenbon-QR</span><b className="small">{t.receiptQr.total != null ? fmtMoney(t.receiptQr.total) : "gespeichert"}{t.receiptQr.date ? " · " + fmtDate(t.receiptQr.date) : ""}</b></div>}
         {/* Sammlungen */}
         <div className="txkv col"><span>{inColls.length ? "Sammlungen" : ""}</span>
           {!!inColls.length && <div className="chips">{inColls.map((c) => <button key={c.id} className="chip" onClick={() => { onColl?.(c.id); onClose(); }}>📁 {c.name} <span className="muted" onClick={(e) => { e.stopPropagation(); setTxColls((t.colls || []).filter((x) => x !== c.id)); }}>✕</span></button>)}</div>}
@@ -5479,6 +5514,7 @@ function TxSheet({ t, txs = [], categories, docs, onOpen, updateTx, updateTxs, r
         </section>
       )}
 
+      {qrOpen && createPortal(<CodeScanWin title="Kassenbon-QR scannen" onClose={() => setQrOpen(false)} onResult={(code) => onQr(code)} />, document.querySelector(".app") || document.body)}
       <h3 className="txsec">Sonstiges</h3>
       <section className="tile txcard">
         <div className="txkv col"><span>Von</span>
@@ -5496,7 +5532,7 @@ function TxSheet({ t, txs = [], categories, docs, onOpen, updateTx, updateTxs, r
         {sepa.typ && <div className="txkv col"><span>Typ</span><b>{sepa.typ}</b></div>}
         {sepa.cred && <div className="txkv col"><span>Gläubiger-ID</span><b className="mono">{sepa.cred}</b></div>}
         {sepa.mref && <div className="txkv col"><span>Mandatsreferenz</span><b className="mono">{sepa.mref}</b></div>}
-        {t.receiptQr && <div className="txkv col"><span>Registrierkasse</span><b className="mono small">{String(t.receiptQr).slice(0, 60)}…</b></div>}
+        {t.receiptQr?.register && <div className="txkv col"><span>Registrierkasse</span><b className="mono small">{t.receiptQr.register}{t.receiptQr.receiptNo ? " · Beleg " + t.receiptQr.receiptNo : ""}</b></div>}
       </section>
 
       <section className="tile txcard">
@@ -9875,4 +9911,7 @@ html,body{min-height:100%}
 .txlinkrow.red{color:var(--red)}
 .txsec{margin:18px 2px 10px;font-size:22px}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
+.txitems{display:flex;flex-direction:column;gap:6px}
+.txitem{display:flex;align-items:center;gap:10px}.txitem .grow{min-width:0}.txitem small{display:block}
+.txdetail .expscan{margin:0}
 `;

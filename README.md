@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.58.1
+- Buchungsdetail, Beleg: gleiche drei Knöpfe wie im Formular „Ausgabe“ (📷 Beleg scannen, ▦ QR-Code, 🖼 Foto / PDF), dazu „Vorhandenes Dokument zuordnen“.
+  - Scannen und Foto/PDF laufen über die Kassenbon-KI: Firma, Betrag und Positionen mit Kategorien werden ausgelesen, der Beleg wird verknüpft und als bezahlt markiert. Die Positionen kommen in die Buchung, sofern sie noch keine hat. Weicht der Betrag ab, erscheint ein Hinweis.
+  - QR-Code: Der Registrierkassen-QR wird bei der Buchung gespeichert, mit Hinweis, falls der Betrag abweicht.
+  - Die Positionen einer Buchung werden jetzt im Detail angezeigt.
+
 ## v0.58.0
 - **Neue Buchungsdetailansicht** (Konten, gilt für Girokonten, Sparkonten, Karten, PayPal und Depots). Ein Klick auf eine Buchung öffnet sie immer.
   - Kopf: großes Symbol (über ✎ pro Empfänger änderbar, Emoji-Auswahl), Name, Kategorie-Chip (✎, optional „Immer so für …“).
