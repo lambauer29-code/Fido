@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.59.0
+- **Firmenlogos für Buchungen** (neue Funktion `api/logo.js`, nutzt den vorhandenen `ANTHROPIC_API_KEY`). Die KI ordnet den Empfänger der offiziellen Website zu (BILLA → billa.at), danach wird deren öffentliches Website-Symbol geladen (apple-touch-icon bzw. Favicon). Das Logo wird auf 96 px verkleinert und lokal in IndexedDB gespeichert (neuer Speicher `logos`, DB-Version 3).
+  - Einzeln: im Buchungsdetail auf das Symbol tippen und „✨ Firmenlogo suchen (KI)“ wählen, dort auch „Logo entfernen“.
+  - Nachträglich für alle: in Konten über „✨ Logos“ fehlende laden, nicht gefundene erneut versuchen, alle neu laden oder alle entfernen.
+  - Optional automatisch für neue Empfänger, z. B. nach einem Kontoauszug-Import.
+  - Ein selbst gewähltes Emoji hat Vorrang. Privatpersonen, Bankomat und Unklares bekommen kein Logo.
+  - Die Logos sind nicht im Backup enthalten, lassen sich aber jederzeit neu laden. „Alle Daten löschen“ entfernt sie mit.
+
 ## v0.58.1
 - Buchungsdetail, Beleg: gleiche drei Knöpfe wie im Formular „Ausgabe“ (📷 Beleg scannen, ▦ QR-Code, 🖼 Foto / PDF), dazu „Vorhandenes Dokument zuordnen“.
   - Scannen und Foto/PDF laufen über die Kassenbon-KI: Firma, Betrag und Positionen mit Kategorien werden ausgelesen, der Beleg wird verknüpft und als bezahlt markiert. Die Positionen kommen in die Buchung, sofern sie noch keine hat. Weicht der Betrag ab, erscheint ein Hinweis.

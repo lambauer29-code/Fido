@@ -289,7 +289,7 @@ const INTERVAL_SHORT = { monatlich: "/ Monat", vierteljährlich: "/ Quartal", ha
 const TRASH_DAYS = 30;
 
 /* ---------- IndexedDB ---------- */
-const DB_NAME = "dokumente", DB_VER = 2;
+const DB_NAME = "dokumente", DB_VER = 3;
 let dbPromise;
 function openDB() {
   if (!dbPromise)
@@ -300,6 +300,7 @@ function openDB() {
         if (!db.objectStoreNames.contains("docs")) db.createObjectStore("docs", { keyPath: "id" });
         if (!db.objectStoreNames.contains("files")) db.createObjectStore("files");
         if (!db.objectStoreNames.contains("tx")) db.createObjectStore("tx", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("logos")) db.createObjectStore("logos");
       };
       r.onsuccess = () => res(r.result);
       r.onerror = () => rej(r.error);
@@ -316,6 +317,9 @@ async function idb(store, mode, fn) {
   });
 }
 const db = {
+  allLogos: async () => { const k = await idb("logos", "readonly", (s) => s.getAllKeys()); const v = await idb("logos", "readonly", (s) => s.getAll()); return Object.fromEntries((k || []).map((x, i) => [x, v[i]])); },
+  putLogo: (k, v) => idb("logos", "readwrite", (s) => s.put(v, k)),
+  delLogo: (k) => idb("logos", "readwrite", (s) => s.delete(k)),
   allDocs: () => idb("docs", "readonly", (s) => s.getAll()),
   putDoc: (d) => idb("docs", "readwrite", (s) => s.put(d)),
   delDoc: (id) => idb("docs", "readwrite", (s) => s.delete(id)),
@@ -3299,7 +3303,7 @@ async function fbPdf(v, e, year, rate) {
 const WIPE_WORD = "ALLES LÖSCHEN";
 async function wipeAllData() {
   const d = await openDB();
-  await new Promise((res, rej) => { const t = d.transaction(["docs", "files", "tx"], "readwrite"); ["docs", "files", "tx"].forEach((n) => t.objectStore(n).clear()); t.oncomplete = res; t.onerror = () => rej(t.error); });
+  await new Promise((res, rej) => { const t = d.transaction(["docs", "files", "tx", "logos"], "readwrite"); ["docs", "files", "tx", "logos"].forEach((n) => t.objectStore(n).clear()); t.oncomplete = res; t.onerror = () => rej(t.error); });
   try { localStorage.clear(); } catch {}
   try { sessionStorage.clear(); } catch {}
 }
@@ -4917,6 +4921,8 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const [imp, setImp] = useState(null);
   const [txOpen, setTxOpen] = useState(null);
   const [coll, setColl] = useState("");
+  const [logoOpen, setLogoOpen] = useState(false);
+  useEffect(() => { const t = setTimeout(() => autoLogos(txs), 1500); return () => clearTimeout(t); }, [txs.length]);
   const [limit, setLimit] = useState(150);
   // Kopfbereich bleibt stehen, nur die Umsatzliste scrollt (wenn genug Platz ist)
   const scrollRef = useRef(null);
@@ -5032,6 +5038,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           {(() => { const cl = ls.get("txColls", []); if (!cl.length) return null;
             return coll ? <button className="chip on" onClick={() => setColl("")} title="Sammlungsfilter aufheben">📁 {cl.find((c) => c.id === coll)?.name || "Sammlung"} · {fmtMoney(list.reduce((a, t) => a + t.amount, 0))} ✕</button>
               : <select className="chip" value="" onChange={(e) => { setColl(e.target.value); setSel?.([]); }}><option value="">📁 Sammlungen</option>{cl.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>; })()}
+          {!!txs.length && <button className="chip" onClick={() => setLogoOpen(true)} title="Firmenlogos für Empfänger laden">✨ Logos</button>}
           {(() => {
             const scopeName = allSel ? "alle-konten" : sel.length === 1 ? fileSafe(accName(sel[0])) : `${sel.length}-konten`;
             const fn = (ext) => `umsaetze-${scopeName}-${month || "gesamt"}.${ext}`;
@@ -5140,6 +5147,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
         onSave={(a) => { setAccounts((l) => l.map((x) => (x.id === a.id ? a : x))); setEditAcc(null); notify("Konto gespeichert"); }} />}
       {newAcc && <AccountSheet txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
       {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => { setImp(null); if (impQ.current.files.length) setTimeout(nextImp, 50); }} />}
+      {logoOpen && <LogoWin txs={txs} onClose={() => setLogoOpen(false)} />}
       {txOpen && <TxSheet scanReceiptFor={scanReceiptFor} receiptFor={receiptFor} txs={txs} recurring={recurring} subs={subs} goTab={goTab} resetCp={resetCp} onSearch={(v) => { setQ(v); setMonth(""); }} onAccount={(id) => setAcc?.(id)} onColl={(id) => { setColl(id); setSel?.([]); }} addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txs.find((x) => x.id === txOpen.id) || txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
     </div>
   );
@@ -5309,10 +5317,94 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
 let CP_ICONS = ls.get("cpIcons", {});
 const cpKey = (t) => counterpartyKey(t) || norm(t.counterparty || t.purpose || "");
 const setCpIcon = (key, ico) => { CP_ICONS = { ...CP_ICONS }; if (ico) CP_ICONS[key] = ico; else delete CP_ICONS[key]; ls.set("cpIcons", CP_ICONS); };
+/* Firmenlogos (über KI-Domainzuordnung + Website-Symbol), gespeichert in IndexedDB „logos“ */
+let LOGOS = {};
+const logoEvt = () => window.dispatchEvent(new Event("findocu-logos"));
+db.allLogos?.().then((x) => { if (x && typeof x === "object" && !Array.isArray(x)) { LOGOS = x; logoEvt(); } }).catch(() => {});
+function useLogoVer() { const [v, setV] = useState(0); useEffect(() => { const f = () => setV((n) => n + 1); window.addEventListener("findocu-logos", f); return () => window.removeEventListener("findocu-logos", f); }, []); return v; }
+async function setLogo(key, data) { if (data) { LOGOS = { ...LOGOS, [key]: data }; await db.putLogo(key, data); } else { LOGOS = { ...LOGOS }; delete LOGOS[key]; await db.delLogo(key); } logoEvt(); }
+function shrinkLogo(src, px = 96) {
+  return new Promise((res) => { const im = new Image(); im.onload = () => {
+    const c = document.createElement("canvas"); c.width = c.height = px; const g = c.getContext("2d");
+    const r = Math.min(px / im.width, px / im.height), w = im.width * r, h = im.height * r; g.imageSmoothingQuality = "high";
+    g.drawImage(im, (px - w) / 2, (px - h) / 2, w, h); try { res(c.toDataURL("image/png")); } catch { res(src); } };
+    im.onerror = () => res(null); im.src = src; });
+}
+// items: [{ key, name, purpose }] → lädt in Paketen; Rückgabe { found, miss, err }
+async function fetchLogos(items, onProgress = () => {}) {
+  const miss = ls.get("logoMiss", {}); let found = 0, nf = 0, err = "";
+  for (let i = 0; i < items.length; i += 20) {
+    const part = items.slice(i, i + 20);
+    onProgress(i, items.length);
+    try {
+      const r = await fetch("/api/logo", { method: "POST", headers: { "content-type": "application/json", "x-app-token": ls.get("appToken", "") }, body: JSON.stringify({ items: part }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { err = j.error || "HTTP " + r.status; break; }
+      for (const x of j.results || []) {
+        const img = x.logo && await shrinkLogo(x.logo);
+        if (img) { await setLogo(x.key, img); delete miss[x.key]; found++; } else { miss[x.key] = todayISO(); nf++; }
+      }
+    } catch (e) { err = e.message; break; }
+    ls.set("logoMiss", miss);
+  }
+  onProgress(items.length, items.length);
+  return { found, miss: nf, err };
+}
+// Empfänger für den Logo-Abruf sammeln (häufigste zuerst)
+function logoCandidates(txs) {
+  const m = new Map();
+  for (const t of txs) {
+    if (t.kind === "broker" || t.category === "Umbuchung" || !(t.counterparty || "").trim()) continue;
+    const k = cpKey(t); if (!k || k.length < 3) continue;
+    const e = m.get(k) || { key: k, name: t.counterparty, purpose: t.purpose || "", n: 0 }; e.n++; m.set(k, e);
+  }
+  return [...m.values()].sort((a, b) => b.n - a.n);
+}
+let logoAutoRunning = false;
+async function autoLogos(txs) {
+  if (logoAutoRunning || !ls.get("autoLogos", false)) return;
+  const miss = ls.get("logoMiss", {});
+  const todo = logoCandidates(txs).filter((x) => !LOGOS[x.key] && !miss[x.key] && !CP_ICONS[x.key]).slice(0, 40);
+  if (!todo.length) return;
+  logoAutoRunning = true; try { await fetchLogos(todo.map(({ key, name, purpose }) => ({ key, name, purpose }))); } finally { logoAutoRunning = false; }
+}
+function LogoWin({ txs, onClose }) {
+  useLogoVer();
+  const cands = useMemo(() => logoCandidates(txs), [txs]);
+  const [auto, setAuto] = useState(() => ls.get("autoLogos", false));
+  const [prog, setProg] = useState(null), [res, setRes] = useState(null);
+  const miss = ls.get("logoMiss", {});
+  const have = cands.filter((x) => LOGOS[x.key]).length, missed = cands.filter((x) => !LOGOS[x.key] && miss[x.key]).length;
+  const open = cands.filter((x) => !LOGOS[x.key] && !miss[x.key]);
+  const run = async (list) => { setRes(null); setProg({ i: 0, n: list.length }); const r = await fetchLogos(list.map(({ key, name, purpose }) => ({ key, name, purpose })), (i, n) => setProg({ i, n })); setProg(null); setRes(r); };
+  return (
+    <Win id="logos" onClose={onClose} dirty={!!prog} small defW={480}>
+      <div className="panelhead"><b>✨ Firmenlogos</b><XBtn /></div>
+      <p className="muted small">Die KI ordnet jedem Empfänger die offizielle Website zu (z. B. BILLA → billa.at), danach wird deren öffentliches Website-Symbol geladen. Privatpersonen und Unklares bekommen kein Logo. Gesendet werden nur Empfängername und Verwendungszweck.</p>
+      <div className="invstats" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
+        <div className="tile kpi"><small className="muted">Empfänger</small><b>{cands.length}</b></div>
+        <div className="tile kpi"><small className="muted">mit Logo</small><b className="pos">{have}</b></div>
+        <div className="tile kpi"><small className="muted">nicht gefunden</small><b>{missed}</b></div>
+      </div>
+      {prog && <div className="lookbox"><b>Logos werden geladen … {Math.min(prog.i, prog.n)} / {prog.n}</b><div className="bar"><div style={{ width: `${prog.n ? (prog.i / prog.n) * 100 : 0}%`, background: "var(--acc)" }} /></div></div>}
+      {res && <div className={"lookbox" + (res.err ? " warn" : " ok")}>{res.err ? `Abbruch: ${res.err}` : `${res.found} Logo${res.found === 1 ? "" : "s"} gefunden · ${res.miss} ohne Treffer`}</div>}
+      <div className="col" style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+        <button className="btn primary" disabled={!!prog || !open.length} onClick={() => run(open.slice(0, 300))}>Fehlende Logos laden ({Math.min(open.length, 300)}{open.length > 300 ? " von " + open.length : ""})</button>
+        <button className="btn" disabled={!!prog || !missed} onClick={() => run(cands.filter((x) => !LOGOS[x.key] && miss[x.key]).slice(0, 300))}>Nicht gefundene erneut versuchen ({missed})</button>
+        <button className="btn" disabled={!!prog || !cands.length} onClick={() => confirm(`Alle ${Math.min(cands.length, 300)} Logos neu laden?`) && run(cands.slice(0, 300))}>Alle neu laden</button>
+        <label className="check"><input type="checkbox" checked={auto} onChange={(e) => { setAuto(e.target.checked); ls.set("autoLogos", e.target.checked); }} /> Für neue Empfänger automatisch laden (z. B. nach einem Kontoauszug-Import)</label>
+        {have > 0 && <button className="link red" disabled={!!prog} onClick={async () => { if (!confirm("Alle geladenen Firmenlogos entfernen?")) return; for (const k of Object.keys(LOGOS)) await setLogo(k, null); ls.set("logoMiss", {}); }}>Alle Logos entfernen</button>}
+      </div>
+    </Win>
+  );
+}
 function TxIcon({ t, size = 40 }) {
+  useLogoVer();
   if (t.kind === "broker") return <span className="caticon" style={{ width: size, height: size, background: "#14b8a622", fontSize: size * 0.45 }}>📈</span>;
   const ico = CP_ICONS[cpKey(t)];
   if (ico) return <span className="caticon" style={{ width: size, height: size, background: catMeta(t.category).color + "22", fontSize: size * 0.5 }}>{ico}</span>;
+  const lg = LOGOS[cpKey(t)];
+  if (lg) return <span className="caticon logo" style={{ width: size, height: size }}><img src={lg} alt="" /></span>;
   return <CatIcon c={t.category} size={size} />;
 }
 const TX_EMOJIS = ["🏠", "🔥", "💡", "💧", "📱", "🌐", "📺", "🎵", "🛒", "🍞", "☕", "🍽️", "⛽", "🚗", "🚆", "✈️", "🏥", "💊", "🐶", "👕", "🎁", "📚", "🎓", "🏋️", "💼", "🏦", "💳", "🛡️", "🧾", "🔧", "👶", "🎮", "🏖️", "💰", "📈", "❤️"];
@@ -5333,7 +5425,7 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
   const key = cpKey(t), acc = accounts.find((a) => a.id === t.accountId);
   const [edit, setEdit] = useState(null);           // Bearbeiten-Formular
   const [catOpen, setCatOpen] = useState(false), [cat, setCat] = useState(t.category), [rule, setRule] = useState(false), [extraCats, setExtraCats] = useState([]);
-  const [icoOpen, setIcoOpen] = useState(false), [, bump] = useState(0);
+  const [icoOpen, setIcoOpen] = useState(false), [, bump] = useState(0), [logoBusy, setLogoBusy] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false), [note, setNote] = useState(t.note || "");
   const [collOpen, setCollOpen] = useState(false), [colls, setColls] = useState(txColls), [newColl, setNewColl] = useState("");
   const [pickDoc, setPickDoc] = useState(false), [dq, setDq] = useState(""), [showPrev, setShowPrev] = useState(false);
@@ -5395,8 +5487,14 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
         <div className="tile txpick">
           <div className="emojigrid">{TX_EMOJIS.map((e) => <button key={e} className={ICO === e ? "on" : ""} onClick={() => { setCpIcon(key, e); bump((n) => n + 1); setIcoOpen(false); }}>{e}</button>)}</div>
           <div className="row"><input placeholder="Eigenes Emoji" maxLength={4} onKeyDown={(e) => { if (e.key === "Enter" && e.target.value.trim()) { setCpIcon(key, e.target.value.trim()); bump((n) => n + 1); setIcoOpen(false); } }} />
-            {ICO && <button className="link" onClick={() => { setCpIcon(key, null); bump((n) => n + 1); setIcoOpen(false); }}>Standard-Symbol</button>}</div>
-          <small className="muted">Gilt für alle Buchungen von „{t.counterparty || title}“.</small>
+            {ICO && <button className="link" onClick={() => { setCpIcon(key, null); bump((n) => n + 1); setIcoOpen(false); }}>{LOGOS[key] ? "Logo statt Emoji" : "Standard-Symbol"}</button>}</div>
+          <div className="row">
+            <button className="btn sm" disabled={logoBusy} onClick={async () => { setLogoBusy(true); const r = await fetchLogos([{ key, name: t.counterparty || title, purpose: t.purpose }]); setLogoBusy(false);
+              if (r.err) alert("Logo konnte nicht geladen werden: " + r.err); else if (!r.found) alert(`Für „${t.counterparty || title}“ wurde kein Firmenlogo gefunden.`); else { setCpIcon(key, null); bump((n) => n + 1); setIcoOpen(false); } }}>
+              {logoBusy ? "Suche …" : "✨ Firmenlogo suchen (KI)"}</button>
+            {LOGOS[key] && <button className="link red" onClick={async () => { await setLogo(key, null); bump((n) => n + 1); }}>Logo entfernen</button>}
+          </div>
+          <small className="muted">Gilt für alle Buchungen von „{t.counterparty || title}“. Ein gewähltes Emoji hat Vorrang vor dem Logo.</small>
         </div>
       )}
       {catOpen && (
@@ -9914,4 +10012,6 @@ html,body{min-height:100%}
 .txitems{display:flex;flex-direction:column;gap:6px}
 .txitem{display:flex;align-items:center;gap:10px}.txitem .grow{min-width:0}.txitem small{display:block}
 .txdetail .expscan{margin:0}
+.caticon.logo{background:#fff!important;overflow:hidden;padding:12%}
+.caticon.logo img{width:100%;height:100%;object-fit:contain;display:block}
 `;
