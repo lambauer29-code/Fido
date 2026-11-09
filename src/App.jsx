@@ -2055,8 +2055,10 @@ function AppMain() {
       {scanOpen && createPortal(<Scanner initial={scanFile} onClose={() => { setScanOpen(false); setScanFile(null); pendingLink.current = null; scanCb.current = null; }} onDone={(file, o) => { setScanOpen(false); setScanFile(null);
         if (scanCb.current) { const cb = scanCb.current; scanCb.current = null; cb(file, o); return; }
         const l = pendingLink.current; pendingLink.current = null; onFiles([file], { ...o, scanned: true, ...(l ? { linkTx: l } : {}) }); }} />, document.querySelector(".app") || document.body)}
-      {manualTx && <ManualTxSheet init={manualTx} accounts={accounts} categories={TX_CATS(categories)} onClose={() => setManualTx(null)}
-        onSave={saveCash} onScan={scanFor} addCategory={addCategory} />}
+      {manualTx && <ManualTxSheet init={manualTx} accounts={visAccounts} txs={txs} docs={active} categories={TX_CATS(categories)} onClose={() => setManualTx(null)}
+        onSave={saveExpense} onScan={scanFor} addCategory={addCategory} notify={notify}
+        onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
+        suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")} />}
 
       <nav className="bottom" onPointerOver={(e) => {
         if (!sideMini || e.pointerType === "touch") return;
@@ -2204,11 +2206,11 @@ const parseAmt = (x) => { const v = Number(String(x ?? "").replace(/\s|€/g, ""
 const amtStr = (v) => (v == null || isNaN(v) ? "" : (Math.round(v * 100) / 100).toFixed(2).replace(".", ","));
 const GENERIC_DOC_CATS = ["Rechnungen", "Sonstiges", "Garantie & Kaufbelege", "Verträge"];
 
-function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload, addCategory, suggestCat, notify }) {
+function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload, addCategory, suggestCat, notify, initAccount }) {
   const today = todayISO();
   const cashAcc = accounts.find((a) => a.kind === "cash");
   const lastAcc = ls.get("expAcc", "");
-  const defAcc = accounts.some((a) => a.id === lastAcc) ? lastAcc : cashAcc?.id || accounts[0]?.id || "new-cash";
+  const defAcc = initAccount && accounts.some((a) => a.id === initAccount) ? initAccount : accounts.some((a) => a.id === lastAcc) ? lastAcc : cashAcc?.id || accounts[0]?.id || "new-cash";
   const blank = () => ({ dir: "out", merchant: "", amount: "", date: today, accountId: defAcc, category: "", note: "", items: [], docId: null, file: null, url: null, qr: null, touched: {} });
   const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false), [qrOpen, setQrOpen] = useState(false), [extraCats, setExtraCats] = useState([]);
@@ -2632,6 +2634,13 @@ function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onD
     });
   }, [doc?.status, doc?.id]);
   const attach = async (file, opts = {}) => { set({ attName: file.name, attBusy: true }); const id = await onUpload(file, opts); set({ docId: id || null, attBusy: false }); };
+  const [qrOpen, setQrOpen] = useState(false);
+  const onQr = (text) => {
+    setQrOpen(false);
+    const q = parseReceiptQR(text);
+    if (!q) return alert("Kein Kassenbon-QR erkannt (RKSV/TSE). Tipp: Beleg stattdessen scannen – die KI liest ihn aus.");
+    setX((o) => { const p = { ...o, receiptQr: q }; if (q.total != null) { if (o.type === "fuel") Object.assign(p, calc({ total: amtStr(q.total) }, p)); else p.total = amtStr(q.total); } if (q.date) p.date = pastOrToday(q.date, todayISO()); return p; });
+  };
   const findNear = async () => {
     const kind = elec ? "charge" : "fuel";
     setNear({ busy: true, kind });
@@ -2698,9 +2707,10 @@ function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onD
               <button className="iconbtn" title="Beleg entfernen" aria-label="Beleg entfernen" onClick={() => set({ docId: null, attName: "" })}>✕</button>
             </div>
           ) : (
-            <div className="attbtns">
-              <button className="btn" onClick={() => onScan((f, o) => attach(f, { ...o, scanned: true }))}>📷 Beleg scannen</button>
-              <button className="btn" onClick={() => fileRef.current.click()}>🖼 Foto / PDF</button>
+            <div className="expscan">
+              <button className="expbig" onClick={() => onScan((f, o) => attach(f, { ...o, scanned: true }))}><span className="expico">📷</span><b>Beleg scannen</b><small>KI liest Tankstelle, Liter, Preis & Betrag</small></button>
+              <button className="expbig" onClick={() => setQrOpen(true)}><span className="expico">▦</span><b>QR-Code</b><small>Registrierkassen-QR (RKSV)</small></button>
+              <button className="expbig" onClick={() => fileRef.current.click()}><span className="expico">🖼</span><b>Foto / PDF</b><small>aus Galerie oder Dateien</small></button>
               <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attach(f); }} />
             </div>
           )}
@@ -2775,6 +2785,7 @@ function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onD
         <button className="btn primary" disabled={!ok} onClick={save}>Speichern</button>
         {!isNew && <button className="btn danger" onClick={() => { if (confirm("Eintrag löschen?")) onDelete(x.id); }}>Löschen</button>}
       </div>
+      {qrOpen && createPortal(<CodeScanWin title="Kassenbon-QR scannen" onClose={() => setQrOpen(false)} onResult={(code) => onQr(code)} />, document.querySelector(".app") || document.body)}
     </Win>
   );
 }
@@ -2831,6 +2842,41 @@ function VehicleWin({ init, onSave, onDelete, onClose }) {
         {init.id && <button className="btn danger" onClick={() => { if (confirm("Fahrzeug samt allen Einträgen löschen?")) onDelete(v.id); }}>Löschen</button>}
       </div>
     </Win>
+  );
+}
+
+/* Fahrzeugauswahl als Dropdown: Maus darüber öffnet, Antippen/Klick schaltet um */
+function VehPicker({ vehicles, v, onPick, onEdit, onAdd }) {
+  const [open, setOpen] = useState(false), [pos, setPos] = useState(null);
+  const ref = useRef(null), t = useRef(null), lastPtr = useRef("mouse");
+  const place = () => { const r = ref.current?.getBoundingClientRect(); if (r) setPos({ top: Math.round(r.bottom + 6), left: Math.round(Math.max(12, Math.min(r.left, innerWidth - 292))) }); };
+  const show = () => { clearTimeout(t.current); place(); setOpen(true); };
+  const hide = (ms = 180) => { clearTimeout(t.current); t.current = setTimeout(() => setOpen(false), ms); };
+  useEffect(() => {
+    if (!open) return;
+    const out = (e) => { if (!ref.current?.contains(e.target) && !e.target.closest?.(".vehmenu")) setOpen(false); };
+    const re = () => place();
+    document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true);
+    return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); };
+  }, [open]);
+  const hov = { onPointerEnter: (e) => { lastPtr.current = e.pointerType; if (e.pointerType === "mouse") show(); }, onPointerLeave: (e) => { if (e.pointerType === "mouse") hide(); } };
+  return (
+    <span className="vehpick" ref={ref} {...hov}>
+      <button className={"chip on vehpickbtn" + (open ? " open" : "")} aria-haspopup="menu" aria-expanded={open}
+        onPointerDown={(e) => { lastPtr.current = e.pointerType; }}
+        onClick={() => { if (lastPtr.current === "mouse" && open) return; open ? setOpen(false) : show(); }}><VehIcon v={v} /> {v.name} <span className="caret">▾</span></button>
+      {open && pos && createPortal(
+        <div className="moremenu vehmenu" role="menu" style={{ position: "fixed", top: pos.top, left: pos.left, right: "auto" }} {...hov}>
+          {vehicles.map((x) => (
+            <button key={x.id} role="menuitemradio" aria-checked={x.id === v.id} className={x.id === v.id ? "on" : ""} onClick={() => { onPick(x.id); setOpen(false); }}>
+              <span className="vehmi"><VehIcon v={x} /></span><span className="grow"><b>{x.name}</b><small className="muted block">{[x.model, x.plate].filter(Boolean).join(" · ") || x.fuel || ""}</small></span>{x.id === v.id && <span className="ok">✓</span>}
+            </button>
+          ))}
+          <div className="menusep" />
+          <button onClick={() => { setOpen(false); onEdit(v); }}>✎ „{v.name}“ bearbeiten</button>
+          <button onClick={() => { setOpen(false); onAdd(); }}>＋ Fahrzeug hinzufügen</button>
+        </div>, document.querySelector(".app") || document.body)}
+    </span>
   );
 }
 
@@ -2988,8 +3034,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
   return (
     <div className="fbpage">
       <div className="chips anaaccs">
-        {vehicles.map((x) => <button key={x.id} className={"chip" + (x.id === v.id ? " on" : "")} onClick={() => setVid(x.id)} onDoubleClick={() => setVEdit(x)}><VehIcon v={x} /> {x.name}</button>)}
-        <button className="chip fbaddveh" title="Fahrzeug hinzufügen" aria-label="Fahrzeug hinzufügen" onClick={() => setVEdit({})}>＋</button>
+        <VehPicker vehicles={vehicles} v={v} onPick={setVid} onEdit={setVEdit} onAdd={() => setVEdit({})} />
         <button className={"chip fbdropchip" + (showDrop ? " on" : "")} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>
         <ExportMenu items={[{ head: `${v.name}${v.plate ? " · " + v.plate : ""}` },
           ...[year, String(+year - 1)].map((y) => ({ label: `🖨 Fahrtenbuch ${y} (PDF)`, sub: "alle Fahrten mit km-Ständen, Zweck und Kilometergeld", run: async () => saveBlob(await fbPdf(v, st.e, y, kmRate), `Fahrtenbuch-${fileSafe(v.name)}-${y}.pdf`) })),
@@ -6174,9 +6219,9 @@ function CashForm({ init, accounts, categories, onSave, onScan, addCategory, com
 }
 function ManualTxSheet({ init, onClose, ...rest }) {
   return (
-    <Win id="manual" onClose={onClose} small>
-      <div className="panelhead"><b>Buchung erfassen</b><XBtn /></div>
-      <CashForm init={init} {...rest} autoFocus onSave={async (t, att) => { await rest.onSave(t, att); onClose(); }} />
+    <Win id="manual" onClose={onClose} small defW={560}>
+      <div className="panelhead"><b>Ausgabe / Buchung erfassen</b><XBtn /></div>
+      <ExpenseForm {...rest} initAccount={init?.accountId} onSave={async (t, att) => { const r = await rest.onSave(t, att); onClose(); return r; }} />
     </Win>
   );
 }
@@ -10504,4 +10549,11 @@ html,body{min-height:100%}
 /* Haftende Leisten am Handy unter der Statusleiste halten */
 .mtopbar,.msticky{top:env(safe-area-inset-top)!important;box-shadow:0 calc(-1 * env(safe-area-inset-top) - 2px) 0 var(--bg)}
 .mday{top:calc(env(safe-area-inset-top) + 56px)}
+.vehpick{display:inline-flex;flex:none}
+.vehpickbtn .caret{font-size:12px;opacity:.7;margin-left:2px;transition:transform .15s}.vehpickbtn.open .caret{transform:rotate(180deg)}
+.vehmenu{background:linear-gradient(var(--card),var(--card)),var(--bg)!important;z-index:300!important;backdrop-filter:none!important;opacity:1!important;min-width:260px;max-width:min(320px,calc(100vw - 24px));z-index:60;display:flex!important;flex-direction:column}
+.vehmenu>button{display:flex;align-items:center;gap:10px;text-align:left}
+.vehmenu>button.on{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+.vehmi{font-size:22px;width:30px;text-align:center}
+.vehmenu .menusep{height:1px;background:var(--line);margin:4px 0}
 `;

@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.63.1
+- Fahrtenbuch: Die Fahrzeugauswahl ist jetzt ein Dropdown. Mit der Maus öffnet es beim Darüberfahren, per Finger beim Antippen. Es zeigt alle Fahrzeuge mit Modell/Kennzeichen, dazu „bearbeiten“ und „＋ Fahrzeug hinzufügen“.
+- Scan-Knöpfe vereinheitlicht (KI-Kassenbon-Auslesung):
+  - Fahrtenbuch-Eintrag: gleiche drei Knöpfe wie bei Ausgabe (📷 Beleg scannen, ▦ QR-Code, 🖼 Foto/PDF); der QR-Code füllt Betrag/Datum bzw. rechnet die Liter.
+  - „＋ → Buchung“ und „manuell erfassen“ in der Übersicht nutzen jetzt das volle Ausgabe-Formular mit KI statt der alten Barausgabe-Maske.
+  - Geprüft und bereits mit KI: Reiter Ausgabe, Ausgabe-Widget, Buchungsdetail, Fahrtenbuch-Ablagefeld. Der allgemeine Dokument-Scanner (＋ → Scannen, Dokumente) bleibt bewusst bei der Dokumenten-KI.
+
 ## v0.63.0
 - Fahrtenbuch:
   - „Tanken“ ist nicht mehr dauerhaft hervorgehoben.
