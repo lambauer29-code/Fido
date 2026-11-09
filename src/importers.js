@@ -126,10 +126,12 @@ export function parseCamt(text, DOMParserImpl = globalThis.DOMParser) {
         const iban = txt(path(d, `RltdPties/${party}Acct/Id/IBAN`));
         const purpose = kids(path(d, "RmtInf"), "Ustrd").map(txt).join(" ") || txt(path(d, "RmtInf/Strd/CdtrRefInf/Ref"));
         const ref = txt(path(d, "Refs/EndToEndId"));
+        const mandateRef = txt(path(d, "Refs/MndtId"));
+        const creditorId = txt(path(d, "RltdPties/Cdtr/Id/PrvtId/Othr/Id")) || txt(path(d, "CdtrSchmeId/Id/PrvtId/Othr/Id")) || txt(path(d, "RltdPties/CdtrSchmeId/Id/PrvtId/Othr/Id"));
         const dAmt = kid(d, "Amt") || path(d, "AmtDtls/TxAmt/Amt");
         return { date, valueDate, amount: details.length > 1 && dAmt ? (parseFloat(txt(dAmt)) || 0) * (debit ? -1 : 1) : amount,
           currency: ccy, counterparty: name, iban, purpose: purpose || txt(kid(d, "AddtlTxInf")) || bookingText, bookingText,
-          reference: ref && ref !== "NOTPROVIDED" ? ref : "", kind: "bank" };
+          reference: ref && ref !== "NOTPROVIDED" ? ref : "", ...(mandateRef ? { mandateRef } : {}), ...(/ZZZ/.test(creditorId) ? { creditorId } : {}), kind: "bank" };
       };
       if (details.length) details.forEach((d) => transactions.push(one(d)));
       else transactions.push({ date, valueDate, amount, currency: ccy, counterparty: "", iban: "", purpose: bookingText, bookingText, kind: "bank" });
@@ -264,6 +266,8 @@ export const FIELDS = {
   balance: ["kontostand", "saldo", "balance", "neuer saldo", "saldo nach buchung", "kontostand nach buchung", "running balance"],
   ignore: ["split-typ", "analyse-betrag", "buchungs-id", "referenz-original-id", "analyse-woche", "analyse-monat", "analyse-quartal", "analyse-jahr"],
   isin: ["isin"],
+  creditorId: ["gläubiger-id", "glaeubiger-id", "gläubiger id", "gläubigerid", "creditor id", "creditor identifier", "cred-id"],
+  mandateRef: ["mandatsreferenz", "mandats-referenz", "mandate reference", "mandat", "mref"],
   security: ["wertpapier", "security name", "instrument", "titel", "produkt", "asset name", "wertpapiername", "bezeichnung", "name des wertpapiers"],
   shares: ["stück", "stueck", "anzahl", "quantity", "shares", "menge", "stückzahl", "nominale", "units"],
   price: ["kurs", "price", "preis", "ausführungskurs", "share price", "price per share"],
@@ -272,7 +276,7 @@ export const FIELDS = {
 };
 const LABELS = { balance: "Kontostand nach Buchung", account: "Konto (Name)", subCategory: "Unterkategorie", ownIban: "Eigene IBAN", category: "Kategorie", transfer: "Umbuchung (ja/nein)", date: "Datum", valueDate: "Valuta", amount: "Betrag", debit: "Soll / Ausgang", credit: "Haben / Eingang", sign: "Soll/Haben-Kennz.", currency: "Währung",
   counterparty: "Gegenpartei", iban: "IBAN", purpose: "Verwendungszweck", bookingText: "Buchungstext", type: "Typ", isin: "ISIN", security: "Wertpapier",
-  shares: "Stück", price: "Kurs", fee: "Gebühren", tax: "Steuern" };
+  shares: "Stück", price: "Kurs", fee: "Gebühren", tax: "Steuern", creditorId: "Gläubiger-ID", mandateRef: "Mandatsreferenz" };
 export const FIELD_LABELS = LABELS;
 
 const normH = (h) => String(h ?? "").toLowerCase().replace(/["']/g, "").replace(/\s+/g, " ").trim();
@@ -366,6 +370,8 @@ export function rowsToTransactions(rows, mapping) {
       purpose: clean(col(r, "purpose")), bookingText: clean(col(r, "bookingText")) || typeRaw, kind: "bank"
     };
     if (map.balance != null) { const b = parseNum(col(r, "balance")); if (b != null) tx.balanceAfter = b; }
+    if (map.creditorId != null && clean(col(r, "creditorId"))) tx.creditorId = clean(col(r, "creditorId"));
+    if (map.mandateRef != null && clean(col(r, "mandateRef"))) tx.mandateRef = clean(col(r, "mandateRef"));
     if (map.account != null) tx.accountName = clean(col(r, "account"));
     if (map.ownIban != null) tx.ownIban = clean(col(r, "ownIban")).replace(/\s/g, "");
     if (map.category != null) tx.extCategory = [clean(col(r, "category")), clean(col(r, "subCategory"))].filter(Boolean).join(" / ");

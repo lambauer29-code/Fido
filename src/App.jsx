@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrinkPdf } from "./scan.js";
 import { parseReceiptQR, pastOrToday } from "./receipt.js";
 import { saveBlob, downloadCsv, downloadXlsx, tablePdf, zipBlob, vcardText, csvBlob, xlsxBlob } from "./exports.js";
-import { latestBalance, parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS } from "./importers.js";
+import { latestBalance, parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS, counterpartyKey } from "./importers.js";
 
 /* ============================================================
    Dokumente – PWA für Dokumente, Verträge & Finanzen
@@ -1576,9 +1576,19 @@ function AppMain() {
     if (applyRule && t.counterparty) {
       const match = t.counterparty.toLowerCase();
       setRules((r) => [{ match, category: t.category }, ...r.filter((x) => x.match !== match)]);
-      list = list.map((x) => (x.counterparty?.toLowerCase().includes(match) ? { ...x, category: t.category } : x));
+      list = list.map((x) => (x.counterparty?.toLowerCase().includes(match) && x.category !== t.category ? { ...x, orig: x.orig || { category: x.category }, category: t.category } : x));
     }
     setTxs(list); await db.putTxs(list.filter((x) => x.id === t.id || (applyRule && x.counterparty?.toLowerCase().includes(t.counterparty.toLowerCase()))));
+  }
+  // Manuelle Änderungen eines Empfängers zurücksetzen (Buchungsdetail)
+  async function resetCp(key, counterparty) {
+    const cur = txsRef.current;
+    const list = cur.map((x) => (x.orig && counterpartyKey(x) === key ? (({ orig, preTransferCat, ...rest }) => ({ ...rest, ...orig }))(x) : x));
+    const changed = list.filter((x, i) => x !== cur[i]);
+    const m = (counterparty || "").toLowerCase();
+    if (m) setRules((r) => r.filter((x) => !(x.match === m || m.includes(x.match) && x.match.length > 3)));
+    setTxs(list); if (changed.length) await db.putTxs(changed);
+    notify?.(changed.length ? `${changed.length} Buchung${changed.length === 1 ? "" : "en"} zurückgesetzt` : "Keine manuellen Änderungen gefunden");
   }
   // Beleg ↔ Buchung verknüpfen (docId leer = lösen)
   async function linkTx(txId, docId) {
@@ -1960,7 +1970,7 @@ function AppMain() {
             onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
             suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")} />}
           editing={homeEdit} setEditing={setHomeEdit} actions={{ scan: () => startScan(), upload: () => fileInput.current.click(), manual: () => setManualTx({}), newAcc: () => { setTab("accounts"); setNewAccReq(true); } }} />}
-        {tab === "accounts" && <Accounts busy={accBusy} setBusy={setAccBusy} addCategory={addCategory} linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
+        {tab === "accounts" && <Accounts goTab={setTab} resetCp={resetCp} busy={accBusy} setBusy={setAccBusy} addCategory={addCategory} linkTx={linkTx} attachNew={attachNew} txs={txs} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} updateTx={updateTx}
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
           acc={selAcc} setAcc={setSelAcc} sel={effSel} allSel={allSel} setSel={setSelAccs} accActions={accActions} hiddenAccs={hiddenAccs} visAccounts={visAccounts} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
@@ -4880,7 +4890,7 @@ const shortD = (iso) => (iso ? new Date(iso + "T12:00").toLocaleDateString("de-A
 const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json,.xlsx,.xlsm,.xls,.pdf,image/*";
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
-function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc: accProp, setAcc, sel: selProp = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
+function Accounts({ goTab, resetCp, busy, setBusy = () => {}, addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc: accProp, setAcc, sel: selProp = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
   const [pick, setPick] = useState(false);
   // Maus auf einer Konto-Karte = Vorschau nur dieses Kontos (alles andere ausgeblendet)
   const [peek, setPeek] = useState("");
@@ -4894,6 +4904,7 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
   const [month, setMonth] = useState("");
   const [imp, setImp] = useState(null);
   const [txOpen, setTxOpen] = useState(null);
+  const [coll, setColl] = useState("");
   const [limit, setLimit] = useState(150);
   // Kopfbereich bleibt stehen, nur die Umsatzliste scrollt (wenn genug Platz ist)
   const scrollRef = useRef(null);
@@ -4906,10 +4917,10 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
   const months = useMemo(() => [...new Set(scoped.map((t) => t.date.slice(0, 7)))].sort().reverse(), [scoped]);
   const list = useMemo(() => {
     const terms = norm(q).split(/\s+/).filter(Boolean);
-    return scoped.filter((t) => (!month || t.date.startsWith(month)) &&
+    return scoped.filter((t) => (!month || t.date.startsWith(month)) && (!coll || (t.colls || []).includes(coll)) &&
       (!terms.length || terms.every((w) => norm(`${t.counterparty} ${t.purpose} ${t.category} ${t.security || ""} ${t.isin || ""} ${String(t.amount).replace(".", ",")}`).includes(w))))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [scoped, q, month]);
+  }, [scoped, q, month, coll]);
   const bank = list.filter((t) => t.kind !== "broker" && t.category !== "Umbuchung" && !(cashAccs.length && t.category === "Bargeld"));
   const inc = bank.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const out = bank.filter((t) => t.amount < 0).reduce((s, t) => s - t.amount, 0);
@@ -4927,10 +4938,7 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
   // Buchung mit Beleg: Beleg-Vorschau unter der Zeile auf-/zuklappen (wie bei Dokumente), sonst Bearbeiten-Fenster
   const [prevTx, setPrevTx] = useState(null);
   const docOf = (t) => (t.docId ? docs.find((x) => x.id === t.docId) : null);
-  function openTx(t) {
-    if (!docOf(t)) return setTxOpen(t);
-    setPrevTx((p) => (p === t.id ? null : t.id));
-  }
+  function openTx(t) { setTxOpen(t); }
   const TxActs = ({ t }) => { const d = docOf(t); const st = (f) => (e) => { e.stopPropagation(); f(); }; return (
     <div className="dactions txacts" onClick={(e) => e.stopPropagation()}>
       <button title="Buchung bearbeiten" aria-label="Bearbeiten" onClick={st(() => setTxOpen(t))}><IcoEdit /></button>
@@ -5009,6 +5017,9 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
           {!allSel && <button className="chip" onClick={() => setSel([])}>✕ Alle anzeigen</button>}
           {selA && !peek && <button className="chip" onClick={() => setEditAcc(selA)}>✎ Konto bearbeiten</button>}
           <select className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
+          {(() => { const cl = ls.get("txColls", []); if (!cl.length) return null;
+            return coll ? <button className="chip on" onClick={() => setColl("")} title="Sammlungsfilter aufheben">📁 {cl.find((c) => c.id === coll)?.name || "Sammlung"} · {fmtMoney(list.reduce((a, t) => a + t.amount, 0))} ✕</button>
+              : <select className="chip" value="" onChange={(e) => { setColl(e.target.value); setSel?.([]); }}><option value="">📁 Sammlungen</option>{cl.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>; })()}
           {(() => {
             const scopeName = allSel ? "alle-konten" : sel.length === 1 ? fileSafe(accName(sel[0])) : `${sel.length}-konten`;
             const fn = (ext) => `umsaetze-${scopeName}-${month || "gesamt"}.${ext}`;
@@ -5070,7 +5081,7 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
             <div className={"txrow" + (prevTx === t.id ? " open" : "")} onClick={() => openTx(t)}>
               <span className="muted">{fmtDate(t.date)}</span>
               <span className="txdesc">
-                {t.kind === "broker" ? <span className="caticon" style={{ width: 30, height: 30, background: "#14b8a622", fontSize: 14 }}>📈</span> : <CatIcon c={t.category} size={30} />}
+                <TxIcon t={t} size={30} />
                 <span className="grow"><b className="one">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
                   {t.kind !== "broker" && t.counterparty && t.purpose && <small className="muted one block">{t.purpose}</small>}</span>
                 {t.docId && <span title="Beleg verknüpft – Klick auf die Zeile zeigt ihn">📎</span>}
@@ -5094,7 +5105,7 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
             {g.items.map((t) => (
               <React.Fragment key={t.id}>
               <div className={"ditem center" + (prevTx === t.id ? " open" : "")} onClick={() => openTx(t)}>
-                {t.kind === "broker" ? <span className="caticon" style={{ width: 40, height: 40, background: "#14b8a622", fontSize: 18 }}>📈</span> : <CatIcon c={t.category} />}
+                <TxIcon t={t} />
                 <div className="grow">
                   <b className="clamp">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
                   <small className="muted block one">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}{t.docId ? " · 📎 Beleg" : ""}{!acc && sel.length > 1 ? " · " + accName(t.accountId) : ""}</small>
@@ -5117,7 +5128,7 @@ function Accounts({ busy, setBusy = () => {}, addCategory, linkTx, attachNew, tx
         onSave={(a) => { setAccounts((l) => l.map((x) => (x.id === a.id ? a : x))); setEditAcc(null); notify("Konto gespeichert"); }} />}
       {newAcc && <AccountSheet txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
       {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => { setImp(null); if (impQ.current.files.length) setTimeout(nextImp, 50); }} />}
-      {txOpen && <TxSheet addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
+      {txOpen && <TxSheet txs={txs} recurring={recurring} subs={subs} goTab={goTab} resetCp={resetCp} onSearch={(v) => { setQ(v); setMonth(""); }} onAccount={(id) => setAcc?.(id)} onColl={(id) => { setColl(id); setSel?.([]); }} addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txs.find((x) => x.id === txOpen.id) || txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
     </div>
   );
 }
@@ -5282,85 +5293,220 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
   );
 }
 
-function TxSheet({ t, categories, docs, onOpen, updateTx, onClose, accName, deleteTx, linkTx, attachNew, addCategory, accounts = [] }) {
+/* ---------- Buchungsdetail (Finanzguru-Stil) ---------- */
+let CP_ICONS = ls.get("cpIcons", {});
+const cpKey = (t) => counterpartyKey(t) || norm(t.counterparty || t.purpose || "");
+const setCpIcon = (key, ico) => { CP_ICONS = { ...CP_ICONS }; if (ico) CP_ICONS[key] = ico; else delete CP_ICONS[key]; ls.set("cpIcons", CP_ICONS); };
+function TxIcon({ t, size = 40 }) {
+  if (t.kind === "broker") return <span className="caticon" style={{ width: size, height: size, background: "#14b8a622", fontSize: size * 0.45 }}>📈</span>;
+  const ico = CP_ICONS[cpKey(t)];
+  if (ico) return <span className="caticon" style={{ width: size, height: size, background: catMeta(t.category).color + "22", fontSize: size * 0.5 }}>{ico}</span>;
+  return <CatIcon c={t.category} size={size} />;
+}
+const TX_EMOJIS = ["🏠", "🔥", "💡", "💧", "📱", "🌐", "📺", "🎵", "🛒", "🍞", "☕", "🍽️", "⛽", "🚗", "🚆", "✈️", "🏥", "💊", "🐶", "👕", "🎁", "📚", "🎓", "🏋️", "💼", "🏦", "💳", "🛡️", "🧾", "🔧", "👶", "🎮", "🏖️", "💰", "📈", "❤️"];
+const fmtIban = (s) => (s || "").replace(/\s/g, "").replace(/(.{4})/g, "$1 ").trim();
+const relDay = (iso) => { const d = Math.round((new Date(todayISO()) - new Date(iso)) / 864e5); return d === 0 ? "Heute" : d === 1 ? "Gestern" : fmtDate(iso); };
+function sepaInfo(t) {
+  const s = `${t.purpose || ""} ${t.bookingText || ""}`;
+  const cred = t.creditorId || (s.match(/\b([A-Z]{2}\d{2}ZZZ[0-9A-Z]{6,28})\b/) || [])[1] || "";
+  const mref = t.mandateRef || (s.match(/(?:MREF|Mandat(?:sreferenz|sref|s-?Ref)?\.?)[:\s]+([0-9A-Za-z][\w\-/.]{3,34})/i) || [])[1] || "";
+  const typ = t.bookingText || (cred || mref ? "SEPA-Lastschrift" : "");
+  return { cred, mref, typ };
+}
+function txColls() { return ls.get("txColls", []); }
+
+function TxSheet({ t, txs = [], categories, docs, onOpen, updateTx, updateTxs, resetCp, onClose, accName, deleteTx, linkTx, attachNew, addCategory, accounts = [], recurring = [], subs, goTab, onSearch, onAccount, onColl }) {
   const linkedInv = t.invoiceId ? ls.get("invoices", []).find((i) => i.id === t.invoiceId) : null;
-  const [accId, setAccId] = useState(t.accountId);
-  const [extraCats, setExtraCats] = useState([]);
-  const [pickDoc, setPickDoc] = useState(false);
-  const [dq, setDq] = useState("");
-  const [cat, setCat] = useState(t.category);
-  const [rule, setRule] = useState(false);
   const doc = t.docId && docs.find((d) => d.id === t.docId);
-  const rows = [["Datum", fmtDate(t.date)], ["Valuta", t.valueDate && fmtDate(t.valueDate)], ["Konto", accName(t.accountId)], ["Gegenpartei", t.counterparty], ["IBAN", t.iban],
-    ["Verwendungszweck", t.purpose], ["Buchungstext", t.bookingText], ["ISIN", t.isin], ["Wertpapier", t.security], ["Stück", t.shares], ["Kurs", t.price != null && fmtMoney(t.price, t.currency)],
-    ["Gebühren", t.fee ? fmtMoney(t.fee) : ""], ["Steuern", t.tax ? fmtMoney(t.tax) : ""]].filter(([, v]) => v != null && v !== "" && v !== false);
+  const key = cpKey(t), acc = accounts.find((a) => a.id === t.accountId);
+  const [edit, setEdit] = useState(null);           // Bearbeiten-Formular
+  const [catOpen, setCatOpen] = useState(false), [cat, setCat] = useState(t.category), [rule, setRule] = useState(false), [extraCats, setExtraCats] = useState([]);
+  const [icoOpen, setIcoOpen] = useState(false), [, bump] = useState(0);
+  const [noteOpen, setNoteOpen] = useState(false), [note, setNote] = useState(t.note || "");
+  const [collOpen, setCollOpen] = useState(false), [colls, setColls] = useState(txColls), [newColl, setNewColl] = useState("");
+  const [pickDoc, setPickDoc] = useState(false), [dq, setDq] = useState(""), [showPrev, setShowPrev] = useState(false);
+  const withOrig = (n) => ({ ...n, orig: t.orig || { category: t.category, counterparty: t.counterparty, purpose: t.purpose, date: t.date, amount: t.amount, accountId: t.accountId } });
+  const save = (n, applyRule = false) => updateTx(n, applyRule);
+  const isTransfer = t.category === "Umbuchung";
+  // Vertrag: eigener Vertrag (Name/Anbieter) oder erkannte Fixkosten
+  const ct = ls.get("contractList", []).find((c) => !c.cancelledAt && [c.provider, c.name].filter(Boolean).some((n) => { const a = norm(n), b = norm(t.counterparty || ""); return a.length > 2 && b && (b.includes(a) || a.includes(b)); }));
+  const rec = !ct && recurring.find((r) => r.txIds?.includes(t.id) && !(subs?.dismissed || []).includes(r.key));
+  // Verlauf: letzte 13 Monate bei diesem Empfänger
+  const same = useMemo(() => txs.filter((x) => x.kind !== "broker" && cpKey(x) === key), [txs, key]);
+  const months = useMemo(() => { const out = []; const d = new Date(); d.setDate(1); for (let i = 12; i >= 0; i--) { const m = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, "0")}`); } return out; }, []);
+  const income = t.amount > 0;
+  const vals = months.map((m) => Math.abs(same.filter((x) => x.date.startsWith(m) && (income ? x.amount > 0 : x.amount < 0)).reduce((s, x) => s + x.amount, 0)));
+  const avg = vals.reduce((a, b) => a + b, 0) / months.length;
+  const max = Math.max(...vals, 1);
+  const sepa = sepaInfo(t);
+  const inColls = colls.filter((c) => (t.colls || []).includes(c.id));
+  const setTxColls = (ids) => save({ ...t, colls: ids });
+  const ICO = CP_ICONS[key];
+  const title = t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || "Buchung";
+
+  if (edit) return (
+    <Win id="tx" onClose={() => setEdit(null)} dirty small defW={520}>
+      <div className="panelhead"><b>Buchung bearbeiten</b>
+        <button className="btn primary" onClick={() => {
+          const amt = parseAmt(edit.amount);
+          save(withOrig({ ...t, counterparty: edit.counterparty.trim(), purpose: edit.purpose, date: edit.date || t.date, accountId: edit.accountId, ...(t.manual && isFinite(amt) && amt ? { amount: amt } : {}) }));
+          setEdit(null); onClose();
+        }}>Speichern</button><XBtn /></div>
+      <label>Empfänger / Name<input value={edit.counterparty} onChange={(e) => setEdit({ ...edit, counterparty: e.target.value })} /></label>
+      <div className="grid2">
+        <label>Buchungsdatum<input type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} /></label>
+        <label>Betrag{!t.manual && <small className="muted"> (aus Bankimport)</small>}<input inputMode="decimal" disabled={!t.manual} value={edit.amount} onChange={(e) => setEdit({ ...edit, amount: e.target.value })} /></label>
+      </div>
+      {accounts.length > 1 && <label>Konto<select value={edit.accountId} onChange={(e) => setEdit({ ...edit, accountId: e.target.value })}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
+      <label>Zweck<textarea rows={4} value={edit.purpose} onChange={(e) => setEdit({ ...edit, purpose: e.target.value })} /></label>
+    </Win>
+  );
+
   return (
-    <Win id="tx" onClose={onClose} dirty={cat !== t.category || accId !== t.accountId}>
-        <div className="panelhead"><b>Buchung</b>
-          <button className="btn primary" disabled={cat === t.category && accId === t.accountId} onClick={() => { updateTx({ ...t, category: cat, accountId: accId }, rule); onClose(); }}>Speichern</button>
-          <XBtn />
+    <Win id="tx" onClose={onClose} dirty={false} small defW={520} className="txdetail">
+      <div className="panelhead"><span className="grow" /><button className="link" onClick={() => setEdit({ counterparty: t.counterparty || "", purpose: t.purpose || "", date: t.date, amount: String(t.amount).replace(".", ","), accountId: t.accountId })}>Bearbeiten</button><XBtn /></div>
+      <div className="txhero">
+        <div className="txheroico" onClick={() => setIcoOpen(!icoOpen)} title="Symbol ändern"><TxIcon t={t} size={84} /><span className="txpen">✎</span></div>
+        <h2>{title}</h2>
+        {t.kind !== "broker" && <button className="txcat" onClick={() => setCatOpen(!catOpen)}><CatGlyph c={t.category} /> {t.category} <span>✎</span></button>}
+      </div>
+      {icoOpen && (
+        <div className="tile txpick">
+          <div className="emojigrid">{TX_EMOJIS.map((e) => <button key={e} className={ICO === e ? "on" : ""} onClick={() => { setCpIcon(key, e); bump((n) => n + 1); setIcoOpen(false); }}>{e}</button>)}</div>
+          <div className="row"><input placeholder="Eigenes Emoji" maxLength={4} onKeyDown={(e) => { if (e.key === "Enter" && e.target.value.trim()) { setCpIcon(key, e.target.value.trim()); bump((n) => n + 1); setIcoOpen(false); } }} />
+            {ICO && <button className="link" onClick={() => { setCpIcon(key, null); bump((n) => n + 1); setIcoOpen(false); }}>Standard-Symbol</button>}</div>
+          <small className="muted">Gilt für alle Buchungen von „{t.counterparty || title}“.</small>
         </div>
-        <div className="tile center-text">
-          <div className={"hero-v" + (t.amount > 0 ? " ok" : "")} style={{ color: t.amount > 0 ? "var(--ok)" : "var(--txt)" }}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</div>
-          <b>{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose}</b>
+      )}
+      {catOpen && (
+        <div className="tile txpick">
+          <select value={cat} onChange={(e) => {
+            if (e.target.value !== "__new") return setCat(e.target.value);
+            const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return;
+            addCategory?.(n); setExtraCats((x) => [...x, n]); setCat(n);
+          }}>
+            {[...new Set([...categories, ...extraCats, t.category])].map((c) => <option key={c}>{c}</option>)}
+            <option value="__new">＋ Neue Kategorie …</option>
+          </select>
+          {t.counterparty && <label className="check"><input type="checkbox" checked={rule} onChange={(e) => setRule(e.target.checked)} /> Immer so für „{t.counterparty}“</label>}
+          <button className="btn primary" disabled={cat === t.category && !rule} onClick={() => { save(withOrig({ ...t, category: cat }), rule); setCatOpen(false); }}>Übernehmen</button>
         </div>
-        {linkedInv && <div className="lookbox ok">🧾 Zahlungseingang zu Rechnung <b>{linkedInv.number}</b> · {linkedInv.customer?.name} · {fmtMoney(invTotal(linkedInv))}</div>}
+      )}
+      {linkedInv && <div className="lookbox ok">🧾 Zahlungseingang zu Rechnung <b>{linkedInv.number}</b> · {linkedInv.customer?.name} · {fmtMoney(invTotal(linkedInv))}</div>}
+
+      <section className="tile txcard">
+        <div className="txkv"><span>Betrag</span><b className={income ? "pos" : ""}>{income ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b></div>
+        <div className="txkv"><span>Buchungsdatum</span><b>{relDay(t.date)}</b></div>
+        {t.valueDate && t.valueDate !== t.date && <div className="txkv"><span>Valuta</span><b>{fmtDate(t.valueDate)}</b></div>}
+        {t.purpose && <div className="txkv col"><span>Zweck</span><p>{t.purpose}</p></div>}
+        {t.kind === "broker" && [["ISIN", t.isin], ["Wertpapier", t.security], ["Stück", t.shares], ["Kurs", t.price != null && fmtMoney(t.price, t.currency)], ["Gebühren", t.fee ? fmtMoney(t.fee) : ""], ["Steuern", t.tax ? fmtMoney(t.tax) : ""]]
+          .filter(([, v]) => v != null && v !== "" && v !== false).map(([k, v]) => <div key={k} className="txkv"><span>{k}</span><b>{String(v)}</b></div>)}
         {t.kind !== "broker" && (
-          <fieldset>
-            <legend>Kategorie & Konto</legend>
-            <select value={cat} onChange={(e) => {
-              if (e.target.value !== "__new") return setCat(e.target.value);
-              const n = (prompt("Name der neuen Kategorie:") || "").trim();
-              if (!n) return;
-              addCategory?.(n); setExtraCats((x) => [...x, n]); setCat(n);
-            }}>
-              {[...new Set([...categories, ...extraCats, t.category])].map((c) => <option key={c}>{c}</option>)}
-              <option value="__new">＋ Neue Kategorie …</option>
-            </select>
-            {accounts.length > 1 && <label>Konto
-              <select value={accId} onChange={(e) => setAccId(e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}{a.hidden ? " (ausgeblendet)" : ""}</option>)}</select></label>}
-            {t.counterparty && <label className="check"><input type="checkbox" checked={rule} onChange={(e) => setRule(e.target.checked)} /> Immer so für „{t.counterparty}“</label>}
-          </fieldset>
+          <div className="txkv"><span>🔁 Umbuchung <small className="muted block">zählt nicht als Einnahme/Ausgabe</small></span>
+            <input type="checkbox" className="switch" aria-label="Umbuchung" checked={isTransfer}
+              onChange={() => save(isTransfer ? { ...t, category: t.preTransferCat || t.orig?.category || (income ? "Einnahmen" : "Sonstiges"), preTransferCat: undefined } : withOrig({ ...t, category: "Umbuchung", preTransferCat: t.category }))} /></div>
         )}
-        {doc && (
-          <div className="tile frow click" style={{ marginTop: 12 }} onClick={() => onOpen(doc.id)}>
-            <Thumb d={doc} /><div className="grow"><b>📎 {doc.title}</b><small className="muted block">Beleg zugeordnet</small></div>
-            <button className="link red" onClick={(e) => { e.stopPropagation(); linkTx(t.id, null); onClose(); }}>Lösen</button><span className="muted">›</span>
+        {(ct || rec) && (
+          <div className="txkv col"><span>Zugehöriger Vertrag</span>
+            <div className="txlink" onClick={() => { if (ct) { ls.set("ctOpenReq", ct.id); goTab?.("vertraege"); } else goTab?.("contracts"); onClose(); }}>
+              <TxIcon t={t} size={44} />
+              <div className="grow"><b>{ct ? ct.name || ct.provider : rec.name}</b><small className="muted block">{ct ? (ct.interval || "monatlich").replace(/^./, (c) => c.toUpperCase()) : rec.interval}{!ct && !(subs?.confirmed || []).includes(rec.key) ? " · erkannt" : ""}</small></div>
+              <b>{ct ? fmtMoney(-(Number(ct.amount) || 0)) : fmtMoney(-rec.amount)}</b><span className="muted">›</span>
+            </div>
           </div>
         )}
-        {!doc && t.kind !== "broker" && (
-          <fieldset>
-            <legend>Beleg / Rechnung</legend>
+        {/* Beleg */}
+        {doc ? (
+          <div className="txkv col"><span>Beleg</span>
+            <div className="txlink" onClick={() => setShowPrev(!showPrev)}>
+              <Thumb d={doc} /><div className="grow"><b>📎 {doc.title}</b><small className="muted block">{showPrev ? "Vorschau ausblenden" : "Antippen für Vorschau"}</small></div>
+              <button className="link" onClick={(e) => { e.stopPropagation(); onOpen(doc.id); }}>Öffnen</button>
+              <button className="link red" onClick={(e) => { e.stopPropagation(); linkTx(t.id, null); onClose(); }}>Lösen</button>
+            </div>
+            {showPrev && <DocPreview d={doc} onOpen={() => onOpen(doc.id)} />}
+          </div>
+        ) : t.kind !== "broker" && (
+          <div className="txkv col"><span>Beleg / Rechnung</span>
             <div className="attachbtns">
-              <button className="btn" onClick={() => { attachNew(t.id, "scan"); onClose(); }}>📷 Scannen</button>
-              <button className="btn" onClick={() => { attachNew(t.id, "file"); onClose(); }}>📄 Datei</button>
-              <button className="btn" onClick={() => setPickDoc(!pickDoc)}>🗂 Vorhandenes Dokument</button>
+              <button className="btn sm" onClick={() => { attachNew(t.id, "scan"); onClose(); }}>📷 Scannen</button>
+              <button className="btn sm" onClick={() => { attachNew(t.id, "file"); onClose(); }}>📄 Datei</button>
+              <button className="btn sm" onClick={() => setPickDoc(!pickDoc)}>🗂 Vorhandenes</button>
             </div>
             {pickDoc && (() => {
               const qn = norm(dq), amtAbs = Math.abs(t.amount);
-              const cands = docs.filter((d) => !d.deletedAt && (!qn || haystack(d).includes(qn)))
-                .map((d) => ({ d, s: (payAmt(d) != null ? Math.abs(payAmt(d) - amtAbs) * 10 : 500) + Math.abs((new Date(d.documentDate || d.createdAt) - new Date(t.date)) / 864e5) }))
-                .sort((a, b) => a.s - b.s).slice(0, 8).map((x) => x.d);
-              return (
-                <div className="linkpick">
-                  <input type="search" placeholder="Dokument suchen" value={dq} onChange={(e) => setDq(e.target.value)} />
-                  {cands.map((d) => (
-                    <button key={d.id} className="frow click linkopt" onClick={() => { linkTx(t.id, d.id); onClose(); }}>
-                      <Thumb d={d} className="thumb sm" /><span className="grow"><b className="one">{d.title}</b><small className="muted block">{fmtDate(d.documentDate)}</small></span>
-                      {payAmt(d) != null && <b>{fmtMoney(payAmt(d))}</b>}
-                    </button>
-                  ))}
-                  {!cands.length && <p className="muted small">Keine Dokumente gefunden.</p>}
-                </div>
-              );
+              const cand = docs.filter((d) => !qn || norm(`${d.title} ${d.sender}`).includes(qn))
+                .map((d) => ({ d, s: (Math.abs((d.amount?.total || 0) - amtAbs) < 0.01 ? 2 : 0) + (norm(d.sender || "").includes(norm(t.counterparty || "").split(" ")[0] || "#") ? 1 : 0) }))
+                .sort((a, b) => b.s - a.s || (b.d.documentDate || "").localeCompare(a.d.documentDate || "")).slice(0, 8);
+              return <div className="pickdocs"><input type="search" placeholder="Dokument suchen" value={dq} onChange={(e) => setDq(e.target.value)} />
+                {cand.map(({ d }) => <div key={d.id} className="frow click" onClick={() => { linkTx(t.id, d.id); onClose(); }}><Thumb d={d} /><div className="grow"><b className="clamp small">{d.title}</b><small className="muted block">{d.sender} · {d.documentDate && fmtDate(d.documentDate)}{d.amount?.total ? " · " + fmtMoney(d.amount.total) : ""}</small></div></div>)}
+              </div>;
             })()}
-          </fieldset>
+          </div>
         )}
-        <fieldset>
-          <legend>Details</legend>
-          {rows.map(([k, v]) => <div key={k} className="kv"><small className="muted">{k}</small><span>{String(v)}</span></div>)}
-        </fieldset>
-        {t.manual && <button className="btn danger" style={{ marginTop: 14 }} onClick={() => confirm("Buchung löschen?") && (deleteTx(t), onClose())}>🗑 Buchung löschen</button>}
+        {/* Sammlungen */}
+        <div className="txkv col"><span>{inColls.length ? "Sammlungen" : ""}</span>
+          {!!inColls.length && <div className="chips">{inColls.map((c) => <button key={c.id} className="chip" onClick={() => { onColl?.(c.id); onClose(); }}>📁 {c.name} <span className="muted" onClick={(e) => { e.stopPropagation(); setTxColls((t.colls || []).filter((x) => x !== c.id)); }}>✕</span></button>)}</div>}
+          <button className="link txadd" onClick={() => setCollOpen(!collOpen)}>Zu Sammlung hinzufügen</button>
+          {collOpen && (
+            <div className="txpick">
+              {colls.filter((c) => !(t.colls || []).includes(c.id)).map((c) => <button key={c.id} className="chip" onClick={() => { setTxColls([...(t.colls || []), c.id]); setCollOpen(false); }}>📁 {c.name}</button>)}
+              <div className="row"><input placeholder="Neue Sammlung, z. B. Urlaub Kroatien" value={newColl} onChange={(e) => setNewColl(e.target.value)} />
+                <button className="btn sm primary" disabled={!newColl.trim()} onClick={() => { const c = { id: uid(), name: newColl.trim() }; const l = [...colls, c]; ls.set("txColls", l); setColls(l); setTxColls([...(t.colls || []), c.id]); setNewColl(""); setCollOpen(false); }}>Anlegen</button></div>
+            </div>
+          )}
+        </div>
+        {/* Notiz */}
+        <div className="txkv col"><span>{t.note && !noteOpen ? "Notiz" : ""}</span>
+          {t.note && !noteOpen && <p onClick={() => setNoteOpen(true)}>{t.note}</p>}
+          {!noteOpen && <button className="link txadd" onClick={() => setNoteOpen(true)}>{t.note ? "Notiz bearbeiten" : "Notiz hinzufügen"}</button>}
+          {noteOpen && <div className="txpick"><textarea rows={3} autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="Notiz zur Buchung" />
+            <div className="row"><button className="btn sm primary" onClick={() => { save({ ...t, note: note.trim() || undefined }); setNoteOpen(false); }}>Speichern</button><button className="link" onClick={() => { setNote(t.note || ""); setNoteOpen(false); }}>Abbrechen</button></div></div>}
+        </div>
+      </section>
+
+      {t.kind !== "broker" && same.length > 0 && (
+        <section className="tile txcard">
+          <b className="txh">{income ? "Einnahmen von" : "Ausgaben bei"} {t.counterparty || title}</b>
+          <svg className="txbars" viewBox="0 0 390 150" role="img" aria-label="Verlauf der letzten 13 Monate">
+            {[0, 0.25, 0.5, 0.75, 1].map((f) => <line key={f} x1="0" x2="330" y1={10 + 110 * (1 - f)} y2={10 + 110 * (1 - f)} className="grid" />)}
+            {[0, 0.5, 1].map((f) => <text key={f} x="386" y={14 + 110 * (1 - f)} textAnchor="end" className="ax">{fmtMoney(max * f).replace(/,00/, "")}</text>)}
+            {vals.map((v, i) => { const h = (v / max) * 110; return <g key={i}><rect x={i * 25.4 + 4} y={120 - h} width="17" height={Math.max(h, v ? 2 : 0)} rx="3" className={months[i] === t.date.slice(0, 7) ? "cur" : ""}><title>{monthLabel(months[i])}: {fmtMoney(v)}</title></rect>
+              <text x={i * 25.4 + 12.5} y="138" textAnchor="middle" className="ax">{"JFMAMJJASOND"[+months[i].slice(5) - 1]}</text></g>; })}
+            <line x1="0" x2="330" y1={120 - (avg / max) * 110} y2={120 - (avg / max) * 110} className="avg" />
+          </svg>
+          <div className="txavg">Ø {fmtMoney(avg)} <small>/ Monat</small></div>
+          <button className="txlinkrow" onClick={() => { onSearch?.(t.counterparty || title); onClose(); }}>Alle Buchungen anzeigen ({same.length}) <span>›</span></button>
+        </section>
+      )}
+
+      <h3 className="txsec">Sonstiges</h3>
+      <section className="tile txcard">
+        <div className="txkv col"><span>Von</span>
+          <div className="txlink" onClick={() => { onAccount?.(t.accountId); onClose(); }}>
+            <span className="caticon" style={{ width: 40, height: 40, background: "var(--card2)" }}>{KIND_DEFS[acc?.kind || "bank"]?.[0] || "🏦"}</span>
+            <div className="grow"><b>{income ? (t.counterparty || "Absender") : accName(t.accountId)}</b><small className="muted block">{income ? fmtIban(t.iban) : fmtIban(acc?.iban)}</small></div>{!income && <span className="muted">›</span>}
+          </div>
+        </div>
+        <div className="txkv col"><span>An</span>
+          <div className="txlink plain" onClick={income ? () => { onAccount?.(t.accountId); onClose(); } : undefined}>
+            {income ? <span className="caticon" style={{ width: 40, height: 40, background: "var(--card2)" }}>{KIND_DEFS[acc?.kind || "bank"]?.[0] || "🏦"}</span> : <TxIcon t={t} size={40} />}
+            <div className="grow"><b>{income ? accName(t.accountId) : t.counterparty || "–"}</b><small className="muted block">{income ? fmtIban(acc?.iban) : fmtIban(t.iban)}</small></div>
+          </div>
+        </div>
+        {sepa.typ && <div className="txkv col"><span>Typ</span><b>{sepa.typ}</b></div>}
+        {sepa.cred && <div className="txkv col"><span>Gläubiger-ID</span><b className="mono">{sepa.cred}</b></div>}
+        {sepa.mref && <div className="txkv col"><span>Mandatsreferenz</span><b className="mono">{sepa.mref}</b></div>}
+        {t.receiptQr && <div className="txkv col"><span>Registrierkasse</span><b className="mono small">{String(t.receiptQr).slice(0, 60)}…</b></div>}
+      </section>
+
+      <section className="tile txcard">
+        <button className="txlinkrow red" onClick={() => {
+          if (!confirm(`Alle manuellen Änderungen an Buchungen von „${t.counterparty || title}“ zurücksetzen?\n\nKategorie, Name, Zweck, Datum, Symbol und die Regel „Immer so“ werden auf den Bankimport zurückgesetzt.`)) return;
+          setCpIcon(key, null); resetCp?.(key, t.counterparty); onClose();
+        }}>Manuelle Änderungen zurücksetzen</button>
+        <small className="muted block" style={{ padding: "0 4px 6px" }}>Entfernt alle manuellen Änderungen an den Buchungen dieses Empfängers.</small>
+        <button className="txlinkrow red" onClick={() => confirm(t.manual ? "Buchung löschen?" : "Diese Buchung stammt aus einem Bankimport. Trotzdem löschen?\n(Beim nächsten Import desselben Zeitraums kann sie wieder erscheinen.)") && (deleteTx(t), onClose())}>🗑 Buchung löschen</button>
+      </section>
     </Win>
   );
 }
@@ -9694,4 +9840,39 @@ html,body{min-height:100%}
 .fitscroll>*{flex-shrink:0}
 .fbseg{position:sticky;top:env(safe-area-inset-top);z-index:6;box-shadow:0 6px 14px -8px #0008}
 @media (min-width:700px){.fbseg{top:calc(env(safe-area-inset-top) + 84px);box-shadow:0 -40px 0 4px var(--bg),0 -84px 0 4px var(--bg),0 6px 14px -8px #0008}}
+.txdetail .panelhead{border:0}
+.txhero{display:flex;flex-direction:column;align-items:center;gap:10px;margin:4px 0 18px;text-align:center}
+.txhero h2{margin:4px 0 0;font-size:28px;line-height:1.15}
+.txheroico{position:relative;cursor:pointer}.txheroico .caticon{border-radius:22px}
+.txpen{position:absolute;top:-8px;right:-8px;width:28px;height:28px;border-radius:50%;background:var(--acc);color:#000;display:grid;place-items:center;font-size:14px;border:3px solid var(--bg)}
+.txcat{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:12px;border:0;background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);font:inherit;font-weight:600;cursor:pointer}
+.txcat span{font-size:13px;opacity:.8}
+.txcard{padding:4px 16px!important;margin-bottom:14px}
+.txkv{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
+.txkv:last-child{border-bottom:0}
+.txkv>span{color:var(--mut)}
+.txkv>b{text-align:right}.txkv>b.pos{color:var(--ok)}
+.txkv.col{flex-direction:column;align-items:stretch;gap:8px}
+.txkv.col>span:empty{display:none}
+.txkv.col>p{margin:0;white-space:pre-wrap;word-break:break-word;line-height:1.4}
+.txkv.col>b{text-align:left}
+.txlink{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:var(--card2,#ffffff0d);cursor:pointer}
+.txlink.plain{background:none;padding:2px 0;cursor:default}
+.txadd{text-align:left;padding:2px 0;font-size:16px}
+.txpick{display:flex;flex-direction:column;gap:8px}.txpick .row{display:flex;gap:8px;align-items:center}.txpick .row input{flex:1}
+.txpick.tile{margin-bottom:14px}
+.emojigrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(40px,1fr));gap:6px}
+.emojigrid button{font-size:22px;height:42px;border-radius:10px;border:1px solid var(--line);background:none;cursor:pointer}
+.emojigrid button.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 18%,transparent)}
+.txh{display:block;padding:14px 0 6px;font-size:18px}
+.txbars{width:100%;height:auto;display:block}
+.txbars .grid{stroke:var(--line);stroke-width:1}.txbars .ax{fill:var(--mut);font-size:10px}
+.txbars rect{fill:#6366f1}.txbars rect.cur{fill:var(--acc)}
+.txbars .avg{stroke:var(--txt);stroke-width:1.5;stroke-dasharray:5 4;opacity:.8}
+.txavg{font-size:24px;font-weight:700;padding:6px 0 10px}.txavg small{font-size:15px;font-weight:600}
+.txlinkrow{display:flex;justify-content:space-between;align-items:center;width:100%;padding:14px 0;border:0;border-top:1px solid var(--line);background:none;color:var(--acc);font:inherit;font-size:16px;cursor:pointer;text-align:left}
+.txcard>.txlinkrow:first-child{border-top:0}
+.txlinkrow.red{color:var(--red)}
+.txsec{margin:18px 2px 10px;font-size:22px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
 `;

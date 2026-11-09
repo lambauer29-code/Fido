@@ -2,6 +2,21 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.58.0
+- **Neue Buchungsdetailansicht** (Konten, gilt für Girokonten, Sparkonten, Karten, PayPal und Depots). Ein Klick auf eine Buchung öffnet sie immer.
+  - Kopf: großes Symbol (über ✎ pro Empfänger änderbar, Emoji-Auswahl), Name, Kategorie-Chip (✎, optional „Immer so für …“).
+  - Betrag, Buchungsdatum (Heute/Gestern), Valuta, Zweck, Wertpapierdaten bei Depots.
+  - Umbuchung als Schalter: zählt nicht als Einnahme/Ausgabe, beim Ausschalten kommt die vorige Kategorie zurück.
+  - Zugehöriger Vertrag: eigener Vertrag aus „Verträge“ oder erkannte Fixkosten, ein Klick öffnet ihn.
+  - Beleg: Vorschau aufklappen, öffnen oder lösen, alternativ Scannen, Datei oder vorhandenes Dokument zuordnen.
+  - **Sammlungen:** eigene Sammlungen (z. B. „Urlaub Kroatien“) anlegen und Buchungen über alle Konten hinzufügen. In Konten gibt es den Filter „📁 Sammlungen“ mit Summe.
+  - Notiz zur Buchung.
+  - Grafik „Ausgaben bei …“ bzw. „Einnahmen von …“ über die letzten 13 Monate mit Ø pro Monat, dazu „Alle Buchungen anzeigen“.
+  - Sonstiges: Von/An mit IBAN, Typ, Gläubiger-ID, Mandatsreferenz.
+  - „Manuelle Änderungen zurücksetzen“ (pro Empfänger) und „Buchung löschen“.
+  - Bearbeiten: Name, Datum, Zweck und Konto, bei manuellen Buchungen auch der Betrag.
+- Import: Gläubiger-ID und Mandatsreferenz werden aus CAMT-Dateien und CSV-Spalten übernommen, sonst aus dem Verwendungszweck erkannt (`MREF`, `…ZZZ…`).
+
 ## v0.57.0
 - **Fester Kopfbereich in weiteren Reitern** (am Desktop und Tablet ab 700 px Breite). Der obere Teil bleibt stehen, nur die Liste darunter scrollt:
   - Dokumente (alle Kategorien wie Ausgangsrechnung, Versicherung, Verträge): unterhalb des Ablagefelds
