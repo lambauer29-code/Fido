@@ -4999,7 +4999,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       {txOpen && <TxSheet scanReceiptFor={scanReceiptFor} receiptFor={receiptFor} txs={txs} recurring={recurring} subs={subs} goTab={goTab} resetCp={resetCp} onSearch={(v) => { setQ(v); setMonth(""); }} onAccount={(id) => setAcc?.(id)} onColl={(id) => { setColl(id); setSel?.([]); }} addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txs.find((x) => x.id === txOpen.id) || txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
   </>);
   // ---------- Handy: Kontenliste → Kontodetail (Finanzguru-Stil) ----------
-  const mobile = useMedia("(max-width:700px)");
+  const mobile = useMobileBeta();
   const [mView, setMView] = useState(null);           // null = Übersicht, "all" = alle Buchungen, sonst Konto-ID
   const [mSearch, setMSearch] = useState(false);
   const [mFold, setMFold] = useLsState("mAccFold", {});
@@ -5447,6 +5447,45 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
     </Win>
   );
 }
+
+/* ---------- Neue Handy-Ansichten (Test, Einstellungen → Darstellung) ---------- */
+function useFlag(key, def) {
+  const [v, setV] = useState(() => ls.get(key, def));
+  useEffect(() => { const f = () => setV(ls.get(key, def)); addEventListener("findocu-flag", f); return () => removeEventListener("findocu-flag", f); }, []);
+  return [v, (n) => { ls.set(key, n); dispatchEvent(new Event("findocu-flag")); }];
+}
+function useMobileBeta() { const small = useMedia("(max-width:700px)"); const [on] = useFlag("mobileBeta", true); return small && on; }
+function MobileBetaSetting() {
+  const [on, set] = useFlag("mobileBeta", true);
+  return <label className="switchrow"><span><b>Neue Handy-Ansichten (Test)</b><small className="muted block">Konten, Rechnungen, Mahnungen, Kunden, Artikel und Verträge im neuen Listen-Design (nur am Handy)</small></span>
+    <input type="checkbox" className="switch" checked={on} onChange={(e) => set(e.target.checked)} /></label>;
+}
+const mGroup = (arr, keyFn) => { const out = []; for (const x of arr) { const k = keyFn(x); const g = out[out.length - 1]; if (g && g[0] === k) g[1].push(x); else out.push([k, [x]]); } return out; };
+const MStats = ({ items }) => <div className="mstats">{items.filter(Boolean).map((s, i) => <div key={i} className={"tile mstatc" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b>{s.sub && <small className="muted">{s.sub}</small>}</div>)}</div>;
+const MActs = ({ items }) => <div className="mactions">{items.filter(Boolean).map((a, i) => <button key={i} className={"btn" + (a.primary ? " primary" : "")} onClick={a.run}>{a.label}</button>)}</div>;
+const MBar = ({ q, setQ, placeholder, chips, children }) => (
+  <div className="msticky">
+    {setQ && <div className="searchbar"><span>🔍</span><input type="search" placeholder={placeholder} value={q} onChange={(e) => setQ(e.target.value)} /></div>}
+    {chips && <div className="mchips">{chips.filter(Boolean).map(([k, l, n, on, click]) => <button key={k} className={"chip" + (on ? " on" : "")} onClick={click}>{l}{n != null && <small> {n}</small>}</button>)}{children}</div>}
+  </div>
+);
+const MHead = ({ children, right }) => <div className="mday mhead"><span>{children}</span>{right != null && <span className="muted">{right}</span>}</div>;
+const MAvatar = ({ text, color = "#64748b" }) => <span className="caticon mavatar" style={{ width: 46, height: 46, color }}>{(text || "?").trim().slice(0, 1).toUpperCase()}</span>;
+const MIco = ({ e }) => <span className="caticon" style={{ width: 46, height: 46, background: "var(--card2)", fontSize: 22 }}>{e}</span>;
+function MItem({ icon, title, sub, tags = [], amount, amountCls = "", amountSub, pill, onClick, swipe, after, dim }) {
+  return (<>
+    <SwipeRow {...(swipe || {})}>
+      <div className={"mtx" + (dim ? " dim" : "")} onClick={onClick}>
+        {icon}
+        <div className="grow"><b className="one">{title}</b>
+          <div className="msub">{tags.filter(Boolean).map((t, i) => <span key={i} className="mtag" style={t.color ? { color: t.color } : undefined}>{t.label || t}</span>)}<span className="one">{sub}</span></div></div>
+        <div className="mright">{amount != null && <span className={"mamt " + amountCls}>{amount}</span>}{amountSub && <small className="muted">{amountSub}</small>}{pill}</div>
+      </div>
+    </SwipeRow>
+    {after}
+  </>);
+}
+const MEmpty = ({ children }) => <p className="muted center-text" style={{ padding: "28px 16px" }}>{children}</p>;
 
 /* ---------- Wischgesten (Handy & Tablet, nur Touch/Stift) ---------- */
 let swipeOpenClose = null;
@@ -6614,6 +6653,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
   const sections = {
     "darstellung": <><SetSec id="darstellung" title="Darstellung">
         <TabbarSetting />
+        <MobileBetaSetting />
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
             <button key={k} role="radio" aria-checked={themeMode === k} className={themeMode === k ? "on" : ""} onClick={() => setThemeMode(k)}>
@@ -7531,6 +7571,7 @@ const unpayInv = async (x, book, patch) => {
 
 /* ---------- Seite ---------- */
 function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }) {
+  const mob = useMobileBeta();
   const [prevInv, setPrevInv] = useState(null);
   const [list, setList] = useLsState("invoices", []);
   const [templates, setTemplates] = useLsState("invoiceTemplates", []);
@@ -7626,6 +7667,38 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
 
   return (
     <div className="invpage">
+      {mob ? (
+      <div className="mpage">
+        {!coOk && <div className="healthbox"><b>Zuerst Firmendaten eintragen</b><button className="btn primary" onClick={() => setCoOpen(true)}>Firmendaten</button></div>}
+        <MStats items={[{ label: "Offen", value: fmtMoney(sumOf(openL)), sub: `${openL.length} Rechnung${openL.length === 1 ? "" : "en"}`, onClick: () => setFilter("offen") },
+          { label: "Überfällig", value: fmtMoney(sumOf(overL)), vcls: overL.length ? "neg" : "", alert: !!overL.length, sub: `${overL.length} Rechnung${overL.length === 1 ? "" : "en"}`, onClick: () => setFilter("überfällig") },
+          { label: `Bezahlt ${year}`, value: fmtMoney(paidYear), vcls: "pos", onClick: () => setFilter("bezahlt") }, { label: `Umsatz ${year}`, value: fmtMoney(yearRev) }]} />
+        <MActs items={[{ label: "＋ Rechnung", primary: true, run: () => newDoc("rechnung") }, { label: "＋ Angebot", run: () => newDoc("angebot") }, { label: "🏢 Firma", run: () => setCoOpen(true) }, setTab && { label: "📮 Mahnungen", run: () => setTab("mahnungen") }]} />
+        <MBar q={q} setQ={setQ} placeholder="Nummer, Kunde, Leistung suchen" chips={FILTERS.map(([k, l]) => [k, l, cnt(k), filter === k, () => setFilter(k)])} />
+        <div className="mtxlist">
+          {filter === "wiederkehrend" ? (<>
+            {!templates.length && <MEmpty>Keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „wiederkehrend“ wählen.</MEmpty>}
+            {templates.map((t) => <MItem key={t.id} icon={<MIco e="🔁" />} title={t.name} sub={`${t.interval} · nächster Entwurf ${fmtDate(t.next)}`} amount={fmtMoney(invTotal(t.inv || {}))} dim={!t.active}
+              pill={<button className={"stpill " + (t.active ? "st-paid" : "st-draft")} onClick={(e) => { e.stopPropagation(); setTemplates((l) => l.map((y) => (y.id === t.id ? { ...y, active: !y.active } : y))); }}>{t.active ? "aktiv" : "pausiert"}</button>} />)}
+          </>) : (<>
+            {!shown.length && <MEmpty>{list.length ? "Keine Treffer." : "Noch keine Rechnungen – mit „＋ Rechnung“ starten."}</MEmpty>}
+            {mGroup(shown, (x) => (x.date || "").slice(0, 7)).map(([m, l]) => (
+              <React.Fragment key={m}>
+                <MHead right={fmtMoney(sumOf(l))}>{m ? monthLabel(m) : "Ohne Datum"}</MHead>
+                {l.map((x) => { const sx = x.kind === "angebot" ? (x.status || "offen") : st(x), ui = STATE_UI[sx] || [sx, ""]; const payable = x.kind === "rechnung" && ["offen", "überfällig"].includes(sx); return (
+                  <MItem key={x.id} icon={x.kind === "angebot" ? <MIco e="📝" /> : <MAvatar text={x.customer?.name} />} title={x.customer?.name || "Ohne Kunde"}
+                    tags={[x.kind === "angebot" && "Angebot"]} sub={`${x.number || "Entwurf"} · ${fmtDate(x.date)}${payable ? " · fällig " + fmtDate(invDueEff(x)) : ""}`}
+                    amount={fmtMoney(invTotal(x))} amountCls={sx === "bezahlt" ? "in" : sx === "überfällig" ? "neg" : ""} pill={<span className={"stpill " + ui[1]}>{ui[0]}</span>}
+                    onClick={() => setEdit(x)}
+                    swipe={{ left: [x.number && { icon: "👁", label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }, { icon: "⧉", label: "Kopie", bg: "#8b5cf6", run: () => copyAsNew(x) }],
+                      right: [payable && { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayFor2(x) }, sx === "überfällig" && { icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }] }}
+                    after={prevInv === x.id && <InvPreview x={x} co={co} />} />); })}
+              </React.Fragment>
+            ))}
+          </>)}
+        </div>
+      </div>
+      ) : (<>
       {!coOk && <div className="healthbox"><b>Zuerst Firmendaten eintragen</b><p className="small muted">Name, Anschrift, Bankverbindung und Logo erscheinen auf jeder Rechnung.</p><button className="btn primary" onClick={() => setCoOpen(true)}>Firmendaten eintragen</button></div>}
       <div className="invstats">
         <div className="tile"><small className="muted">Offen</small><b>{fmtMoney(sumOf(openL))}</b><small className="muted">{openL.length} Rechnung{openL.length === 1 ? "" : "en"} (inkl. überfällig)</small></div>
@@ -7709,6 +7782,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
         </section>
       )}
       </FitScroll>
+      </>)}
       {edit && <InvoiceEditor book={book} accounts={book?.accounts || []} txs={book?.txs || []} onPayWin={book ? (x) => { setEdit(null); setPayFor2(x); } : null} onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
       {coOpen && <CompanyWin co={co} setCo={setCo} onClose={() => setCoOpen(false)} />}
       {mdOpen && <MasterDataWin articles={articles} setArticles={setArticles} onClose={() => setMdOpen(false)} />}
@@ -7827,6 +7901,7 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
 }
 
 function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }) {
+  const mob = useMobileBeta();
   const [list, setList] = useLsState("contractList", []);
   const [showDrop, setShowDrop] = useLsState("ctrDrop", true);
   const [waitIds, setWaitIds] = useLsState("ctrWait", []);
@@ -7868,6 +7943,37 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
   const dropCt = async (files) => { const ids = await onFiles(files, { stay: true }); setWaitIds((w) => [...w, ...(ids || [])]); };
   return (
     <div className="ctpage">
+      {mob ? (
+      <div className="mpage">
+        <div className="seg scopeseg">{[["alle", "", "Alle"], ...SCOPES].map(([k, i, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l}</button>)}</div>
+        <MStats items={[{ label: "Kosten pro Monat", value: fmtMoney(sum(scope)), sub: `${fmtMoney(sum(scope) * 12)} im Jahr` },
+          { label: "Kündbar in 60 Tagen", value: soon.length, vcls: soon.length ? "neg" : "", alert: !!soon.length, sub: soon[0] ? `${soon[0].c.name} bis ${fmtDate(soon[0].d.cancelBy)}` : "nichts dringend" },
+          scope === "alle" && { label: "👤 Privat / 🏢 Firma", value: fmtMoney(sum("privat")), sub: `Firma ${fmtMoney(sum("firma"))} / Monat` }]} />
+        <MActs items={[{ label: "＋ Vertrag", primary: true, run: () => setEdit({ id: uid(), scope: scope === "firma" ? "firma" : "privat", interval: "monatlich", noticeUnit: "Monate", cat: "Internet", docIds: [] }) },
+          !!docCands.length && { label: `📄 Aus Dokumenten (${docCands.length})`, run: () => setImp(!imp) }, { label: showOld ? "Gekündigte ausblenden" : "Gekündigte zeigen", run: () => setShowOld(!showOld) }]} />
+        {imp && <section className="tile">
+          {docCands.map((d) => <div key={d.id} className="frow"><Thumb d={d} /><div className="grow"><b>{d.contract.provider}</b><small className="muted block">{d.title}</small></div><button className="btn sm" onClick={() => setEdit(fromDoc(d))}>Übernehmen</button></div>)}
+        </section>}
+        <div className="mtxlist">
+          {!shown.length && <MEmpty>Noch keine Verträge – mit „＋ Vertrag“ z. B. Internet, Handy, Strom oder Versicherungen eintragen.</MEmpty>}
+          {mGroup([...shown].sort((x, y) => (x.c.cat || "~").localeCompare(y.c.cat || "~", "de") || (x.d.cancelBy || "9999").localeCompare(y.d.cancelBy || "9999")), ({ c }) => c.cat || "Sonstiges").map(([g, l]) => (
+            <React.Fragment key={g}>
+              <MHead right={fmtMoney(l.filter(({ c }) => !c.cancelledAt && !c.inactive).reduce((s, { c }) => s + monthly(c), 0)) + " / Mon."}>{(ctCats()[g] || "📄") + " " + g}</MHead>
+              {l.map(({ c, d }) => { const cdocs = (c.docIds || []).map((id) => docs.find((x) => x.id === id)).filter(Boolean); const left = d.cancelBy ? daysUntil(d.cancelBy) : null; return (
+                <MItem key={c.id} icon={<MIco e={ctCats()[c.cat] || "📄"} />} title={c.name || "Vertrag"} dim={c.cancelledAt || c.inactive}
+                  tags={[c.scope === "firma" && "Firma", c.inactive && "inaktiv", cdocs.length && "📎"]}
+                  sub={c.cancelledAt ? `gekündigt${c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}` : d.open ? `${c.provider || ""} · jederzeit kündbar` : d.cancelBy ? `${c.provider ? c.provider + " · " : ""}kündigen bis ${fmtDate(d.cancelBy)}` : c.provider || "Laufzeit nicht eingetragen"}
+                  amount={c.amount ? fmtMoney(Number(c.amount)) : "—"} amountSub={c.interval || "monatlich"}
+                  pill={!c.cancelledAt && left != null && left >= 0 && left <= 60 && <span className={"stpill " + (left <= 30 ? "st-over" : "st-draft")}>{left === 0 ? "heute" : `in ${left} T.`}</span>}
+                  onClick={() => setEdit(c)}
+                  swipe={{ left: [cdocs[0] && { icon: "👁", label: "Dokument", bg: "#0ea5e9", run: () => onOpen(cdocs[0].id) }],
+                    right: [{ icon: c.inactive ? "▶" : "⏸", label: c.inactive ? "Aktiv" : "Inaktiv", bg: "#64748b", run: () => save({ ...c, inactive: !c.inactive }) },
+                      d.cancelBy && !c.cancelledAt && { icon: "📅", label: "Kalender", bg: "#8b5cf6", run: () => saveBlob(new Blob([["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinDocu//DE", icsEvent({ id: "ct-" + c.id, date: d.cancelBy, label: "Kündigung bis" }, { title: `${c.name} (${c.provider || ""})` }), "END:VCALENDAR"].join("\r\n")], { type: "text/calendar" }), "kuendigung.ics") }] }} />); })}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+      ) : (<>
       <div className="seg scopeseg">{[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small className="cnt">({k === "alle" ? active.length : active.filter((c) => (c.scope || "privat") === k).length})</small></button>)}</div>
       <div className="invstats">
         <div className="tile"><small className="muted">Kosten pro Monat</small><b>{fmtMoney(sum(scope))}</b><small className="muted">{fmtMoney(sum(scope) * 12)} im Jahr</small></div>
@@ -7930,6 +8036,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
           </div>); })}
       </section>
       </FitScroll>
+      </>)}
       {edit && <ContractEditor c={edit} docs={docs} me={me} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
     </div>
   );
@@ -8072,6 +8179,7 @@ function ContactImportWin({ items: init, existing, onImport, onClose }) {
   );
 }
 function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
+  const mob = useMobileBeta();
   const [showDrop, setShowDrop] = useLsState("ctDrop", true);
   const dropVcf = async (files) => {
     let all = [];
@@ -8107,6 +8215,35 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
   };
   return (
     <div className="ctpage">
+      {mob ? (
+      <div className="mpage">
+        <MActs items={[{ label: "＋ Kontakt", primary: true, run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) }, { label: "📱 Aus Handy", run: fromPhone }, { label: "📇 .vcf", run: () => vcfRef.current?.click() }]} />
+        <input ref={vcfRef} type="file" accept=".vcf,text/vcard,text/x-vcard" multiple hidden onChange={async (e) => {
+          const files = [...e.target.files]; e.target.value = ""; let all = [];
+          for (const f of files) all = all.concat(parseVcf(await f.text()));
+          if (!all.length) return alert("Keine Kontakte in der Datei gefunden.");
+          setPicked(all.map((c) => ({ ...c, on: true })));
+        }} />
+        <MBar q={q} setQ={setQ} placeholder="Name, E-Mail, Telefon, Ort suchen"
+          chips={[["alle", "Alle", list.length, type === "alle", () => setType("alle")], ...types.map((t) => ["t:" + t.id, <><TypeGlyph t={t} /> {t.name}</>, list.filter((c) => (c.type || "Kunde") === t.name).length, type === t.name, () => setType(t.name)])]} />
+        {busy && <ImportBar {...busy} />}
+        <div className="mtxlist">
+          {!shown.length && <MEmpty>{list.length ? "Keine Treffer." : "Noch keine Kontakte – mit „＋ Kontakt“ anlegen oder aus dem Handy übernehmen."}</MEmpty>}
+          {mGroup(shown, (c) => ((c.name || "#").trim()[0] || "#").toUpperCase()).map(([L, l]) => (
+            <React.Fragment key={L}>
+              <MHead right={l.length}>{L}</MHead>
+              {l.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"), tp = typeOf(c), tel = (c.mobile || c.phone || "").replace(/\s/g, ""); return (
+                <MItem key={c.id} icon={<MAvatar text={c.name} color={tp.color} />} title={c.name || "Ohne Name"} tags={[{ label: <><TypeGlyph t={tp} /> {tp.name}</>, color: tp.color }]}
+                  sub={[c.contact, cityOf(c.address), c.number].filter(Boolean).join(" · ")}
+                  amount={inv.length ? fmtMoney(inv.reduce((s, i) => s + invTotal(i), 0)) : null} amountSub={inv.length ? `${inv.length} Rechn.${open.length ? " · " + open.length + " offen" : ""}` : null}
+                  onClick={() => setEdit(c)}
+                  swipe={{ left: [setTab && { icon: "🧾", label: "Rechnung", bg: "#0ea5e9", run: () => { ls.set("pendingInvoice", { kind: "rechnung", customer: c }); setTab("invoices"); } }, { icon: "📇", label: "vCard", bg: "#8b5cf6", run: () => vcard(c) }],
+                    right: [tel && { icon: "📞", label: "Anrufen", bg: "#16a34a", run: () => (location.href = "tel:" + tel) }, c.email && { icon: "✉️", label: "Mail", bg: "#3b82f6", run: () => (location.href = "mailto:" + c.email) }] }} />); })}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+      ) : (<>
       <div className="invbar">
         <button className="btn primary" onClick={() => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() })}>＋ Kontakt</button>
         <button className="btn" onClick={fromPhone}>📱 Aus Handy-Kontakten</button>
@@ -8155,6 +8292,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
           </div>); })}
       </section>
       </FitScroll>
+      </>)}
       {picked && <ContactImportWin items={picked} existing={list} onClose={() => setPicked(null)} onImport={(sel) => {
         let n = list.reduce((m, c) => Math.max(m, parseInt(String(c.number || "").replace(/\D/g, ""), 10) || 0), 0);
         setList((l) => [...l, ...sel.map((c) => { const { on, ...rest } = c; return { id: uid(), type: "Kunde", number: "K-" + String(++n).padStart(3, "0"), ...rest }; })]);
@@ -8388,6 +8526,7 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
   );
 }
 function ArticlesPage({ setTab }) {
+  const mob = useMobileBeta();
   const [list, setList] = useLsState("articles", []);
   const invoices = ls.get("invoices", []);
   const C = artCfg();
@@ -8403,6 +8542,31 @@ function ArticlesPage({ setTab }) {
     .sort((x, y) => (sort === "umsatz" ? y.u.sum - x.u.sum : sort === "preis" ? (Number(y.a.price) || 0) - (Number(x.a.price) || 0) : (x.a.text || "").localeCompare(y.a.text || "", "de")));
   return (
     <div className="ctpage">
+      {mob ? (
+      <div className="mpage">
+        <MActs items={[{ label: "＋ Artikel", primary: true, run: () => setEdit({ id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: grp !== "alle" && grp !== "ohne" ? grp : "" }) }, { label: "📷 Scannen", run: () => setScan(true) }]} />
+        <MBar q={q} setQ={setQ} placeholder="Bezeichnung, Nummer, Gruppe suchen"
+          chips={[["alle", "Alle", list.length], ...groups.map((g) => [g, g, list.filter((a) => a.group === g).length]), ["ohne", "Ohne Gruppe", list.filter((a) => !a.group).length]]
+            .filter(([k, , n]) => k === "alle" || n || C.groups.includes(k)).map(([k, l, n]) => [k, l, n, grp === k, () => setGrp(k)])}>
+          <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">↕ Name</option><option value="preis">↕ Preis</option><option value="umsatz">↕ Umsatz</option></select>
+        </MBar>
+        <div className="mtxlist">
+          {!shown.length && <MEmpty>{list.length ? "Keine Treffer." : "Noch keine Artikel – mit „＋ Artikel“ anlegen."}</MEmpty>}
+          {(grp === "alle" && sort === "name" ? mGroup([...shown].sort((x, y) => (x.a.group || "~").localeCompare(y.a.group || "~", "de") || (x.a.text || "").localeCompare(y.a.text || "", "de")), ({ a }) => a.group || "Ohne Gruppe") : [["", shown]]).map(([g, l]) => (
+            <React.Fragment key={g || "all"}>
+              {g && <MHead right={l.length}>{g}</MHead>}
+              {l.map(({ a, u }) => (
+                <MItem key={a.id} icon={<MIco e="📦" />} title={a.text || "Ohne Bezeichnung"} dim={a.inactive} tags={[a.inactive && "inaktiv"]}
+                  sub={[a.number, u.n ? `${u.n}× · ${fmtMoney(u.sum)}` : "noch nicht verrechnet"].filter(Boolean).join(" · ")}
+                  amount={a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"} amountSub={"pro " + (a.unit || C.defUnit)} onClick={() => setEdit(a)}
+                  swipe={{ left: [{ icon: "⧉", label: "Kopie", bg: "#8b5cf6", run: () => setEdit({ ...a, id: uid(), number: C.autoNo ? nextNo() : "", text: (a.text || "") + " (Kopie)" }) }],
+                    right: [{ icon: a.inactive ? "▶" : "⏸", label: a.inactive ? "Aktiv" : "Inaktiv", bg: "#64748b", run: () => save({ ...a, inactive: !a.inactive }) }] }} />
+              ))}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+      ) : (<>
       <div className="invbar">
         <button className="btn primary" onClick={() => setEdit({ id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: grp !== "alle" && grp !== "ohne" ? grp : "" })}>＋ Artikel</button>
         <button className="btn" onClick={() => setScan(true)}>📷 Artikel scannen</button>
@@ -8436,6 +8600,7 @@ function ArticlesPage({ setTab }) {
         ))}
       </section>
       </FitScroll>
+      </>)}
       {scan && <CodeScanWin title="Artikel scannen" onClose={() => setScan(false)} onResult={(code, fmt) => {
         setScan(false);
         const hit = list.find((a) => a.ean && a.ean === code);
@@ -8448,6 +8613,8 @@ function ArticlesPage({ setTab }) {
 
 /* ======================= Mahnungen (Reiter) ======================= */
 function DunningPage({ setTab, book }) {
+  const mob = useMobileBeta();
+  const [pickOpen, setPickOpen] = useState(false);
   const [list, setList] = useLsState("invoices", []);
   const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
   const dn = dunning();
@@ -8464,6 +8631,44 @@ function DunningPage({ setTab, book }) {
   const pdfOf = (x, i) => buildInvoicePdf({ ...x, reminders: (x.reminders || []).slice(0, i + 1) }, co, x.reminders[i]);
   return (
     <div className="invpage">
+      {mob ? (
+      <div className="mpage">
+        <MStats items={[{ label: "Überfällig", value: fmtMoney(over.reduce((s, o) => s + invTotal(o.x), 0)), vcls: over.length ? "neg" : "", alert: !!over.length, sub: `${over.length} Rechnung${over.length === 1 ? "" : "en"}` },
+          { label: "Jetzt mahnen", value: over.filter((o) => o.ready).length, sub: `Wartezeit ${dn.waitDays} Tage` },
+          { label: `Mahnungen ${year}`, value: history.filter((h) => (h.r.date || "").startsWith(year)).length, sub: "versendet" }]} />
+        <MActs items={[{ label: "＋ Mahnung", primary: true, run: () => setPickOpen(true) }, setTab && { label: "🧾 Rechnungen", run: () => setTab("invoices") }]} />
+        <div className="mtxlist">
+          <MHead right={over.length}>Zu mahnen</MHead>
+          {!over.length && <MEmpty>Keine überfälligen Rechnungen 🎉</MEmpty>}
+          {over.map(({ x, last, since, ready, next }) => (
+            <MItem key={x.id} icon={<MAvatar text={x.customer?.name} color="#ef4444" />} title={x.customer?.name || "Ohne Kunde"}
+              sub={`${x.number} · ${since} T. überfällig${last ? " · zuletzt " + remindName(last.level) : ""}`} amount={fmtMoney(invTotal(x))} amountCls="neg"
+              pill={<span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? remindName(next) : `in ${(dn.waitDays || 0) - since} T.`}</span>}
+              onClick={() => setRemind(x)}
+              swipe={{ left: [{ icon: "👁", label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }],
+                right: [{ icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }, { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayX(x) }] }}
+              after={prevInv === x.id && <InvPreview x={x} co={co} />} />
+          ))}
+          <MHead right={history.length}>Mahnverlauf</MHead>
+          {!history.length && <MEmpty>Noch keine Mahnungen erstellt.</MEmpty>}
+          {history.map(({ x, r, i }) => { const s = invState(x); return (
+            <MItem key={x.id + i} icon={<MIco e="📮" />} title={`${remindName(r.level)} · ${x.customer?.name || ""}`} sub={`${fmtDate(r.date)} · ${x.number} · Frist ${fmtDate(r.due)}`}
+              amount={fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))} amountCls={s === "bezahlt" ? "in" : ""}
+              pill={i === x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
+              onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}
+              swipe={{ left: [{ icon: "👁", label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id + ":" + i ? null : x.id + ":" + i) }],
+                right: [{ icon: "📤", label: "Teilen", bg: "#8b5cf6", run: async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email) }] }}
+              after={prevInv === x.id + ":" + i && <InvPreview x={x} co={co} make={() => pdfOf(x, i)} name={invFileName(x, r)} />} />); })}
+        </div>
+        {pickOpen && (
+          <Win id="dunpick" onClose={() => setPickOpen(false)} dirty={false} small>
+            <div className="panelhead"><b>Mahnung für …</b><XBtn /></div>
+            {(() => { const cand = [...over.map((o) => o.x), ...openNotOver]; return !cand.length ? <p className="muted">Keine offenen Rechnungen – alles bezahlt 🎉</p>
+              : cand.map((x) => <div key={x.id} className="frow click" onClick={() => { setPickOpen(false); setRemind(x); }}><MAvatar text={x.customer?.name} /><div className="grow"><b>{x.customer?.name || "Ohne Kunde"}</b><small className="muted block">{x.number} · {fmtMoney(invTotal(x))}{invState(x) === "überfällig" ? " · überfällig" : ""}</small></div><span className="muted">›</span></div>); })()}
+          </Win>
+        )}
+      </div>
+      ) : (<>
       <div className="invstats">
         <div className={"tile" + (over.length ? " alert" : "")}><small className="muted">Überfällig</small><b className={over.length ? "neg" : ""}>{fmtMoney(over.reduce((s, o) => s + invTotal(o.x), 0))}</b><small className="muted">{over.length} Rechnung{over.length === 1 ? "" : "en"}</small></div>
         <div className="tile"><small className="muted">Jetzt mahnen</small><b>{over.filter((o) => o.ready).length}</b><small className="muted">Wartezeit {dn.waitDays} Tage je Stufe</small></div>
@@ -8529,6 +8734,7 @@ function DunningPage({ setTab, book }) {
           </React.Fragment>); })}
       </section>
       </FitScroll>
+      </>)}
       {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
       {payX && <PayWin inv={payX} book={book} onClose={() => setPayX(null)} onDone={(p) => patch(payX.id, p)} />}
     </div>
@@ -10254,4 +10460,24 @@ html,body{min-height:100%}
 .swacts.l .swbtn:first-child,.swacts.r .swbtn:last-child{flex-grow:1}
 .swbtn span{font-size:20px;line-height:1}
 .deadlines ul .swrow{list-style:none}
+/* Neue Handy-Ansichten */
+.mpage{display:flex;flex-direction:column;gap:12px}
+.mstats{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px 2px;scroll-snap-type:x mandatory}
+.mstats::-webkit-scrollbar{display:none}
+.mstatc{flex:0 0 auto;min-width:150px;max-width:220px;display:flex;flex-direction:column;align-items:flex-start;text-align:left;justify-content:flex-start;gap:3px;padding:12px 14px!important;scroll-snap-align:start}
+.mstatc b{font-size:21px;white-space:nowrap}.mstatc small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mstatc.click{cursor:pointer}.mstatc.mwarn{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--red) 45%,transparent)}
+.msticky{position:sticky;top:0;z-index:3;background:var(--bg);display:flex;flex-direction:column;gap:8px;padding:6px 0 8px;margin:0 -16px;padding-left:16px;padding-right:16px}
+.mchips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px}.mchips::-webkit-scrollbar{display:none}
+.mchips .chip{flex:none;white-space:nowrap}
+.mhead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.mpage .mtxlist .mhead{position:static}
+.mright{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none;max-width:42%}
+.mright small{font-size:12px;white-space:nowrap}
+.mright .stpill{font-size:11px}
+.mtx.dim{opacity:.55}
+.mavatar{font-weight:700;font-size:19px;border-radius:50%!important}
+.mamt.neg{color:var(--red)}
+.mpage .mactions .btn{flex:1 1 0;white-space:nowrap;padding-left:10px;padding-right:10px}
+.mpage .healthbox{display:flex;align-items:center;gap:10px;justify-content:space-between}
 `;
