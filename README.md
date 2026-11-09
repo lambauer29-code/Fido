@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.62.2
+- Beim ersten Start sind jetzt alle Reiter aktiv, in der Seitenleiste und in der Handy-Leiste unten (inkl. Umtauschfrist und Backup). Bestehende Installationen behalten ihre eigene Auswahl.
+
+## v0.62.1
+- iPhone/Handy: Der Abstand zwischen Statusleiste und Seitentitel war in jedem Reiter viel zu groß, weil der Statusleisten-Abstand doppelt gerechnet wurde. Jetzt steht der Titel direkt unter den Symbolen oben rechts (etwa 70 pt höher).
+- Haftende Leisten der neuen Handy-Ansichten (Kontodetail, Suche/Filter, Tageskopf) bleiben jetzt unterhalb der Statusleiste statt darunter zu verschwinden.
+
 ## v0.62.0
 - **Neue Handy-Ansichten (Test)**, nur bis 700 px Breite und abschaltbar unter Einstellungen → Darstellung → „Neue Handy-Ansichten (Test)“ (standardmäßig an). Ausgeschaltet gelten wieder die bisherigen Ansichten, auch in Konten.
   - Gleicher Aufbau überall: wischbare Kennzahl-Karten, Aktionsknöpfe, oben haftende Suche mit Filter-Chips, gruppierte Liste mit großem Symbol bzw. Initialen-Avatar, Betrag rechts, Status-Pill und Wischaktionen.

@@ -556,8 +556,8 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 }
 const DEFAULT_NAV = {
   tabs: [
-    { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: false, parent: "docs" },
-    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: false }, { key: "analyse", side: true, phone: false }, { key: "vermoegen", side: true, phone: false }, { key: "fahrtenbuch", side: true, phone: false }, { key: "invoices", side: true, phone: false }, { key: "kunden", side: true, phone: false }, { key: "mahnungen", side: true, phone: false }, { key: "firma", side: true, phone: false }, { key: "artikel", side: true, phone: false }, { key: "vertraege", side: true, phone: false }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: false, parent: "settings" }
+    { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: true, parent: "docs" },
+    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: true }, { key: "analyse", side: true, phone: true }, { key: "vermoegen", side: true, phone: true }, { key: "fahrtenbuch", side: true, phone: true }, { key: "invoices", side: true, phone: true }, { key: "kunden", side: true, phone: true }, { key: "mahnungen", side: true, phone: true }, { key: "firma", side: true, phone: true }, { key: "artikel", side: true, phone: true }, { key: "vertraege", side: true, phone: true }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: true, parent: "settings" }
   ],
   groups: [
     { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
@@ -9987,7 +9987,7 @@ html.fg .moremenu button{font-size:18px;padding:12px 12px}
   html.ios .ditem .dactions button{width:38px;height:34px}
   html.ios .win{border-radius:22px 22px 0 0;border:0}
   html.ios .win::before{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);width:36px;height:5px;border-radius:3px;background:color-mix(in srgb,var(--txt) 22%,transparent);z-index:3;pointer-events:none}
-  html.fg header.top{padding-top:calc(env(safe-area-inset-top) + 54px)}
+  html.fg header.top{padding-top:40px} /* .app hat bereits den Abstand der Statusleiste (safe-area) */
   html.fg header.top h1{font-size:44px;font-weight:600;letter-spacing:-.01em;line-height:1.05}
   html.fg .topactions{background:none!important;border:0!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;top:calc(env(safe-area-inset-top) + 10px)!important;right:14px!important}
   html.fg nav.bottom{border-radius:34px;padding:6px;background:var(--ios-glass);border:1px solid color-mix(in srgb,var(--txt) 10%,transparent);box-shadow:0 12px 34px #000a}
@@ -10480,4 +10480,7 @@ html,body{min-height:100%}
 .mamt.neg{color:var(--red)}
 .mpage .mactions .btn{flex:1 1 0;white-space:nowrap;padding-left:10px;padding-right:10px}
 .mpage .healthbox{display:flex;align-items:center;gap:10px;justify-content:space-between}
+/* Haftende Leisten am Handy unter der Statusleiste halten */
+.mtopbar,.msticky{top:env(safe-area-inset-top)!important;box-shadow:0 calc(-1 * env(safe-area-inset-top) - 2px) 0 var(--bg)}
+.mday{top:calc(env(safe-area-inset-top) + 56px)}
 `;
