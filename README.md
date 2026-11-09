@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.60.0
+- **Konten am Handy neu (bis 700 px Breite):**
+  - Übersicht: Karte „Statistik“ mit verfügbaren Einnahmen des Monats (Eingänge minus Ausgaben), Tagen bis Monatsende und Fortschrittsbalken; ein Antippen öffnet die Analyse. Darunter „Alle Buchungen“ mit Gesamtstand und die Kontogruppen (Bargeld, Girokonten, Sparkonten, Depots …) als einklappbare Abschnitte mit Kontostand je Konto. Dazu ein Hinweis auf erkannte Abos und Knöpfe für ＋ Konto, Kontoauszug-Import und ✨ Logos.
+  - Kontodetail: Leiste mit „‹ Zurück“, Kontoname, 🔍 Suche und ⋯-Menü (Konto bearbeiten, Import, Logos, Konto löschen). Darunter der Kontostand bzw. die Monatssumme mit Monatswahl, Sammlungsfilter und die Buchungen nach Tagen gruppiert (Tageskopf bleibt oben haften). Jede Zeile zeigt Logo, Name, „Vertrag“-Kennzeichen, Kategorie, Beleg-📎, Einnahmen grün hinterlegt und ↻ bei wiederkehrenden Buchungen. Beim Scrollen wird automatisch nachgeladen, ein Antippen öffnet die Buchungsdetailansicht.
+- Desktop und Tablet bleiben unverändert.
+
 ## v0.59.0
 - **Firmenlogos für Buchungen** (neue Funktion `api/logo.js`, nutzt den vorhandenen `ANTHROPIC_API_KEY`). Die KI ordnet den Empfänger der offiziellen Website zu (BILLA → billa.at), danach wird deren öffentliches Website-Symbol geladen (apple-touch-icon bzw. Favicon). Das Logo wird auf 96 px verkleinert und lokal in IndexedDB gespeichert (neuer Speicher `logos`, DB-Version 3).
   - Einzeln: im Buchungsdetail auf das Symbol tippen und „✨ Firmenlogo suchen (KI)“ wählen, dort auch „Logo entfernen“.

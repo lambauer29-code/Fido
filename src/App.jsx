@@ -4978,6 +4978,133 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const dayGroups = [];
   for (const t of list.slice(0, limit)) { const g = dayGroups[dayGroups.length - 1]; if (g && g.date === t.date) g.items.push(t); else dayGroups.push({ date: t.date, items: [t] }); }
 
+  const modals = (<>
+      {editAcc && <AccountSheet init={editAcc} txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm && a.id !== editAcc.id)} onClose={() => setEditAcc(null)}
+        onSave={(a) => { setAccounts((l) => l.map((x) => (x.id === a.id ? a : x))); setEditAcc(null); notify("Konto gespeichert"); }} />}
+      {newAcc && <AccountSheet txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
+      {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => { setImp(null); if (impQ.current.files.length) setTimeout(nextImp, 50); }} />}
+      {logoOpen && <LogoWin txs={txs} onClose={() => setLogoOpen(false)} />}
+      {txOpen && <TxSheet scanReceiptFor={scanReceiptFor} receiptFor={receiptFor} txs={txs} recurring={recurring} subs={subs} goTab={goTab} resetCp={resetCp} onSearch={(v) => { setQ(v); setMonth(""); }} onAccount={(id) => setAcc?.(id)} onColl={(id) => { setColl(id); setSel?.([]); }} addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txs.find((x) => x.id === txOpen.id) || txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
+  </>);
+  // ---------- Handy: Kontenliste → Kontodetail (Finanzguru-Stil) ----------
+  const mobile = useMedia("(max-width:700px)");
+  const [mView, setMView] = useState(null);           // null = Übersicht, "all" = alle Buchungen, sonst Konto-ID
+  const [mSearch, setMSearch] = useState(false);
+  const [mFold, setMFold] = useLsState("mAccFold", {});
+  const sentinel = useRef(null);
+  useEffect(() => {
+    if (!mobile || !mView || !sentinel.current) return;
+    const io = new IntersectionObserver((e) => { if (e[0].isIntersecting) setLimit((n) => n + 200); }, { rootMargin: "800px" });
+    io.observe(sentinel.current); return () => io.disconnect();
+  }, [mobile, mView, list.length]);
+  const ctNames = useMemo(() => ls.get("contractList", []).filter((c) => !c.cancelledAt).flatMap((c) => [c.provider, c.name]).filter(Boolean).map(norm).filter((x) => x.length > 2), [txs.length]);
+  const recIds = useMemo(() => new Set(recurring.filter((r) => subs.confirmed.includes(r.key)).flatMap((r) => r.txIds || [])), [recurring, subs]);
+  const isContract = (t) => recIds.has(t.id) || (t.counterparty && ctNames.some((n) => norm(t.counterparty).includes(n) || n.includes(norm(t.counterparty))));
+  const openAcc = (id) => { setQ(""); setMonth(""); setColl(""); setMSearch(false); setLimit(150); if (id === "all") { setSel([]); setAcc?.(""); } else { setSel([id]); setAcc?.(id); } setMView(id); scrollTo(0, 0); };
+  const backAcc = () => { setMView(null); setSel([]); setAcc?.(""); setQ(""); setMonth(""); setColl(""); scrollTo(0, 0); };
+  if (mobile) {
+    const mon = todayISO().slice(0, 7);
+    const visIds = new Set(visAccounts.map((a) => a.id));
+    const monTx = txs.filter((t) => visIds.has(t.accountId) && t.date.startsWith(mon) && t.kind !== "broker" && t.category !== "Umbuchung" && !(cashAccs.length && t.category === "Bargeld"));
+    const mInc = monTx.filter((t) => t.amount > 0).reduce((x, t) => x + t.amount, 0), mOut = monTx.filter((t) => t.amount < 0).reduce((x, t) => x - t.amount, 0);
+    const now = new Date(), daysLeft = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate();
+    const balOf = (a) => accountBalance(a, txs);
+    const allBal = visAccounts.map(balOf).filter((x) => x != null).reduce((x, y) => x + y, 0);
+    const Money = ({ v, cls = "" }) => <b className={"mmoney " + cls + (v > 0 ? " pos" : "")}>{v == null ? "–" : fmtMoney(v)}</b>;
+    const shownGroups = groups.filter((g) => g.accounts.some((a) => visIds.has(a.id)));
+    if (!mView) return (
+      <div className="mkonten">
+        {!!txs.length && (
+          <section className="tile mstat" onClick={() => goTab?.("analyse")}>
+            <div className="mstathead"><b>Statistik</b><span className="muted">{daysLeft} Tag{daysLeft === 1 ? "" : "e"} bis Monatsende</span><span className="muted">›</span></div>
+            <div className="mstatval"><b className={mInc - mOut < 0 ? "neg" : ""}>{fmtMoney(mInc - mOut).replace(",00", "")}</b><span className="muted">{mInc - mOut < 0 ? "mehr ausgegeben als eingenommen" : "Einnahmen verfügbar"}</span></div>
+            <div className="mstatbar"><i style={{ width: `${mInc ? Math.min(100, (mOut / mInc) * 100) : mOut ? 100 : 0}%` }} /></div>
+            <small className="muted">Eingänge {fmtMoney(mInc)} · Ausgaben {fmtMoney(mOut)} im {monthLabel(mon)}</small>
+          </section>
+        )}
+        <section className="tile mlist"><div className="mrow" onClick={() => openAcc("all")}><span className="maccico">📥</span><div className="grow"><span>Alle Buchungen</span><Money v={allBal} /></div><span className="muted">›</span></div></section>
+        {shownGroups.map((g, gi) => {
+          const accs = g.accounts.filter((a) => visIds.has(a.id)), folded = mFold[g.id];
+          return (
+            <div key={g.id} className="mgroup">
+              <button className="mgrouphead" onClick={() => setMFold({ ...mFold, [g.id]: !folded })}><h2>{g.title?.trim() || "Konten"}</h2><span className={"chev" + (folded ? "" : " open")}>⌄</span></button>
+              {!folded && (
+                <section className="tile mlist">
+                  {accs.map((a) => (
+                    <div key={a.id} className="mrow" onClick={() => openAcc(a.id)}>
+                      <span className="maccico">{KIND_DEFS[a.kind || "bank"]?.[0] || "🏦"}</span>
+                      <div className="grow"><span>{a.name}</span><Money v={balOf(a)} /></div><span className="muted">›</span>
+                    </div>
+                  ))}
+                </section>
+              )}
+            </div>
+          );
+        })}
+        {!!pending.length && <section className="tile mlist"><div className="mrow" onClick={() => goTab?.("contracts")}><span className="maccico">🔁</span><div className="grow"><span>{pending.length} erkannte Abos & Fixkosten</span><small className="muted">prüfen und übernehmen</small></div><span className="muted">›</span></div></section>}
+        <div className="mactions">
+          <button className="btn" onClick={() => setNewAcc(true)}>＋ Konto</button>
+          <button className="btn" onClick={() => fileRef.current?.click()}>📄 Kontoauszug importieren</button>
+          {!!txs.length && <button className="btn" onClick={() => setLogoOpen(true)}>✨ Logos</button>}
+        </div>
+        <input ref={fileRef} type="file" hidden multiple accept=".csv,.txt,.xml,.sta,.mt940,.940,.ofx,.qif,.pdf,.xlsx,.xls,.json" onChange={(e) => { const f = [...e.target.files]; e.target.value = ""; if (f.length) dropFiles(f); }} />
+        {modals}
+      </div>
+    );
+    const a = mView === "all" ? null : accounts.find((x) => x.id === mView);
+    const bal = a ? balOf(a) : allBal;
+    const groupsD = [];
+    for (const t of list.slice(0, limit)) { const g = groupsD[groupsD.length - 1]; if (g && g.date === t.date) g.items.push(t); else groupsD.push({ date: t.date, items: [t] }); }
+    const dayLabel = (iso) => { const d = new Date(iso + "T12:00"); const r = relDay(iso); return r === "Heute" || r === "Gestern" ? r : `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}. ${["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][d.getDay()]}`; };
+    const cl = ls.get("txColls", []);
+    return (
+      <div className="mkonten macc">
+        <div className="mtopbar">
+          <button className="link mback" onClick={backAcc}>‹ Zurück</button>
+          <b className="mtitle">{a ? a.name : "Alle Buchungen"}</b>
+          <button className={"iconbtn" + (mSearch ? " on" : "")} aria-label="Suchen" onClick={() => { setMSearch(!mSearch); if (mSearch) setQ(""); }}>🔍</button>
+          <details className="more mmore">
+            <summary className="iconbtn" aria-label="Mehr">⋯</summary>
+            <div className="moremenu">
+              {a && <button onClick={(e) => { e.currentTarget.closest("details").open = false; setEditAcc(a); }}>✎ Konto bearbeiten</button>}
+              <button onClick={(e) => { e.currentTarget.closest("details").open = false; fileRef.current?.click(); }}>📄 Kontoauszug importieren</button>
+              <button onClick={(e) => { e.currentTarget.closest("details").open = false; setLogoOpen(true); }}>✨ Firmenlogos</button>
+              {a && <button className="red" onClick={() => confirm(`Konto „${a.name}“ samt Umsätzen löschen?`) && (deleteAccount(a.id), backAcc())}>🗑 Konto löschen</button>}
+            </div>
+          </details>
+        </div>
+        <input ref={fileRef} type="file" hidden multiple accept=".csv,.txt,.xml,.sta,.mt940,.940,.ofx,.qif,.pdf,.xlsx,.xls,.json" onChange={(e) => { const f = [...e.target.files]; e.target.value = ""; if (f.length) dropFiles(f); }} />
+        {mSearch && <div className="searchbar"><span>🔍</span><input type="search" autoFocus placeholder="Buchungen durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>}
+        <div className="mbalrow">
+          <select className="mmonth" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Heute</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
+          <Money v={month ? list.reduce((x, t) => x + t.amount, 0) : bal} cls="big" />
+          {cl.length ? <select className="mmonth r" value={coll} onChange={(e) => setColl(e.target.value)}><option value="">📁 Alle</option>{cl.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select> : <span />}
+        </div>
+        {month && <small className="muted center-text block">Summe der Buchungen im {monthLabel(month)}</small>}
+        <div className="mtxlist">
+          {groupsD.map((g, gi) => (
+            <React.Fragment key={g.date}>
+              {(gi > 0 || dayLabel(g.date) !== "Heute") && <div className="mday">{dayLabel(g.date)}</div>}
+              {g.items.map((t) => (
+                <div key={t.id} className="mtx" onClick={() => openTx(t)}>
+                  <TxIcon t={t} size={46} />
+                  <div className="grow">
+                    <b className="one">{t.kind === "broker" ? (t.security || t.type) : t.counterparty || t.purpose || "Buchung"}</b>
+                    <div className="msub">{isContract(t) && <span className="mtag">Vertrag</span>}<span className="one">{t.kind === "broker" ? t.type : t.category}</span>{t.docId && <span title="Beleg">📎</span>}</div>
+                  </div>
+                  <span className={"mamt" + (t.amount > 0 ? " in" : "")}>{fmtMoney(t.amount, t.currency)}</span>
+                  {recIds.has(t.id) && <span className="mrec" title="Wiederkehrend">↻</span>}
+                </div>
+              ))}
+            </React.Fragment>
+          ))}
+          {!list.length && <p className="muted center-text" style={{ padding: 30 }}>{q ? "Keine Treffer." : "Keine Buchungen."}</p>}
+          <div ref={sentinel} />
+        </div>
+        {modals}
+      </div>
+    );
+  }
   return (
     <div className={"split" + (!pending.length ? " noside" : "")}>
       <aside className="side">
@@ -5143,12 +5270,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       {acc && <button className="link red" style={{ marginTop: 16 }} onClick={() => confirm(`Konto „${accName(acc)}“ samt Umsätzen löschen?`) && (deleteAccount(acc), setAcc(""))}>Konto löschen</button>}
 
       </div>
-      {editAcc && <AccountSheet init={editAcc} txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm && a.id !== editAcc.id)} onClose={() => setEditAcc(null)}
-        onSave={(a) => { setAccounts((l) => l.map((x) => (x.id === a.id ? a : x))); setEditAcc(null); notify("Konto gespeichert"); }} />}
-      {newAcc && <AccountSheet txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
-      {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => { setImp(null); if (impQ.current.files.length) setTimeout(nextImp, 50); }} />}
-      {logoOpen && <LogoWin txs={txs} onClose={() => setLogoOpen(false)} />}
-      {txOpen && <TxSheet scanReceiptFor={scanReceiptFor} receiptFor={receiptFor} txs={txs} recurring={recurring} subs={subs} goTab={goTab} resetCp={resetCp} onSearch={(v) => { setQ(v); setMonth(""); }} onAccount={(id) => setAcc?.(id)} onColl={(id) => { setColl(id); setSel?.([]); }} addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txs.find((x) => x.id === txOpen.id) || txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
+      {modals}
     </div>
   );
 }
@@ -10014,4 +10136,35 @@ html,body{min-height:100%}
 .txdetail .expscan{margin:0}
 .caticon.logo{background:#fff!important;overflow:hidden;padding:12%}
 .caticon.logo img{width:100%;height:100%;object-fit:contain;display:block}
+/* Konten am Handy */
+.mkonten{display:flex;flex-direction:column;gap:14px}
+.mstat{cursor:pointer;display:flex;flex-direction:column;gap:8px}
+.mstathead{display:flex;align-items:center;gap:10px}.mstathead b{font-size:18px}.mstathead .muted:first-of-type{flex:1}
+.mstatval{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}.mstatval b{font-size:34px;letter-spacing:-.02em}.mstatval b.neg{color:var(--red)}
+.mstatbar{height:6px;border-radius:3px;background:color-mix(in srgb,var(--acc) 25%,var(--card2));overflow:hidden}.mstatbar i{display:block;height:100%;background:var(--acc);border-radius:3px}
+.mgrouphead{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:0;color:var(--txt);padding:8px 2px 4px;cursor:pointer}
+.mgrouphead h2{margin:0;font-size:26px}.mgrouphead .chev{color:var(--acc);font-size:22px;transform:rotate(-90deg);transition:transform .15s}.mgrouphead .chev.open{transform:none}
+.mlist{padding:0!important;overflow:hidden}
+.mrow{display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid var(--line);cursor:pointer}.mrow:last-child{border-bottom:0}
+.mrow .grow{display:flex;flex-direction:column;min-width:0}.mrow .grow>span{font-size:18px}
+.maccico{width:40px;height:40px;display:grid;place-items:center;font-size:26px;flex:none}
+.mmoney{font-weight:500;font-size:17px}.mmoney.pos{color:var(--ok)}.mmoney.big{font-size:22px;font-weight:700;text-align:center}
+.mactions{display:flex;gap:8px;flex-wrap:wrap}.mactions .btn{flex:1 1 auto}
+.mtopbar{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:6px;padding:8px 0;background:var(--bg);margin:-6px 0 0}
+.mtitle{text-align:center;font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mback{font-size:17px;white-space:nowrap}
+.mmore{position:relative}.mmore summary{list-style:none}.mmore summary::-webkit-details-marker{display:none}
+.mmore .moremenu{right:0;left:auto;min-width:230px}
+.mbalrow{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
+.mmonth{appearance:none;-webkit-appearance:none;background:none!important;border:0!important;box-shadow:none!important;color:var(--mut);font:inherit;font-weight:600;padding:4px 0!important;max-width:100%;width:auto;height:auto;min-height:0}.mmonth.r{text-align:right;color:var(--acc)}
+.mtxlist{margin:0 -16px}
+.mday{position:sticky;top:56px;z-index:2;background:var(--card2);padding:8px 16px;font-weight:700;font-size:15px}
+.mtx{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer}
+.mtx .grow{min-width:0;display:flex;flex-direction:column;gap:3px}.mtx .grow>b{font-size:17px;font-weight:600}
+.msub{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:14px;min-width:0}
+.mtag{background:var(--card2);color:var(--txt);border-radius:7px;padding:1px 7px;font-size:12px;flex:none}
+.mamt{font-weight:600;font-size:16px;white-space:nowrap}.mamt.in{color:var(--ok);background:color-mix(in srgb,var(--ok) 15%,transparent);padding:4px 8px;border-radius:8px}
+.mrec{width:26px;height:26px;border-radius:50%;background:var(--card2);display:grid;place-items:center;font-size:14px;flex:none;color:var(--mut)}
+.one{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mmore summary{display:grid;place-items:center;font-size:20px;line-height:1}
 `;
