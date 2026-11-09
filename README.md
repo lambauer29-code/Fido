@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.61.0
+- **Wischgesten für Handy & Tablet** (nur per Finger/Stift; Maus bleibt unverändert):
+  - Buchungen (Konten, Handy- und Tablet-Ansicht): nach links wischen zeigt 📷 Beleg scannen bzw. 📎 Beleg öffnen und 🗑 Löschen; ganz durchgewischt wird gelöscht (mit Rückfrage). Nach rechts wischen zeigt ✎ Details.
+  - Dokumente (Listenansicht): nach links ✎ Bearbeiten und 🗑 Löschen, nach rechts 👁 Vorschau und 📤 Teilen.
+  - Umtauschfrist (Liste): nach rechts ✓ Erledigt bzw. ↺ Offen, nach links 👁 Öffnen und 📅 Kalender.
+  - Vom linken Bildschirmrand nach rechts wischen = Zurück. Das schließt Fenster und Blätter am Handy (bei ungespeicherten Änderungen kommt die Rückfrage) bzw. führt im Kontodetail zurück zur Kontenübersicht.
+  - Es ist immer nur eine Zeile offen; Antippen woanders schließt sie.
+
 ## v0.60.0
 - **Konten am Handy neu (bis 700 px Breite):**
   - Übersicht: Karte „Statistik“ mit verfügbaren Einnahmen des Monats (Eingänge minus Ausgaben), Tagen bis Monatsende und Fortschrittsbalken; ein Antippen öffnet die Analyse. Darunter „Alle Buchungen“ mit Gesamtstand und die Kontogruppen (Bargeld, Girokonten, Sparkonten, Depots …) als einklappbare Abschnitte mit Kontostand je Konto. Dazu ein Hinweis auf erkannte Abos und Knöpfe für ＋ Konto, Kontoauszug-Import und ✨ Logos.

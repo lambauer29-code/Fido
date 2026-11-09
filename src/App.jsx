@@ -1177,6 +1177,7 @@ const XBtn = () => { const close = React.useContext(WinCtx); return <button clas
    dirty: true/false erzwingt, undefined = automatisch (sobald im Fenster etwas eingegeben wurde) */
 function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern" }) {
   const wide = useMedia("(min-width:768px)");
+  useEdgeBack(() => reqRef.current?.(), !wide);
   useScrollLock();
   const rootRef = useRef(null);
   const [touched, setTouched] = useState(false);
@@ -4396,6 +4397,8 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         <div className="dlist">
           {list.map((d) => (
             <div key={d.id} className={"dwrap" + (prevId === d.id ? " open" : "")}>
+            <SwipeRow left={pick ? [] : [{ icon: "👁", label: "Vorschau", bg: "#0ea5e9", run: () => setPrevId(prevId === d.id ? null : d.id) }, { icon: "📤", label: "Teilen", bg: "#8b5cf6", run: () => shareDocs([d]) }]}
+              right={pick ? [] : [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: () => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && trashDoc(d) }, { icon: "✎", label: "Bearbeiten", bg: "#3b82f6", run: () => onOpen(d.id) }]}>
             <div className={"ditem" + (pick?.has(d.id) ? " picked" : "")} onClick={() => (pick ? togglePick(d.id) : onOpen(d.id))}>
               {pick && <span className={"pickbox inline" + (pick.has(d.id) ? " on" : "")}>✓</span>}
               <Thumb d={d} />
@@ -4411,7 +4414,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
                 {status(d)}
               </div>
               <DocActions d={d} prevOpen={prevId === d.id} onPreview={() => setPrevId(prevId === d.id ? null : d.id)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
-            </div>
+            </div></SwipeRow>
             {prevId === d.id && <DocPreview d={d} onOpen={() => onOpen(d.id)} />}
             </div>
           ))}
@@ -4487,7 +4490,9 @@ function Deadlines({ docs, onOpen: onEdit, saveDoc, calSync, setCalSync, token, 
             {g.map(([dl, doc]) => {
               const n = daysUntil(dl.date);
               return (
-                <li key={dl.id} className={dl.done ? "done" : ""}>
+                <SwipeRow key={dl.id} left={[{ icon: dl.done ? "↺" : "✓", label: dl.done ? "Offen" : "Erledigt", bg: "#16a34a", run: () => toggle(dl, doc) }]}
+                  right={[{ icon: "👁", label: "Öffnen", bg: "#3b82f6", run: () => onOpen(doc.id) }, { icon: "📅", label: "Kalender", bg: "#8b5cf6", run: () => downloadIcs([[dl, doc]], "frist.ics") }]}>
+                <li className={dl.done ? "done" : ""}>
                   <div className="row1">
                     <label className="check" onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox" checked={dl.done} onChange={() => toggle(dl, doc)} />
@@ -4501,7 +4506,7 @@ function Deadlines({ docs, onOpen: onEdit, saveDoc, calSync, setCalSync, token, 
                     <span className="muted">{n === 0 ? "heute" : n < 0 ? `vor ${-n} T.` : `in ${n} T.`}</span>
                   </div>
                   <button className="link" onClick={() => downloadIcs([[dl, doc]], "frist.ics")}>📅 In Kalender</button>
-                </li>
+                </li></SwipeRow>
               );
             })}
           </ul>
@@ -4957,6 +4962,13 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const [prevTx, setPrevTx] = useState(null);
   const docOf = (t) => (t.docId ? docs.find((x) => x.id === t.docId) : null);
   function openTx(t) { setTxOpen(t); }
+  const txSwipe = (t) => ({
+    left: [{ icon: "✎", label: "Details", bg: "#3b82f6", run: () => setTxOpen(t) }],
+    right: [
+      { icon: "🗑", label: "Löschen", bg: "#ef4444", run: () => confirm(`Buchung „${t.counterparty || t.purpose || "Buchung"}“ (${fmtMoney(t.amount, t.currency)}) löschen?`) && deleteTx(t) },
+      t.docId ? { icon: "📎", label: "Beleg", bg: "#0ea5e9", run: () => onOpen(t.docId) } : t.kind !== "broker" && { icon: "📷", label: "Beleg", bg: "#0ea5e9", run: () => (scanReceiptFor ? scanReceiptFor(t.id) : attachNew(t.id, "scan")) }
+    ]
+  });
   const TxActs = ({ t }) => { const d = docOf(t); const st = (f) => (e) => { e.stopPropagation(); f(); }; return (
     <div className="dactions txacts" onClick={(e) => e.stopPropagation()}>
       <button title="Buchung bearbeiten" aria-label="Bearbeiten" onClick={st(() => setTxOpen(t))}><IcoEdit /></button>
@@ -5001,6 +5013,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const recIds = useMemo(() => new Set(recurring.filter((r) => subs.confirmed.includes(r.key)).flatMap((r) => r.txIds || [])), [recurring, subs]);
   const isContract = (t) => recIds.has(t.id) || (t.counterparty && ctNames.some((n) => norm(t.counterparty).includes(n) || n.includes(norm(t.counterparty))));
   const openAcc = (id) => { setQ(""); setMonth(""); setColl(""); setMSearch(false); setLimit(150); if (id === "all") { setSel([]); setAcc?.(""); } else { setSel([id]); setAcc?.(id); } setMView(id); scrollTo(0, 0); };
+  useEdgeBack(() => backAcc(), mobile && !!mView && !txOpen);
   const backAcc = () => { setMView(null); setSel([]); setAcc?.(""); setQ(""); setMonth(""); setColl(""); scrollTo(0, 0); };
   if (mobile) {
     const mon = todayISO().slice(0, 7);
@@ -5086,7 +5099,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
             <React.Fragment key={g.date}>
               {(gi > 0 || dayLabel(g.date) !== "Heute") && <div className="mday">{dayLabel(g.date)}</div>}
               {g.items.map((t) => (
-                <div key={t.id} className="mtx" onClick={() => openTx(t)}>
+                <SwipeRow key={t.id} {...txSwipe(t)}><div className="mtx" onClick={() => openTx(t)}>
                   <TxIcon t={t} size={46} />
                   <div className="grow">
                     <b className="one">{t.kind === "broker" ? (t.security || t.type) : t.counterparty || t.purpose || "Buchung"}</b>
@@ -5094,7 +5107,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
                   </div>
                   <span className={"mamt" + (t.amount > 0 ? " in" : "")}>{fmtMoney(t.amount, t.currency)}</span>
                   {recIds.has(t.id) && <span className="mrec" title="Wiederkehrend">↻</span>}
-                </div>
+                </div></SwipeRow>
               ))}
             </React.Fragment>
           ))}
@@ -5224,7 +5237,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           <div className="txhead"><span>Datum</span><span>Empfänger</span><span>Kategorie</span>{!acc && sel.length > 1 && <span>Konto</span>}<span className="r">Betrag</span><span /></div>
           {list.slice(0, limit).map((t) => (
             <React.Fragment key={t.id}>
-            <div className={"txrow" + (prevTx === t.id ? " open" : "")} onClick={() => openTx(t)}>
+            <SwipeRow {...txSwipe(t)}><div className={"txrow" + (prevTx === t.id ? " open" : "")} onClick={() => openTx(t)}>
               <span className="muted">{fmtDate(t.date)}</span>
               <span className="txdesc">
                 <TxIcon t={t} size={30} />
@@ -5236,7 +5249,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
               {!acc && sel.length > 1 && <span className="one muted">{accName(t.accountId)}</span>}
               <b className={"r amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
               <TxActs t={t} />
-            </div>
+            </div></SwipeRow>
             {prevTx === t.id && docOf(t) && <div className="txprev"><DocPreview d={docOf(t)} onOpen={() => onOpen(docOf(t).id)} /></div>}
             </React.Fragment>
           ))}
@@ -5250,7 +5263,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           <div className="dlist">
             {g.items.map((t) => (
               <React.Fragment key={t.id}>
-              <div className={"ditem center" + (prevTx === t.id ? " open" : "")} onClick={() => openTx(t)}>
+              <SwipeRow {...txSwipe(t)}><div className={"ditem center" + (prevTx === t.id ? " open" : "")} onClick={() => openTx(t)}>
                 <TxIcon t={t} />
                 <div className="grow">
                   <b className="clamp">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
@@ -5258,7 +5271,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
                 </div>
                 <b className={"amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
                 <TxActs t={t} />
-              </div>
+              </div></SwipeRow>
               {prevTx === t.id && docOf(t) && <DocPreview d={docOf(t)} onOpen={() => onOpen(docOf(t).id)} />}
               </React.Fragment>
             ))}
@@ -5433,6 +5446,70 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
         )}
     </Win>
   );
+}
+
+/* ---------- Wischgesten (Handy & Tablet, nur Touch/Stift) ---------- */
+let swipeOpenClose = null;
+function SwipeRow({ left = [], right = [], children, className = "" }) {
+  // left: Aktionen links (sichtbar beim Wischen nach rechts) · right: Aktionen rechts (beim Wischen nach links)
+  left = left.filter(Boolean); right = right.filter(Boolean);
+  const [x, setX] = useState(0), [drag, setDrag] = useState(false);
+  const st = useRef(null), swallow = useRef(false);
+  const W = 78, maxL = left.length * W, maxR = right.length * W;
+  const close = () => setX(0);
+  useEffect(() => () => { if (swipeOpenClose === close) swipeOpenClose = null; }, []);
+  if (!left.length && !right.length) return children;
+  const down = (e) => { if (e.pointerType === "mouse") return; st.current = { x0: e.clientX, y0: e.clientY, base: x, dir: null, id: e.pointerId }; };
+  const move = (e) => {
+    const s = st.current; if (!s) return;
+    const dx = e.clientX - s.x0, dy = e.clientY - s.y0;
+    if (!s.dir) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      s.dir = Math.abs(dx) > Math.abs(dy) * 1.3 ? "h" : "v";
+      if (s.dir !== "h") { st.current = null; return; }
+      try { e.currentTarget.setPointerCapture(s.id); } catch {}
+      if (swipeOpenClose && swipeOpenClose !== close) swipeOpenClose(); swipeOpenClose = close; setDrag(true);
+    }
+    let nx = s.base + dx;
+    const hiL = maxL ? maxL + 70 : 0, hiR = maxR ? maxR + 70 : 0;
+    nx = Math.max(-hiR, Math.min(hiL, nx));
+    setX(nx);
+  };
+  const up = () => {
+    const s = st.current; st.current = null; setDrag(false);
+    if (!s || s.dir !== "h") return;
+    swallow.current = true; setTimeout(() => (swallow.current = false), 350);
+    if (maxR && x < -(maxR + 45)) { setX(0); right[0].run(); return; }   // ganz durchwischen = erste Aktion
+    if (maxL && x > maxL + 45) { setX(0); left[0].run(); return; }
+    setX(x < -maxR / 2 && maxR ? -maxR : x > maxL / 2 && maxL ? maxL : 0);
+  };
+  const Btn = (a) => <button key={a.label} className={"swbtn " + (a.cls || "")} style={{ background: a.bg }} onClick={(e) => { e.stopPropagation(); setX(0); a.run(); }}><span>{a.icon}</span>{a.label}</button>;
+  return (
+    <div className={"swrow " + className}>
+      {maxL > 0 && x > 0 && <div className="swacts l" style={{ width: x }}>{left.map(Btn)}</div>}
+      {maxR > 0 && x < 0 && <div className="swacts r" style={{ width: -x }}>{[...right].reverse().map(Btn)}</div>}
+      <div className="swfront" style={{ transform: x ? `translateX(${x}px)` : undefined, transition: drag ? "none" : "transform .22s ease" }}
+        onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+        onClickCapture={(e) => { if (swallow.current || x) { e.stopPropagation(); e.preventDefault(); if (x && !swallow.current) setX(0); } }}>{children}</div>
+    </div>
+  );
+}
+// Vom linken Rand nach rechts wischen = Zurück (oberstes registriertes Ziel gewinnt)
+const edgeStack = [];
+let edgeInit = false;
+function initEdgeSwipe() {
+  if (edgeInit) return; edgeInit = true;
+  let s = null;
+  addEventListener("touchstart", (e) => { const t = e.touches[0]; s = e.touches.length === 1 && t.clientX < 28 && edgeStack.length ? { x: t.clientX, y: t.clientY } : null; }, { passive: true });
+  addEventListener("touchmove", (e) => {
+    if (!s) return; const t = e.touches[0], dx = t.clientX - s.x, dy = Math.abs(t.clientY - s.y);
+    if (dy > 50 && dy > dx) { s = null; return; }
+    if (dx > 80) { s = null; const f = edgeStack[edgeStack.length - 1]; f && f.current && f.current(); }
+  }, { passive: true });
+}
+function useEdgeBack(handler, active = true) {
+  const ref = useRef(handler); ref.current = handler;
+  useEffect(() => { if (!active) return; initEdgeSwipe(); edgeStack.push(ref); return () => { const i = edgeStack.lastIndexOf(ref); if (i >= 0) edgeStack.splice(i, 1); }; }, [active]);
 }
 
 /* ---------- Buchungsdetail (Finanzguru-Stil) ---------- */
@@ -10167,4 +10244,14 @@ html,body{min-height:100%}
 .mrec{width:26px;height:26px;border-radius:50%;background:var(--card2);display:grid;place-items:center;font-size:14px;flex:none;color:var(--mut)}
 .one{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mmore summary{display:grid;place-items:center;font-size:20px;line-height:1}
+/* Wischgesten */
+.swrow{position:relative;overflow:hidden;--swbg:var(--bg)}
+.tile .swrow,.txtable .swrow,.dlist .swrow{--swbg:var(--card)}
+.swfront{position:relative;z-index:1;background:var(--swbg);touch-action:pan-y;will-change:transform}
+.swacts{position:absolute;top:0;bottom:0;display:flex;overflow:hidden;z-index:0}
+.swacts.l{left:0;justify-content:flex-start}.swacts.r{right:0;justify-content:flex-end}
+.swbtn{flex:1 0 78px;min-width:78px;border:0;color:#fff;font:inherit;font-size:12px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer}
+.swacts.l .swbtn:first-child,.swacts.r .swbtn:last-child{flex-grow:1}
+.swbtn span{font-size:20px;line-height:1}
+.deadlines ul .swrow{list-style:none}
 `;
