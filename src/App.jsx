@@ -2886,6 +2886,21 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
     }
   }, [docs, wait.length]);
   const waitN = wait.length;
+  // Erinnerungen → Kalender (je Erinnerung, .ics für alle, Kalender-Abo)
+  const remIcs = (list) => list.filter((r) => r.date && !r.done).map((r) => { const veh = vehicles.find((x) => x.id === r.vid);
+    return [{ id: "fbrem-" + r.id, date: r.date, label: r.title }, { id: "fbrem-" + r.id, title: `${veh?.name || "Fahrzeug"}${veh?.plate ? " (" + veh.plate + ")" : ""}`, summary: [r.km && `bzw. bei ${kmFmt(r.km)}`, r.note].filter(Boolean).join(" · ") }]; });
+  const [fbCal, setFbCal] = useLsState("fbCalSync", { on: false, key: "", at: "" });
+  const [calOpen, setCalOpen] = useState(false);
+  useEffect(() => {
+    const f = () => { const el = document.querySelector(".fbseg"); if (!el) return; const top = parseFloat(getComputedStyle(el).top) || 0; el.classList.toggle("stuck", el.getBoundingClientRect().top <= top + 0.5 && scrollY > 0); };
+    f(); addEventListener("scroll", f, { passive: true }); addEventListener("resize", f); return () => { removeEventListener("scroll", f); removeEventListener("resize", f); };
+  }, []);
+  const remSig = JSON.stringify(reminders.map((r) => [r.id, r.date, r.title, r.done, r.km]));
+  useEffect(() => {
+    if (!fbCal.on || !fbCal.key) return;
+    const t = setTimeout(() => pushCalendar(fbCal.key, remIcs(reminders), ls.get("appToken", ""), "FinDocu – Fahrzeuge").then((at) => setFbCal((c) => ({ ...c, at }))).catch(() => {}), 1500);
+    return () => clearTimeout(t);
+  }, [remSig]);
   if (!vehicles.length) return (
     <div className="fbpage">
       <section className="tile fbempty">
@@ -3010,9 +3025,6 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
           <button onClick={() => setRemEdit({ vid: v.id })}><span>⏰</span>Erinnerung</button>
         </div>
       </section>
-      {dueN > 0 && (
-        <div className="tile alert click" onClick={() => setView("rem")}><span style={{ fontSize: 24 }}>⏰</span><div className="grow"><b>{dueN} Erinnerung{dueN > 1 ? "en" : ""} fällig</b><small>{myRem.filter((r) => remState(r).cls).map((r) => r.title).join(", ")}</small></div></div>
-      )}
       <ChipBar seg storeKey="fbViews" cfg={viewCfg} setCfg={setViewCfg} className="fbseg" items={VIEWS.map(([k, l]) => ({ k, label: l, el: <button className={view === k ? "on" : ""} onClick={() => setView(k)}>{l}</button> }))} />
       <FitScroll>
       {["verlauf", "fuel", "trip", "expense"].includes(view) && (
@@ -3024,17 +3036,25 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
       )}
       {view === "rem" && (
         <section className="tile">
-          <div className="tilehead"><b>Erinnerungen</b><button className="link" onClick={() => setRemEdit({ vid: v.id })}>＋ Neu</button></div>
+          <div className="tilehead"><b>Erinnerungen</b>
+            <span className="row1" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <button className="chip" onClick={() => setCalOpen(true)} title="Erinnerungen aller Fahrzeuge als Kalender-Abo"><IcoCalSync /> Kalender-Abo{fbCal.on ? " ✓" : ""}</button>
+              <button className="chip" disabled={!remIcs(reminders).length} title="Alle Erinnerungen mit Datum als .ics herunterladen" onClick={() => downloadIcs(remIcs(reminders), "fahrzeug-erinnerungen.ics")}>⬇︎ .ics</button>
+              <button className="link" onClick={() => setRemEdit({ vid: v.id })}>＋ Neu</button>
+            </span></div>
           {myRem.map((r) => { const s = remState(r); return (
             <div key={r.id} className={"frow fbrem " + s.cls}>
               <span className="fbic">⏰</span>
               <div className="grow click" onClick={() => setRemEdit(r)}><b>{r.title}</b><small className="muted block">{[r.date && `${fmtDate(r.date)} (${s.dd < 0 ? `seit ${-s.dd} Tagen` : s.dd === 0 ? "heute" : `in ${s.dd} Tagen`})`, r.km && `bei ${kmFmt(r.km)} (${s.dk <= 0 ? "erreicht" : `noch ${kmFmt(s.dk)}`})`].filter(Boolean).join(" · ")}</small></div>
+              {r.date ? <button className="iconbtn" title="In den Kalender" aria-label="In den Kalender" onClick={() => downloadIcs(remIcs([r]), "erinnerung.ics")}>📅</button>
+                : <span className="iconbtn" title="Nur nach Kilometerstand – kein Datum für den Kalender" style={{ opacity: .35 }}>📅</span>}
               <button className="btn sm" onClick={() => upd((o) => ({ reminders: o.reminders.map((y) => (y.id === r.id ? { ...y, done: true, doneAt: today } : y)) }))}>Erledigt</button>
             </div>); })}
           {!myRem.length && <p className="muted small">Keine offenen Erinnerungen. Tipp: Pickerl (§57a), Service, Reifenwechsel, Vignette, Versicherung.</p>}
           {reminders.some((r) => r.vid === v.id && r.done) && <small className="muted">Erledigt: {reminders.filter((r) => r.vid === v.id && r.done).map((r) => r.title).join(", ")}</small>}
         </section>
       )}
+      {calOpen && <CalSyncSheet sync={fbCal} setSync={setFbCal} items={remIcs(reminders)} token={ls.get("appToken", "")} onClose={() => setCalOpen(false)} notify={notify} calName="FinDocu – Fahrzeuge" what="Fahrzeug-Erinnerungen" />}
       {view === "bericht" && (<>
         <div className="anagrid">
           <section className="tile"><div className="tilehead"><b>Kosten pro Monat</b><small>gesamt {fmtMoney(st.costs)}</small></div><MiniBars data={costChart} h={130} /></section>
@@ -4517,27 +4537,27 @@ function Deadlines({ docs, onOpen: onEdit, saveDoc, calSync, setCalSync, token, 
 }
 
 /* ---------- Kalender-Abo (Apple Kalender, Google, Outlook) ---------- */
-function buildIcs(items) {
+function buildIcs(items, name = "FinDocu – Fristen") {
   return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinDocu//Fristen//DE", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
-    "X-WR-CALNAME:FinDocu – Fristen", "X-WR-TIMEZONE:Europe/Vienna", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H",
+    "X-WR-CALNAME:" + name, "X-WR-TIMEZONE:Europe/Vienna", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H",
     ...items.map(([dl, doc]) => icsEvent(dl, doc)), "END:VCALENDAR"].join("\r\n");
 }
 const calKeyNew = () => Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => b.toString(16).padStart(2, "0")).join("");
-async function pushCalendar(key, items, token) {
-  const r = await fetch("/api/cal", { method: "POST", headers: { "content-type": "application/json", "x-app-token": token }, body: JSON.stringify({ k: key, ics: buildIcs(items) }) });
+async function pushCalendar(key, items, token, name) {
+  const r = await fetch("/api/cal", { method: "POST", headers: { "content-type": "application/json", "x-app-token": token }, body: JSON.stringify({ k: key, ics: buildIcs(items, name) }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j.at || new Date().toISOString();
 }
 
-function CalSyncSheet({ sync, setSync, items, token, onClose, notify }) {
+function CalSyncSheet({ sync, setSync, items, token, onClose, notify, calName, what = "Fristen" }) {
   const [busy, setBusy] = useState(false), [err, setErr] = useState("");
   const host = location.host;
   const url = sync.key ? `webcal://${host}/api/cal?k=${sync.key}` : "";
   async function enable() {
     setBusy(true); setErr("");
     const key = sync.key || calKeyNew();
-    try { const at = await pushCalendar(key, items, token); setSync({ on: true, key, at }); notify("Kalender-Abo eingerichtet"); }
+    try { const at = await pushCalendar(key, items, token, calName); setSync({ on: true, key, at }); notify("Kalender-Abo eingerichtet"); }
     catch (e) { setErr(e.message); }
     setBusy(false);
   }
@@ -4550,7 +4570,8 @@ function CalSyncSheet({ sync, setSync, items, token, onClose, notify }) {
     <Win id="calsync" onClose={onClose} small dirty={false}>
       <div className="panelhead"><b>Mit Apple Kalender verbinden</b><XBtn /></div>
       {!sync.on ? <>
-        <p>FinDocu stellt deine Fristen als <b>Kalender-Abo</b> bereit. Apple Kalender (iPhone, iPad, Mac) holt Änderungen dann selbst ab – neue Bons, Zahlungsfristen, Garantie- und Kündigungstermine erscheinen automatisch.</p>
+        {what !== "Fristen" ? <p>FinDocu stellt deine {what} als <b>Kalender-Abo</b> bereit. Apple Kalender, Google oder Outlook holen Änderungen dann selbst ab – neue oder erledigte Termine werden automatisch übernommen.</p> :
+        <p>FinDocu stellt deine Fristen als <b>Kalender-Abo</b> bereit. Apple Kalender (iPhone, iPad, Mac) holt Änderungen dann selbst ab – neue Bons, Zahlungsfristen, Garantie- und Kündigungstermine erscheinen automatisch.</p>}
         <p className="muted small">Die Fristen werden dafür verschlüsselt übertragen und in deinem Vercel-Speicher unter einem geheimen Link abgelegt. Wer den Link kennt, kann die Termine sehen – nicht weitergeben.</p>
         {err && <div className="healthbox"><p className="red">✕ {err}</p>
           {/Blob/.test(err) && <ol className="small steps">
@@ -4568,12 +4589,12 @@ function CalSyncSheet({ sync, setSync, items, token, onClose, notify }) {
             <button className="btn" onClick={async () => { try { await navigator.clipboard.writeText(url.replace("webcal://", "https://")); notify("Link kopiert"); } catch {} }}>Kopieren</button></div>
         </label>
         <div className="actions">
-          <button className="btn" disabled={busy} onClick={async () => { setBusy(true); try { setSync({ ...sync, at: await pushCalendar(sync.key, items, token) }); notify("Kalender aktualisiert"); } catch (e) { setErr(e.message); } setBusy(false); }}>↻ Jetzt aktualisieren</button>
+          <button className="btn" disabled={busy} onClick={async () => { setBusy(true); try { setSync({ ...sync, at: await pushCalendar(sync.key, items, token, calName) }); notify("Kalender aktualisiert"); } catch (e) { setErr(e.message); } setBusy(false); }}>↻ Jetzt aktualisieren</button>
           <button className="btn danger" onClick={disable}>Abo beenden</button>
         </div>
         {err && <p className="red small">✕ {err}</p>}
       </>}
-      <p className="muted small" style={{ marginTop: 14 }}>Ohne Abo: „⬇︎ .ics“ lädt alle offenen Fristen einmalig herunter – öffnen fügt sie zum Kalender hinzu.</p>
+      <p className="muted small" style={{ marginTop: 14 }}>Ohne Abo: „⬇︎ .ics“ lädt alle offenen {what} einmalig herunter – öffnen fügt sie zum Kalender hinzu.</p>
     </Win>
   );
 }
@@ -10190,11 +10211,11 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 .fbcarhead b{font-size:18px}
 .fbodo{margin:14px 0 6px}
 .fbstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.fbstats>div{display:flex;flex-direction:column;background:var(--card2);border-radius:12px;padding:10px;min-width:0}.fbstats b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media (max-width:560px){.fbstats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.fbstats{gap:6px}.fbstats>div{padding:8px 6px}.fbstats b{font-size:15px}.fbstats small{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .fbquick{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin-top:12px}
 @media (max-width:520px){.fbquick{gap:6px}.fbquick button{font-size:11px;padding:10px 2px}.fbquick button span{font-size:20px}}
 .fbquick button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 4px;border-radius:14px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
-.fbquick button span{font-size:22px}.fbquick button:first-child{background:color-mix(in srgb,var(--acc) 18%,var(--card));border-color:color-mix(in srgb,var(--acc) 45%,transparent)}
+.fbquick button span{font-size:22px}
 .fbseg{margin:0;overflow-x:auto;scrollbar-width:none}.fbseg button{white-space:nowrap;flex:1 0 auto}
 .fbic{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none;background:var(--card2)}
 .fbic.fuel{background:#f59e0b22}.fbic.trip{background:#3b82f622}.fbic.expense{background:#8b5cf622}
@@ -10377,8 +10398,8 @@ html,body{min-height:100%}
 .fitscroll{display:flex;flex-direction:column;gap:inherit;min-width:0}
 .fitscroll.fit{overflow-y:auto;overscroll-behavior:contain;margin:0 -6px;padding:0 6px 6px}
 .fitscroll>*{flex-shrink:0}
-.fbseg{position:sticky;top:env(safe-area-inset-top);z-index:6;box-shadow:0 6px 14px -8px #0008}
-@media (min-width:700px){.fbseg{top:calc(env(safe-area-inset-top) + 84px);box-shadow:0 -40px 0 4px var(--bg),0 -84px 0 4px var(--bg),0 6px 14px -8px #0008}}
+.fbseg{position:sticky;top:env(safe-area-inset-top);z-index:6}.fbseg.stuck{box-shadow:0 6px 14px -8px #0008}
+@media (min-width:700px){.fbseg{top:calc(env(safe-area-inset-top) + 84px)}.fbseg.stuck{box-shadow:0 -40px 0 4px var(--bg),0 -84px 0 4px var(--bg),0 6px 14px -8px #0008}}
 .txdetail .panelhead{border:0}
 .txhero{display:flex;flex-direction:column;align-items:center;gap:10px;margin:4px 0 18px;text-align:center}
 .txhero h2{margin:4px 0 0;font-size:28px;line-height:1.15}

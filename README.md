@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.63.0
+- Fahrtenbuch:
+  - „Tanken“ ist nicht mehr dauerhaft hervorgehoben.
+  - Der Hinweis „… Erinnerungen fällig“ ist entfernt, die Ansichtsleiste rückt nach oben. Das Hintergrundband der haftenden Leiste erscheint nur noch, wenn sie oben angeheftet ist, und überdeckt sonst nichts mehr.
+  - Handy: Kennzahlen (4) und Schnellknöpfe (Tanken, Fahrt, Ausgabe, Erinnerung) stehen kompakt nebeneinander wie am Desktop.
+  - **Erinnerungen → Kalender:** 📅 an jeder Erinnerung mit Datum (einzelner Termin), „⬇︎ .ics“ für alle Erinnerungen mit Datum und „Kalender-Abo“ (alle Fahrzeuge, eigener Kalender „FinDocu – Fahrzeuge“, aktualisiert sich bei Änderungen automatisch; nutzt denselben Vercel-Blob-Speicher wie das Fristen-Abo). Erinnerungen nur nach km haben kein Datum und bleiben außen vor.
+
 ## v0.62.2
 - Beim ersten Start sind jetzt alle Reiter aktiv, in der Seitenleiste und in der Handy-Leiste unten (inkl. Umtauschfrist und Backup). Bestehende Installationen behalten ihre eigene Auswahl.
 
