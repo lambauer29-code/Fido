@@ -2,6 +2,17 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.67.0
+
+- **Neuer Reiter „Besitz & Garantie“** für Anschaffungen – umschaltbar zwischen **Privat**, **Firma** und beidem.
+  - Je Gerät: Foto, Kategorie, Marke/Modell, Seriennummer, Kaufdatum, Kaufpreis, Händler, Notiz, verknüpfter Kaufbeleg.
+  - **Garantieende wird berechnet**: Gewährleistung (Standard 24 Monate) und optionale, längere Herstellergarantie; es gilt das spätere Datum. Vorwarnung standardmäßig 30 Tage vorher (je Gerät einstellbar).
+  - **KI-Scan**: Kaufbeleg scannen oder Foto/PDF wählen – Bezeichnung, Preis, Kaufdatum und Händler werden ausgefüllt, der Beleg wird abgelegt und verknüpft.
+  - **Kalender**: eigene Monatsansicht im Reiter; alle Garantie-Termine erscheinen zusätzlich im Reiter „Umtauschfrist“ und im Apple-Kalender-Abo. Erledigt-Haken wirkt in beide Richtungen.
+  - Filter nach Status (in Garantie, läuft bald ab, abgelaufen, ausgeschieden), Suche, Verkauft/Ausgeschieden-Status.
+  - Export: Inventarliste als PDF (nach Kategorie, mit Kaufwert), Excel, CSV und Garantie-Termine als .ics.
+- Nicht getestet: echter Kamera-Scan; die KI-Auslesung wurde mit simulierter Antwort geprüft.
+
 ## v0.66.0
 
 - **Konten-Design für alle Reiter (Test)**: Schalter unter Einstellungen → Darstellung, standardmäßig aus. Nur Optik, keine Funktionsänderung.

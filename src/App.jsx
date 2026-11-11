@@ -484,7 +484,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], inventur: ["📋", "Lager & Inventur"], kassa: ["📒", "Kassabuch"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], inventur: ["📋", "Lager & Inventur"], besitz: ["🛡️", "Besitz & Garantie"], kassa: ["📒", "Kassabuch"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -557,7 +557,7 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 const DEFAULT_NAV = {
   tabs: [
     { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: true, parent: "docs" },
-    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: true }, { key: "analyse", side: true, phone: true }, { key: "vermoegen", side: true, phone: true }, { key: "fahrtenbuch", side: true, phone: true }, { key: "invoices", side: true, phone: true }, { key: "kunden", side: true, phone: true }, { key: "mahnungen", side: true, phone: true }, { key: "firma", side: true, phone: true }, { key: "artikel", side: true, phone: true }, { key: "inventur", side: true, phone: true }, { key: "kassa", side: true, phone: true }, { key: "vertraege", side: true, phone: true }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: true, parent: "settings" }
+    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: true }, { key: "analyse", side: true, phone: true }, { key: "vermoegen", side: true, phone: true }, { key: "fahrtenbuch", side: true, phone: true }, { key: "invoices", side: true, phone: true }, { key: "kunden", side: true, phone: true }, { key: "mahnungen", side: true, phone: true }, { key: "firma", side: true, phone: true }, { key: "artikel", side: true, phone: true }, { key: "inventur", side: true, phone: true }, { key: "besitz", side: true, phone: true }, { key: "kassa", side: true, phone: true }, { key: "vertraege", side: true, phone: true }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: true, parent: "settings" }
   ],
   groups: [
     { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
@@ -583,7 +583,7 @@ function loadNav() {
   const keys = n.tabs.map((t) => t.key);
   // fehlende (neue) Reiter vor „Einstellungen“ einfügen
   // Analyse/Vermögen direkt nach „Ausgabe“ einfügen
-  for (const [k, prevKey] of [["analyse", "cash"], ["vermoegen", "analyse"], ["fahrtenbuch", "vermoegen"], ["firma", "mahnungen"], ["inventur", "artikel"], ["kassa", "inventur"]]) if (!keys.includes(k)) {
+  for (const [k, prevKey] of [["analyse", "cash"], ["vermoegen", "analyse"], ["fahrtenbuch", "vermoegen"], ["firma", "mahnungen"], ["inventur", "artikel"], ["besitz", "inventur"], ["kassa", "besitz"]]) if (!keys.includes(k)) {
     const pi = n.tabs.findIndex((t) => t.key === prevKey);
     if (pi >= 0) { n.tabs = [...n.tabs.slice(0, pi + 1), DEFAULT_NAV.tabs.find((t) => t.key === k), ...n.tabs.slice(pi + 1)]; keys.push(k); }
   }
@@ -609,6 +609,7 @@ const TAB_SVG = {
   invoices: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
   kunden: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.5 3 5.2" /></>,
   mahnungen: <><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z" /><path d="M10 21h4" /></>,
+  besitz: <><path d="M12 3l7 3v5.5c0 4.4-3 8.1-7 9.5-4-1.4-7-5.1-7-9.5V6z" /><path d="m9 12 2 2 4-4" /></>,
   inventur: <><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V3h6v1" /><path d="m8.5 10 1.2 1.2L12 9M8.5 15l1.2 1.2L12 14M14.5 10.5H16M14.5 15.5H16" /></>,
   kassa: <><path d="M5 4h12a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z" /><path d="M5 18a2 2 0 0 1 2-2h12" /><path d="M9 8h6M9 11.5h4" /></>,
   artikel: <><path d="M12 3 3.5 7.5v9L12 21l8.5-4.5v-9z" /><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9" /></>,
@@ -1917,15 +1918,22 @@ function AppMain() {
   // Kündigungstermine aus dem Reiter „Verträge“ als zusätzliche Fristen
   const [ctVer, setCtVer] = useState(0);
   const ctDocs = useMemo(() => contractDlDocs(ls.get("contractList", []), active), [tab, ctVer, active]);
-  const dlDocs = useMemo(() => [...active, ...ctDocs], [active, ctDocs]);
+  const astDocs = useMemo(() => assetDlDocs(ls.get("besitz", [])), [tab, ctVer]);
+  const dlDocs = useMemo(() => [...active, ...ctDocs, ...astDocs], [active, ctDocs, astDocs]);
   const saveDl = async (d) => {
+    if (d.isAsset) {
+      const dl = d.deadlines.find((x) => x.date && (astDocs.find((y) => y.id === d.id)?.deadlines || []).some((o) => o.id === x.id && o.done !== x.done)) || d.deadlines[0];
+      ls.set("besitz", ls.get("besitz", []).map((a) => (a.id === d.astId ? { ...a, dlDone: dl.done ? [...new Set([...(a.dlDone || []), dl.date])] : (a.dlDone || []).filter((x) => x !== dl.date) } : a)));
+      setCtVer((v) => v + 1); return;
+    }
     if (!d.isContract) return saveDoc(d);
     const dl = d.deadlines[0], orig = ctDocs.find((x) => x.id === d.id)?.deadlines[0];
     if (orig && dl.date !== orig.date) { notify("Vertragsfristen bitte im Reiter „Verträge“ ändern"); setCtVer((v) => v + 1); return; }
     ls.set("contractList", ls.get("contractList", []).map((c) => (c.id === d.ctId ? { ...c, dlDone: dl.done ? [...new Set([...(c.dlDone || []), dl.date])] : (c.dlDone || []).filter((x) => x !== dl.date) } : c)));
     setCtVer((v) => v + 1);
   };
-  const openDl = (id) => { if (String(id).startsWith("ct:")) { ls.set("ctOpenReq", String(id).slice(3)); setTab("vertraege"); } else setOpenId(id); };
+  const openDl = (id) => { if (String(id).startsWith("as:")) { ls.set("assetOpenReq", String(id).slice(3)); setTab("besitz"); return; }
+    if (String(id).startsWith("ct:")) { ls.set("ctOpenReq", String(id).slice(3)); setTab("vertraege"); } else setOpenId(id); };
   // Kalender-Abo: bei jeder Änderung der Fristen (verzögert) neu hochladen
   const calSig = useMemo(() => JSON.stringify(dlDocs.flatMap((d) => (d.deadlines || []).filter((x) => !x.done).map((x) => [x.id, x.date, x.label, d.title, payAmt(d)]))), [dlDocs]);
   const calFirst = useRef(true);
@@ -2011,6 +2019,8 @@ function AppMain() {
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
         {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
         {tab === "artikel" && <ArticlesPage setTab={setTab} />}
+        {tab === "besitz" && <AssetsPage docs={active} onOpen={setOpenId} notify={notify} onScan={scanFor} calSync={calSync} setCalSync={setCalSync} token={token}
+          onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true }))[0]} />}
         {tab === "inventur" && <InventoryPage setTab={setTab} notify={notify} docs={active} onOpen={setOpenId} onScan={scanFor} onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]} />}
         {tab === "kassa" && <KassaPage docs={active} onOpen={setOpenId} notify={notify} onScan={scanFor} onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]} />}
         {tab === "kunden" && <ContactsPage setTab={setTab} req={bizReq} busy={ctBusy} setBusy={setCtBusy} />}
@@ -8752,6 +8762,222 @@ function ArticlesPage({ setTab }) {
   );
 }
 
+/* ======================= Besitz & Garantie (Privat + Firma) ======================= */
+const ASSET_CATS = { Elektronik: "💻", Haushalt: "🍳", Werkzeug: "🔧", "Möbel": "🛋️", Fahrzeug: "🚗", "Sport & Freizeit": "⚽", Garten: "🌿", "Schmuck & Wertsachen": "💍", Sonstiges: "📦" };
+const ASSET_DEF_WARR = 24; // Gewährleistung in Österreich: 2 Jahre ab Übergabe
+const astEmo = (a) => ASSET_CATS[a.cat] || "📦";
+const astMonths = (a, k) => Math.max(0, Number(a[k]) || 0);
+const astEnd = (a, k) => (a.date && astMonths(a, k) ? addDays(addMonths(a.date, astMonths(a, k)), -1) : "");
+const astWarr = (a) => astEnd(a, "warrMonths");          // gesetzliche Gewährleistung
+const astExtra = (a) => astEnd(a, "extraMonths");        // Herstellergarantie
+const astEndAll = (a) => { const w = astWarr(a), e = astExtra(a); return e && e > w ? e : w; };
+const astOut = (a) => !!(a.soldAt || a.inactive);
+const astState = (a) => { if (astOut(a)) return "aus"; const e = astEndAll(a); if (!e) return "offen"; const d = daysUntil(e); return d < 0 ? "abgelaufen" : d <= 90 ? "bald" : "aktiv"; };
+const astLabel = (a) => (astExtra(a) && astExtra(a) > astWarr(a) ? "Garantie endet (Hersteller)" : "Gewährleistung endet");
+// Garantie-Enden als Pseudo-Dokumente für den Fristenkalender und das Kalender-Abo
+function assetDlDocs(list) {
+  const out = [];
+  for (const a of list || []) {
+    if (astOut(a)) continue;
+    const end = astEndAll(a); if (!end) continue;
+    const warn = Number(a.remindDays ?? 30) || 0;
+    const pre = warn ? addDays(end, -warn) : "";
+    const done = a.dlDone || [];
+    out.push({ id: "as:" + a.id, isAsset: true, astId: a.id, title: [astEmo(a), a.name, a.brand].filter(Boolean).join(" ").trim(),
+      sender: a.dealer || "", category: "Garantie & Kaufbelege", docType: "Gerät", direction: "keine", amount: null,
+      summary: [a.serial && "Seriennr. " + a.serial, a.date && "gekauft am " + fmtDate(a.date), a.price && "um " + fmtMoney(Number(a.price))].filter(Boolean).join(" · "),
+      deadlines: [
+        ...(pre && pre > a.date ? [{ id: "asdl-pre-" + a.id + "-" + pre, date: pre, label: `Garantie läuft in ${warn} Tagen ab`, done: done.includes(pre) }] : []),
+        { id: "asdl-" + a.id + "-" + end, date: end, label: astLabel(a), done: done.includes(end) }
+      ] });
+  }
+  return out;
+}
+const AstIco = ({ a, size = 46 }) => a.photo ? <img className="artphoto" src={a.photo} alt="" style={{ width: size, height: size }} />
+  : <span className="caticon" style={{ width: size, height: size, background: "var(--card2)", fontSize: size * 0.45 }}>{astEmo(a)}</span>;
+
+function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDelete, onClose, notify }) {
+  const [a, setA] = useState(init);
+  const set = (p) => setA((x) => ({ ...x, ...p }));
+  const [busy, setBusy] = useState(false), [touched, setTouched] = useState({});
+  const fileRef = useRef(), photoRef = useRef(), filled = useRef(null);
+  const tset = (p) => { set(p); setTouched((t) => ({ ...t, ...Object.fromEntries(Object.keys(p).map((k) => [k, true])) })); };
+  const doc = a.docId ? (docs || []).find((d) => d.id === a.docId) : null;
+  const attach = async (file, opts = {}) => { setBusy(true); filled.current = null; try { const id = await onUpload(file, opts); if (id) set({ docId: id }); } finally { setBusy(false); } };
+  useEffect(() => {
+    if (!doc || doc.status !== "done" || filled.current === doc.id) return;
+    filled.current = doc.id;
+    const li = (doc.lineItems || [])[0];
+    setA((x) => ({ ...x,
+      name: touched.name && x.name ? x.name : x.name || li?.name || doc.title || "",
+      date: touched.date ? x.date : pastOrToday(doc.purchaseDate || doc.documentDate, todayISO()),
+      price: touched.price && x.price ? x.price : x.price !== "" && x.price != null ? x.price : doc.amount?.total ?? "",
+      dealer: touched.dealer && x.dealer ? x.dealer : x.dealer || doc.merchant || doc.sender || "" }));
+    notify?.("Beleg ausgelesen" + (doc.amount?.total != null ? ": " + fmtMoney(doc.amount.total) : ""));
+  }, [doc?.status, doc?.id]);
+  const w = astWarr(a), e = astExtra(a), end = astEndAll(a);
+  const cats = [...new Set([...Object.keys(ASSET_CATS), a.cat].filter(Boolean))];
+  return (
+    <Win id="astedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
+      <div className="panelhead"><b>{init.name || "Neues Gerät"}</b><button className="btn primary" disabled={!a.name?.trim()} onClick={() => { onSave({ ...a, price: a.price === "" || a.price == null ? "" : Number(String(a.price).replace(",", ".")) || 0 }); onClose(); }}>Speichern</button><XBtn /></div>
+      <div className="seg scopeseg">{SCOPES.map(([k, i, l]) => <button key={k} className={a.scope === k ? "on" : ""} onClick={() => set({ scope: k })}>{i} {l}</button>)}</div>
+      {a.docId || busy ? (
+        <div className="expatt">
+          {doc?.thumb ? <img src={doc.thumb} alt="" /> : <span className="attpdf">📄</span>}
+          <div className="grow"><b>{busy ? "Beleg wird hochgeladen …" : doc?.status === "processing" ? "KI liest den Beleg …" : doc?.status === "error" ? "Auslesen fehlgeschlagen" : "Kaufbeleg angehängt"}</b>
+            <small className="muted block">{doc?.status === "processing" ? "Gerät, Preis und Datum werden gleich ausgefüllt" : doc?.status === "done" ? [doc.merchant || doc.sender, doc.amount?.total != null && fmtMoney(doc.amount.total)].filter(Boolean).join(" · ") : ""}</small></div>
+          {doc?.status === "processing" && <span className="spin" />}
+          {doc && onOpenDoc && <button className="btn sm" onClick={() => onOpenDoc(doc.id)}>Öffnen</button>}
+          <button className="iconbtn" title="Beleg entfernen" aria-label="Beleg entfernen" onClick={() => set({ docId: null })}>✕</button>
+        </div>
+      ) : onUpload && (
+        <div className="expscan two">
+          <button className="expbig" onClick={() => onScan((f, o) => attach(f, { ...o, scanned: true }))}><span className="expico">📷</span><b>Kaufbeleg scannen</b><small>KI liest Gerät, Preis, Datum & Händler</small></button>
+          <button className="expbig" onClick={() => fileRef.current.click()}><span className="expico">🖼</span><b>Foto / PDF</b><small>aus Galerie oder Dateien</small></button>
+          <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(ev) => { const f = ev.target.files[0]; ev.target.value = ""; if (f) attach(f); }} />
+        </div>
+      )}
+      <label>Bezeichnung<input value={a.name || ""} placeholder="z. B. PlayStation 5, Waschmaschine, Bohrmaschine" onChange={(ev) => tset({ name: ev.target.value })} /></label>
+      <div className="row astphoto">
+        <span className="click" onClick={() => photoRef.current.click()} title="Foto ändern"><AstIco a={a} size={54} /></span>
+        <div className="grow"><button className="btn sm" onClick={() => photoRef.current.click()}>📷 {a.photo ? "Produktfoto ändern" : "Produktfoto hinzufügen"}</button>{a.photo && <button className="link red small" onClick={() => set({ photo: "" })}> entfernen</button>}</div>
+        <input ref={photoRef} type="file" accept="image/*" hidden onChange={async (ev) => { const f = ev.target.files[0]; ev.target.value = ""; if (f) try { set({ photo: await resizeImg(f) }); } catch {} }} />
+      </div>
+      <div className="grid2">
+        <label>Kategorie<select value={a.cat || "Sonstiges"} onChange={(ev) => set({ cat: ev.target.value })}>{cats.map((c) => <option key={c}>{(ASSET_CATS[c] || "📦") + " " + c}</option>)}</select></label>
+        <label>Marke / Modell<input value={a.brand || ""} placeholder="z. B. Sony CFI-2016" onChange={(ev) => set({ brand: ev.target.value })} /></label>
+      </div>
+      <div className="grid2">
+        <label>Kaufdatum<input type="date" value={a.date || ""} max={todayISO()} onChange={(ev) => tset({ date: ev.target.value })} /></label>
+        <label>Kaufpreis €<input inputMode="decimal" value={a.price ?? ""} onChange={(ev) => tset({ price: ev.target.value })} /></label>
+        <label>Händler<input value={a.dealer || ""} placeholder="z. B. MediaMarkt" onChange={(ev) => tset({ dealer: ev.target.value })} /></label>
+        <label>Seriennummer<input value={a.serial || ""} onChange={(ev) => set({ serial: ev.target.value })} /></label>
+      </div>
+      <div className="astwarr">
+        <small className="muted">Garantie</small>
+        <div className="grid2">
+          <label>Gewährleistung (Monate)<input inputMode="numeric" value={a.warrMonths ?? ASSET_DEF_WARR} onChange={(ev) => set({ warrMonths: ev.target.value })} /></label>
+          <label>Herstellergarantie (Monate)<input inputMode="numeric" value={a.extraMonths ?? ""} placeholder="falls länger" onChange={(ev) => set({ extraMonths: ev.target.value })} /></label>
+        </div>
+        <label>Vorwarnung (Tage vorher)<input inputMode="numeric" value={a.remindDays ?? 30} onChange={(ev) => set({ remindDays: ev.target.value })} /></label>
+        {a.date ? (
+          <p className="small">{w ? <>Gewährleistung bis <b>{fmtDate(w)}</b></> : "Keine Gewährleistung eingetragen"}{e ? <> · Herstellergarantie bis <b>{fmtDate(e)}</b></> : ""}
+            {end && <><br /><span className={daysUntil(end) < 0 ? "neg" : daysUntil(end) <= 90 ? "" : "pos"}>{daysUntil(end) < 0 ? `seit ${-daysUntil(end)} Tagen abgelaufen` : `noch ${daysUntil(end)} Tage`}</span> · erscheint im Fristen-Kalender</>}</p>
+        ) : <p className="muted small">Kaufdatum eintragen – daraus wird das Garantieende berechnet.</p>}
+      </div>
+      <label>Notiz<textarea rows={2} value={a.note || ""} placeholder="z. B. Standort, Zubehör, Garantiebedingungen" onChange={(ev) => set({ note: ev.target.value })} /></label>
+      <label className="check"><input type="checkbox" checked={!!a.soldAt} onChange={(ev) => set({ soldAt: ev.target.checked ? todayISO() : "" })} /> Verkauft / ausgeschieden</label>
+      {a.soldAt && <div className="grid2">
+        <label>Datum<input type="date" value={a.soldAt} max={todayISO()} onChange={(ev) => set({ soldAt: ev.target.value })} /></label>
+        <label>Verkaufspreis €<input inputMode="decimal" value={a.soldPrice ?? ""} onChange={(ev) => set({ soldPrice: ev.target.value })} /></label>
+      </div>}
+      {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={() => confirm(`„${a.name}“ wirklich löschen?`) && (onDelete(a), onClose())}>Gerät löschen</button>}
+    </Win>
+  );
+}
+
+function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSync, token }) {
+  const mob = useMobileBeta();
+  const [list, setList] = useLsState("besitz", []);
+  const [scope, setScope] = useLsState("astScope", "alle");
+  const [filter, setFilter] = useState("alle"), [q, setQ] = useState("");
+  const [mode, setMode] = useLsState("astView", "list");
+  const [edit, setEdit] = useState(null), [syncOpen, setSyncOpen] = useState(false);
+  useEffect(() => { const id = ls.get("assetOpenReq", null); if (!id) return; ls.set("assetOpenReq", null); const x = list.find((y) => y.id === id); if (x) setEdit(x); }, []);
+  const save = (a) => setList((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
+  const inScope = list.filter((a) => scope === "alle" || (a.scope || "privat") === scope);
+  const byState = (st) => inScope.filter((a) => astState(a) === st);
+  const shown = inScope.filter((a) => (filter === "alle" ? !astOut(a) : filter === "aus" ? astOut(a) : astState(a) === filter))
+    .filter((a) => !q || norm(`${a.name} ${a.brand} ${a.serial} ${a.dealer} ${a.cat} ${a.note}`).includes(norm(q)))
+    .sort((x, y) => (astEndAll(x) || "9999").localeCompare(astEndAll(y) || "9999") || (x.name || "").localeCompare(y.name || "", "de"));
+  const value = inScope.filter((a) => !astOut(a)).reduce((s, a) => s + (Number(a.price) || 0), 0);
+  const dlDocsA = useMemo(() => assetDlDocs(inScope), [inScope]);
+  const calItems = dlDocsA.flatMap((d) => d.deadlines.map((dl) => [dl, d]));
+  const newAsset = () => setEdit({ id: uid(), name: "", scope: scope === "firma" ? "firma" : "privat", cat: "Elektronik", date: todayISO(), price: "", warrMonths: ASSET_DEF_WARR, remindDays: 30 });
+  const rows = () => shown.map((a) => [a.name, a.brand || "", a.cat || "", (a.scope || "privat") === "firma" ? "Firma" : "Privat", a.date || "", Number(a.price) || "", a.dealer || "", a.serial || "", astWarr(a) || "", astExtra(a) || "", astOut(a) ? "ausgeschieden" : astState(a), a.note || ""]);
+  const head = ["Bezeichnung", "Marke/Modell", "Kategorie", "Bereich", "Kaufdatum", "Kaufpreis €", "Händler", "Seriennr.", "Gewährleistung bis", "Herstellergarantie bis", "Status", "Notiz"];
+  const scopeName = scope === "alle" ? "privat-firma" : scope;
+  const exportItems = [{ head: `${shown.length} Geräte · ${scope === "alle" ? "Privat & Firma" : scope === "firma" ? "Firma" : "Privat"}` },
+    { label: "🖨 Inventarliste PDF", sub: "mit Kaufwert und Garantieende", run: async () => { const by = {};
+      shown.forEach((a) => (by[a.cat || "Sonstiges"] = by[a.cat || "Sonstiges"] || []).push(a));
+      saveBlob(await tablePdf({ title: "Inventarliste", subtitle: `${scope === "alle" ? "Privat & Firma" : scope === "firma" ? "Firma" : "Privat"} · Stand ${fmtDate(todayISO())}`, landscape: true,
+        kpis: [["Geräte", String(shown.length)], ["Kaufwert", fmtMoney(shown.reduce((s, a) => s + (Number(a.price) || 0), 0))], ["In Garantie", String(shown.filter((a) => ["aktiv", "bald"].includes(astState(a))).length)]],
+        columns: [{ label: "Bezeichnung", w: 3 }, { label: "Marke / Modell", w: 2 }, { label: "Seriennr.", w: 1.6 }, { label: "Gekauft", w: 1.1 }, { label: "Händler", w: 1.6 }, { label: "Preis €", w: 1.1, align: "right" }, { label: "Garantie bis", w: 1.2 }],
+        sections: Object.entries(by).map(([g, l]) => ({ heading: (ASSET_CATS[g] ? "" : "") + g, rows: l.map((a) => [a.name, a.brand || "", a.serial || "", a.date ? fmtDate(a.date) : "", a.dealer || "", Number(a.price) || "", astEndAll(a) ? fmtDate(astEndAll(a)) : "—"]) })),
+        note: "Gewährleistung in Österreich: 2 Jahre ab Übergabe. Eine Herstellergarantie kann länger laufen – es gilt das jeweils spätere Datum.\nFür Versicherungs- oder Steuerzwecke bitte zusätzlich die Original-Kaufbelege aufbewahren." }), `inventarliste-${scopeName}-${todayISO()}.pdf`); } },
+    { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`besitz-${scopeName}-${todayISO()}.xlsx`, [{ name: "Besitz", head, rows: rows() }]) },
+    { label: "📄 CSV", run: () => downloadCsv(`besitz-${scopeName}-${todayISO()}.csv`, head, rows()) },
+    { label: "📅 Garantie-Termine (.ics)", sub: "einmalig herunterladen", disabled: !calItems.length, run: () => downloadIcs(calItems, `garantie-${scopeName}.ics`) }];
+  const stats = [{ label: "Kaufwert", value: fmtMoney(value), sub: `${inScope.filter((a) => !astOut(a)).length} Geräte${scope === "alle" ? " (Privat & Firma)" : ""}` },
+    { label: "In Garantie", value: byState("aktiv").length + byState("bald").length, sub: "von " + inScope.filter((a) => !astOut(a)).length, onClick: () => setFilter("alle") },
+    { label: "Läuft bald ab", value: byState("bald").length, vcls: byState("bald").length ? "neg" : "", alert: !!byState("bald").length, sub: "in 90 Tagen", onClick: () => setFilter("bald") },
+    { label: "Abgelaufen", value: byState("abgelaufen").length, sub: "ohne Garantie", onClick: () => setFilter("abgelaufen") },
+    { label: "Ausgeschieden", value: inScope.filter(astOut).length, sub: "verkauft / entsorgt", onClick: () => setFilter("aus") }];
+  const chips = [["alle", "Alle", inScope.filter((a) => !astOut(a)).length], ["bald", "Läuft bald ab", byState("bald").length], ["aktiv", "In Garantie", byState("aktiv").length], ["abgelaufen", "Abgelaufen", byState("abgelaufen").length], ["aus", "Ausgeschieden", inScope.filter(astOut).length]];
+  const sub = (a) => { const end = astEndAll(a), st = astState(a); return [a.brand, a.date && "gekauft " + fmtDate(a.date), astOut(a) ? (a.soldAt ? "ausgeschieden " + fmtDate(a.soldAt) : "ausgeschieden") : end ? (st === "abgelaufen" ? "Garantie abgelaufen " + fmtDate(end) : "Garantie bis " + fmtDate(end)) : "kein Garantieende"].filter(Boolean).join(" · "); };
+  const pill = (a) => { const st = astState(a); if (st === "bald") return <span className="stpill st-over">in {daysUntil(astEndAll(a))} T.</span>; if (st === "aktiv") return <span className="stpill st-paid">Garantie</span>; return null; };
+  const cal = <MonthCalendar items={calItems} docs={dlDocsA} onOpen={(id) => { const x = list.find((y) => "as:" + y.id === id); if (x) setEdit(x); }} saveDoc={() => notify?.("Das Garantieende ergibt sich aus Kaufdatum und Dauer – bitte im Gerät ändern")} />;
+  const empty = <MEmpty>{list.length ? "Keine Treffer in dieser Ansicht." : "Noch nichts erfasst. Mit „＋ Gerät“ anlegen oder den Kaufbeleg scannen – das Garantieende landet automatisch im Fristen-Kalender."}</MEmpty>;
+  const scopeSeg = <div className="seg scopeseg">{[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small>({list.filter((a) => k === "alle" || (a.scope || "privat") === k).length})</small></button>)}</div>;
+  const viewSeg = <div className="seg" role="group" aria-label="Ansicht"><button className={mode === "list" ? "on" : ""} onClick={() => setMode("list")}>☰ Liste</button><button className={mode === "cal" ? "on" : ""} onClick={() => setMode("cal")}>📅 Kalender</button></div>;
+  return (
+    <div className="ctpage astpage">
+      {mob ? (
+      <div className="mpage">
+        {scopeSeg}
+        <MStats items={stats.slice(0, 4)} />
+        <MActs items={[{ label: "＋ Gerät", primary: true, run: newAsset }, { label: "📷 Beleg scannen", run: () => { newAsset(); setTimeout(() => document.querySelector(".win .expbig, .sheet .expbig")?.click(), 60); } }, { label: mode === "cal" ? "☰ Liste" : "📅 Kalender", run: () => setMode(mode === "cal" ? "list" : "cal") }]} />
+        <MBar q={q} setQ={setQ} placeholder="Gerät, Marke, Seriennummer suchen" chips={chips.filter(([k, , n]) => n || k === "alle").map(([k, l, n]) => [k, l, n, filter === k, () => setFilter(k)])}><ExportMenu items={exportItems} /></MBar>
+        {mode === "cal" ? cal : (
+          <div className="mtxlist">
+            {!shown.length && empty}
+            {shown.map((a) => (
+              <MItem key={a.id} icon={<AstIco a={a} />} title={a.name} dim={astOut(a)} tags={[(a.scope || "privat") === "firma" && "Firma", a.docId && "📎"]}
+                sub={sub(a)} amount={a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"} pill={pill(a)} onClick={() => setEdit(a)}
+                swipe={{ left: [a.docId && { icon: "👁", label: "Beleg", bg: "#0ea5e9", run: () => onOpen(a.docId) }],
+                  right: [{ icon: "📅", label: "Kalender", bg: "#8b5cf6", run: () => downloadIcs(assetDlDocs([a]).flatMap((d) => d.deadlines.map((dl) => [dl, d])), "garantie.ics") },
+                    { icon: astOut(a) ? "▶" : "📤", label: astOut(a) ? "Aktiv" : "Aus", bg: "#64748b", run: () => save({ ...a, soldAt: astOut(a) ? "" : todayISO(), inactive: false }) }] }} />
+            ))}
+          </div>
+        )}
+      </div>
+      ) : (<>
+      {scopeSeg}
+      <div className="kbstats">{stats.map((s, i) => <div key={i} className={"tile kbstat" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b><small className="muted">{s.sub}</small></div>)}</div>
+      <div className="invbar">
+        <button className="btn primary" onClick={newAsset}>＋ Gerät</button>
+        {viewSeg}
+        <span className="grow" />
+        <button className={"btn" + (calSync?.on ? " synced" : "")} onClick={() => setSyncOpen(true)}><IcoCalSync /> {calSync?.on ? "Apple Kalender verbunden" : "Mit Apple Kalender verbinden"}</button>
+        <ExportMenu items={exportItems} />
+      </div>
+      {mode === "cal" ? cal : (<>
+        <div className="searchbar"><span>🔍</span><input type="search" placeholder="Gerät, Marke, Seriennummer, Händler suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <div className="chips invfilter">{chips.filter(([k, , n]) => n || k === "alle").map(([k, l, n]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({n})</small></button>)}</div>
+        <FitScroll cols={["Gerät", "Marke · Kauf · Garantie", "Kaufpreis"]}>
+          <section className="tile ctlist">
+            {!shown.length && empty}
+            {shown.map((a) => (
+              <div key={a.id} className={"frow click" + (astOut(a) ? " ended" : "")} onClick={() => setEdit(a)}>
+                <AstIco a={a} size={42} />
+                <div className="grow"><b>{a.name}</b>{(a.scope || "privat") === "firma" && <span className="stpill st-draft" style={{ marginLeft: 8 }}>🏢 Firma</span>}{pill(a) && <span style={{ marginLeft: 8 }}>{pill(a)}</span>}
+                  <small className="muted block">{[sub(a), a.serial && "Nr. " + a.serial, a.dealer].filter(Boolean).join(" · ")}</small></div>
+                <div className="right"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"}</b><small className="muted block">{a.date ? fmtDate(a.date) : ""}</small></div>
+                {a.docId && <button className="chip" title="Kaufbeleg öffnen" onClick={(e) => { e.stopPropagation(); onOpen(a.docId); }}>📎</button>}
+              </div>
+            ))}
+          </section>
+        </FitScroll>
+      </>)}
+      <p className="muted small">Gewährleistung in Österreich: 2 Jahre ab Übergabe; eine Herstellergarantie kann länger laufen. Garantie-Enden erscheinen automatisch im Reiter „Umtauschfrist“ und im Kalender-Abo.</p>
+      </>)}
+      {edit && <AssetEditor a={edit} docs={docs} onScan={onScan} onUpload={onUpload} onOpenDoc={onOpen} notify={notify}
+        onSave={save} onDelete={(a) => setList((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
+      {syncOpen && <CalSyncSheet sync={calSync} setSync={setCalSync} items={calItems} token={token} notify={notify} onClose={() => setSyncOpen(false)} what="Fristen & Garantien" />}
+    </div>
+  );
+}
+
 /* ======================= Kassabuch (BAO § 131: Einzelaufzeichnung, unveränderbar, Storno, Kassensturz) ======================= */
 const KB_CATS = {
   ein: ["Barverkauf / Erlös", "Privateinlage", "Bankabhebung (Geldtransit)", "Sonstige Einnahme"],
@@ -11349,4 +11575,12 @@ html.klook .fitscroll .invrow small{font-size:13px!important;white-space:nowrap;
 @media(max-width:700px){html.klook .khero{margin:0}html.klook .khero .hero-row{flex-wrap:wrap}html.klook .khero .hero-row>div{flex:1 1 40%;min-width:0}}
 html.klook .invbar .chip,html.klook .invbar summary.chip,html.klook .invbar select.chip{font-size:13px!important;padding:6px 12px!important;min-height:0!important;height:auto!important}
 @media(min-width:768px){html.klook .fitscroll .invacts{width:auto!important;min-width:0!important;flex:none}html.klook .fitscroll .invrow .invmain{grid-template-columns:200px minmax(0,1fr)}}
+
+/* v0.67 Besitz & Garantie */
+.astpage .scopeseg{margin-bottom:12px}
+.astphoto{align-items:center;gap:12px;margin:8px 0}
+.astwarr{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;display:flex;flex-direction:column;gap:6px}
+.astwarr p{margin:2px 0 0}
+.astpage .frow.ended{opacity:.55}
+.astpage .frow .right{min-width:92px}
 `;
