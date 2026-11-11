@@ -484,7 +484,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], inventur: ["📋", "Lager & Inventur"], kassa: ["📒", "Kassabuch"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -557,7 +557,7 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 const DEFAULT_NAV = {
   tabs: [
     { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: true, parent: "docs" },
-    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: true }, { key: "analyse", side: true, phone: true }, { key: "vermoegen", side: true, phone: true }, { key: "fahrtenbuch", side: true, phone: true }, { key: "invoices", side: true, phone: true }, { key: "kunden", side: true, phone: true }, { key: "mahnungen", side: true, phone: true }, { key: "firma", side: true, phone: true }, { key: "artikel", side: true, phone: true }, { key: "vertraege", side: true, phone: true }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: true, parent: "settings" }
+    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: true }, { key: "analyse", side: true, phone: true }, { key: "vermoegen", side: true, phone: true }, { key: "fahrtenbuch", side: true, phone: true }, { key: "invoices", side: true, phone: true }, { key: "kunden", side: true, phone: true }, { key: "mahnungen", side: true, phone: true }, { key: "firma", side: true, phone: true }, { key: "artikel", side: true, phone: true }, { key: "inventur", side: true, phone: true }, { key: "kassa", side: true, phone: true }, { key: "vertraege", side: true, phone: true }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: true, parent: "settings" }
   ],
   groups: [
     { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
@@ -583,7 +583,7 @@ function loadNav() {
   const keys = n.tabs.map((t) => t.key);
   // fehlende (neue) Reiter vor „Einstellungen“ einfügen
   // Analyse/Vermögen direkt nach „Ausgabe“ einfügen
-  for (const [k, prevKey] of [["analyse", "cash"], ["vermoegen", "analyse"], ["fahrtenbuch", "vermoegen"], ["firma", "mahnungen"]]) if (!keys.includes(k)) {
+  for (const [k, prevKey] of [["analyse", "cash"], ["vermoegen", "analyse"], ["fahrtenbuch", "vermoegen"], ["firma", "mahnungen"], ["inventur", "artikel"], ["kassa", "inventur"]]) if (!keys.includes(k)) {
     const pi = n.tabs.findIndex((t) => t.key === prevKey);
     if (pi >= 0) { n.tabs = [...n.tabs.slice(0, pi + 1), DEFAULT_NAV.tabs.find((t) => t.key === k), ...n.tabs.slice(pi + 1)]; keys.push(k); }
   }
@@ -609,6 +609,8 @@ const TAB_SVG = {
   invoices: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
   kunden: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.5 3 5.2" /></>,
   mahnungen: <><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z" /><path d="M10 21h4" /></>,
+  inventur: <><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V3h6v1" /><path d="m8.5 10 1.2 1.2L12 9M8.5 15l1.2 1.2L12 14M14.5 10.5H16M14.5 15.5H16" /></>,
+  kassa: <><path d="M5 4h12a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z" /><path d="M5 18a2 2 0 0 1 2-2h12" /><path d="M9 8h6M9 11.5h4" /></>,
   artikel: <><path d="M12 3 3.5 7.5v9L12 21l8.5-4.5v-9z" /><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9" /></>,
   vertraege: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M8.5 17c1.2-1.6 2-1.6 2.6 0 .6 1.4 1.3 1.4 2.4 0" /></>,
   contracts: <><path d="M4 11a8 8 0 0 1 14-5.3L20 8" /><path d="M20 3v5h-5" /><path d="M20 13a8 8 0 0 1-14 5.3L4 16" /><path d="M4 21v-5h5" /></>,
@@ -2009,6 +2011,8 @@ function AppMain() {
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
         {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
         {tab === "artikel" && <ArticlesPage setTab={setTab} />}
+        {tab === "inventur" && <InventoryPage setTab={setTab} notify={notify} />}
+        {tab === "kassa" && <KassaPage docs={active} onOpen={setOpenId} notify={notify} onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]} />}
         {tab === "kunden" && <ContactsPage setTab={setTab} req={bizReq} busy={ctBusy} setBusy={setCtBusy} />}
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} onFiles={onFiles} docBusy={docBusy} notify={notify} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
@@ -5514,13 +5518,13 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
   );
 }
 
-/* ---------- Neue Handy-Ansichten (Test, Einstellungen → Darstellung) ---------- */
+/* ---------- Handy-Ansichten (Standard bis 700 px Breite) ---------- */
 function useFlag(key, def) {
   const [v, setV] = useState(() => ls.get(key, def));
   useEffect(() => { const f = () => setV(ls.get(key, def)); addEventListener("findocu-flag", f); return () => removeEventListener("findocu-flag", f); }, []);
   return [v, (n) => { ls.set(key, n); dispatchEvent(new Event("findocu-flag")); }];
 }
-function useMobileBeta() { const small = useMedia("(max-width:700px)"); const [on] = useFlag("mobileBeta", true); return small && on; }
+function useMobileBeta() { return useMedia("(max-width:700px)"); } // Handy-Ansichten sind Standard
 function MobileBetaSetting() {
   const [on, set] = useFlag("mobileBeta", true);
   return <label className="switchrow"><span><b>Neue Handy-Ansichten (Test)</b><small className="muted block">Konten, Rechnungen, Mahnungen, Kunden, Artikel und Verträge im neuen Listen-Design (nur am Handy)</small></span>
@@ -6719,7 +6723,6 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
   const sections = {
     "darstellung": <><SetSec id="darstellung" title="Darstellung">
         <TabbarSetting />
-        <MobileBetaSetting />
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
             <button key={k} role="radio" aria-checked={themeMode === k} className={themeMode === k ? "on" : ""} onClick={() => setThemeMode(k)}>
@@ -8475,11 +8478,11 @@ async function lookupProduct(code, format) {
   if (!r.ok) throw new Error(j.error || "Suche fehlgeschlagen (" + r.status + ")");
   return j;
 }
-function CodeScanWin({ onResult, onClose, title = "Code scannen" }) {
+function CodeScanWin({ onResult, onClose, title = "Code scannen", multi = false }) {
   const vid = useRef(), ctl = useRef(), fileRef = useRef();
   const [err, setErr] = useState(""), [manual, setManual] = useState("");
   const done = useRef(false);
-  const finish = (text, fmt) => { if (done.current || !text) return; done.current = true; try { ctl.current?.stop(); } catch {} navigator.vibrate?.(60); onResult(String(text).trim(), fmt || ""); };
+  const finish = (text, fmt) => { if (done.current || !text) return; done.current = true; if (multi) setTimeout(() => (done.current = false), 1300); else try { ctl.current?.stop(); } catch {} navigator.vibrate?.(60); onResult(String(text).trim(), fmt || ""); if (multi) setManual(""); };
   useEffect(() => {
     let dead = false;
     (async () => {
@@ -8543,6 +8546,16 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
   const [a, setA] = useState(() => { const { autoLookup, ...x } = init; return x; });
   const set = (p) => setA((x) => ({ ...x, ...p }));
   const [scan, setScan] = useState(false), [look, setLook] = useState(null); // {busy}|{data}|{error}
+  const photoRef = useRef();
+  const wasStock = !!ls.get("articles", []).find((x) => x.id === init.id)?.stock;
+  const doSave = () => {
+    const { initQty, ...n } = a; const mv = [];
+    for (const k of ["ek", "min", "max"]) if (n[k] != null && n[k] !== "") n[k] = Number(String(n[k]).replace(",", ".")) || 0;
+    if (n.stock && !wasStock) { n.stockFrom = n.stockFrom || todayISO(); const q = Number(String(initQty ?? "").replace(",", ".")) || 0;
+      if (q) mv.push({ id: uid(), art: n.id, type: "anfang", qty: q, date: n.stockFrom, note: "Anfangsbestand", created: new Date().toISOString() }); }
+    onSave(n, mv); onClose();
+  };
+  const locList = [...new Set(ls.get("articles", []).map((x) => x.loc).filter(Boolean))], supList = [...new Set([...ls.get("articles", []).map((x) => x.supplier), ...ls.get("customers", []).filter((c) => c.type === "Lieferant").map((c) => c.name)].filter(Boolean))];
   const runLookup = async (code, fmt) => {
     set({ ean: code }); setLook({ busy: true });
     try {
@@ -8557,7 +8570,7 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
   const C = artCfg();
   return (
     <Win id="artedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
-      <div className="panelhead"><b>{init.text || "Neuer Artikel"}</b><button className="btn primary" disabled={!a.text?.trim()} onClick={() => { onSave(a); onClose(); }}>Speichern</button><XBtn /></div>
+      <div className="panelhead"><b>{init.text || "Neuer Artikel"}</b><button className="btn primary" disabled={!a.text?.trim()} onClick={doSave}>Speichern</button><XBtn /></div>
       <div className="scanrow">
         <label className="grow">EAN / Strichcode<input value={a.ean || ""} inputMode="numeric" placeholder="scannen oder eintippen" onChange={(e) => set({ ean: e.target.value })} /></label>
         <button className="btn" onClick={() => setScan(true)}>📷 Scannen</button>
@@ -8584,7 +8597,29 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
         <label>Einheit<UnitSelect value={a.unit || C.defUnit} onChange={(u) => set({ unit: u })} /></label>
       </div>
       {!!posFields.length && <div className="grid2">{posFields.map((f) => <label key={f.id}>{f.label}<input value={a.extra?.[f.id] || ""} onChange={(e) => set({ extra: { ...(a.extra || {}), [f.id]: e.target.value } })} /></label>)}</div>}
-      <label>Interne Notiz<textarea rows={2} value={a.note || ""} onChange={(e) => set({ note: e.target.value })} placeholder="z. B. Einkaufspreis, Lieferant" /></label>
+      <div className="artstock">
+        <div className="row">
+          <span className="click" onClick={() => photoRef.current.click()} title="Foto ändern"><ArtIco a={a} size={54} /></span>
+          <div className="grow"><button className="btn sm" onClick={() => photoRef.current.click()}>📷 {a.photo ? "Foto ändern" : "Foto hinzufügen"}</button>{a.photo && <button className="link red small" onClick={() => set({ photo: "" })}> entfernen</button>}</div>
+          <input ref={photoRef} type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) try { set({ photo: await resizeImg(f) }); } catch {} }} />
+        </div>
+        <div className="grid2">
+          <label>Einkaufspreis netto €<input inputMode="decimal" value={a.ek ?? ""} onChange={(e) => set({ ek: e.target.value })} /></label>
+          <label>Lieferant<input list="artsup" value={a.supplier || ""} onChange={(e) => set({ supplier: e.target.value })} /><datalist id="artsup">{supList.map((x) => <option key={x} value={x} />)}</datalist></label>
+        </div>
+        {a.ek !== "" && a.ek != null && Number(a.price) > 0 && <small className="muted">Marge: {fmtMoney(Number(a.price) - Number(String(a.ek).replace(",", ".")))} ({Math.round((1 - Number(String(a.ek).replace(",", ".")) / Number(a.price)) * 100)} %)</small>}
+        <label className="check"><input type="checkbox" checked={!!a.stock} onChange={(e) => set({ stock: e.target.checked, autoSales: a.autoSales ?? true })} /> <b>Lagerartikel</b> – Bestand in „Lager & Inventur“ führen</label>
+        {a.stock && <>
+          <div className="grid2">
+            {!wasStock && <label>Anfangsbestand<input inputMode="decimal" value={a.initQty ?? ""} placeholder="0" onChange={(e) => set({ initQty: e.target.value })} /></label>}
+            <label>Lagerort<input list="artloc" value={a.loc || ""} placeholder="z. B. Regal A3, Bus" onChange={(e) => set({ loc: e.target.value })} /><datalist id="artloc">{locList.map((x) => <option key={x} value={x} />)}</datalist></label>
+            <label>Mindestbestand<input inputMode="decimal" value={a.min ?? ""} placeholder="Meldebestand" onChange={(e) => set({ min: e.target.value })} /></label>
+            <label>Zielbestand<input inputMode="decimal" value={a.max ?? ""} placeholder="für Bestellvorschlag" onChange={(e) => set({ max: e.target.value })} /></label>
+          </div>
+          <label className="check"><input type="checkbox" checked={a.autoSales !== false} onChange={(e) => set({ autoSales: e.target.checked })} /> Verkäufe aus Rechnungen automatisch abbuchen</label>
+        </>}
+      </div>
+      <label>Interne Notiz<textarea rows={2} value={a.note || ""} onChange={(e) => set({ note: e.target.value })} /></label>
       <label className="check"><input type="checkbox" checked={a.inactive !== true} onChange={(e) => set({ inactive: !e.target.checked })} /> Aktiv (in Rechnungen vorschlagen)</label>
       {init.text && <button className="link red" style={{ marginTop: 12 }} onClick={() => confirm(`Artikel „${a.text}“ löschen?`) && (onDelete(a), onClose())}>Artikel löschen</button>}
       {scan && createPortal(<CodeScanWin title="Artikel scannen" onClose={() => setScan(false)} onResult={(code, fmt) => { setScan(false); runLookup(code, fmt); }} />, document.querySelector(".app") || document.body)}
@@ -8600,7 +8635,9 @@ function ArticlesPage({ setTab }) {
   const [scan, setScan] = useState(false);
   const nextNo = () => C.prefix + String(list.reduce((m, a) => Math.max(m, String(a.number || "").startsWith(C.prefix) ? parseInt(a.number.slice(C.prefix.length), 10) || 0 : 0), 0) + 1).padStart(3, "0");
   const usage = (a) => { let n = 0, sum = 0; for (const i of invoices) if (i.kind === "rechnung" && !["entwurf", "storniert"].includes(i.status)) for (const it of i.items || []) if (it.text === a.text) { n++; sum += (Number(it.qty) || 0) * (Number(it.price) || 0); } return { n, sum }; };
-  const save = (a) => setList((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
+  const save = (a, mv) => { setList((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a])); if (mv?.length) ls.set("stockMoves", [...ls.get("stockMoves", []), ...mv]); };
+  const allMoves = [...ls.get("stockMoves", []), ...stockSales(list, invoices)];
+  const stInfo = (a) => { if (!a.stock) return null; const s = stockAt(a, allMoves); return { s, low: a.min !== "" && a.min != null && s <= Number(a.min), txt: `Bestand ${fmtQty(s)} ${a.unit || ""}` }; };
   const groups = [...new Set([...C.groups, ...list.map((a) => a.group).filter(Boolean)])];
   const shown = list.filter((a) => grp === "alle" || (grp === "ohne" ? !a.group : a.group === grp))
     .filter((a) => !q || norm(`${a.text} ${a.number} ${a.group} ${a.note} ${a.ean}`).includes(norm(q)))
@@ -8622,7 +8659,7 @@ function ArticlesPage({ setTab }) {
             <React.Fragment key={g || "all"}>
               {g && <MHead right={l.length}>{g}</MHead>}
               {l.map(({ a, u }) => (
-                <MItem key={a.id} icon={<MIco e="📦" />} title={a.text || "Ohne Bezeichnung"} dim={a.inactive} tags={[a.inactive && "inaktiv"]}
+                <MItem key={a.id} icon={<ArtIco a={a} />} title={a.text || "Ohne Bezeichnung"} dim={a.inactive} tags={[a.inactive && "inaktiv", stInfo(a) && { label: stInfo(a).txt, color: stInfo(a).low ? "var(--red)" : undefined }]}
                   sub={[a.number, u.n ? `${u.n}× · ${fmtMoney(u.sum)}` : "noch nicht verrechnet"].filter(Boolean).join(" · ")}
                   amount={a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"} amountSub={"pro " + (a.unit || C.defUnit)} onClick={() => setEdit(a)}
                   swipe={{ left: [{ icon: "⧉", label: "Kopie", bg: "#8b5cf6", run: () => setEdit({ ...a, id: uid(), number: C.autoNo ? nextNo() : "", text: (a.text || "") + " (Kopie)" }) }],
@@ -8646,6 +8683,7 @@ function ArticlesPage({ setTab }) {
           { label: "📊 Excel (.xlsx)", sub: "mit Umsatz und Anzahl aus Rechnungen", run: () => downloadXlsx(`artikel-${isoToday()}.xlsx`, [{ name: "Artikel", head: ["Art.-Nr.", "Bezeichnung", "Gruppe", "Einheit", "Preis €", "EAN", "Aktiv", "Rechnungspositionen", "Umsatz €", "Notiz"], rows: shown.map(({ a, u }) => [a.number || "", a.text || "", a.group || "", a.unit || "", r2e(a.price), a.ean || "", a.inactive ? "nein" : "ja", u.n, r2e(u.sum), a.note || ""]) }]) },
           { label: "📄 CSV", run: () => downloadCsv(`artikel-${isoToday()}.csv`, ["Art.-Nr.", "Bezeichnung", "Gruppe", "Einheit", "Preis €", "EAN", "Aktiv"], shown.map(({ a }) => [a.number || "", a.text || "", a.group || "", a.unit || "", r2e(a.price), a.ean || "", a.inactive ? "nein" : "ja"])) }]} />
         <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">Name</option><option value="preis">Preis</option><option value="umsatz">Umsatz</option></select>
+        {setTab && <button className="chip" onClick={() => setTab("inventur")}>📋 Lager</button>}
         {setTab && <button className="chip" title="Einstellungen" onClick={() => { ls.set("openSettingsSec", "artikel"); setTab("settings"); }}>⚙︎</button>}
       </div>
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Bezeichnung, Nummer, Gruppe suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -8658,9 +8696,9 @@ function ArticlesPage({ setTab }) {
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Artikel. Mit „＋ Artikel“ anlegen oder beim Schreiben einer Rechnung mit ☆ merken – beim Tippen der Bezeichnung werden sie vorgeschlagen."}</p>}
         {shown.map(({ a, u }) => (
           <div key={a.id} className={"frow click" + (a.inactive ? " ended" : "")} onClick={() => setEdit(a)}>
-            <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>📦</span>
-            <div className="grow"><b>{a.text || "Ohne Bezeichnung"}</b>
-              <small className="muted block">{[a.number, a.group, a.inactive && "inaktiv", u.n ? `${u.n}× verrechnet · ${fmtMoney(u.sum)}` : "noch nicht verrechnet"].filter(Boolean).join(" · ")}</small></div>
+            <ArtIco a={a} size={42} />
+            <div className="grow"><b>{a.text || "Ohne Bezeichnung"}</b>{stInfo(a) && <span className={"stpill " + (stInfo(a).low ? "st-over" : "st-open")} style={{ marginLeft: 8 }}>{stInfo(a).txt}</span>}
+              <small className="muted block">{[a.number, a.group, a.loc && "📍 " + a.loc, a.inactive && "inaktiv", u.n ? `${u.n}× verrechnet · ${fmtMoney(u.sum)}` : "noch nicht verrechnet"].filter(Boolean).join(" · ")}</small></div>
             <div className="right"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"}</b><small className="muted block">pro {a.unit || C.defUnit}</small></div>
           </div>
         ))}
@@ -8673,6 +8711,516 @@ function ArticlesPage({ setTab }) {
         setEdit(hit || { id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: "", ean: code, eanFormat: fmt, autoLookup: true });
       }} />}
       {edit && <ArticleEditor a={edit} onSave={save} onDelete={(a) => setList((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
+    </div>
+  );
+}
+
+/* ======================= Kassabuch (BAO § 131: Einzelaufzeichnung, unveränderbar, Storno, Kassensturz) ======================= */
+const KB_CATS = {
+  ein: ["Barverkauf / Erlös", "Privateinlage", "Bankabhebung (Geldtransit)", "Sonstige Einnahme"],
+  aus: ["Wareneinkauf", "Büromaterial", "Porto & Versand", "Bewirtung", "Reise & Fahrt", "Kfz", "Sonstiger Aufwand", "Privatentnahme", "Bankeinzahlung (Geldtransit)", "Kassendifferenz"]
+};
+const KB_DENOMS = [500, 200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01];
+const kbSigned = (e) => (e.kind === "ein" ? 1 : -1) * (Number(e.amount) || 0);
+const kbSort = (a, b) => (a.date || "").localeCompare(b.date || "") || (a.created || "").localeCompare(b.created || "");
+const kbNo = (e) => `${(e.date || "").slice(0, 4)}/${String(e.no || 0).padStart(4, "0")}`;
+const kbR2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+// laufender Saldo je Buchung + erster negativer Stand (falls vorhanden)
+function kbRun(entries, kasse) {
+  let bal = Number(kasse.start) || 0; const saldo = {}; let neg = null;
+  for (const e of entries.filter((x) => x.kasse === kasse.id).sort(kbSort)) { bal = kbR2(bal + kbSigned(e)); saldo[e.id] = bal; if (bal < 0 && !neg) neg = e; }
+  return { saldo, bal, neg };
+}
+const kbBalAt = (entries, kasse, date, before = false) => kbR2((Number(kasse.start) || 0) + entries.filter((e) => e.kasse === kasse.id && (before ? e.date < date : e.date <= date)).reduce((s, e) => s + kbSigned(e), 0));
+const kbNextNo = (entries, kasse, date) => entries.filter((e) => e.kasse === kasse.id && (e.date || "").slice(0, 4) === date.slice(0, 4)).reduce((m, e) => Math.max(m, e.no || 0), 0) + 1;
+const kbNet = (e) => (e.vat ? kbR2(e.amount / (1 + e.vat / 100)) : kbR2(e.amount));
+
+function useKassa() {
+  const [kassen, setKassen] = useLsState("kassen", [{ id: "k1", name: "Hauptkassa", start: 0, startDate: todayISO() }]);
+  const [entries, setEntries] = useLsState("kassaEntries", []);
+  const [counts, setCounts] = useLsState("kassaCounts", []);
+  return { kassen, setKassen, entries, setEntries, counts, setCounts };
+}
+
+function KassaEntryWin({ init, kasse, entries, lastCount, docs, onUpload, onSave, onClose }) {
+  const [e, setE] = useState(init);
+  const set = (p) => setE((x) => ({ ...x, ...p }));
+  const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+  const fileRef = useRef();
+  const minDate = lastCount?.date || kasse.startDate || "";
+  const receipts = (docs || []).filter((d) => !d.trashed).sort((a, b) => (b.documentDate || b.created || "").localeCompare(a.documentDate || a.created || "")).slice(0, 80);
+  const linked = docs?.find((d) => d.id === e.docId);
+  const save = () => {
+    const amount = kbR2(String(e.amount).replace(",", "."));
+    if (!(amount > 0)) return setErr("Bitte einen Betrag größer 0 eingeben.");
+    if (!e.text?.trim()) return setErr("Bitte einen Buchungstext eingeben (Einzelaufzeichnung).");
+    if (!e.date || e.date > todayISO()) return setErr("Das Datum darf nicht in der Zukunft liegen.");
+    if (minDate && e.date < minDate) return setErr(`Vor dem ${fmtDate(minDate)} kann nicht mehr gebucht werden (${lastCount ? "letzter Kassensturz" : "Anfangsbestand"}).`);
+    if (!e.docId && !e.beleg?.trim() && !e.eigen) return setErr("Keine Buchung ohne Beleg: Beleg verknüpfen, Belegnummer eintragen oder „Eigenbeleg“ ankreuzen.");
+    const n = { ...e, amount, text: e.text.trim(), kasse: kasse.id, no: kbNextNo(entries, kasse, e.date), created: new Date().toISOString() };
+    const { neg } = kbRun([...entries, n], kasse);
+    if (neg) return setErr(`Der Kassenstand würde am ${fmtDate(neg.date)} negativ werden – ein Kassenminus ist nicht zulässig. Fehlt eine Einnahme?`);
+    onSave(n); onClose();
+  };
+  return (
+    <Win id="kbentry" onClose={onClose} small dirty={!!(e.amount || e.text)}>
+      <div className="panelhead"><b>{e.kind === "ein" ? "Bareinnahme" : "Barausgabe"} buchen</b><button className="btn primary" disabled={busy} onClick={save}>Buchen</button><XBtn /></div>
+      <div className="kbkind">
+        <button className={"chip" + (e.kind === "ein" ? " on pos" : "")} onClick={() => set({ kind: "ein", cat: KB_CATS.ein[0] })}>＋ Einnahme</button>
+        <button className={"chip" + (e.kind === "aus" ? " on neg" : "")} onClick={() => set({ kind: "aus", cat: KB_CATS.aus[0] })}>− Ausgabe</button>
+        <span className="muted small grow right">{kasse.name}</span>
+      </div>
+      <div className="grid2">
+        <label>Betrag €<input autoFocus inputMode="decimal" value={e.amount} placeholder="0,00" onChange={(ev) => set({ amount: ev.target.value })} /></label>
+        <label>Datum<input type="date" value={e.date} min={minDate || undefined} max={todayISO()} onChange={(ev) => set({ date: ev.target.value })} /></label>
+      </div>
+      <label>Buchungstext<input value={e.text} placeholder={e.kind === "ein" ? "z. B. Barverkauf Tagesumsatz" : "z. B. Briefmarken Post"} onChange={(ev) => set({ text: ev.target.value })} /></label>
+      <div className="grid2">
+        <label>Kategorie<select value={e.cat} onChange={(ev) => set({ cat: ev.target.value })}>{KB_CATS[e.kind].map((c) => <option key={c}>{c}</option>)}</select></label>
+        <label>USt-Satz<select value={e.vat ?? ""} onChange={(ev) => set({ vat: ev.target.value === "" ? null : Number(ev.target.value) })}><option value="">– keine –</option>{[20, 13, 10, 0].map((v) => <option key={v} value={v}>{v} %</option>)}</select></label>
+      </div>
+      <div className="kbbeleg">
+        <small className="muted">Beleg</small>
+        <div className="grid2">
+          <label>Belegnummer<input value={e.beleg || ""} placeholder="z. B. Rechnungs-Nr." onChange={(ev) => set({ beleg: ev.target.value })} /></label>
+          <label>Dokument verknüpfen<select value={e.docId || ""} onChange={(ev) => set({ docId: ev.target.value || null })}><option value="">– keines –</option>{receipts.map((d) => <option key={d.id} value={d.id}>{fmtDate(d.documentDate || d.created)} · {d.title || d.name}</option>)}</select></label>
+        </div>
+        <div className="kbbelegrow">
+          {onUpload && <button className="btn sm" disabled={busy} onClick={() => fileRef.current.click()}>{busy ? "⏳ wird gespeichert …" : "📷 Beleg fotografieren / hochladen"}</button>}
+          <input ref={fileRef} type="file" accept="image/*,application/pdf" capture="environment" hidden onChange={async (ev) => {
+            const f = ev.target.files[0]; ev.target.value = ""; if (!f) return;
+            setBusy(true); try { const d = await onUpload(f); if (d?.id) set({ docId: d.id }); } finally { setBusy(false); }
+          }} />
+          {linked && <span className="small">📎 {linked.title || linked.name}</span>}
+          <label className="check"><input type="checkbox" checked={!!e.eigen} onChange={(ev) => set({ eigen: ev.target.checked })} /> Eigenbeleg (kein Fremdbeleg vorhanden)</label>
+        </div>
+      </div>
+      {err && <div className="lookbox err">{err}</div>}
+      <p className="muted small">🔒 Nach dem Buchen ist der Eintrag unveränderbar. Fehler werden per <b>Storno</b> korrigiert – Original und Storno bleiben sichtbar (BAO § 131).</p>
+    </Win>
+  );
+}
+
+function KassaCountWin({ kasse, entries, onSave, onClose }) {
+  const [n, setN] = useState({}), [note, setNote] = useState(""), [book, setBook] = useState(true);
+  const counted = kbR2(KB_DENOMS.reduce((s, d) => s + d * (Number(n[d]) || 0), 0));
+  const soll = kbBalAt(entries, kasse, todayISO());
+  const diff = kbR2(counted - soll);
+  return (
+    <Win id="kbcount" onClose={onClose} dirty={Object.values(n).some(Boolean)}>
+      <div className="panelhead"><b>🧮 Kassensturz · {kasse.name}</b><button className="btn primary" onClick={() => { onSave({ id: uid(), kasse: kasse.id, date: todayISO(), created: new Date().toISOString(), denoms: n, counted, book: soll, diff, note, bookDiff: book && diff !== 0 }); onClose(); }}>Protokoll speichern</button><XBtn /></div>
+      <p className="muted small">Bargeld nach Scheinen und Münzen zählen. Der Abgleich mit dem Buchbestand wird als Protokoll gespeichert – Buchungen vor heute sind danach gesperrt.</p>
+      <div className="kbdenoms">
+        {KB_DENOMS.map((d) => (
+          <label key={d} className="kbden"><span>{d >= 5 ? "💶" : "🪙"} {d >= 1 ? d + " €" : Math.round(d * 100) + " ct"}</span>
+            <input inputMode="numeric" value={n[d] || ""} placeholder="0" onChange={(e) => setN((x) => ({ ...x, [d]: e.target.value.replace(/\D/g, "") }))} />
+            <small className="muted">{fmtMoney(d * (Number(n[d]) || 0))}</small></label>
+        ))}
+      </div>
+      <div className="kbsum">
+        <div><small className="muted">Buchbestand (Soll)</small><b>{fmtMoney(soll)}</b></div>
+        <div><small className="muted">Gezählt (Ist)</small><b>{fmtMoney(counted)}</b></div>
+        <div><small className="muted">Differenz</small><b className={diff < 0 ? "neg" : diff > 0 ? "pos" : ""}>{diff > 0 ? "+" : ""}{fmtMoney(diff)}</b></div>
+      </div>
+      {diff !== 0 && <label className="check"><input type="checkbox" checked={book} onChange={(e) => setBook(e.target.checked)} /> Differenz als Buchung „Kassendifferenz“ erfassen, damit Buch- und Istbestand übereinstimmen</label>}
+      <label>Anmerkung<textarea rows={2} value={note} placeholder="z. B. Grund der Differenz, gezählt von …" onChange={(e) => setNote(e.target.value)} /></label>
+    </Win>
+  );
+}
+
+function KassaDetailWin({ e, kasse, saldo, entries, docs, onOpen, onStorno, onClose }) {
+  const st = e.stornoBy && entries.find((x) => x.id === e.stornoBy), of = e.stornoOf && entries.find((x) => x.id === e.stornoOf);
+  const doc = docs?.find((d) => d.id === e.docId);
+  const Row = ({ l, v }) => v ? <div className="kbrow"><small className="muted">{l}</small><span>{v}</span></div> : null;
+  return (
+    <Win id="kbdetail" onClose={onClose} small dirty={false}>
+      <div className="panelhead"><b>Buchung {kbNo(e)}</b><XBtn /></div>
+      <div className="kbhero"><span className={e.kind === "ein" ? "pos" : "neg"}>{e.kind === "ein" ? "+" : "−"}{fmtMoney(e.amount)}</span><small className="muted">{e.text}</small>
+        {e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}</div>
+      <Row l="Kasse" v={kasse.name} /><Row l="Datum" v={fmtDate(e.date)} /><Row l="Kategorie" v={e.cat} />
+      <Row l="USt" v={e.vat != null ? `${e.vat} % · netto ${fmtMoney(kbNet(e))} · USt ${fmtMoney(kbR2(e.amount - kbNet(e)))}` : ""} />
+      <Row l="Saldo danach" v={fmtMoney(saldo)} /><Row l="Belegnummer" v={e.beleg} /><Row l="Eigenbeleg" v={e.eigen ? "ja" : ""} />
+      <Row l="Erfasst am" v={new Date(e.created).toLocaleString("de-AT")} />
+      {st && <Row l="Storniert durch" v={`${kbNo(st)} am ${fmtDate(st.date)}`} />}
+      {of && <Row l="Storno zu" v={`${kbNo(of)} · ${of.text}`} />}
+      {doc && <button className="btn" onClick={() => { onOpen?.(doc.id); onClose(); }}>📎 Beleg öffnen: {doc.title || doc.name}</button>}
+      {!e.stornoBy && !e.stornoOf && <button className="btn danger" style={{ marginTop: 10 }} onClick={() => onStorno(e)}>↩︎ Stornieren</button>}
+      <p className="muted small">Buchungen sind unveränderbar. Ein Storno erzeugt eine Gegenbuchung mit eigener Nummer.</p>
+    </Win>
+  );
+}
+
+function KassaPage({ docs, onOpen, onUpload, notify }) {
+  const mob = useMobileBeta();
+  const { kassen, setKassen, entries, setEntries, counts, setCounts } = useKassa();
+  const [sel, setSel] = useLsState("kassaSel", "k1");
+  const kasse = kassen.find((k) => k.id === sel) || kassen[0];
+  const [per, setPer] = useState(todayISO().slice(0, 7)), [q, setQ] = useState("");
+  const [form, setForm] = useState(null), [countOpen, setCountOpen] = useState(false), [det, setDet] = useState(null), [showCounts, setShowCounts] = useState(false), [setup, setSetup] = useState(false);
+  const mine = entries.filter((e) => e.kasse === kasse.id);
+  const { saldo, bal } = kbRun(entries, kasse);
+  const kCounts = counts.filter((c) => c.kasse === kasse.id).sort((a, b) => (b.created || "").localeCompare(a.created || ""));
+  const lastCount = kCounts[0];
+  const months = [...new Set([todayISO().slice(0, 7), ...mine.map((e) => e.date.slice(0, 7))])].sort().reverse();
+  const years = [...new Set(months.map((m) => m.slice(0, 4)))];
+  const inPer = (e) => per === "alle" || e.date.startsWith(per);
+  const perEntries = mine.filter(inPer).sort(kbSort);
+  const shown = perEntries.filter((e) => !q || norm(`${e.text} ${e.cat} ${e.beleg} ${kbNo(e)} ${e.amount}`).includes(norm(q)));
+  const sumIn = kbR2(perEntries.filter((e) => e.kind === "ein").reduce((s, e) => s + e.amount, 0)), sumOut = kbR2(perEntries.filter((e) => e.kind === "aus").reduce((s, e) => s + e.amount, 0));
+  const first = per === "alle" ? "" : per.length === 4 ? per + "-01-01" : per + "-01";
+  const opening = first ? kbBalAt(entries, kasse, first, true) : Number(kasse.start) || 0;
+  const perLabel = per === "alle" ? "gesamt" : per.length === 4 ? per : monthLabel(per);
+  const newEntry = (kind) => setForm({ id: uid(), kind, amount: "", date: todayISO(), text: "", cat: KB_CATS[kind][0], vat: null, beleg: "", docId: null, eigen: false });
+  const doStorno = (e) => {
+    if (!confirm(`Buchung ${kbNo(e)} („${e.text}“, ${fmtMoney(e.amount)}) stornieren?\nEs wird eine Gegenbuchung mit heutigem Datum erstellt.`)) return;
+    const date = todayISO();
+    const s = { id: uid(), kasse: kasse.id, kind: e.kind === "ein" ? "aus" : "ein", amount: e.amount, date, text: `Storno ${kbNo(e)}: ${e.text}`, cat: e.cat, vat: e.vat, beleg: e.beleg, docId: e.docId, eigen: e.eigen, stornoOf: e.id, no: kbNextNo(entries, kasse, date), created: new Date().toISOString() };
+    const { neg } = kbRun([...entries, s], kasse);
+    if (neg) return alert("Storno nicht möglich: Der Kassenstand würde negativ werden.");
+    setEntries((l) => [...l.map((x) => (x.id === e.id ? { ...x, stornoBy: s.id } : x)), s]); setDet(null); notify?.("Storno gebucht");
+  };
+  const saveCount = (c) => {
+    setCounts((l) => [...l, c]);
+    if (c.bookDiff) { const date = todayISO(); setEntries((l) => [...l, { id: uid(), kasse: kasse.id, kind: c.diff > 0 ? "ein" : "aus", amount: Math.abs(c.diff), date, text: "Kassendifferenz lt. Kassensturz", cat: c.diff > 0 ? "Sonstige Einnahme" : "Kassendifferenz", eigen: true, no: kbNextNo(l, kasse, date), created: new Date().toISOString(), countId: c.id }]); }
+    notify?.(c.diff ? `Kassensturz gespeichert · Differenz ${fmtMoney(c.diff)}` : "Kassensturz gespeichert · stimmt ✓");
+  };
+  const rows = () => perEntries.map((e) => [kbNo(e), fmtDate(e.date), e.beleg || (e.eigen ? "Eigenbeleg" : e.docId ? "Dokument" : ""), e.text + (e.stornoBy ? " (storniert)" : ""), e.cat, e.vat ?? "", e.kind === "ein" ? e.amount : "", e.kind === "aus" ? e.amount : "", saldo[e.id]]);
+  const head = ["Nr.", "Datum", "Beleg", "Text", "Kategorie", "USt %", "Einnahmen €", "Ausgaben €", "Saldo €"];
+  const exportItems = [{ head: `${kasse.name} · ${perLabel}` },
+    { label: "🖨 Kassabuch PDF", sub: "mit Anfangs- und Endbestand", run: async () => saveBlob(await tablePdf({ title: `Kassabuch ${kasse.name} – ${perLabel}`, subtitle: `${({ ...CO_DEFAULT, ...ls.get("company", {}) }).name || ""} · Stand ${fmtDate(todayISO())}`, landscape: true,
+      kpis: [["Anfangsbestand", fmtMoney(opening)], ["Einnahmen", fmtMoney(sumIn)], ["Ausgaben", fmtMoney(sumOut)], ["Endbestand", fmtMoney(kbR2(opening + sumIn - sumOut))]],
+      columns: [{ label: "Nr.", w: 1 }, { label: "Datum", w: 1 }, { label: "Beleg", w: 1.3 }, { label: "Text", w: 4 }, { label: "Kategorie", w: 2 }, { label: "USt %", w: 0.7, align: "right" }, { label: "Einnahmen €", w: 1.2, align: "right" }, { label: "Ausgaben €", w: 1.2, align: "right" }, { label: "Saldo €", w: 1.2, align: "right" }],
+      rows: rows(), totals: ["", "", "", "Summe", "", "", sumIn, sumOut, kbR2(opening + sumIn - sumOut)],
+      note: "Einzelaufzeichnung gem. § 131 BAO. Buchungen sind unveränderbar, Korrekturen erfolgen per Storno-Gegenbuchung.\nHinweis: Dieses Kassabuch ersetzt keine Registrierkasse nach RKSV (Pflicht ab 15.000 € Jahresumsatz und 7.500 € Barumsatz)." }), `kassabuch-${kasse.name}-${per}.pdf`) },
+    { label: "📊 Excel (.xlsx)", sub: "Buchungen + Kassenstürze", run: () => downloadXlsx(`kassabuch-${kasse.name}-${per}.xlsx`, [{ name: "Kassabuch", head, rows: rows() },
+      { name: "Kassensturz", head: ["Datum", "Buchbestand €", "Gezählt €", "Differenz €", "Anmerkung"], rows: kCounts.filter((c) => per === "alle" || c.date.startsWith(per)).map((c) => [fmtDate(c.date), c.book, c.counted, c.diff, c.note || ""]) }]) },
+    { label: "📄 CSV", run: () => downloadCsv(`kassabuch-${kasse.name}-${per}.csv`, head, rows()) }];
+  const countPdf = async (c) => saveBlob(await tablePdf({ title: `Kassensturz-Protokoll ${kasse.name}`, subtitle: `${new Date(c.created).toLocaleString("de-AT")}`,
+    kpis: [["Buchbestand", fmtMoney(c.book)], ["Gezählt", fmtMoney(c.counted)], ["Differenz", fmtMoney(c.diff)]],
+    columns: [{ label: "Stückelung", w: 2 }, { label: "Anzahl", w: 1, align: "right" }, { label: "Summe €", w: 1.5, align: "right" }],
+    rows: KB_DENOMS.filter((d) => Number(c.denoms?.[d])).map((d) => [d >= 1 ? d + " €" : Math.round(d * 100) + " ct", Number(c.denoms[d]), kbR2(d * c.denoms[d])]), totals: ["Gesamt", "", c.counted],
+    note: (c.note ? "Anmerkung: " + c.note + "\n" : "") + "\n\n______________________________   Unterschrift" }), `kassensturz-${c.date}.pdf`);
+  const perSel = <select className="chip" value={per} onChange={(e) => setPer(e.target.value)}>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}{years.map((y) => <option key={y} value={y}>Jahr {y}</option>)}<option value="alle">Alle</option></select>;
+  const stats = [{ label: "Kassenstand", value: fmtMoney(bal), vcls: bal < 0 ? "neg" : "", sub: kasse.name },
+    { label: "Einnahmen", value: fmtMoney(sumIn), vcls: "pos", sub: perLabel }, { label: "Ausgaben", value: fmtMoney(sumOut), vcls: "neg", sub: perLabel },
+    { label: "Kassensturz", value: lastCount ? fmtDate(lastCount.date) : "noch keiner", sub: lastCount ? (lastCount.diff ? "Differenz " + fmtMoney(lastCount.diff) : "stimmte ✓") : "jetzt zählen", alert: !lastCount || daysUntil(lastCount.date) < -7, onClick: () => setCountOpen(true) }];
+  const countsList = (
+    <section className="tile">
+      <div className="row"><b className="grow">Kassensturz-Protokolle</b><span className="muted small">{kCounts.length}</span></div>
+      {!kCounts.length && <p className="muted small">Noch kein Kassensturz. Empfehlung: mindestens wöchentlich, besser täglich zählen.</p>}
+      {kCounts.map((c) => <div key={c.id} className="frow"><span className="grow"><b>{new Date(c.created).toLocaleString("de-AT", { dateStyle: "short", timeStyle: "short" })}</b><small className="muted block">Soll {fmtMoney(c.book)} · Ist {fmtMoney(c.counted)}{c.note ? " · " + c.note : ""}</small></span>
+        <b className={c.diff < 0 ? "neg" : c.diff > 0 ? "pos" : ""}>{c.diff ? fmtMoney(c.diff) : "✓"}</b><button className="chip" onClick={() => countPdf(c)}>🖨</button></div>)}
+    </section>
+  );
+  const modals = (<>
+    {form && <KassaEntryWin init={form} kasse={kasse} entries={entries} lastCount={lastCount} docs={docs} onUpload={onUpload} onSave={(n) => { setEntries((l) => [...l, n]); notify?.(`Gebucht: ${kbNo(n)}`); }} onClose={() => setForm(null)} />}
+    {countOpen && <KassaCountWin kasse={kasse} entries={entries} onSave={saveCount} onClose={() => setCountOpen(false)} />}
+    {det && <KassaDetailWin e={entries.find((x) => x.id === det) || {}} kasse={kasse} saldo={saldo[det]} entries={entries} docs={docs} onOpen={onOpen} onStorno={doStorno} onClose={() => setDet(null)} />}
+    {setup && <KassaSetupWin kassen={kassen} setKassen={setKassen} entries={entries} sel={kasse.id} setSel={setSel} onClose={() => setSetup(false)} />}
+  </>);
+  const rowCls = (e) => (e.stornoBy || e.stornoOf ? " kbstorno" : "");
+  return (
+    <div className="ctpage kbpage">
+      {mob ? (
+      <div className="mpage">
+        <MStats items={stats} />
+        <MActs items={[{ label: "＋ Einnahme", primary: true, run: () => newEntry("ein") }, { label: "− Ausgabe", run: () => newEntry("aus") }, { label: "🧮 Kassensturz", run: () => setCountOpen(true) }]} />
+        <MBar q={q} setQ={setQ} placeholder="Text, Kategorie, Beleg suchen">
+        </MBar>
+        <div className="mchips">{kassen.length > 1 && <select className="chip" value={kasse.id} onChange={(e) => setSel(e.target.value)}>{kassen.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</select>}{perSel}<ExportMenu items={exportItems} /><button className="chip" onClick={() => setSetup(true)}>⚙︎</button><button className={"chip" + (showCounts ? " on" : "")} onClick={() => setShowCounts(!showCounts)}>Protokolle</button></div>
+        {showCounts && countsList}
+        <div className="mtxlist">
+          {!shown.length && <MEmpty>{mine.length ? "Keine Buchungen in diesem Zeitraum." : "Noch keine Buchungen – mit „＋ Einnahme“ oder „− Ausgabe“ beginnen."}</MEmpty>}
+          {mGroup([...shown].reverse(), (e) => e.date).map(([d, l]) => (
+            <React.Fragment key={d}>
+              <MHead right={"Saldo " + fmtMoney(saldo[l[0].id])}>{fmtDate(d)}</MHead>
+              {l.map((e) => <MItem key={e.id} dim={!!(e.stornoBy || e.stornoOf)} icon={<MIco e={e.kind === "ein" ? "💶" : "🧾"} />} title={e.text}
+                tags={[e.stornoBy && "storniert", e.stornoOf && "Storno", !e.docId && !e.beleg && e.eigen && "Eigenbeleg"]}
+                sub={`${kbNo(e)} · ${e.cat}${e.docId ? " · 📎" : ""}`} amount={(e.kind === "ein" ? "+" : "−") + fmtMoney(e.amount)} amountCls={e.kind === "ein" ? "pos" : "neg"}
+                onClick={() => setDet(e.id)} swipe={!e.stornoBy && !e.stornoOf ? { right: [{ icon: "↩︎", label: "Storno", bg: "#ef4444", run: () => doStorno(e) }] } : undefined} />)}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+      ) : (<>
+      <div className="kbstats">{stats.map((s, i) => <div key={i} className={"tile kbstat" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b><small className="muted">{s.sub}</small></div>)}</div>
+      <div className="invbar">
+        <button className="btn primary" onClick={() => newEntry("ein")}>＋ Einnahme</button>
+        <button className="btn" onClick={() => newEntry("aus")}>− Ausgabe</button>
+        <button className="btn" onClick={() => setCountOpen(true)}>🧮 Kassensturz</button>
+        <span className="grow" />
+        {kassen.length > 1 && <select className="chip" value={kasse.id} onChange={(e) => setSel(e.target.value)}>{kassen.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</select>}
+        {perSel}
+        <ExportMenu items={exportItems} />
+        <button className={"chip" + (showCounts ? " on" : "")} onClick={() => setShowCounts(!showCounts)}>Protokolle ({kCounts.length})</button>
+        <button className="chip" title="Kassen verwalten" onClick={() => setSetup(true)}>⚙︎</button>
+      </div>
+      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Text, Kategorie, Beleg, Nummer suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      {showCounts && countsList}
+      <FitScroll>
+      <section className="tile kbtable">
+        <div className="kbr kbh"><span>Nr.</span><span>Datum</span><span>Text</span><span>Kategorie</span><span className="r">Einnahme</span><span className="r">Ausgabe</span><span className="r">Saldo</span></div>
+        {per !== "alle" && <div className="kbr kbopen"><span /><span>{fmtDate(first)}</span><span>Anfangsbestand</span><span /><span /><span /><span className="r">{fmtMoney(opening)}</span></div>}
+        {!shown.length && <p className="muted small" style={{ padding: 12 }}>{mine.length ? "Keine Buchungen in diesem Zeitraum." : "Noch keine Buchungen. Jede Bareinnahme und -ausgabe einzeln mit Beleg erfassen."}</p>}
+        {shown.map((e) => (
+          <div key={e.id} className={"kbr click" + rowCls(e)} onClick={() => setDet(e.id)}>
+            <span className="muted">{kbNo(e)}</span><span>{fmtDate(e.date)}</span>
+            <span className="one"><b>{e.text}</b>{e.docId && " 📎"}{e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}</span>
+            <span className="muted one">{e.cat}</span>
+            <span className="r pos">{e.kind === "ein" ? fmtMoney(e.amount) : ""}</span><span className="r neg">{e.kind === "aus" ? fmtMoney(e.amount) : ""}</span><span className="r"><b>{fmtMoney(saldo[e.id])}</b></span>
+          </div>
+        ))}
+        {!!shown.length && <div className="kbr kbh kbfoot"><span /><span /><span>Summe {perLabel}</span><span /><span className="r pos">{fmtMoney(sumIn)}</span><span className="r neg">{fmtMoney(sumOut)}</span><span className="r">{fmtMoney(kbR2(opening + sumIn - sumOut))}</span></div>}
+      </section>
+      </FitScroll>
+      <p className="muted small">🔒 Unveränderbare Einzelaufzeichnung mit fortlaufender Nummer je Jahr, Storno statt Löschen, Kassenminus wird verhindert. Ersetzt keine Registrierkasse (RKSV).</p>
+      </>)}
+      {modals}
+    </div>
+  );
+}
+
+function KassaSetupWin({ kassen, setKassen, entries, sel, setSel, onClose }) {
+  const [list, setList] = useState(kassen);
+  const used = (k) => entries.some((e) => e.kasse === k.id);
+  const upd = (id, p) => setList((l) => l.map((k) => (k.id === id ? { ...k, ...p } : k)));
+  return (
+    <Win id="kbsetup" onClose={onClose} small dirty={JSON.stringify(list) !== JSON.stringify(kassen)}>
+      <div className="panelhead"><b>Kassen verwalten</b><button className="btn primary" onClick={() => { setKassen(list.map((k) => ({ ...k, start: kbR2(String(k.start).replace(",", ".")) }))); if (!list.some((k) => k.id === sel)) setSel(list[0].id); onClose(); }}>Speichern</button><XBtn /></div>
+      <p className="muted small">Anfangsbestand und Startdatum können nur geändert werden, solange in der Kasse noch nichts gebucht ist.</p>
+      {list.map((k) => (
+        <div key={k.id} className="tile kbsetrow">
+          <label>Name<input value={k.name} onChange={(e) => upd(k.id, { name: e.target.value })} /></label>
+          <div className="grid2">
+            <label>Anfangsbestand €<input inputMode="decimal" disabled={used(k)} value={k.start} onChange={(e) => upd(k.id, { start: e.target.value })} /></label>
+            <label>ab Datum<input type="date" disabled={used(k)} value={k.startDate || ""} onChange={(e) => upd(k.id, { startDate: e.target.value })} /></label>
+          </div>
+          {!used(k) && list.length > 1 && <button className="link red small" onClick={() => setList((l) => l.filter((x) => x.id !== k.id))}>Kasse entfernen</button>}
+        </div>
+      ))}
+      <button className="btn" onClick={() => setList((l) => [...l, { id: uid(), name: "Kasse " + (l.length + 1), start: 0, startDate: todayISO() }])}>＋ Weitere Kasse</button>
+    </Win>
+  );
+}
+
+/* ======================= Lager & Inventur ======================= */
+const MV_TYPES = { anfang: ["Anfangsbestand", "🏁"], eingang: ["Wareneingang", "📥"], entnahme: ["Entnahme / Verbrauch", "📤"], korrektur: ["Korrektur", "✏️"], inventur: ["Inventurdifferenz", "📋"], verkauf: ["Verkauf (Rechnung)", "🧾"] };
+const fmtQty = (n) => (Number(n) || 0).toLocaleString("de-AT", { maximumFractionDigits: 3 });
+// Verkäufe aus Rechnungen (ab Lagerstart) als abgeleitete Bewegungen
+function stockSales(arts, invoices) {
+  const byText = {}; for (const a of arts) if (a.stock && a.autoSales !== false) byText[norm(a.text || "")] = a;
+  const out = [];
+  for (const i of invoices) if (i.kind === "rechnung" && !["entwurf", "storniert"].includes(i.status)) for (const it of i.items || []) {
+    const a = (it.articleId && arts.find((x) => x.id === it.articleId && x.stock && x.autoSales !== false)) || byText[norm(it.text || "")];
+    if (a && i.date && i.date >= (a.stockFrom || "")) out.push({ id: "s:" + i.id + ":" + a.id + ":" + out.length, art: a.id, date: i.date, qty: -(Number(it.qty) || 0), type: "verkauf", note: `Rechnung ${i.number || ""} · ${i.customer?.name || ""}`, derived: true });
+  }
+  return out;
+}
+const stockAt = (a, moves, upTo) => moves.reduce((s, m) => (m.art === a.id && (!upTo || m.date <= upTo) ? s + (Number(m.qty) || 0) : s), 0);
+const reorderQty = (a, st) => Math.max(0, Math.ceil((Number(a.max) || (Number(a.min) || 0) * 2) - st));
+const resizeImg = (file, max = 240) => new Promise((res, rej) => { const u = URL.createObjectURL(file), img = new Image(); img.onload = () => { const s = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement("canvas"); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res(c.toDataURL("image/jpeg", 0.8)); }; img.onerror = rej; img.src = u; });
+const ArtIco = ({ a, size = 46 }) => a.photo ? <img className="artphoto" src={a.photo} alt="" style={{ width: size, height: size }} /> : <span className="caticon" style={{ width: size, height: size, background: "var(--card2)", fontSize: size * 0.45 }}>📦</span>;
+
+function StockMoveWin({ a, type: t0, st, onSave, onClose }) {
+  const [m, setM] = useState({ type: t0 || "eingang", qty: "", date: todayISO(), note: "", ek: a.ek ?? "" });
+  const set = (p) => setM((x) => ({ ...x, ...p }));
+  const q = Number(String(m.qty).replace(",", ".")) || 0;
+  const delta = m.type === "entnahme" ? -Math.abs(q) : m.type === "korrektur" ? q - st : Math.abs(q);
+  return (
+    <Win id="stockmove" onClose={onClose} small dirty={!!m.qty}>
+      <div className="panelhead"><b>{a.text}</b><button className="btn primary" disabled={!m.qty || (m.type !== "korrektur" && !q)} onClick={() => { onSave({ id: uid(), art: a.id, type: m.type, qty: delta, date: m.date, note: m.note, ek: m.type === "eingang" && m.ek !== "" ? Number(String(m.ek).replace(",", ".")) : undefined, created: new Date().toISOString() }); onClose(); }}>Buchen</button><XBtn /></div>
+      <div className="kbkind">{["eingang", "entnahme", "korrektur"].map((k) => <button key={k} className={"chip" + (m.type === k ? " on" : "")} onClick={() => set({ type: k })}>{MV_TYPES[k][1]} {MV_TYPES[k][0]}</button>)}</div>
+      <p className="muted small">Aktueller Bestand: <b>{fmtQty(st)} {a.unit || ""}</b>{a.loc ? " · Lagerort " + a.loc : ""}</p>
+      <div className="grid2">
+        <label>{m.type === "korrektur" ? "Neuer Bestand" : "Menge"}<input autoFocus inputMode="decimal" value={m.qty} onChange={(e) => set({ qty: e.target.value })} /></label>
+        <label>Datum<input type="date" value={m.date} max={todayISO()} onChange={(e) => set({ date: e.target.value })} /></label>
+      </div>
+      {m.type === "eingang" && <label>Einkaufspreis netto je {a.unit || "Stk"} €<input inputMode="decimal" value={m.ek} onChange={(e) => set({ ek: e.target.value })} /></label>}
+      <label>Notiz<input value={m.note} placeholder={m.type === "eingang" ? "z. B. Lieferschein-Nr." : "z. B. Projekt / Grund"} onChange={(e) => set({ note: e.target.value })} /></label>
+      {!!m.qty && <p className="small">Bestand danach: <b>{fmtQty(st + delta)} {a.unit || ""}</b> ({delta >= 0 ? "+" : ""}{fmtQty(delta)})</p>}
+    </Win>
+  );
+}
+
+function CountWin({ count, arts, moves, onChange, onFinish, onDelete, onClose }) {
+  const [q, setQ] = useState(""), [open, setOpen] = useState(false), [scan, setScan] = useState(false), [last, setLast] = useState("");
+  const scope = arts.filter((a) => (!count.loc || a.loc === count.loc) && (!count.group || a.group === count.group));
+  const L = count.lines || {};
+  const setLine = (id, v) => onChange({ ...count, lines: { ...L, [id]: v } });
+  const shown = scope.filter((a) => !open || L[a.id] == null || L[a.id] === "").filter((a) => !q || norm(`${a.text} ${a.number} ${a.ean} ${a.loc}`).includes(norm(q)))
+    .sort((x, y) => (x.loc || "").localeCompare(y.loc || "", "de") || (x.text || "").localeCompare(y.text || "", "de"));
+  const done = scope.filter((a) => L[a.id] != null && L[a.id] !== "").length;
+  const diffs = scope.filter((a) => L[a.id] != null && L[a.id] !== "" && Number(L[a.id]) !== stockAt(a, moves, count.date));
+  return (
+    <Win id="invcount" onClose={onClose} dirty={false}>
+      <div className="panelhead"><b>📋 {count.name}</b><button className="btn primary" disabled={!done} onClick={() => {
+        if (confirm(`Inventur abschließen?\n${done} von ${scope.length} Artikeln gezählt, ${diffs.length} Differenz${diffs.length === 1 ? "" : "en"} werden zum ${fmtDate(count.date)} gebucht.${done < scope.length ? `\n${scope.length - done} ungezählte Artikel bleiben unverändert.` : ""}`)) onFinish(count);
+      }}>Abschließen</button><XBtn /></div>
+      <div className="grid2">
+        <label>Stichtag<input type="date" value={count.date} max={todayISO()} onChange={(e) => onChange({ ...count, date: e.target.value })} /></label>
+        <label>Bezeichnung<input value={count.name} onChange={(e) => onChange({ ...count, name: e.target.value })} /></label>
+      </div>
+      <div className="cntprog"><div style={{ width: (scope.length ? (done / scope.length) * 100 : 0) + "%" }} /></div>
+      <p className="muted small">{done} / {scope.length} gezählt · {diffs.length} Differenzen{count.loc ? " · Lagerort " + count.loc : ""}{count.group ? " · Gruppe " + count.group : ""} · wird automatisch gespeichert</p>
+      <div className="row cntbar">
+        <div className="searchbar grow"><span>🔍</span><input type="search" placeholder="Artikel suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <button className={"chip" + (open ? " on" : "")} onClick={() => setOpen(!open)}>nur offene</button>
+        <button className="btn" onClick={() => setScan(true)}>📷 Scan-Zählung</button>
+      </div>
+      {last && <div className="lookbox ok">{last}</div>}
+      <div className="cntlist">
+        {shown.map((a) => { const soll = stockAt(a, moves, count.date), v = L[a.id], has = v != null && v !== "", d = has ? Number(v) - soll : 0; return (
+          <div key={a.id} className={"cntrow" + (has ? " done" : "")}>
+            <ArtIco a={a} size={38} />
+            <div className="grow"><b className="one">{a.text}</b><small className="muted block">{[a.number, a.loc, "Soll " + fmtQty(soll) + " " + (a.unit || "")].filter(Boolean).join(" · ")}</small></div>
+            <button className="chip" onClick={() => setLine(a.id, String(Math.max(0, (Number(v) || 0) - 1)))}>−</button>
+            <input className="cntin" inputMode="decimal" value={v ?? ""} placeholder="Ist" onChange={(e) => setLine(a.id, e.target.value.replace(",", "."))} />
+            <button className="chip" onClick={() => setLine(a.id, String((Number(v) || 0) + 1))}>＋</button>
+            <span className={"cntdiff " + (d < 0 ? "neg" : d > 0 ? "pos" : "")}>{has ? (d ? (d > 0 ? "+" : "") + fmtQty(d) : "✓") : ""}</span>
+          </div>
+        ); })}
+        {!shown.length && <MEmpty>{scope.length ? "Alle Artikel gezählt 🎉" : "Keine Lagerartikel in diesem Bereich – im Artikel „Lagerartikel“ aktivieren."}</MEmpty>}
+      </div>
+      <button className="link red small" style={{ marginTop: 10 }} onClick={() => confirm("Diese offene Inventur verwerfen?") && (onDelete(count), onClose())}>Inventur verwerfen</button>
+      {scan && createPortal(<CodeScanWin multi title="Scan-Zählung (jeder Scan +1)" onClose={() => setScan(false)} onResult={(code) => {
+        const a = scope.find((x) => x.ean && x.ean === code);
+        if (!a) { setLast(`Code ${code} ist keinem Artikel zugeordnet.`); return; }
+        const n = (Number((count.lines || {})[a.id]) || 0) + 1; setLine(a.id, String(n)); setLast(`✓ ${a.text}: ${fmtQty(n)} ${a.unit || ""}`);
+      }} />, document.querySelector(".app") || document.body)}
+    </Win>
+  );
+}
+
+function InventoryPage({ setTab, notify }) {
+  const mob = useMobileBeta();
+  const [arts, setArts] = useLsState("articles", []);
+  const [moves, setMoves] = useLsState("stockMoves", []);
+  const [counts, setCounts] = useLsState("stockCounts", []);
+  const [view, setView] = useLsState("invView", "bestand");
+  const [q, setQ] = useState(""), [loc, setLoc] = useState("alle");
+  const [mv, setMv] = useState(null), [scan, setScan] = useState(false), [cnt, setCnt] = useState(null), [edit, setEdit] = useState(null), [newCnt, setNewCnt] = useState(null);
+  const invoices = ls.get("invoices", []);
+  const stockArts = arts.filter((a) => a.stock && !a.inactive);
+  const allMoves = useMemo(() => [...moves, ...stockSales(arts, invoices)], [moves, arts]);
+  const st = (a) => stockAt(a, allMoves);
+  const locs = [...new Set(stockArts.map((a) => a.loc).filter(Boolean))].sort();
+  const low = stockArts.filter((a) => a.min !== "" && a.min != null && st(a) <= Number(a.min));
+  const value = kbR2(stockArts.reduce((s, a) => s + Math.max(0, st(a)) * (Number(a.ek) || 0), 0));
+  const lastInv = counts.filter((c) => c.status === "abgeschlossen").sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
+  const openCounts = counts.filter((c) => c.status !== "abgeschlossen");
+  const filt = (l) => l.filter((a) => loc === "alle" || (loc === "ohne" ? !a.loc : a.loc === loc)).filter((a) => !q || norm(`${a.text} ${a.number} ${a.ean} ${a.loc} ${a.supplier}`).includes(norm(q)));
+  const saveArt = (a) => setArts((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
+  const addMove = (m) => { setMoves((l) => [...l, m]); if (m.ek != null) setArts((l) => l.map((x) => (x.id === m.art ? { ...x, ek: m.ek } : x))); notify?.(`${MV_TYPES[m.type][0]}: ${m.qty > 0 ? "+" : ""}${fmtQty(m.qty)}`); };
+  const finish = (c) => {
+    const scope = stockArts.filter((a) => (!c.loc || a.loc === c.loc) && (!c.group || a.group === c.group));
+    const lines = scope.filter((a) => c.lines?.[a.id] != null && c.lines[a.id] !== "").map((a) => ({ art: a.id, number: a.number || "", text: a.text, unit: a.unit || "", loc: a.loc || "", soll: stockAt(a, allMoves, c.date), ist: Number(c.lines[a.id]) || 0, ek: Number(a.ek) || 0 }));
+    const mvNew = lines.filter((l) => l.ist !== l.soll).map((l) => ({ id: uid(), art: l.art, type: "inventur", qty: kbR2(l.ist - l.soll), date: c.date, note: c.name, countId: c.id, created: new Date().toISOString() }));
+    setMoves((l) => [...l, ...mvNew]);
+    setCounts((l) => l.map((x) => (x.id === c.id ? { ...c, status: "abgeschlossen", closedAt: new Date().toISOString(), snapshot: lines } : x)));
+    setCnt(null); setView("inventur"); notify?.(`Inventur abgeschlossen · ${mvNew.length} Differenzen gebucht`);
+  };
+  const invPdf = async (c) => { const L = c.snapshot || []; const tot = kbR2(L.reduce((s, l) => s + l.ist * l.ek, 0));
+    saveBlob(await tablePdf({ title: `Inventurliste – ${c.name}`, subtitle: `Stichtag ${fmtDate(c.date)} · ${({ ...CO_DEFAULT, ...ls.get("company", {}) }).name || ""} · Bewertung zu Einstandspreisen (netto)`, landscape: true,
+      kpis: [["Positionen", String(L.length)], ["Differenzen", String(L.filter((l) => l.ist !== l.soll).length)], ["Inventurwert", fmtMoney(tot)]],
+      columns: [{ label: "Art.-Nr.", w: 1.1 }, { label: "Bezeichnung", w: 4 }, { label: "Lagerort", w: 1.5 }, { label: "Soll", w: 0.8, align: "right" }, { label: "Ist", w: 0.8, align: "right" }, { label: "Diff.", w: 0.8, align: "right" }, { label: "Einheit", w: 0.8 }, { label: "EK €", w: 1, align: "right" }, { label: "Wert €", w: 1.2, align: "right" }],
+      rows: L.map((l) => [l.number, l.text, l.loc, fmtQty(l.soll), fmtQty(l.ist), fmtQty(l.ist - l.soll), l.unit, l.ek, kbR2(l.ist * l.ek)]), totals: ["", "Summe", "", "", "", "", "", "", tot],
+      note: "\n\n______________________________   Gezählt von / Datum            ______________________________   Geprüft von" }), `inventur-${c.date}.pdf`); };
+  const invXlsx = (c) => downloadXlsx(`inventur-${c.date}.xlsx`, [{ name: "Inventur", head: ["Art.-Nr.", "Bezeichnung", "Lagerort", "Soll", "Ist", "Differenz", "Einheit", "EK €", "Wert €"], rows: (c.snapshot || []).map((l) => [l.number, l.text, l.loc, l.soll, l.ist, kbR2(l.ist - l.soll), l.unit, l.ek, kbR2(l.ist * l.ek)]) }]);
+  const listPdf = async (c) => { const scope = stockArts.filter((a) => (!c.loc || a.loc === c.loc) && (!c.group || a.group === c.group)); const by = {};
+    scope.forEach((a) => (by[a.loc || "Ohne Lagerort"] = by[a.loc || "Ohne Lagerort"] || []).push(a));
+    saveBlob(await tablePdf({ title: `Zählliste – ${c.name}`, subtitle: `Stichtag ${fmtDate(c.date)} · zum Ausfüllen`, columns: [{ label: "Art.-Nr.", w: 1.2 }, { label: "Bezeichnung", w: 4.5 }, { label: "Einheit", w: 1 }, { label: "Gezählt", w: 1.6 }],
+      sections: Object.entries(by).map(([h, l]) => ({ heading: h, rows: l.sort((x, y) => (x.text || "").localeCompare(y.text || "", "de")).map((a) => [a.number || "", a.text, a.unit || "", "________"]) })) }), `zaehlliste-${c.date}.pdf`); };
+  const orderPdf = async () => { const by = {}; low.forEach((a) => (by[a.supplier || "Ohne Lieferant"] = by[a.supplier || "Ohne Lieferant"] || []).push(a));
+    saveBlob(await tablePdf({ title: "Bestellvorschlag", subtitle: `Stand ${fmtDate(todayISO())} · Artikel auf/unter Mindestbestand`, columns: [{ label: "Art.-Nr.", w: 1.2 }, { label: "Bezeichnung", w: 4 }, { label: "Bestand", w: 1, align: "right" }, { label: "Mindest", w: 1, align: "right" }, { label: "Bestellen", w: 1.1, align: "right" }, { label: "Einheit", w: 0.9 }, { label: "EK €", w: 1, align: "right" }],
+      sections: Object.entries(by).map(([h, l]) => ({ heading: h, rows: l.map((a) => [a.number || "", a.text, fmtQty(st(a)), fmtQty(a.min), fmtQty(reorderQty(a, st(a))), a.unit || "", Number(a.ek) || ""]) })) }), `bestellvorschlag-${todayISO()}.pdf`); };
+  const stockXlsx = () => downloadXlsx(`lagerbestand-${todayISO()}.xlsx`, [{ name: "Bestand", head: ["Art.-Nr.", "Bezeichnung", "Gruppe", "Lagerort", "Lieferant", "Bestand", "Einheit", "Mindestbestand", "EK €", "Wert €", "EAN"], rows: filt(stockArts).map((a) => [a.number || "", a.text, a.group || "", a.loc || "", a.supplier || "", st(a), a.unit || "", a.min ?? "", Number(a.ek) || "", kbR2(Math.max(0, st(a)) * (Number(a.ek) || 0)), a.ean || ""]) },
+    { name: "Bewegungen", head: ["Datum", "Art.-Nr.", "Bezeichnung", "Art", "Menge", "Notiz"], rows: [...allMoves].sort((a, b) => b.date.localeCompare(a.date)).map((m) => { const a = arts.find((x) => x.id === m.art) || {}; return [fmtDate(m.date), a.number || "", a.text || "?", MV_TYPES[m.type]?.[0] || m.type, m.qty, m.note || ""]; }) }]);
+  const startCount = (c) => { const n = { id: uid(), name: `Inventur ${fmtDate(todayISO())}`, date: todayISO(), status: "offen", lines: {}, ...c }; setCounts((l) => [...l, n]); setCnt(n.id); setNewCnt(null); };
+  const exportItems = [{ head: "Lager & Inventur" }, { label: "📊 Lagerbestand Excel", sub: "Bestand + alle Bewegungen", run: stockXlsx },
+    { label: "📄 Lagerbestand CSV", run: () => downloadCsv(`lagerbestand-${todayISO()}.csv`, ["Art.-Nr.", "Bezeichnung", "Lagerort", "Bestand", "Einheit", "Mindestbestand", "EK €"], filt(stockArts).map((a) => [a.number || "", a.text, a.loc || "", st(a), a.unit || "", a.min ?? "", Number(a.ek) || ""])) },
+    { label: "🛒 Bestellvorschlag PDF", sub: `${low.length} Artikel`, run: orderPdf }];
+  const VIEWS = [["bestand", "Bestand", stockArts.length], ["nachbestellen", "Nachbestellen", low.length], ["bewegungen", "Bewegungen"], ["inventur", "Inventuren", openCounts.length || null]];
+  const stats = [{ label: "Lagerwert (EK)", value: fmtMoney(value), sub: `${stockArts.length} Lagerartikel` }, { label: "Nachbestellen", value: low.length, vcls: low.length ? "neg" : "", alert: !!low.length, sub: "auf/unter Mindestbestand", onClick: () => setView("nachbestellen") },
+    { label: "Letzte Inventur", value: lastInv ? fmtDate(lastInv.date) : "noch keine", sub: openCounts.length ? `${openCounts.length} offen` : "Stichtag", onClick: () => setView("inventur") }];
+  const artRow = (a) => { const s = st(a), isLow = a.min !== "" && a.min != null && s <= Number(a.min); return mob ? (
+    <MItem key={a.id} icon={<ArtIco a={a} />} title={a.text} tags={[isLow && { label: "nachbestellen", color: "var(--red)" }]} sub={[a.number, a.loc, a.min != null && a.min !== "" && "min " + fmtQty(a.min)].filter(Boolean).join(" · ")}
+      amount={fmtQty(s)} amountCls={isLow ? "neg" : ""} amountSub={a.unit || ""} onClick={() => setMv({ a })}
+      swipe={{ left: [{ icon: "✎", label: "Artikel", bg: "#64748b", run: () => setEdit(a) }], right: [{ icon: "📥", label: "Zugang", bg: "#16a34a", run: () => setMv({ a, type: "eingang" }) }, { icon: "📤", label: "Abgang", bg: "#ef4444", run: () => setMv({ a, type: "entnahme" }) }] }} />
+  ) : (
+    <div key={a.id} className="frow">
+      <ArtIco a={a} size={42} />
+      <div className="grow click" onClick={() => setEdit(a)}><b>{a.text}</b><small className="muted block">{[a.number, a.loc && "📍 " + a.loc, a.supplier && "🚚 " + a.supplier, a.ek && "EK " + fmtMoney(Number(a.ek))].filter(Boolean).join(" · ")}</small></div>
+      {view === "nachbestellen" && <span className="small">bestellen: <b>{fmtQty(reorderQty(a, s))}</b></span>}
+      <div className="right invqty"><b className={isLow ? "neg" : ""}>{fmtQty(s)} <small>{a.unit || ""}</small></b><small className="muted block">{a.min != null && a.min !== "" ? "min " + fmtQty(a.min) : ""}</small></div>
+      <button className="chip" title="Zugang" onClick={() => setMv({ a, type: "eingang" })}>＋</button>
+      <button className="chip" title="Abgang" onClick={() => setMv({ a, type: "entnahme" })}>−</button>
+    </div>
+  ); };
+  const moveList = [...allMoves].filter((m) => { const a = arts.find((x) => x.id === m.art); return a && (!q || norm(`${a.text} ${a.number} ${m.note}`).includes(norm(q))); }).sort((a, b) => b.date.localeCompare(a.date) || (b.created || "").localeCompare(a.created || "")).slice(0, 300);
+  const body = view === "bewegungen" ? (
+    mob ? mGroup(moveList, (m) => m.date).map(([d, l]) => <React.Fragment key={d}><MHead>{fmtDate(d)}</MHead>{l.map((m) => { const a = arts.find((x) => x.id === m.art); return (
+      <MItem key={m.id} icon={<MIco e={MV_TYPES[m.type]?.[1] || "•"} />} title={a.text} sub={[MV_TYPES[m.type]?.[0], m.note].filter(Boolean).join(" · ")} amount={(m.qty > 0 ? "+" : "") + fmtQty(m.qty)} amountCls={m.qty < 0 ? "neg" : "pos"} amountSub={a.unit || ""}
+        swipe={!m.derived ? { right: [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: () => confirm("Bewegung löschen?") && setMoves((x) => x.filter((y) => y.id !== m.id)) }] } : undefined} />); })}</React.Fragment>)
+    : moveList.map((m) => { const a = arts.find((x) => x.id === m.art); return (
+      <div key={m.id} className="frow"><span className="caticon" style={{ width: 36, height: 36, background: "var(--card2)" }}>{MV_TYPES[m.type]?.[1]}</span>
+        <div className="grow"><b>{a.text}</b><small className="muted block">{fmtDate(m.date)} · {MV_TYPES[m.type]?.[0]}{m.note ? " · " + m.note : ""}</small></div>
+        <b className={m.qty < 0 ? "neg" : "pos"}>{m.qty > 0 ? "+" : ""}{fmtQty(m.qty)} <small>{a.unit || ""}</small></b>
+        {!m.derived ? <button className="chip" title="Löschen" onClick={() => confirm("Bewegung löschen?") && setMoves((x) => x.filter((y) => y.id !== m.id))}>✕</button> : <span style={{ width: 34 }} />}</div>); })
+  ) : view === "inventur" ? (<>
+    <div className="row"><button className="btn primary" onClick={() => setNewCnt({ loc: "", group: "" })}>＋ Neue Inventur</button><span className="muted small grow">Stichtagsinventur oder permanente Teil-Inventur je Lagerort/Gruppe</span></div>
+    {!counts.length && <MEmpty>Noch keine Inventur. Starte eine Zählung – am Handy auch per Strichcode-Scan.</MEmpty>}
+    {[...counts].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map((c) => { const closed = c.status === "abgeschlossen", L = c.snapshot || [], tot = kbR2(L.reduce((s, l) => s + l.ist * l.ek, 0)); return (
+      <div key={c.id} className={"frow" + (closed ? "" : " click")} onClick={() => !closed && setCnt(c.id)}>
+        <span className="caticon" style={{ width: 40, height: 40, background: "var(--card2)" }}>{closed ? "✅" : "📝"}</span>
+        <div className="grow"><b>{c.name}</b><small className="muted block">Stichtag {fmtDate(c.date)}{c.loc ? " · " + c.loc : ""}{c.group ? " · " + c.group : ""} · {closed ? `${L.length} Pos. · ${L.filter((l) => l.ist !== l.soll).length} Diff. · Wert ${fmtMoney(tot)}` : `${Object.values(c.lines || {}).filter((v) => v !== "").length} gezählt`}</small></div>
+        {closed ? <><button className="chip" onClick={(e) => { e.stopPropagation(); invPdf(c); }}>🖨 PDF</button><button className="chip" onClick={(e) => { e.stopPropagation(); invXlsx(c); }}>📊</button></>
+          : <><span className="stpill st-open">offen</span><button className="chip" title="Zählliste drucken" onClick={(e) => { e.stopPropagation(); listPdf(c); }}>🖨</button></>}
+      </div>); })}
+  </>) : (() => { const l = filt(view === "nachbestellen" ? low : stockArts).sort((x, y) => (x.text || "").localeCompare(y.text || "", "de"));
+    if (!stockArts.length) return <MEmpty>Noch keine Lagerartikel. Öffne einen Artikel und aktiviere „Lagerartikel“ – oder lege direkt einen neuen an.</MEmpty>;
+    if (!l.length) return <MEmpty>{view === "nachbestellen" ? "Alles ausreichend auf Lager 👍" : "Keine Treffer."}</MEmpty>;
+    return mob && loc === "alle" ? mGroup([...l].sort((x, y) => (x.loc || "~").localeCompare(y.loc || "~", "de")), (a) => a.loc || "Ohne Lagerort").map(([g, x]) => <React.Fragment key={g}><MHead right={x.length}>{g}</MHead>{x.map(artRow)}</React.Fragment>) : l.map(artRow); })();
+  const newArt = () => setEdit({ id: uid(), text: "", unit: "Stk", price: "", number: "", group: "", stock: true, autoSales: true, initQty: "" });
+  const scanHit = (code) => { setScan(false); const a = arts.find((x) => x.ean === code); if (a?.stock) setMv({ a }); else if (a) setEdit({ ...a, stock: true }); else setEdit({ id: uid(), text: "", unit: "Stk", price: "", number: "", group: "", ean: code, stock: true, autoSales: true, initQty: "", autoLookup: true }); };
+  const locChips = locs.length ? [["alle", "Alle Orte"], ...locs.map((l) => [l, l]), ["ohne", "Ohne Ort"]] : [];
+  const viewChips = VIEWS.map(([k, l, n]) => <button key={k} className={"chip" + (view === k ? " on" : "")} onClick={() => setView(k)}>{l}{n ? <small> {n}</small> : ""}</button>);
+  return (
+    <div className="ctpage invstock">
+      {mob ? (
+      <div className="mpage">
+        <MStats items={stats} />
+        <MActs items={[{ label: "📷 Scannen", primary: true, run: () => setScan(true) }, { label: "＋ Lagerartikel", run: newArt }, { label: "📋 Inventur", run: () => setView("inventur") }]} />
+        <MBar q={q} setQ={setQ} placeholder="Artikel, Nummer, Lagerort suchen">{null}</MBar>
+        <div className="mchips">{viewChips}<ExportMenu items={exportItems} /></div>
+        {!!locChips.length && (view === "bestand" || view === "nachbestellen") && <div className="mchips">{locChips.map(([k, l]) => <button key={k} className={"chip" + (loc === k ? " on" : "")} onClick={() => setLoc(k)}>{l}</button>)}</div>}
+        <div className="mtxlist">{body}</div>
+      </div>
+      ) : (<>
+      <div className="kbstats">{stats.map((s, i) => <div key={i} className={"tile kbstat" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b><small className="muted">{s.sub}</small></div>)}</div>
+      <div className="invbar">
+        <button className="btn primary" onClick={() => setScan(true)}>📷 Scannen & buchen</button>
+        <button className="btn" onClick={newArt}>＋ Lagerartikel</button>
+        <button className="btn" onClick={() => setNewCnt({ loc: "", group: "" })}>📋 Neue Inventur</button>
+        <span className="grow" />
+        <ExportMenu items={exportItems} />
+        {setTab && <button className="chip" onClick={() => setTab("artikel")}>📦 Artikel</button>}
+      </div>
+      <div className="chips invfilter">{viewChips}</div>
+      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Artikel, Nummer, Lagerort, Lieferant suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      {!!locChips.length && (view === "bestand" || view === "nachbestellen") && <div className="chips invfilter">{locChips.map(([k, l]) => <button key={k} className={"chip" + (loc === k ? " on" : "")} onClick={() => setLoc(k)}>{l}</button>)}</div>}
+      <FitScroll><section className="tile ctlist">{body}</section></FitScroll>
+      </>)}
+      {mv && <StockMoveWin a={mv.a} type={mv.type} st={st(mv.a)} onSave={addMove} onClose={() => setMv(null)} />}
+      {scan && <CodeScanWin title="Lagerartikel scannen" onClose={() => setScan(false)} onResult={scanHit} />}
+      {edit && <ArticleEditor a={edit} onSave={(a, mvs) => { saveArt(a); if (mvs?.length) setMoves((l) => [...l, ...mvs]); }} onDelete={(a) => setArts((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
+      {cnt && counts.find((c) => c.id === cnt) && <CountWin count={counts.find((c) => c.id === cnt)} arts={stockArts} moves={allMoves} onChange={(c) => setCounts((l) => l.map((x) => (x.id === c.id ? c : x)))}
+        onFinish={finish} onDelete={(c) => setCounts((l) => l.filter((x) => x.id !== c.id))} onClose={() => setCnt(null)} />}
+      {newCnt && <Win id="newcount" onClose={() => setNewCnt(null)} small dirty={false}>
+        <div className="panelhead"><b>Neue Inventur</b><button className="btn primary" onClick={() => startCount(newCnt)}>Zählung starten</button><XBtn /></div>
+        <label>Umfang – Lagerort<select value={newCnt.loc} onChange={(e) => setNewCnt({ ...newCnt, loc: e.target.value })}><option value="">Alle Lagerorte (Stichtagsinventur)</option>{locs.map((l) => <option key={l}>{l}</option>)}</select></label>
+        <label>Artikelgruppe<select value={newCnt.group} onChange={(e) => setNewCnt({ ...newCnt, group: e.target.value })}><option value="">Alle Gruppen</option>{[...new Set(stockArts.map((a) => a.group).filter(Boolean))].map((g) => <option key={g}>{g}</option>)}</select></label>
+        <p className="muted small">Gezählt wird gegen den Sollbestand zum Stichtag. Beim Abschließen werden Differenzen als „Inventurdifferenz“ gebucht und eine Inventurliste mit Bewertung (Einstandspreis) erstellt.</p>
+      </Win>}
     </div>
   );
 }
@@ -10556,4 +11104,37 @@ html,body{min-height:100%}
 .vehmenu>button.on{background:color-mix(in srgb,var(--acc) 14%,transparent)}
 .vehmi{font-size:22px;width:30px;text-align:center}
 .vehmenu .menusep{height:1px;background:var(--line);margin:4px 0}
+
+/* v0.64 Kassabuch · Lager & Inventur */
+.kbstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.kbstat{display:flex;flex-direction:column;gap:2px;padding:14px 16px}.kbstat b{font-size:20px}
+.kbkind{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.kbbeleg{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;display:flex;flex-direction:column;gap:6px}
+.kbbelegrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.kbtable{padding:0;overflow:hidden}
+.kbr{display:grid;grid-template-columns:86px 92px minmax(0,2.4fr) minmax(0,1.3fr) 110px 110px 120px;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);font-size:14px}
+.kbr .r{text-align:right;font-variant-numeric:tabular-nums}.kbr .stpill{margin-left:8px;min-width:0}
+.kbh{font-size:12px;font-weight:700;color:var(--mut);position:sticky;top:0;background:var(--card);z-index:2}
+.kbfoot{position:static;border-top:2px solid var(--line);border-bottom:0;font-size:14px;color:inherit}
+.kbopen{color:var(--mut);font-style:italic}
+.kbstorno b,.kbstorno .pos,.kbstorno .neg{text-decoration:line-through;opacity:.6}
+.kbdenoms{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:8px 0}
+.kbden{display:grid;grid-template-columns:1fr 64px;gap:2px 8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin:0}
+.kbden input{text-align:right;padding:6px 8px}.kbden small{grid-column:1/-1;text-align:right}
+.kbsum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.kbsum div{background:var(--card2);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column}.kbsum b{font-size:18px}
+.kbhero{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0 14px}.kbhero>span:first-child{font-size:30px;font-weight:800}
+.kbrow{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}.kbrow span{text-align:right}
+.kbsetrow{margin-bottom:10px;padding:12px}
+.artphoto{border-radius:12px;object-fit:cover;flex:none}
+.artstock{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;display:flex;flex-direction:column;gap:6px}
+.invqty{min-width:90px}.invqty b{font-size:17px}
+.cntprog{height:6px;border-radius:99px;background:var(--card2);overflow:hidden;margin:8px 0 4px}.cntprog div{height:100%;background:var(--acc);transition:width .2s}
+.cntbar{gap:8px;flex-wrap:wrap;margin-bottom:6px}.cntbar .searchbar{margin:0;min-width:160px}
+.cntlist{display:flex;flex-direction:column}
+.cntrow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}.cntrow.done{background:color-mix(in srgb,var(--ok) 7%,transparent)}
+.cntin{width:68px;text-align:center;padding:8px 4px;font-weight:700}
+.cntdiff{width:48px;text-align:right;font-weight:700;font-size:13px}
+@media(max-width:700px){.kbsum b{font-size:15px}.kbdenoms{grid-template-columns:1fr 1fr}.cntrow .chip{padding:6px 10px}.cntin{width:56px}}
+.cntrow .grow{min-width:0}
+@media(max-width:700px){.cntrow>.caticon,.cntrow>.artphoto{display:none}.cntdiff{width:38px}}
 `;

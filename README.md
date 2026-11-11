@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.64.0
+
+- **Neue Handy-Ansichten sind Standard**: Der Test-Schalter in den Einstellungen entfällt, bis 700 px Breite gelten immer die neuen Listen-Ansichten.
+- **Kassabuch (neuer Reiter)**: Bareinnahmen/-ausgaben einzeln mit fortlaufender Nummer je Jahr, Kategorie, USt-Satz und Beleg (Dokument verknüpfen, fotografieren, Belegnummer oder Eigenbeleg). Buchungen sind unveränderbar – Korrektur nur per **Storno** (Gegenbuchung, Original bleibt sichtbar). Kassenminus und Rückdatieren vor den letzten Kassensturz werden verhindert. **Kassensturz** mit Zählung nach Scheinen/Münzen, Soll-Ist-Differenz, Protokoll (PDF) und optionaler Differenzbuchung. Mehrere Kassen mit Anfangsbestand. Export als PDF (Anfangs-/Endbestand), Excel, CSV. Hinweis: ersetzt keine Registrierkasse nach RKSV.
+- **Lager & Inventur (neuer Reiter)**: Bestand je Lagerartikel aus Bewegungen (Anfangsbestand, Wareneingang, Entnahme, Korrektur, Inventurdifferenz) und – abschaltbar – automatisch aus Rechnungen. Scannen & buchen per Strichcode, Lagerorte, Mindest-/Zielbestand mit Liste „Nachbestellen“ und Bestellvorschlag (PDF, nach Lieferant), Lagerwert zu Einstandspreisen. **Inventur**: Stichtags- oder Teil-Inventur je Lagerort/Gruppe, Zählliste zum Ausdrucken, Zählen mit ＋/− oder Scan-Zählung (jeder Scan +1), Soll-Ist-Differenzen, Abschluss bucht Differenzen und erzeugt Inventurliste mit Bewertung (PDF/Excel).
+- **Artikelverwaltung erweitert**: Foto, Einkaufspreis (mit Marge), Lieferant, Lagerartikel mit Lagerort, Mindest-/Zielbestand; Bestand wird in der Artikelliste angezeigt.
+- Nicht am echten Gerät getestet: Kamera-Scan (Scan-Zählung), Beleg-Foto im Kassabuch.
+
 ## v0.63.1
 - Fahrtenbuch: Die Fahrzeugauswahl ist jetzt ein Dropdown. Mit der Maus öffnet es beim Darüberfahren, per Finger beim Antippen. Es zeigt alle Fahrzeuge mit Modell/Kennzeichen, dazu „bearbeiten“ und „＋ Fahrzeug hinzufügen“.
 - Scan-Knöpfe vereinheitlicht (KI-Kassenbon-Auslesung):
