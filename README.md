@@ -2,6 +2,21 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.66.0
+
+- **Konten-Design für alle Reiter (Test)**: Schalter unter Einstellungen → Darstellung, standardmäßig aus. Nur Optik, keine Funktionsänderung.
+  - Kopfkarte mit Kennzahlen (großer Hauptwert + Kennzahlenfelder) in Rechnungen, Mahnungen, Verträge, Kassabuch, Lager & Inventur; neu mit Kennzahlen: Kunden, Artikel, Dokumente. Am Handy ersetzt die Kopfkarte die wischbaren Kacheln.
+  - Chip-Leiste statt großer Buttons (Desktop und Handy).
+  - Desktop: Listen als Tabelle mit fixer Kopfzeile (Name – Details – Betrag) in Rechnungen, Mahnungen, Kunden, Artikel, Verträge, Lager.
+  - Unverändert: Dokumentenliste, Fixkosten & Abos (Kachelraster) und Fahrtenbuch behalten ihre Listenform.
+
+## v0.65.0
+
+- **Kassabuch: KI-Scan** wie bei der Ausgabe – „Beleg scannen“, „QR-Code“ (RKSV) und „Foto / PDF“. Die KI füllt Betrag, Datum und Buchungstext, der Beleg wird als Dokument abgelegt und verknüpft.
+- **Lager: Wareneingang per Beleg (KI)** – Lieferschein/Rechnung/Bon scannen, die KI liest die Positionen; jede Position einem Lagerartikel zuordnen oder neu anlegen, Menge und Preis prüfen, alles in einem Schritt einbuchen.
+- **Konten (Desktop): „👁 Konten ein/aus“** – Fenster mit Schalter je Konto zum Aktivieren/Deaktivieren (deaktivierte Konten fehlen in Liste, Übersicht, Analyse, Vermögen; Buchungen bleiben erhalten).
+- Getestet mit simulierter KI-Antwort; echter Kamera-Scan und echte KI-Auslesung nicht getestet.
+
 ## v0.64.1
 
 - Inventur-Zählfenster: Abstand zwischen Suchfeld, „nur offene“ und „Scan-Zählung“ korrigiert.

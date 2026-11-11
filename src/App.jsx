@@ -2011,8 +2011,8 @@ function AppMain() {
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
         {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
         {tab === "artikel" && <ArticlesPage setTab={setTab} />}
-        {tab === "inventur" && <InventoryPage setTab={setTab} notify={notify} />}
-        {tab === "kassa" && <KassaPage docs={active} onOpen={setOpenId} notify={notify} onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]} />}
+        {tab === "inventur" && <InventoryPage setTab={setTab} notify={notify} docs={active} onOpen={setOpenId} onScan={scanFor} onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]} />}
+        {tab === "kassa" && <KassaPage docs={active} onOpen={setOpenId} notify={notify} onScan={scanFor} onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]} />}
         {tab === "kunden" && <ContactsPage setTab={setTab} req={bizReq} busy={ctBusy} setBusy={setCtBusy} />}
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} onFiles={onFiles} docBusy={docBusy} notify={notify} />}
         {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
@@ -4382,6 +4382,8 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
 
   return (
     <>
+      <KStats items={[{ label: "Dokumente", value: docs.length, sub: `${list.length} im aktuellen Filter` }, { label: "Heuer", value: docs.filter((d) => (d.documentDate || "").startsWith(todayISO().slice(0, 4))).length },
+        { label: "Steuerrelevant", value: docs.filter((d) => d.taxRelevant).length }, { label: "Kategorien", value: new Set(docs.map((d) => d.category)).size }, { label: "Summe Filter", value: fmtMoney(list.reduce((t, d) => t + (Number(d.amount?.total) || 0), 0)) }]} />
       <div className="searchbar">
         <span>🔍</span>
         <input placeholder="Dokumente durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} type="search" />
@@ -4982,6 +4984,7 @@ const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
 function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = () => {}, addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc: accProp, setAcc, sel: selProp = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
+  const [accVis, setAccVis] = useState(false);
   const [pick, setPick] = useState(false);
   // Maus auf einer Konto-Karte = Vorschau nur dieses Kontos (alles andere ausgeblendet)
   const [peek, setPeek] = useState("");
@@ -5066,6 +5069,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       {newAcc && <AccountSheet txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm)} onClose={() => setNewAcc(false)} onSave={(a) => { setAccounts((l) => [...l, a]); setNewAcc(false); setAcc(a.id); notify(`Konto „${a.name}“ angelegt`); }} />}
       {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => { setImp(null); if (impQ.current.files.length) setTimeout(nextImp, 50); }} />}
       {logoOpen && <LogoWin txs={txs} onClose={() => setLogoOpen(false)} />}
+      {accVis && <AccVisWin accounts={accounts} txs={txs} onHide={accActions.onHide} onUnhide={accActions.onUnhide} onClose={() => setAccVis(false)} />}
       {txOpen && <TxSheet scanReceiptFor={scanReceiptFor} receiptFor={receiptFor} txs={txs} recurring={recurring} subs={subs} goTab={goTab} resetCp={resetCp} onSearch={(v) => { setQ(v); setMonth(""); }} onAccount={(id) => setAcc?.(id)} onColl={(id) => { setColl(id); setSel?.([]); }} addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txs.find((x) => x.id === txOpen.id) || txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
   </>);
   // ---------- Handy: Kontenliste → Kontodetail (Finanzguru-Stil) ----------
@@ -5244,6 +5248,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           <button className="chip on chipdrop" onClick={() => setPick(true)}>{allSel ? "Alle Konten" : acc ? accName(acc) : `${sel.length} Konten`} <span aria-hidden="true">▾</span></button>
           {!allSel && <button className="chip" onClick={() => setSel([])}>✕ Alle anzeigen</button>}
           {selA && !peek && <button className="chip" onClick={() => setEditAcc(selA)}>✎ Konto bearbeiten</button>}
+          <button className={"chip desktop-only" + (hiddenAccs.length ? " on" : "")} title="Konten aktivieren / deaktivieren" onClick={() => setAccVis(true)}>👁 Konten ein/aus{hiddenAccs.length ? ` (${hiddenAccs.length} aus)` : ""}</button>
           <select className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
           {(() => { const cl = ls.get("txColls", []); if (!cl.length) return null;
             return coll ? <button className="chip on" onClick={() => setColl("")} title="Sammlungsfilter aufheben">📁 {cl.find((c) => c.id === coll)?.name || "Sammlung"} · {fmtMoney(list.reduce((a, t) => a + t.amount, 0))} ✕</button>
@@ -5530,9 +5535,34 @@ function MobileBetaSetting() {
   return <label className="switchrow"><span><b>Neue Handy-Ansichten (Test)</b><small className="muted block">Konten, Rechnungen, Mahnungen, Kunden, Artikel und Verträge im neuen Listen-Design (nur am Handy)</small></span>
     <input type="checkbox" className="switch" checked={on} onChange={(e) => set(e.target.checked)} /></label>;
 }
+/* ---------- Konten-Design für alle Reiter (Test, Einstellungen → Darstellung) ---------- */
+if (typeof document !== "undefined" && ls.get("kontoLook", false)) document.documentElement.classList.add("klook");
+function useKLook() { return useFlag("kontoLook", false)[0]; }
+function KLookSetting() {
+  const [on, set] = useFlag("kontoLook", false);
+  useEffect(() => { document.documentElement.classList.toggle("klook", !!on); }, [on]);
+  return <label className="switchrow"><span><b>Konten-Design für alle Reiter (Test)</b><small className="muted block">Kopfkarte mit Kennzahlen, Chip-Leiste und Tabellen mit fixer Kopfzeile wie im Reiter Konten – nur Optik, jederzeit abschaltbar</small></span>
+    <input type="checkbox" className="switch" checked={!!on} onChange={(e) => set(e.target.checked)} /></label>;
+}
+// Kopfkarte im Konten-Stil: erster Wert groß, die übrigen als Kennzahlen-Reihe
+function KHero({ items }) {
+  const [a, ...rest] = items.filter(Boolean);
+  if (!a) return null;
+  return (
+    <div className="hero hero-stable khero">
+      <small>{a.label}</small>
+      <div className={"hero-v" + (a.onClick ? " click" : "")} onClick={a.onClick}>{a.value}</div>
+      <div className="hsub"><span>{a.sub || "\u00a0"}</span></div>
+      {!!rest.length && <div className={"hero-row" + (rest.length >= 4 ? " four" : "")}>{rest.slice(0, 4).map((s, i) => <div key={i} className={s.onClick ? "click" : ""} onClick={s.onClick}><small>{s.label}</small><b>{s.value}</b></div>)}</div>}
+    </div>
+  );
+}
+// Nur im Test-Design sichtbar: Kennzahlen für Reiter, die bisher keine hatten
+function KStats({ items }) { return useKLook() ? <KHero items={items} /> : null; }
 const mGroup = (arr, keyFn) => { const out = []; for (const x of arr) { const k = keyFn(x); const g = out[out.length - 1]; if (g && g[0] === k) g[1].push(x); else out.push([k, [x]]); } return out; };
-const MStats = ({ items }) => <div className="mstats">{items.filter(Boolean).map((s, i) => <div key={i} className={"tile mstatc" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b>{s.sub && <small className="muted">{s.sub}</small>}</div>)}</div>;
-const MActs = ({ items }) => <div className="mactions">{items.filter(Boolean).map((a, i) => <button key={i} className={"btn" + (a.primary ? " primary" : "")} onClick={a.run}>{a.label}</button>)}</div>;
+const MStats = ({ items }) => useKLook() ? <KHero items={items} /> : <div className="mstats">{items.filter(Boolean).map((s, i) => <div key={i} className={"tile mstatc" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b>{s.sub && <small className="muted">{s.sub}</small>}</div>)}</div>;
+const MActs = ({ items }) => useKLook() ? <div className="mchips kacts">{items.filter(Boolean).map((a, i) => <button key={i} className={"chip" + (a.primary ? " on" : "")} onClick={a.run}>{a.label}</button>)}</div>
+  : <div className="mactions">{items.filter(Boolean).map((a, i) => <button key={i} className={"btn" + (a.primary ? " primary" : "")} onClick={a.run}>{a.label}</button>)}</div>;
 const MBar = ({ q, setQ, placeholder, chips, children }) => (
   <div className="msticky">
     {setQ && <div className="searchbar"><span>🔍</span><input type="search" placeholder={placeholder} value={q} onChange={(e) => setQ(e.target.value)} /></div>}
@@ -6723,6 +6753,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
   const sections = {
     "darstellung": <><SetSec id="darstellung" title="Darstellung">
         <TabbarSetting />
+        <KLookSetting />
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
             <button key={k} role="radio" aria-checked={themeMode === k} className={themeMode === k ? "on" : ""} onClick={() => setThemeMode(k)}>
@@ -6920,10 +6951,12 @@ function nextInvNumber(list, kind, co, date) {
   return pre + String(max + 1).padStart(3, "0");
 }
 /* Bereich unterhalb eines festen Kopfes: scrollt für sich, wenn genug Platz ist (sonst normal) */
-function FitScroll({ children, className = "" }) {
+function FitScroll({ children, className = "", cols }) {
   const ref = useRef(null);
   const h = useFitHeight(ref);
-  return <div ref={ref} className={"fitscroll" + (h ? " fit" : "") + (className ? " " + className : "")} style={h ? { maxHeight: h } : undefined}>{children}</div>;
+  const k = useKLook();
+  return <div ref={ref} className={"fitscroll" + (h ? " fit" : "") + (className ? " " + className : "")} style={h ? { maxHeight: h } : undefined}>
+    {k && cols && <div className="khead"><span>{cols[0]}</span><span>{cols[1]}</span><span>{cols[2]}</span></div>}{children}</div>;
 }
 function useFitHeight(ref, min = 200) {
   const [h, setH] = useState(null);
@@ -7796,7 +7829,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Nummer, Kunde, Leistung suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <div className="chips invfilter">{FILTERS.map(([k, l]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({cnt(k)})</small></button>)}</div>
 
-      <FitScroll>
+      <FitScroll className="kinv" cols={["Kunde", "Nummer · Datum", "Betrag · Status"]}>
       {filter === "wiederkehrend" ? (
         <section className="tile">
           {!templates.length && <p className="muted small">Noch keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „Wiederkehrend“ anhaken – FinDocu legt dann zum Termin automatisch einen Entwurf an, den du nur noch prüfst und ausstellst.</p>}
@@ -8073,7 +8106,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
       </div>
       {onFiles && showDrop && <DropField onFiles={dropCt} onHide={() => setShowDrop(false)} busy={!!docBusy} title="Verträge oder Ordner hierher ziehen" what="PDF & Fotos · Vertrag wird automatisch angelegt" />}
       {docBusy && waitIds.length > 0 && <ImportBar {...docBusy} />}
-      <FitScroll>
+      <FitScroll cols={["Vertrag", "Details", "Kosten · Kündigung"]}>
       {imp && <section className="tile">
         <div className="tilehead"><b>Von Claude erkannte Verträge in deinen Dokumenten</b></div>
         {docCands.map((d) => <div key={d.id} className="frow"><Thumb d={d} /><div className="grow"><b>{d.contract.provider}</b><small className="muted block">{d.title} · {d.contract.amount ? fmtMoney(d.contract.amount) + " " + (d.contract.interval || "") : ""}</small></div>
@@ -8284,6 +8317,8 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
   };
   return (
     <div className="ctpage">
+      <KStats items={[{ label: "Kontakte", value: list.length, sub: `${list.filter((c) => (c.type || "Kunde") === "Kunde").length} Kunden` }, { label: "Lieferanten", value: list.filter((c) => c.type === "Lieferant").length },
+        { label: "Mit offenen Rechnungen", value: list.filter((c) => invOf(c).some((i) => i.status !== "bezahlt")).length }, { label: "Offen gesamt", value: fmtMoney(list.reduce((t, c) => t + invOf(c).filter((i) => i.status !== "bezahlt").reduce((a, i) => a + invTotal(i), 0), 0)) }, { label: "Umsatz gesamt", value: fmtMoney(list.reduce((t, c) => t + invOf(c).reduce((a, i) => a + invTotal(i), 0), 0)) }]} />
       {mob ? (
       <div className="mpage">
         <MActs items={[{ label: "＋ Kontakt", primary: true, run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) }, { label: "📱 Aus Handy", run: fromPhone }, { label: "📇 .vcf", run: () => vcfRef.current?.click() }]} />
@@ -8341,7 +8376,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         accept=".vcf,text/vcard,text/x-vcard" isOk={(f) => /\.vcf$/i.test(f.name) || /vcard/i.test(f.type)} emptyMsg="Keine .vcf-Kontaktdateien gefunden." />
         : null}
       {busy && <ImportBar {...busy} />}
-      <FitScroll>
+      <FitScroll cols={["Name", "Art · Ort", "Offen"]}>
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📱 Aus Handy-Kontakten“ übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
         {shown.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
@@ -8645,6 +8680,8 @@ function ArticlesPage({ setTab }) {
     .sort((x, y) => (sort === "umsatz" ? y.u.sum - x.u.sum : sort === "preis" ? (Number(y.a.price) || 0) - (Number(x.a.price) || 0) : (x.a.text || "").localeCompare(y.a.text || "", "de")));
   return (
     <div className="ctpage">
+      <KStats items={[{ label: "Artikel & Leistungen", value: list.length, sub: `${list.filter((a) => !a.inactive).length} aktiv` }, { label: "Lagerartikel", value: list.filter((a) => a.stock).length },
+        { label: "Gruppen", value: groups.length }, { label: "Verrechnet", value: fmtMoney(list.reduce((t, a) => t + usage(a).sum, 0)) }, { label: "Ø Preis", value: fmtMoney(list.length ? list.reduce((t, a) => t + (Number(a.price) || 0), 0) / list.length : 0) }]} />
       {mob ? (
       <div className="mpage">
         <MActs items={[{ label: "＋ Artikel", primary: true, run: () => setEdit({ id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: grp !== "alle" && grp !== "ohne" ? grp : "" }) }, { label: "📷 Scannen", run: () => setScan(true) }]} />
@@ -8691,7 +8728,7 @@ function ArticlesPage({ setTab }) {
         {[["alle", "Alle", list.length], ...groups.map((g) => [g, g, list.filter((a) => a.group === g).length]), ["ohne", "Ohne Gruppe", list.filter((a) => !a.group).length]]
           .filter(([k, , n]) => k === "alle" || n || C.groups.includes(k)).map(([k, l, n]) => <button key={k} className={"chip" + (grp === k ? " on" : "")} onClick={() => setGrp(k)}>{l} <small>({n})</small></button>)}
       </div>
-      <FitScroll>
+      <FitScroll cols={["Bezeichnung", "Nummer · Gruppe", "Preis"]}>
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Artikel. Mit „＋ Artikel“ anlegen oder beim Schreiben einer Rechnung mit ☆ merken – beim Tippen der Bezeichnung werden sie vorgeschlagen."}</p>}
         {shown.map(({ a, u }) => (
@@ -8742,12 +8779,29 @@ function useKassa() {
   return { kassen, setKassen, entries, setEntries, counts, setCounts };
 }
 
-function KassaEntryWin({ init, kasse, entries, lastCount, docs, onUpload, onSave, onClose }) {
+function KassaEntryWin({ init, kasse, entries, lastCount, docs, onUpload, onScan, onOpen, notify, onSave, onClose }) {
   const [e, setE] = useState(init);
   const set = (p) => setE((x) => ({ ...x, ...p }));
-  const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
-  const fileRef = useRef();
+  const [err, setErr] = useState(""), [busy, setBusy] = useState(false), [qrOpen, setQrOpen] = useState(false), [touched, setTouched] = useState({});
+  const fileRef = useRef(), filled = useRef(null);
   const minDate = lastCount?.date || kasse.startDate || "";
+  const tset = (p) => { set(p); setTouched((t) => ({ ...t, ...Object.fromEntries(Object.keys(p).map((k) => [k, true])) })); };
+  const clampDate = (d) => { const x = pastOrToday(d, todayISO()); return minDate && x < minDate ? minDate : x; };
+  const attach = async (file, opts = {}) => { setBusy(true); filled.current = null; try { const id = await onUpload(file, opts); if (id) set({ docId: id, eigen: false }); } finally { setBusy(false); } };
+  const sdoc = e.docId ? (docs || []).find((d) => d.id === e.docId) : null;
+  useEffect(() => {
+    if (!sdoc || sdoc.status !== "done" || filled.current === sdoc.id) return;
+    filled.current = sdoc.id;
+    setE((x) => ({ ...x, amount: touched.amount && x.amount ? x.amount : sdoc.amount?.total != null ? amtStr(sdoc.amount.total) : x.amount,
+      date: touched.date ? x.date : clampDate(sdoc.purchaseDate || sdoc.documentDate),
+      text: touched.text && x.text ? x.text : sdoc.merchant || sdoc.sender || sdoc.title || x.text,
+      ...(sdoc.direction === "einnahme" && !touched.kind ? { kind: "ein", cat: KB_CATS.ein[0] } : {}) }));
+    notify?.("Beleg ausgelesen" + (sdoc.amount?.total != null ? ": " + fmtMoney(sdoc.amount.total) : ""));
+  }, [sdoc?.status, sdoc?.id]);
+  const onQr = (text) => { setQrOpen(false); const q = parseReceiptQR(text);
+    if (!q) return notify?.("Kein Kassenbon-QR erkannt (RKSV/TSE). Tipp: Beleg stattdessen scannen – die KI liest ihn aus.");
+    setE((x) => ({ ...x, amount: touched.amount && x.amount ? x.amount : amtStr(q.total), date: touched.date ? x.date : clampDate(q.date), beleg: x.beleg || q.receiptNo || "" }));
+    notify?.(`QR-Code gelesen: ${fmtMoney(q.total)}${q.date ? " · " + fmtDate(q.date) : ""}`); };
   const receipts = (docs || []).filter((d) => !d.trashed).sort((a, b) => (b.documentDate || b.created || "").localeCompare(a.documentDate || a.created || "")).slice(0, 80);
   const linked = docs?.find((d) => d.id === e.docId);
   const save = () => {
@@ -8766,15 +8820,32 @@ function KassaEntryWin({ init, kasse, entries, lastCount, docs, onUpload, onSave
     <Win id="kbentry" onClose={onClose} small dirty={!!(e.amount || e.text)}>
       <div className="panelhead"><b>{e.kind === "ein" ? "Bareinnahme" : "Barausgabe"} buchen</b><button className="btn primary" disabled={busy} onClick={save}>Buchen</button><XBtn /></div>
       <div className="kbkind">
-        <button className={"chip" + (e.kind === "ein" ? " on pos" : "")} onClick={() => set({ kind: "ein", cat: KB_CATS.ein[0] })}>＋ Einnahme</button>
-        <button className={"chip" + (e.kind === "aus" ? " on neg" : "")} onClick={() => set({ kind: "aus", cat: KB_CATS.aus[0] })}>− Ausgabe</button>
+        <button className={"chip" + (e.kind === "ein" ? " on pos" : "")} onClick={() => tset({ kind: "ein", cat: KB_CATS.ein[0] })}>＋ Einnahme</button>
+        <button className={"chip" + (e.kind === "aus" ? " on neg" : "")} onClick={() => tset({ kind: "aus", cat: KB_CATS.aus[0] })}>− Ausgabe</button>
         <span className="muted small grow right">{kasse.name}</span>
       </div>
+      {onUpload && (e.docId || busy ? (
+        <div className="expatt">
+          {sdoc?.thumb ? <img src={sdoc.thumb} alt="" /> : <span className="attpdf">📄</span>}
+          <div className="grow"><b>{busy ? "Beleg wird hochgeladen …" : sdoc?.status === "processing" ? "KI liest den Beleg …" : sdoc?.status === "error" ? "Auslesen fehlgeschlagen" : "Beleg angehängt"}</b>
+            <small className="muted block">{sdoc?.status === "processing" ? "Felder werden gleich automatisch ausgefüllt" : sdoc?.status === "done" ? (sdoc.merchant || sdoc.sender || sdoc.title || "") + (sdoc.amount?.total ? " · " + fmtMoney(sdoc.amount.total) : "") : ""}</small></div>
+          {sdoc?.status === "processing" && <span className="spin" />}
+          {sdoc && onOpen && <button className="btn sm" onClick={() => onOpen(sdoc.id)}>Öffnen</button>}
+          <button className="iconbtn" title="Beleg entfernen" aria-label="Beleg entfernen" onClick={() => set({ docId: null })}>✕</button>
+        </div>
+      ) : (
+        <div className="expscan">
+          <button className="expbig" onClick={() => onScan((f, o) => attach(f, { ...o, scanned: true }))}><span className="expico">📷</span><b>Beleg scannen</b><small>KI liest Firma, Betrag & Datum</small></button>
+          <button className="expbig" onClick={() => setQrOpen(true)}><span className="expico">▦</span><b>QR-Code</b><small>Registrierkassen-QR (RKSV)</small></button>
+          <button className="expbig" onClick={() => fileRef.current.click()}><span className="expico">🖼</span><b>Foto / PDF</b><small>aus Galerie oder Dateien</small></button>
+          <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(ev) => { const f = ev.target.files[0]; ev.target.value = ""; if (f) attach(f); }} />
+        </div>
+      ))}
       <div className="grid2">
-        <label>Betrag €<input autoFocus inputMode="decimal" value={e.amount} placeholder="0,00" onChange={(ev) => set({ amount: ev.target.value })} /></label>
-        <label>Datum<input type="date" value={e.date} min={minDate || undefined} max={todayISO()} onChange={(ev) => set({ date: ev.target.value })} /></label>
+        <label>Betrag €<input autoFocus inputMode="decimal" value={e.amount} placeholder="0,00" onChange={(ev) => tset({ amount: ev.target.value })} /></label>
+        <label>Datum<input type="date" value={e.date} min={minDate || undefined} max={todayISO()} onChange={(ev) => tset({ date: ev.target.value })} /></label>
       </div>
-      <label>Buchungstext<input value={e.text} placeholder={e.kind === "ein" ? "z. B. Barverkauf Tagesumsatz" : "z. B. Briefmarken Post"} onChange={(ev) => set({ text: ev.target.value })} /></label>
+      <label>Buchungstext<input value={e.text} placeholder={e.kind === "ein" ? "z. B. Barverkauf Tagesumsatz" : "z. B. Briefmarken Post"} onChange={(ev) => tset({ text: ev.target.value })} /></label>
       <div className="grid2">
         <label>Kategorie<select value={e.cat} onChange={(ev) => set({ cat: ev.target.value })}>{KB_CATS[e.kind].map((c) => <option key={c}>{c}</option>)}</select></label>
         <label>USt-Satz<select value={e.vat ?? ""} onChange={(ev) => set({ vat: ev.target.value === "" ? null : Number(ev.target.value) })}><option value="">– keine –</option>{[20, 13, 10, 0].map((v) => <option key={v} value={v}>{v} %</option>)}</select></label>
@@ -8786,16 +8857,11 @@ function KassaEntryWin({ init, kasse, entries, lastCount, docs, onUpload, onSave
           <label>Dokument verknüpfen<select value={e.docId || ""} onChange={(ev) => set({ docId: ev.target.value || null })}><option value="">– keines –</option>{receipts.map((d) => <option key={d.id} value={d.id}>{fmtDate(d.documentDate || d.created)} · {d.title || d.name}</option>)}</select></label>
         </div>
         <div className="kbbelegrow">
-          {onUpload && <button className="btn sm" disabled={busy} onClick={() => fileRef.current.click()}>{busy ? "⏳ wird gespeichert …" : "📷 Beleg fotografieren / hochladen"}</button>}
-          <input ref={fileRef} type="file" accept="image/*,application/pdf" capture="environment" hidden onChange={async (ev) => {
-            const f = ev.target.files[0]; ev.target.value = ""; if (!f) return;
-            setBusy(true); try { const d = await onUpload(f); if (d?.id) set({ docId: d.id }); } finally { setBusy(false); }
-          }} />
-          {linked && <span className="small">📎 {linked.title || linked.name}</span>}
           <label className="check"><input type="checkbox" checked={!!e.eigen} onChange={(ev) => set({ eigen: ev.target.checked })} /> Eigenbeleg (kein Fremdbeleg vorhanden)</label>
         </div>
       </div>
       {err && <div className="lookbox err">{err}</div>}
+      {qrOpen && createPortal(<CodeScanWin title="Kassenbon-QR scannen" onClose={() => setQrOpen(false)} onResult={(code) => onQr(code)} />, document.querySelector(".app") || document.body)}
       <p className="muted small">🔒 Nach dem Buchen ist der Eintrag unveränderbar. Fehler werden per <b>Storno</b> korrigiert – Original und Storno bleiben sichtbar (BAO § 131).</p>
     </Win>
   );
@@ -8850,7 +8916,7 @@ function KassaDetailWin({ e, kasse, saldo, entries, docs, onOpen, onStorno, onCl
   );
 }
 
-function KassaPage({ docs, onOpen, onUpload, notify }) {
+function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
   const mob = useMobileBeta();
   const { kassen, setKassen, entries, setEntries, counts, setCounts } = useKassa();
   const [sel, setSel] = useLsState("kassaSel", "k1");
@@ -8913,7 +8979,7 @@ function KassaPage({ docs, onOpen, onUpload, notify }) {
     </section>
   );
   const modals = (<>
-    {form && <KassaEntryWin init={form} kasse={kasse} entries={entries} lastCount={lastCount} docs={docs} onUpload={onUpload} onSave={(n) => { setEntries((l) => [...l, n]); notify?.(`Gebucht: ${kbNo(n)}`); }} onClose={() => setForm(null)} />}
+    {form && <KassaEntryWin init={form} kasse={kasse} entries={entries} lastCount={lastCount} docs={docs} onUpload={onUpload} onScan={onScan} onOpen={onOpen} notify={notify} onSave={(n) => { setEntries((l) => [...l, n]); notify?.(`Gebucht: ${kbNo(n)}`); }} onClose={() => setForm(null)} />}
     {countOpen && <KassaCountWin kasse={kasse} entries={entries} onSave={saveCount} onClose={() => setCountOpen(false)} />}
     {det && <KassaDetailWin e={entries.find((x) => x.id === det) || {}} kasse={kasse} saldo={saldo[det]} entries={entries} docs={docs} onOpen={onOpen} onStorno={doStorno} onClose={() => setDet(null)} />}
     {setup && <KassaSetupWin kassen={kassen} setKassen={setKassen} entries={entries} sel={kasse.id} setSel={setSel} onClose={() => setSetup(false)} />}
@@ -8977,6 +9043,24 @@ function KassaPage({ docs, onOpen, onUpload, notify }) {
       </>)}
       {modals}
     </div>
+  );
+}
+
+function AccVisWin({ accounts, txs, onHide, onUnhide, onClose }) {
+  const on = accounts.filter((a) => !a.hidden).length;
+  return (
+    <Win id="accvis" onClose={onClose} small dirty={false}>
+      <div className="panelhead"><b>Konten aktivieren / deaktivieren</b><XBtn /></div>
+      <p className="muted small">Deaktivierte Konten verschwinden aus Kontenliste, Übersicht, Analyse und Vermögen. Die Buchungen bleiben gespeichert und sind nach dem Aktivieren wieder da.</p>
+      <div className="accvishead"><span className="muted small grow">{on} von {accounts.length} aktiv</span>
+        <button className="chip" disabled={on === accounts.length} onClick={() => accounts.filter((a) => a.hidden).forEach((a) => onUnhide(a.id))}>Alle aktivieren</button></div>
+      {accounts.map((a) => (
+        <label key={a.id} className={"switchrow accvisrow" + (a.hidden ? " off" : "")}>
+          <span className="accvisname"><AccIcon a={a} force /><span><b style={accStyle(a)}>{a.name}</b><small className="muted block">{txs.filter((t) => t.accountId === a.id).length} Buchungen</small></span></span>
+          <input type="checkbox" className="switch" checked={!a.hidden} onChange={(e) => (e.target.checked ? onUnhide(a.id) : onHide(a.id))} />
+        </label>
+      ))}
+    </Win>
   );
 }
 
@@ -9091,14 +9175,84 @@ function CountWin({ count, arts, moves, onChange, onFinish, onDelete, onClose })
   );
 }
 
-function InventoryPage({ setTab, notify }) {
+function StockReceiptWin({ arts, docs, onScan, onUpload, onOpen, onBook, onClose }) {
+  const [docId, setDocId] = useState(null), [busy, setBusy] = useState(false), [rows, setRows] = useState(null), [date, setDate] = useState(todayISO());
+  const fileRef = useRef();
+  const doc = docId ? (docs || []).find((d) => d.id === docId) : null;
+  const attach = async (file, opts = {}) => { setBusy(true); setRows(null); try { const id = await onUpload(file, opts); if (id) setDocId(id); } finally { setBusy(false); } };
+  const match = (name) => { const n = norm(name || ""); if (!n) return "";
+    const hit = arts.find((a) => norm(a.text || "") === n) || arts.find((a) => { const t = norm(a.text || ""); return t.length > 3 && (n.includes(t) || t.includes(n)); });
+    return hit ? hit.id : "__new"; };
+  useEffect(() => {
+    if (!doc || doc.status !== "done" || rows) return;
+    setDate(pastOrToday(doc.purchaseDate || doc.documentDate, todayISO()));
+    const li = (doc.lineItems || []).length ? doc.lineItems : [{ name: doc.title || doc.merchant || "", qty: 1, total: doc.amount?.total }];
+    setRows(li.map((it) => { const q = Number(it.qty) || 1; return { id: uid(), on: true, name: it.name || "", art: match(it.name), qty: String(Math.round(q * 1000) / 1000).replace(".", ","), ek: it.total != null ? amtStr(it.total / q) : "" }; }));
+  }, [doc?.status, doc?.id]);
+  const upd = (id, p) => setRows((l) => l.map((r) => (r.id === id ? { ...r, ...p } : r)));
+  const sel = (rows || []).filter((r) => r.on && parseAmt(r.qty) > 0 && (r.art !== "__new" || r.name.trim()));
+  const supplier = doc?.merchant || doc?.sender || "";
+  return (
+    <Win id="stockreceipt" onClose={onClose} dirty={!!rows}>
+      <div className="panelhead"><b>🧾 Wareneingang per Beleg</b><button className="btn primary" disabled={!sel.length} onClick={() => { onBook(sel.map((r) => ({ art: r.art, name: r.name.trim(), qty: parseAmt(r.qty), ek: parseAmt(r.ek) })), { date, supplier, docId }); onClose(); }}>{sel.length ? `${sel.length} Position${sel.length === 1 ? "" : "en"} einbuchen` : "Einbuchen"}</button><XBtn /></div>
+      {docId || busy ? (
+        <div className="expatt">
+          {doc?.thumb ? <img src={doc.thumb} alt="" /> : <span className="attpdf">📄</span>}
+          <div className="grow"><b>{busy ? "Beleg wird hochgeladen …" : doc?.status === "processing" ? "KI liest den Beleg …" : doc?.status === "error" ? "Auslesen fehlgeschlagen" : "Beleg ausgelesen"}</b>
+            <small className="muted block">{doc?.status === "done" ? [supplier, `${doc.lineItems?.length || 0} Positionen erkannt`].filter(Boolean).join(" · ") : doc?.status === "error" ? doc.error : "Positionen erscheinen gleich hier"}</small></div>
+          {doc?.status === "processing" && <span className="spin" />}
+          {doc && onOpen && <button className="btn sm" onClick={() => onOpen(doc.id)}>Öffnen</button>}
+          <button className="iconbtn" title="Beleg entfernen" aria-label="Beleg entfernen" onClick={() => { setDocId(null); setRows(null); }}>✕</button>
+        </div>
+      ) : (<>
+        <p className="muted small">Lieferschein, Rechnung oder Kassenbon scannen – die KI liest die Positionen aus. Du ordnest sie Lagerartikeln zu (oder legst neue an) und buchst alles in einem Schritt als Wareneingang.</p>
+        <div className="expscan two">
+          <button className="expbig" onClick={() => onScan((f, o) => attach(f, { ...o, scanned: true }))}><span className="expico">📷</span><b>Beleg scannen</b><small>KI liest Artikel, Menge & Preis</small></button>
+          <button className="expbig" onClick={() => fileRef.current.click()}><span className="expico">🖼</span><b>Foto / PDF</b><small>aus Galerie oder Dateien</small></button>
+          <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attach(f); }} />
+        </div>
+      </>)}
+      {rows && (<>
+        <div className="grid2"><label>Eingangsdatum<input type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} /></label><label>Lieferant<input value={supplier} disabled /></label></div>
+        <div className="srlist">
+          {rows.map((r) => (
+            <div key={r.id} className={"srrow" + (r.on ? "" : " off")}>
+              <input type="checkbox" checked={r.on} onChange={(e) => upd(r.id, { on: e.target.checked })} />
+              <div className="grow srmain">
+                <input value={r.name} placeholder="Bezeichnung" onChange={(e) => upd(r.id, { name: e.target.value })} />
+                <select value={r.art} onChange={(e) => upd(r.id, { art: e.target.value })}><option value="__new">＋ Neuen Lagerartikel anlegen</option>{arts.filter((a) => !a.inactive).map((a) => <option key={a.id} value={a.id}>→ {a.text}{a.stock ? "" : " (noch kein Lagerartikel)"}</option>)}</select>
+              </div>
+              <label className="srnum">Menge<input inputMode="decimal" value={r.qty} onChange={(e) => upd(r.id, { qty: e.target.value })} /></label>
+              <label className="srnum">Preis/Einh. €<input inputMode="decimal" value={r.ek} onChange={(e) => upd(r.id, { ek: e.target.value })} /></label>
+            </div>
+          ))}
+        </div>
+        <p className="muted small">Der Preis je Einheit wird als Einkaufspreis übernommen – so wie er am Beleg steht (bei Kassenbons meist brutto). Bitte prüfen.</p>
+      </>)}
+    </Win>
+  );
+}
+
+function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
   const mob = useMobileBeta();
   const [arts, setArts] = useLsState("articles", []);
   const [moves, setMoves] = useLsState("stockMoves", []);
   const [counts, setCounts] = useLsState("stockCounts", []);
   const [view, setView] = useLsState("invView", "bestand");
   const [q, setQ] = useState(""), [loc, setLoc] = useState("alle");
-  const [mv, setMv] = useState(null), [scan, setScan] = useState(false), [cnt, setCnt] = useState(null), [edit, setEdit] = useState(null), [newCnt, setNewCnt] = useState(null);
+  const [mv, setMv] = useState(null), [scan, setScan] = useState(false), [cnt, setCnt] = useState(null), [edit, setEdit] = useState(null), [newCnt, setNewCnt] = useState(null), [rcpt, setRcpt] = useState(false);
+  const bookReceipt = (lines, { date, supplier, docId }) => {
+    const created = [], patch = {}, mvs = [];
+    for (const l of lines) {
+      let id = l.art;
+      if (id === "__new") { id = uid(); created.push({ id, text: l.name, unit: "Stk", price: "", number: "", group: "", stock: true, autoSales: true, stockFrom: date, supplier, ...(l.ek > 0 ? { ek: l.ek } : {}) }); }
+      else patch[id] = { stock: true, ...(l.ek > 0 ? { ek: l.ek } : {}) };
+      mvs.push({ id: uid(), art: id, type: "eingang", qty: l.qty, date, note: "Beleg" + (supplier ? " · " + supplier : ""), docId, ...(l.ek > 0 ? { ek: l.ek } : {}), created: new Date().toISOString() });
+    }
+    setArts((l) => [...l.map((a) => (patch[a.id] ? { ...a, ...patch[a.id], stockFrom: a.stock ? a.stockFrom : a.stockFrom || date, autoSales: a.autoSales ?? true, supplier: a.supplier || supplier } : a)), ...created]);
+    setMoves((l) => [...l, ...mvs]);
+    notify?.(`Wareneingang gebucht: ${mvs.length} Position${mvs.length === 1 ? "" : "en"}${created.length ? ` · ${created.length} neue Artikel` : ""}`);
+  };
   const invoices = ls.get("invoices", []);
   const stockArts = arts.filter((a) => a.stock && !a.inactive);
   const allMoves = useMemo(() => [...moves, ...stockSales(arts, invoices)], [moves, arts]);
@@ -9189,7 +9343,7 @@ function InventoryPage({ setTab, notify }) {
       {mob ? (
       <div className="mpage">
         <MStats items={stats} />
-        <MActs items={[{ label: "📷 Scannen", primary: true, run: () => setScan(true) }, { label: "＋ Lagerartikel", run: newArt }, { label: "📋 Inventur", run: () => setView("inventur") }]} />
+        <MActs items={[{ label: "📷 Scannen", primary: true, run: () => setScan(true) }, onUpload && { label: "🧾 Beleg (KI)", run: () => setRcpt(true) }, { label: "＋ Lagerartikel", run: newArt }, { label: "📋 Inventur", run: () => setView("inventur") }]} />
         <MBar q={q} setQ={setQ} placeholder="Artikel, Nummer, Lagerort suchen">{null}</MBar>
         <div className="mchips">{viewChips}<ExportMenu items={exportItems} /></div>
         {!!locChips.length && (view === "bestand" || view === "nachbestellen") && <div className="mchips">{locChips.map(([k, l]) => <button key={k} className={"chip" + (loc === k ? " on" : "")} onClick={() => setLoc(k)}>{l}</button>)}</div>}
@@ -9199,6 +9353,7 @@ function InventoryPage({ setTab, notify }) {
       <div className="kbstats">{stats.map((s, i) => <div key={i} className={"tile kbstat" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b><small className="muted">{s.sub}</small></div>)}</div>
       <div className="invbar">
         <button className="btn primary" onClick={() => setScan(true)}>📷 Scannen & buchen</button>
+        {onUpload && <button className="btn" onClick={() => setRcpt(true)}>🧾 Wareneingang per Beleg (KI)</button>}
         <button className="btn" onClick={newArt}>＋ Lagerartikel</button>
         <button className="btn" onClick={() => setNewCnt({ loc: "", group: "" })}>📋 Neue Inventur</button>
         <span className="grow" />
@@ -9208,10 +9363,11 @@ function InventoryPage({ setTab, notify }) {
       <div className="chips invfilter">{viewChips}</div>
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Artikel, Nummer, Lagerort, Lieferant suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {!!locChips.length && (view === "bestand" || view === "nachbestellen") && <div className="chips invfilter">{locChips.map(([k, l]) => <button key={k} className={"chip" + (loc === k ? " on" : "")} onClick={() => setLoc(k)}>{l}</button>)}</div>}
-      <FitScroll><section className="tile ctlist">{body}</section></FitScroll>
+      <FitScroll cols={view === "inventur" ? ["Inventur", "Stichtag · Umfang", "Status"] : view === "bewegungen" ? ["Artikel", "Datum · Art", "Menge"] : ["Artikel", "Lagerort · Lieferant", "Bestand"]}><section className="tile ctlist">{body}</section></FitScroll>
       </>)}
       {mv && <StockMoveWin a={mv.a} type={mv.type} st={st(mv.a)} onSave={addMove} onClose={() => setMv(null)} />}
       {scan && <CodeScanWin title="Lagerartikel scannen" onClose={() => setScan(false)} onResult={scanHit} />}
+      {rcpt && <StockReceiptWin arts={arts} docs={docs} onScan={onScan} onUpload={onUpload} onOpen={onOpen} onBook={bookReceipt} onClose={() => setRcpt(false)} />}
       {edit && <ArticleEditor a={edit} onSave={(a, mvs) => { saveArt(a); if (mvs?.length) setMoves((l) => [...l, ...mvs]); }} onDelete={(a) => setArts((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
       {cnt && counts.find((c) => c.id === cnt) && <CountWin count={counts.find((c) => c.id === cnt)} arts={stockArts} moves={allMoves} onChange={(c) => setCounts((l) => l.map((x) => (x.id === c.id ? c : x)))}
         onFinish={finish} onDelete={(c) => setCounts((l) => l.filter((x) => x.id !== c.id))} onClose={() => setCnt(null)} />}
@@ -9305,7 +9461,7 @@ function DunningPage({ setTab, book }) {
         {setTab && <button className="btn" onClick={() => setTab("invoices")}>🧾 Rechnungen</button>}
         {setTab && <button className="btn" title="Mahnwesen einstellen" onClick={() => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); }}>⚙︎</button>}
       </div>
-      <FitScroll>
+      <FitScroll className="kinv" cols={["Kunde", "Rechnung · Fälligkeit", "Betrag · Stufe"]}>
       <section className="tile invlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b></div>
         {!over.length && <p className="muted small" style={{ padding: "0 14px" }}>Keine überfälligen Rechnungen 🎉</p>}
@@ -11138,4 +11294,59 @@ html,body{min-height:100%}
 @media(max-width:700px){.kbsum b{font-size:15px}.kbdenoms{grid-template-columns:1fr 1fr}.cntrow .chip{padding:6px 10px}.cntin{width:56px}}
 .cntrow .grow{min-width:0}
 @media(max-width:700px){.cntrow>.caticon,.cntrow>.artphoto{display:none}.cntdiff{width:38px}}
+
+/* v0.65 */
+.expscan.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.srlist{display:flex;flex-direction:column;margin:8px 0}
+.srrow{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}.srrow.off{opacity:.45}
+.srrow>input[type=checkbox]{margin-top:12px;flex:none}
+.srmain{display:flex;flex-direction:column;gap:4px;min-width:0}.srmain select{font-size:13px;padding:6px 8px}
+.srnum{width:84px;flex:none;margin:0;font-size:11px}.srnum input{padding:8px 6px;text-align:right}
+.accvisrow{padding:8px 0;border-bottom:1px solid var(--line)}.accvisrow.off .accvisname{opacity:.5}
+.accvisname{display:flex;align-items:center;gap:10px}
+@media(max-width:767px){.chip.desktop-only{display:none}}
+@media(max-width:700px){.srrow{flex-wrap:wrap}.srmain{flex:1 1 calc(100% - 34px)}.srnum{width:calc(50% - 4px);flex:1}}
+.accvishead{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.srrow>input[type=checkbox]{width:18px;height:18px;min-height:0;padding:0}
+@media(max-width:700px){.srmain{flex:1 1 0;min-width:calc(100% - 30px)}}
+
+/* v0.66 Konten-Design für alle Reiter (Test) – nur aktiv mit html.klook */
+.khero{margin:0 0 4px}.khero .hero-v.click,.khero .hero-row .click{cursor:pointer}
+.khead{display:none}
+html.klook .invstats,html.klook .kbstats{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--card);border-radius:26px;padding:20px 22px}
+html.klook :is(.invstats,.kbstats)>.tile{flex:1 1 150px;min-width:0;background:var(--card2)!important;box-shadow:none!important;border:0!important;padding:10px 12px!important;border-radius:14px;display:flex;flex-direction:column;gap:2px;margin:0}
+html.klook :is(.invstats,.kbstats)>.tile small{font-size:13px!important}
+html.klook :is(.invstats,.kbstats)>.tile b{font-size:17px!important}
+html.klook :is(.invstats,.kbstats)>.tile:first-child{flex:0 1 auto;min-width:230px;background:none!important;padding:0 16px 0 4px!important}
+html.klook :is(.invstats,.kbstats)>.tile:first-child b{font-size:38px!important;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+html.klook :is(.invstats,.kbstats)>.tile:first-child small:first-child{font-size:17px!important}
+html.klook .invbar .btn,html.klook .kacts .chip{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:500;min-height:0;height:auto;box-shadow:none}
+html.klook .invbar .btn.primary,html.klook .kacts .chip.on{background:color-mix(in srgb,var(--acc) 22%,var(--card));color:var(--acc);border-color:transparent}
+html.klook .kacts{flex-wrap:wrap;overflow:visible;margin:0;padding:0}
+@media(min-width:768px){
+html.klook .fitscroll>.khead{display:grid;grid-template-columns:54px 300px minmax(0,1fr) auto;gap:12px;position:sticky;top:0;z-index:3;background:var(--card);border-radius:14px 14px 0 0;padding:10px 16px;font-size:12px;font-weight:700;color:var(--mut);border-bottom:1px solid var(--line)}
+html.klook .fitscroll>.khead span:first-child{grid-column:2}html.klook .fitscroll>.khead span:last-child{text-align:right}
+html.klook .fitscroll>.khead+.tile,html.klook .fitscroll>.khead~.tile{border-radius:0 0 14px 14px;margin-top:0;padding-top:0;padding-bottom:0}
+html.klook .fitscroll .tile>.frow,html.klook .fitscroll .tile .dwrap>.frow{border:0;border-bottom:1px solid var(--line);border-radius:0;padding:7px 2px;gap:12px;align-items:center}
+html.klook .fitscroll .tile .frow:hover{background:var(--card2)}
+html.klook .fitscroll .tile .frow>.caticon,html.klook .fitscroll .tile .frow>.artphoto,html.klook .fitscroll .tile .frow>.thumb{width:34px!important;height:34px!important;font-size:16px!important;margin:0 4px}
+html.klook .fitscroll .tile .frow>.grow{display:grid;grid-template-columns:300px minmax(0,1fr);column-gap:12px;align-items:center;min-width:0}
+html.klook .fitscroll .tile .frow>.grow>b{grid-column:1;font-size:14px!important;font-weight:600!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html.klook .fitscroll .tile .frow>.grow>small{grid-column:2;font-size:13px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
+html.klook .fitscroll .tile .frow>.grow>.stpill{grid-column:2;justify-self:start;margin:0!important}
+html.klook .fitscroll .tile .frow>.grow>.cactions{grid-column:2;margin:0}
+html.klook .fitscroll .tile .frow .right b{font-size:14px}
+html.klook .fitscroll .invrow{padding:8px 16px!important}
+html.klook .fitscroll .invrow .invmain{display:grid;grid-template-columns:200px minmax(0,1fr);column-gap:12px;align-items:center}
+html.klook .fitscroll .invrow .invmain>.link{grid-column:1/-1}
+html.klook .fitscroll .invamt{font-size:14px!important;font-weight:600!important}
+html.klook .fitscroll.kinv>.khead{grid-template-columns:0 200px minmax(0,1fr) auto;padding-left:4px}
+html.klook .fitscroll.fit>.khead{flex:none}
+html.klook .fitscroll>.khead{margin-bottom:-12px}
+html.klook .fitscroll .invrow .row1 b{font-size:14px!important;font-weight:600!important}
+html.klook .fitscroll .invrow small{font-size:13px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
+@media(max-width:700px){html.klook .khero{margin:0}html.klook .khero .hero-row{flex-wrap:wrap}html.klook .khero .hero-row>div{flex:1 1 40%;min-width:0}}
+html.klook .invbar .chip,html.klook .invbar summary.chip,html.klook .invbar select.chip{font-size:13px!important;padding:6px 12px!important;min-height:0!important;height:auto!important}
+@media(min-width:768px){html.klook .fitscroll .invacts{width:auto!important;min-width:0!important;flex:none}html.klook .fitscroll .invrow .invmain{grid-template-columns:200px minmax(0,1fr)}}
 `;
