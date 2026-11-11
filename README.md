@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.64.1
+
+- Inventur-Zählfenster: Abstand zwischen Suchfeld, „nur offene“ und „Scan-Zählung“ korrigiert.
+
 ## v0.64.0
 
 - **Neue Handy-Ansichten sind Standard**: Der Test-Schalter in den Einstellungen entfällt, bis 700 px Breite gelten immer die neuen Listen-Ansichten.

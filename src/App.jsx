@@ -11129,7 +11129,8 @@ html,body{min-height:100%}
 .artstock{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;display:flex;flex-direction:column;gap:6px}
 .invqty{min-width:90px}.invqty b{font-size:17px}
 .cntprog{height:6px;border-radius:99px;background:var(--card2);overflow:hidden;margin:8px 0 4px}.cntprog div{height:100%;background:var(--acc);transition:width .2s}
-.cntbar{gap:8px;flex-wrap:wrap;margin-bottom:6px}.cntbar .searchbar{margin:0;min-width:160px}
+.cntbar{display:flex!important;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0}
+.cntbar .searchbar{flex:1 1 100%}.cntbar .searchbar{margin:0;min-width:160px}
 .cntlist{display:flex;flex-direction:column}
 .cntrow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}.cntrow.done{background:color-mix(in srgb,var(--ok) 7%,transparent)}
 .cntin{width:68px;text-align:center;padding:8px 4px;font-weight:700}
