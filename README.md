@@ -2,6 +2,19 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.83.0
+- **Listen-Aufbau wie Rechnungen** jetzt auch in Dokumente, Fixkosten & Abos, Verträge und Mahnungen:
+  - Oben: Hauptaktion, „☑ Auswählen“ und „Mehr“ (Export, Ablagefeld, Sprünge in andere Reiter).
+  - Filter als Chips, dazu 📅 Jahr, ↕ Sortierung und # Tags als Menüs; „☆ Ansicht merken“ speichert die Filter-Kombination.
+  - Mehrfachauswahl mit fixer Leiste unten:
+    - Dokumente: Teilen, ZIP, Tag, Papierkorb
+    - Fixkosten: Excel, Tag, Bestätigen, Beenden
+    - Verträge: Excel, Tag, Aktiv/Inaktiv
+    - Mahnungen: Drucken, Excel, Tag
+  - Tags in den Zeilen. Drucken direkt in der Zeile (Mahnungen, Verträge, Fixkosten über ⋯).
+  - Verträge und Mahnungen haben am Handy jetzt die fixierte Suchleiste mit Filtern.
+- **Suchfeld springt nicht mehr nach oben**: Beim Tippen bleibt die Suchleiste oben stehen und die Treffer beginnen direkt darunter. Die Seite schrumpft nicht mehr unter der aktuellen Position zusammen. Am Desktop springt die Liste in der Box auf den ersten Treffer.
+
 ## v0.82.1
 - **✕ zum Löschen in jedem Suchfeld**: erscheint, sobald etwas eingegeben ist, leert das Feld mit einem Tipp und lässt die Tastatur offen. Ersetzt das Browser-X, das es nicht in jedem Browser gibt (z. B. Firefox) – damit sieht es überall gleich aus.
 

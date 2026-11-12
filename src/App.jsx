@@ -2004,7 +2004,7 @@ function AppMain() {
           deleteAccount={deleteAccount} categories={categories} docs={active} onOpen={setOpenId} token={token} notify={notify}
           recurring={recurring} subs={subs} setSubs={setSubs} onManual={setManualTx} deleteTx={deleteTx}
           acc={selAcc} setAcc={setSelAcc} sel={effSel} allSel={allSel} setSel={setSelAccs} accActions={accActions} hiddenAccs={hiddenAccs} visAccounts={visAccounts} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
-        {tab === "docs" && <DocList onFiles={onFiles} docBusy={docBusy} trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
+        {tab === "docs" && <DocList saveDoc={saveDoc} onFiles={onFiles} docBusy={docBusy} trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup}
           deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null} />}
         {tab === "deadlines" && <Deadlines docs={dlDocs} onOpen={openDl} saveDoc={saveDl} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
@@ -4463,17 +4463,21 @@ function ChipBar({ storeKey, items, lead = null, className = "", cfg: extCfg, se
   );
 }
 
-function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, onFiles, docBusy }) {
+function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, onFiles, docBusy }) {
   const [showDrop, setShowDrop] = useLsState("docDrop", true);
   const [chipCfg, setChipCfg] = useLsState("docChips", { order: [], hidden: [] });
   const [q, setQ] = useState("");
   const [prevId, setPrevId] = useState(null);
   const [winPrev, setWinPrev] = useState(null);
-  const [pick, setPick] = useState(null); // Set der ausgewählten IDs (null = Auswahl aus)
-  const togglePick = (id) => setPick((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const [tag, setTag] = useState("");
-  const [year, setYear] = useState(""), [month, setMonth] = useState("");
-  const [sort, setSort] = useState("date");
+  // Listen-Aufbau wie Rechnungen: Jahr · Sortierung · Tags · Ansichten · Auswahl
+  const dDate = (d) => d.documentDate || d.createdAt || "";
+  const kit = useListKit("docs", { def: "date", dateOf: (d) => monthKey(d), sorts: {
+    date: ["Datum", "neueste zuerst", (a, b) => dDate(b).localeCompare(dDate(a))],
+    amount: ["Betrag", "höchster zuerst", (a, b) => (payAmt(b) || 0) - (payAmt(a) || 0)],
+    title: ["Titel", "A–Z", (a, b) => (a.title || "").localeCompare(b.title || "", "de")],
+    sender: ["Absender", "A–Z", (a, b) => (a.sender || "~").localeCompare(b.sender || "~", "de")] } });
+  const { pick, setPick, togglePick, yr: year, setYr: setYear, tagF: tag, setTagF: setTag, sortBy: sort } = kit;
+  const [month, setMonth] = useState("");
   const [taxOnly, setTaxOnly] = useState(false);
   const [scope, setScope] = useState(() => ls.get("docScope", "alle"));
   useEffect(() => ls.set("docScope", scope), [scope]);
@@ -4482,7 +4486,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
   useEffect(() => ls.set("view", view), [view]);
 
   const tags = useMemo(() => [...new Set(docs.flatMap((d) => d.tags || []))].sort(), [docs]);
-  const years = useMemo(() => [...new Set(docs.map((d) => monthKey(d).slice(0, 4)).filter(Boolean))].sort(), [docs]);
+  const years = useMemo(() => [...new Set(docs.map((d) => monthKey(d).slice(0, 4)).filter(Boolean))].sort().reverse(), [docs]);
 
   const list = useMemo(() => {
     const terms = norm(q).split(/\s+/).filter(Boolean);
@@ -4490,17 +4494,34 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
       .filter((d) => (scope === "alle" || docScope(d) === scope) && (area === "alle" || docArea(d) === area) && (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) && (!month || monthKey(d).slice(5, 7) === month) &&
         (!taxOnly || d.taxRelevant) && (!unpaid || (d.direction === "ausgabe" && d.amount?.total && !d.paid)))
       .filter((d) => { if (!terms.length) return true; const h = haystack(d); return terms.every((t) => h.includes(t)); })
-      .sort((a, b) => sort === "amount" ? (payAmt(b) || 0) - (payAmt(a) || 0)
-        : (b.documentDate || b.createdAt).localeCompare(a.documentDate || a.createdAt));
+      .sort(kit.sorts[sort]?.[2] || kit.sorts.date[2]);
   }, [docs, q, cat, tag, year, month, sort, taxOnly, unpaid, area, scope]);
 
   const counts = useMemo(() => Object.fromEntries(categories.map((c) => [c, docs.filter((d) => d.category === c).length])), [docs, categories]);
   const amt = (d) => d.amount?.total != null && (
     <span className={"amt" + (d.direction === "einnahme" ? " ok" : d.paid ? " paid" : "")} title={payAmt(d) !== d.amount.total ? `Brutto ${fmtMoney(d.amount.total)} · ausbezahlt ${fmtMoney(payAmt(d))}` : undefined}>{d.direction === "einnahme" ? "+" : ""}{fmtMoney(payAmt(d), d.amount.currency)}</span>);
+  // gespeicherte Ansichten: alle Filter dieses Reiters
+  const fState = JSON.stringify({ cat: cat || "", taxOnly, unpaid, month, area, scope });
+  const setFState = (j) => { try { const o = JSON.parse(j); setCat?.(o.cat || ""); setTaxOnly(!!o.taxOnly); setUnpaid(!!o.unpaid); setMonth(o.month || ""); setArea?.(o.area || "alle"); setScope(o.scope || "alle"); } catch {} };
+  const viewOn = (v) => v.filter === fState && (v.q || "") === q && (v.yr || "") === year && (v.tagF || "") === tag;
+  const saveView = () => { const n = prompt("Name der Ansicht:", [cat, taxOnly && "Steuer", unpaid && "Unbezahlt", month && MONTHS_DE[Number(month) - 1], year, tag && "#" + tag, q && "„" + q + "“"].filter(Boolean).join(" ")); if (!n) return; kit.setViews((v) => [...v, { id: uid(), n, filter: fState, q, yr: year, tagF: tag, sortBy: sort }]); };
+  const anyF = cat || taxOnly || unpaid || month || year || tag || q || area !== "alle" || scope !== "alle";
+  const zipOf = async (sel, name) => { const l = sel.map((d) => ({ ...d, __folder: fileSafe(d.category || "Sonstiges").replace(/_/g, " ") }));
+    const head = ["Datei", "Datum", "Titel", "Absender", "Kategorie", "Betrag €", "Steuerrelevant", "Tags"];
+    saveBlob(await docsZip(l, [{ name: "Übersicht.csv", data: csvBlob(head, l.map((d) => [d.__folder + "/" + docFileName(d), d.documentDate || "", d.title || "", d.sender || "", d.category || "", d.amount?.total ?? "", d.taxRelevant ? "ja" : "", (d.tags || []).join(", ")])) }]), name); };
+  const docExp = [{ head: `${list.length} Dokumente (aktueller Filter)` },
+    { label: "🗂 Dateien als ZIP", sub: "alle Dokumente im aktuellen Filter, nach Kategorie sortiert", disabled: !list.length, run: () => zipOf(list, `dokumente-${[year, month, taxOnly && "steuer", cat && fileSafe(cat)].filter(Boolean).join("-") || "alle"}.zip`) },
+    { label: "📄 Liste als CSV", disabled: !list.length, run: () => exportCsv(list, `dokumente${year ? "-" + year : ""}${month ? "-" + month : ""}${taxOnly ? "-steuer" : ""}.csv`) }];
+  const tagDocs = async (sel) => { const f = kitTagPrompt(sel); if (!f || !saveDoc) return; for (const d of sel) await saveDoc({ ...d, tags: f(d) }); };
   const status = (d) => d.status === "processing" ? <span className="muted small">⏳ wird analysiert …</span> : d.status === "error" ? <span className="err">⚠️ {d.error}{reanalyze && <button className="retry" onClick={(e) => { e.stopPropagation(); reanalyze(d); }}>↻ Neu analysieren</button>}</span> : null;
 
   return (
     <>
+      <div className="invbar ltbar docbar">
+        <span className="grow" />
+        <button className={"btn" + (pick ? " on" : "")} disabled={!list.length && !pick} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
+        <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[...(onFiles ? [{ k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }] : []), { head: "Export" }, ...exp2pick(docExp.slice(1))]} />
+      </div>
       <SearchBox placeholder="Dokumente durchsuchen" value={q} onChange={setQ}>
         <button className="iconbtn" onClick={() => setView(view === "list" ? "grid" : "list")} aria-label="Ansicht">{view === "list" ? "▦" : "☰"}</button>
       </SearchBox>
@@ -4521,26 +4542,18 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
           <DocTree docGroups={docGroups} docs={docs} selected={cat} onSelect={setCat} onToggleGroup={toggleDocGroup} variant="card" />
         </div>
       )}
-      <ChipBar storeKey="docChips" cfg={chipCfg} setCfg={setChipCfg} lead={cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>} items={[
+      <ChipBar storeKey="docChips" cfg={chipCfg} setCfg={setChipCfg} className="ltfilter" lead={<>{cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>}
+        {kit.views.map((v) => <span key={v.id} className="ltview"><button className={"chip" + (viewOn(v) ? " on" : "")} onClick={() => { setFState(v.filter); setQ(v.q || ""); setYear(v.yr || ""); setTag(v.tagF || ""); kit.setSortBy(v.sortBy || "date"); }}>☆ {v.n}</button><button className="ltx" title="Ansicht löschen" aria-label="Ansicht löschen" onClick={() => confirm(`Ansicht „${v.n}“ löschen?`) && kit.setViews((l) => l.filter((y) => y.id !== v.id))}>✕</button></span>)}</>} items={[
         deadlineTab && { k: "frist", label: "⏰ " + deadlineTab.label, el: <button className="chip" onClick={deadlineTab.open}>⏰ {deadlineTab.label}</button> },
         { k: "steuer", label: "🧾 Steuerrelevant", el: <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button> },
         { k: "unbezahlt", label: "💶 Unbezahlt", el: <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button> },
-        { k: "monat", label: "Monat", el: <PSelect className={"chip" + (month ? " on" : "")} value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{MONTHS_DE.map((m, i) => <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>)}</PSelect> },
-        { k: "jahr", label: "Jahr", el: <PSelect className={"chip" + (year ? " on" : "")} value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</PSelect> },
-        { k: "tags", label: "Tags", el: <PSelect className={"chip" + (tag ? " on" : "")} value={tag} onChange={(e) => setTag(e.target.value)}><option value="">Alle Tags</option>{tags.map((t) => <option key={t}>{t}</option>)}</PSelect> },
-        { k: "sort", label: "Sortierung", el: <PSelect className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></PSelect> },
-        { k: "pick", label: "☑︎ Auswählen", el: <button className={pick ? "chip on" : "chip"} disabled={!list.length} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑︎ Auswählen"}</button> },
-        { k: "csv", label: "⬇︎ Export", el: <ExportMenu items={[{ head: pick?.size ? `${pick.size} ausgewählt` : `${list.length} Dokumente (aktueller Filter)` },
-          { label: "🗂 Dateien als ZIP", sub: pick?.size ? "nur die ausgewählten Dokumente" : "alle Dokumente im aktuellen Filter, nach Kategorie sortiert", disabled: !list.length, run: async () => {
-            const l = (pick?.size ? list.filter((d) => pick.has(d.id)) : list).map((d) => ({ ...d, __folder: fileSafe(d.category || "Sonstiges").replace(/_/g, " ") }));
-            const tag = [year, month, taxOnly && "steuer", cat && fileSafe(cat)].filter(Boolean).join("-") || "alle";
-            const head = ["Datei", "Datum", "Titel", "Absender", "Kategorie", "Betrag €", "Steuerrelevant"];
-            saveBlob(await docsZip(l, [{ name: "Übersicht.csv", data: csvBlob(head, l.map((d) => [d.__folder + "/" + docFileName(d), d.documentDate || "", d.title || "", d.sender || "", d.category || "", d.amount?.total ?? "", d.taxRelevant ? "ja" : ""])) }]), `dokumente-${tag}.zip`);
-          } },
-          { label: "📄 Liste als CSV", disabled: !list.length, run: () => exportCsv(list, `dokumente${year ? "-" + year : ""}${month ? "-" + month : ""}${taxOnly ? "-steuer" : ""}.csv`) }]} /> },
+        { k: "monat", label: "Monat", el: <PickMenu icon="🗓" label={month ? MONTHS_DE[Number(month) - 1] : "Alle Monate"} title="Monat" items={[{ k: "", title: "Alle Monate", on: !month, run: () => setMonth("") }, ...MONTHS_DE.map((m, i) => { const v = String(i + 1).padStart(2, "0"); return { k: v, title: m, on: month === v, run: () => setMonth(v) }; })]} /> },
+        { k: "jahr", label: "Jahr", el: <PickMenu icon="📅" label={year || "Alle Jahre"} title="Jahr" items={[{ k: "", title: "Alle Jahre", on: !year, run: () => setYear("") }, ...years.map((y) => ({ k: y, title: y, on: year === y, run: () => setYear(y) }))]} /> },
+        { k: "sort", label: "Sortierung", el: <PickMenu icon="↕" label={kit.sorts[sort]?.[0]} title="Sortierung" items={Object.entries(kit.sorts).map(([k, [t, sub]]) => ({ k, title: t, sub, on: sort === k, run: () => kit.setSortBy(k) }))} /> },
+        { k: "tags", label: "Tags", el: <PickMenu icon="#" label={tag || "Tags"} title="Tags" items={[{ k: "", title: "Alle Tags", on: !tag, run: () => setTag("") }, ...tags.map((t) => ({ k: t, title: "#" + t, sub: `${docs.filter((d) => (d.tags || []).includes(t)).length} Dokumente`, on: tag === t, run: () => setTag(t) }))]} extra={[{ label: "Tags vergeben: „Auswählen“ → # Tag", run: () => {} }]} /> },
+        { k: "view", label: "☆ Ansicht merken", el: anyF ? <button className="chip" onClick={saveView}>☆ Ansicht merken</button> : null },
         { k: "scopebar", label: "👤 Leiste Privat / Firma", el: null },
         { k: "areabar", label: "🗂️ Leiste Bereiche", el: null },
-        onFiles && { k: "drop", label: "📥 Ablagefeld", el: <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button> },
       ]} />
       {onFiles && showDrop && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} />}
       {docBusy && <ImportBar {...docBusy} />}
@@ -4589,7 +4602,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
               {pick && <span className={"pickbox inline" + (pick.has(d.id) ? " on" : "")}>✓</span>}
               <Thumb d={d} />
               <div className="grow">
-                <div className="row1"><b className="clamp dtitle" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevId(prevId === d.id ? null : d.id); }}>{d.title}</b><span className="damtin">{amt(d)}</span></div>
+                <div className="row1"><b className="clamp dtitle" title="Vorschau ein-/ausblenden" onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevId(prevId === d.id ? null : d.id); }}>{d.title}</b><span className="damtin">{amt(d)}</span></div>
                 <small className="muted block">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
                 <div className="labels">
                   <Label c={d.category} />
@@ -4609,15 +4622,11 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         </div>
       )}
       </FitScroll>
-      {pick && (
-        <div className="pickbar">
-          <b>{pick.size} ausgewählt</b>
-          <button className="link" onClick={() => setPick(pick.size === list.length ? new Set() : new Set(list.map((d) => d.id)))}>{pick.size === list.length ? "Keine" : "Alle"}</button>
-          <span className="grow" />
-          <button className="btn primary" disabled={!pick.size} onClick={() => shareDocs(list.filter((d) => pick.has(d.id)))}><IcoShare /> Teilen</button>
-          <button className="btn" onClick={() => setPick(null)}>Fertig</button>
-        </div>
-      )}
+      <KitBulk kit={kit} shown={list} actions={[
+        { icon: <IcoShare />, label: "Teilen", run: (sel) => shareDocs(sel) },
+        { icon: "🗂", label: "ZIP", run: (sel) => zipOf(sel, `dokumente-auswahl-${isoToday()}.zip`) },
+        saveDoc && { icon: "#", label: "Tag", run: tagDocs },
+        { icon: <IcoTrash />, label: "Papierkorb", run: (sel) => { if (confirm(`${sel.length} Dokument${sel.length === 1 ? "" : "e"} in den Papierkorb verschieben?`)) { sel.forEach((d) => trashDoc(d)); setPick(null); } } }]} />
     </>
   );
 }
@@ -4975,7 +4984,6 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
   const txFor = (c) => { const w = norm(c.provider || "").split(" ").filter((x) => x.length > 2)[0]; return !w ? [] : txs.filter((t) => t.kind !== "broker" && norm(`${t.counterparty} ${t.purpose}`).includes(w)).sort((a, b) => b.date.localeCompare(a.date)); };
   const [letterFor, setLetterFor] = useState(null);
   const [showStale, setShowStale] = useState(false);
-  const [sortBy, setSortBy] = useState("monat");
   const list = activeContracts(docs).sort((a, b) => monthlyCost(b.contract) - monthlyCost(a.contract));
   const ended = docs.filter((d) => d.contract && d.contract.active === false);
   const inactive = (r) => subInactive(r, subs);
@@ -4988,8 +4996,6 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
   const month = list.reduce((s, d) => s + monthlyCost(d.contract), 0) + live.reduce((s, r) => s + perMonth(r), 0);
   const soon = list.filter((d) => d.contract.cancelBy && daysUntil(d.contract.cancelBy) >= 0 && daysUntil(d.contract.cancelBy) <= 60);
   const letter = letterFor ? cancelLetter(letterFor.contract, me) : "";
-  const sorter = { monat: (a, b) => perMonth(b) - perMonth(a), name: (a, b) => a.name.localeCompare(b.name), zuletzt: (a, b) => (b.last || "").localeCompare(a.last || "") }[sortBy];
-  const rows = [...live, ...(showStale ? stale : [])].sort(sorter);
   const remove = (r) => setSubs?.({ ...subs, confirmed: subs.confirmed.filter((k) => k !== r.key), dismissed: [...subs.dismissed, r.key] });
   // Eine Liste für Vertragsdokumente und erkannte Abos (Aufbau wie Rechnungen)
   const [cq, setCq] = useState(""), [cf, setCf] = useState("alle");
@@ -5007,8 +5013,16 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
   const ctF = { alle: (x) => !x.stale, vertraege: (x) => !!x.doc, umsaetze: (x) => !x.doc && !x.stale, kuendbar: (x) => x.soon, bestaetigt: (x) => !x.doc && x.ok && !x.stale, inaktiv: (x) => x.stale };
   const CT_FILTERS = [["alle", "Alle"], ["vertraege", "Verträge"], ["umsaetze", "Aus Umsätzen"], ["kuendbar", "Bald kündbar"], ["bestaetigt", "Bestätigt"], ["inaktiv", "Inaktiv"]];
   const nq = norm(cq.trim());
-  const shown = items.filter(ctF[cf] || ctF.alle).filter((x) => !nq || norm(`${x.name} ${x.sub} ${x.category || ""}`).includes(nq))
-    .sort({ monat: (a, b) => b.month - a.month, name: (a, b) => a.name.localeCompare(b.name), zuletzt: (a, b) => (b.last || "").localeCompare(a.last || "") }[sortBy]);
+  const fkTags = (x) => subs?.tags?.[x.key] || [];
+  const kit = useListKit("fixkosten", { def: "monat", dateOf: (x) => x.last, tagsOf: fkTags, sorts: {
+    monat: ["Kosten", "höchste pro Monat zuerst", (a, b) => b.month - a.month], name: ["Name", "A–Z", (a, b) => a.name.localeCompare(b.name, "de")], zuletzt: ["Zuletzt", "letzte Zahlung zuerst", (a, b) => (b.last || "").localeCompare(a.last || "")] } });
+  const { pick, setPick, togglePick } = kit;
+  const shown = kit.apply(items.filter(ctF[cf] || ctF.alle).filter((x) => !nq || norm(`${x.name} ${x.sub} ${x.category || ""} ${fkTags(x).join(" ")}`).includes(nq)));
+  const tagFk = (xs) => { if (!setSubs) return; const f = kitTagPrompt(xs, fkTags); if (!f) return; const t = { ...(subs?.tags || {}) }; xs.forEach((x) => { t[x.key] = f(x); }); setSubs({ ...subs, tags: t }); };
+  const fkHead = ["Name", "Art", "Kategorie", "Betrag €", "Intervall", "pro Monat €", "Zuletzt", "Status", "Tags"];
+  const fkRow = (x) => [x.name, x.doc ? "Vertrag" : "aus Umsätzen", x.category || "", r2e(x.amount), x.int, r2e(x.month), x.last || "", x.label, fkTags(x).join(", ")];
+  const fkExp = [{ label: "📊 Excel (.xlsx)", sub: `${shown.length} Einträge im aktuellen Filter`, run: () => downloadXlsx(`Fixkosten-${isoToday()}.xlsx`, [{ name: "Fixkosten", head: fkHead, rows: shown.map(fkRow) }]) },
+    { label: "📄 CSV", run: () => downloadCsv(`Fixkosten-${isoToday()}.csv`, fkHead, shown.map(fkRow)) }];
 
   return (
     <div className="cdash">
@@ -5023,23 +5037,24 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
         </div>
       </div>
 
-      <SearchBox placeholder="Anbieter, Kategorie, Kundennummer suchen" value={cq} onChange={setCq} />
-      <div className="chips invfilter">
-        {CT_FILTERS.map(([k, l]) => <button key={k} className={"chip" + (cf === k ? " on" : "")} onClick={() => setCf(k)}>{l} <small>({items.filter(ctF[k]).length})</small></button>)}
-        <PSelect className="chip" value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sortieren">
-          <option value="monat">↕ Kosten</option><option value="name">↕ Name</option><option value="zuletzt">↕ Zuletzt</option>
-        </PSelect>
+      <div className="invbar ltbar">
+        <span className="grow" />
+        <button className={"btn" + (pick ? " on" : "")} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
+        <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[{ head: "Export" }, ...exp2pick(fkExp)]} />
       </div>
+      <SearchBox placeholder="Anbieter, Kategorie, Kundennummer, Tag suchen" value={cq} onChange={setCq} />
+      <div className="chips invfilter ltfilter"><KitFilters kit={kit} all={items} filters={CT_FILTERS.map(([k, l]) => [k, l, items.filter(ctF[k]).length])} filter={cf} setFilter={setCf} q={cq} setQ={setCq} /></div>
 
       <FitScroll card>
-        <section className="tile invlist ctlist">
+        <section className="tile invlist ctlist ltlist">
           {!shown.length && <p className="muted small">{items.length ? "Keine Einträge für diesen Filter." : "Noch keine Verträge oder Abos. Lade einen Vertrag, eine Polizze oder eine Abo-Rechnung hoch – oder importiere Kontoumsätze, dann werden wiederkehrende Zahlungen erkannt."}</p>}
           {shown.map((x) => (
             <React.Fragment key={x.key}>
-              <div className={"invrow" + (x.stale ? " stale" : "") + (open[x.key] ? " prevopen" : "")} onClick={() => (x.doc ? onOpen(x.doc.id) : toggleOpen(x.key))}>
+              <div className={"invrow" + (x.stale ? " stale" : "") + (open[x.key] ? " prevopen" : "") + (pick?.has(x.key) ? " picked" : "")} onClick={() => (pick ? togglePick(x.key) : x.doc ? onOpen(x.doc.id) : toggleOpen(x.key))}>
+                {pick && <KitPickBox on={pick.has(x.key)} />}
                 <CatIcon c={x.category || "Sonstiges"} size={36} />
                 <div className="invmain">
-                  <div className="row1"><b className="invname">{x.name}</b></div>
+                  <div className="row1"><b className="invname">{x.name}</b><KitTags tags={fkTags(x)} /></div>
                   <small className="muted block">{x.sub}</small>
                 </div>
                 <b className="invamt">{x.amount ? fmtMoney(x.amount) : "–"}<small className="muted block ctint">{x.int}</small></b>
@@ -5053,6 +5068,8 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
                     <div className="moremenu">
                       <button onClick={(e) => { e.currentTarget.closest("details").open = false; toggleOpen(x.key); }}>{open[x.key] ? "Buchungen ausblenden" : `Buchungen anzeigen (${x.txs.length})`}</button>
                       {x.doc && <button onClick={(e) => { e.currentTarget.closest("details").open = false; setLetterFor(x.doc); }}>✉︎ Kündigungsschreiben</button>}
+                      {x.doc && <button onClick={(e) => { e.currentTarget.closest("details").open = false; printDoc(x.doc); }}>🖨 Vertrag drucken</button>}
+                      {setSubs && <button onClick={(e) => { e.currentTarget.closest("details").open = false; tagFk([x]); }}># Tags bearbeiten</button>}
                       {!x.doc && setSubs && <button className="red" onClick={(e) => { e.currentTarget.closest("details").open = false; remove(x.r); }}>Aus der Liste entfernen</button>}
                     </div>
                   </details>
@@ -5064,6 +5081,11 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
           {!!ended.length && cf === "alle" && <p className="muted small" style={{ padding: "10px 16px" }}>{ended.length} beendete Verträge (im Dokument unter „Vertrag / Abo“ abgewählt)</p>}
         </section>
       </FitScroll>
+      <KitBulk kit={kit} shown={shown} idOf={(x) => x.key} actions={[
+        { icon: "⬇", label: "Excel", run: (sel) => downloadXlsx(`Fixkosten-Auswahl-${isoToday()}.xlsx`, [{ name: "Auswahl", head: fkHead, rows: sel.map(fkRow) }]) },
+        setSubs && { icon: "#", label: "Tag", run: tagFk },
+        setSubs && { icon: "✓", label: "Bestätigen", run: (sel) => { const k = sel.filter((x) => !x.doc).map((x) => x.key); setSubs({ ...subs, verified: [...new Set([...(subs.verified || []), ...k])], ended: (subs.ended || []).filter((y) => !k.includes(y)) }); } },
+        setSubs && { icon: "✕", label: "Beenden", run: (sel) => { const k = sel.filter((x) => !x.doc).map((x) => x.key); setSubs({ ...subs, ended: [...new Set([...(subs.ended || []), ...k])], verified: (subs.verified || []).filter((y) => !k.includes(y)) }); } }]} />
 
       {letterFor && (
         <Win id="letter" onClose={() => setLetterFor(null)} dirty={false}>
@@ -5627,6 +5649,53 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
 
 /* ---------- Handy-Ansichten (Standard bis 700 px Breite) ---------- */
 
+
+/* ---------- Einheitlicher Listen-Baukasten (Aufbau wie Rechnungen, v0.83) ----------
+   Jahr · Sortierung · Tags als Menüs, gespeicherte Ansichten, Mehrfachauswahl mit fixer Leiste */
+const exp2pick = (items) => (items || []).filter(Boolean).map((e, i) => e.head ? { head: e.head } : { k: "e" + i, icon: e.icon, title: e.label, sub: e.sub, run: e.run, disabled: e.disabled });
+function useListKit(key, { sorts, def, dateOf = () => "", tagsOf = (x) => x.tags || [] }) {
+  const [yr, setYr] = useState(""), [sortBy, setSortBy] = useState(def || Object.keys(sorts)[0]), [tagF, setTagF] = useState(""), [pick, setPick] = useState(null);
+  const [views, setViews] = useLsState("views:" + key, []);
+  const togglePick = (id) => setPick((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const apply = (l) => l.filter((x) => (!yr || String(dateOf(x) || "").startsWith(yr)) && (!tagF || tagsOf(x).includes(tagF))).sort((sorts[sortBy] || Object.values(sorts)[0])[2]);
+  return { key, sorts, dateOf, tagsOf, yr, setYr, sortBy, setSortBy, tagF, setTagF, pick, setPick, togglePick, views, setViews, apply };
+}
+function KitFilters({ kit, all, filters, filter, setFilter, q = "", setQ, noYear, noTags, children }) {
+  const { yr, setYr, sortBy, setSortBy, tagF, setTagF, views, setViews, sorts, dateOf, tagsOf } = kit;
+  const years = noYear ? [] : [...new Set(all.map((x) => String(dateOf(x) || "").slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort().reverse();
+  const tags = noTags ? [] : [...new Set(all.flatMap(tagsOf))].sort((a, b) => a.localeCompare(b, "de"));
+  const fl = filters?.find(([k]) => k === filter)?.[1];
+  const save = () => { const n = prompt("Name der Ansicht:", [fl !== "Alle" && fl, yr, tagF && "#" + tagF, q && "„" + q + "“"].filter(Boolean).join(" ")); if (!n) return; setViews((v) => [...v, { id: uid(), n, filter, q, yr, tagF, sortBy }]); };
+  const on = (v) => (v.filter ?? filter) === filter && (v.q || "") === q && (v.yr || "") === yr && (v.tagF || "") === tagF;
+  const applyV = (v) => { if (setFilter && v.filter != null) setFilter(v.filter); setQ?.(v.q || ""); setYr(v.yr || ""); setTagF(v.tagF || ""); setSortBy(v.sortBy || sortBy); };
+  return (<>
+    {views.map((v) => <span key={v.id} className="ltview"><button className={"chip" + (on(v) ? " on" : "")} onClick={() => applyV(v)}>☆ {v.n}</button><button className="ltx" title="Ansicht löschen" aria-label="Ansicht löschen" onClick={() => confirm(`Ansicht „${v.n}“ löschen?`) && setViews((l) => l.filter((y) => y.id !== v.id))}>✕</button></span>)}
+    {filters?.map(([k, l, n]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l}{n != null && <small> ({n})</small>}</button>)}
+    {children}
+    <span className="grow" />
+    {!noYear && years.length > 0 && <PickMenu icon="📅" label={yr || "Alle Jahre"} title="Jahr" items={[{ k: "", title: "Alle Jahre", on: !yr, run: () => setYr("") }, ...years.map((y) => ({ k: y, title: y, on: yr === y, run: () => setYr(y) }))]} />}
+    <PickMenu icon="↕" label={(sorts[sortBy] || [])[0]} title="Sortierung" items={Object.entries(sorts).map(([k, [t, sub]]) => ({ k, title: t, sub, on: sortBy === k, run: () => setSortBy(k) }))} />
+    {!noTags && <PickMenu icon="#" label={tagF || "Tags"} title="Tags" items={[{ k: "", title: "Alle Tags", on: !tagF, run: () => setTagF("") }, ...tags.map((t) => ({ k: t, title: "#" + t, sub: `${all.filter((x) => tagsOf(x).includes(t)).length} Einträge`, on: tagF === t, run: () => setTagF(t) }))]}
+      extra={[{ label: "Tags vergeben: ⋯ in einer Zeile oder „Auswählen“", run: () => {} }]} />}
+    {((filter && filters && filter !== filters[0][0]) || q || yr || tagF) && <button className="chip" onClick={save}>☆ Ansicht merken</button>}
+  </>);
+}
+function KitBulk({ kit, shown, idOf = (x) => x.id, actions = [] }) {
+  const { pick, setPick } = kit; if (!pick) return null;
+  const sel = () => shown.filter((x) => pick.has(idOf(x)));
+  return (<div className="pickbar ltbulk">
+    <b className="ltcount">{pick.size}<span className="ltl"> ausgewählt</span></b>
+    <button className="link" onClick={() => setPick(pick.size === shown.length ? new Set() : new Set(shown.map(idOf)))}>{pick.size === shown.length ? "Keine" : "Alle"}</button>
+    <span className="grow" />
+    {actions.filter(Boolean).map((a, i) => <button key={i} className="btn" disabled={!pick.size} title={a.label} onClick={() => a.run(sel())}>{a.icon}<span className="ltl"> {a.label}</span></button>)}
+    <button className="btn primary" onClick={() => setPick(null)}>Fertig</button>
+  </div>);
+}
+const kitTagPrompt = (items, tagsOf = (x) => x.tags || []) => { const one = items.length === 1 ? items[0] : null;
+  const v = prompt(one ? "Tags (mit Komma getrennt):" : `Tag zu ${items.length} Einträgen hinzufügen:`, one ? tagsOf(one).join(", ") : ""); if (v == null) return null;
+  const t = v.split(",").map((x) => x.trim().replace(/^#/, "")).filter(Boolean); return (x) => (one ? t : [...new Set([...tagsOf(x), ...t])]); };
+const KitPickBox = ({ on }) => <span className={"pickbox inline" + (on ? " on" : "")}>✓</span>;
+const KitTags = ({ tags }) => (tags || []).map((t) => <span key={t} className="label tag lttag">#{t}</span>);
 /* ---------- Suchfeld mit Vorschlägen (v0.82) ----------
    Vorschläge aus den sichtbaren Listeneinträgen + zuletzt gesucht. Ab 2 Zeichen Treffer, leeres Feld zeigt den Verlauf.
    Max. 8 Einträge am Handy, 10 am Desktop, nie hinter der Tastatur. Tastatur: ↑ ↓ Enter Esc. */
@@ -5667,7 +5736,14 @@ function SearchBox({ value, onChange, placeholder, id, words, className = "searc
     return () => { removeEventListener("resize", re); removeEventListener("scroll", re, true); visualViewport?.removeEventListener("resize", re); visualViewport?.removeEventListener("scroll", re); document.removeEventListener("pointerdown", out, true); };
   }, [open]);
   const remember = (t) => { t = String(t || "").trim(); if (t.length < 2) return; ls.set(key, [t, ...recent.filter((x) => x.toLowerCase() !== t.toLowerCase())].slice(0, 6)); };
-  const pick = (w) => { onChange(w); remember(w); setOpen(false); setAct(-1); if (phone) setTimeout(() => inp.current?.blur(), 0); };
+  // Beim Tippen nicht nach oben springen: Liste behält ihre Höhe, Treffer beginnen direkt unter der fixierten Suchleiste
+  const keepView = (v) => { const el = ref.current; if (!el) return;
+    const st = el.closest(".msticky"), pg = el.closest(".mpage,.ctpage,.invpage,.fbpage,.cdash,main"), lst = st && pg?.querySelector(".mtxlist.mnative");
+    if (lst) { const sh = st.getBoundingClientRect().height, stTop = parseFloat(getComputedStyle(st).top) || 0;
+      lst.style.minHeight = v ? Math.max(0, innerHeight - sh - stTop) + "px" : "";
+      requestAnimationFrame(() => { const top = Math.round(lst.getBoundingClientRect().top + scrollY - sh - stTop); if (v && scrollY > top + 1) scrollTo({ top: Math.max(0, top) }); }); return; }
+    const fs = pg?.querySelector(".fitscroll"); if (fs) requestAnimationFrame(() => { if (fs.scrollTop) fs.scrollTop = 0; }); };
+  const pick = (w) => { keepView(w); onChange(w); remember(w); setOpen(false); setAct(-1); if (phone) setTimeout(() => inp.current?.blur(), 0); };
   const hl = (w) => { const i = ql ? w.toLowerCase().indexOf(ql) : -1; return i < 0 ? w : <>{w.slice(0, i)}<mark>{w.slice(i, i + ql.length)}</mark>{w.slice(i + ql.length)}</>; };
   const key2 = (e) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); if (!open) { place(); setOpen(true); return; } const n = list.length; if (!n) return; setAct((a) => e.key === "ArrowDown" ? (a + 1) % n : (a <= 0 ? n - 1 : a - 1)); }
@@ -5680,7 +5756,7 @@ function SearchBox({ value, onChange, placeholder, id, words, className = "searc
       enterKeyHint="search" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus={autoFocus}
       placeholder={placeholder} value={value ?? ""}
       onFocus={(e) => { sugCollect(e.target, key); place(); setOpen(true); setAct(-1); }}
-      onChange={(e) => { onChange(e.target.value); if (!open) place(); setOpen(true); setAct(-1); }}
+      onChange={(e) => { const v = e.target.value; keepView(v); onChange(v); if (!open) place(); setOpen(true); setAct(-1); }}
       onBlur={(e) => { remember(e.target.value); setOpen(false); }} onKeyDown={key2} />
     {!!value && <button type="button" className="sbclear" aria-label="Eingabe löschen" title="Eingabe löschen" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(""); setAct(-1); inp.current?.focus(); }}>✕</button>}
     {children}
@@ -8455,8 +8531,22 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
   const active = list.filter((c) => !c.cancelledAt || (c.cancelledEnd && c.cancelledEnd >= todayISO()));
   const counting = active.filter((c) => !c.inactive);
   const inScope = (c) => scope === "alle" || (c.scope || "privat") === scope;
-  const shown = list.filter(inScope).filter((c) => showOld || active.includes(c))
-    .map((c) => ({ c, d: ctDates(c) })).sort((a, b) => (a.d.cancelBy || a.d.end || "9999").localeCompare(b.d.cancelBy || b.d.end || "9999"));
+  const kit = useListKit("contracts", { def: "kuend", dateOf: (c) => c.start, sorts: {
+    kuend: ["Kündigung", "früheste Frist zuerst", (a, b) => { const x = ctDates(a), y = ctDates(b); return (x.cancelBy || x.end || "9999").localeCompare(y.cancelBy || y.end || "9999"); }],
+    kosten: ["Kosten", "höchste pro Monat zuerst", (a, b) => monthly(b) - monthly(a)],
+    name: ["Name", "A–Z", (a, b) => (a.name || "").localeCompare(b.name || "", "de")],
+    anbieter: ["Anbieter", "A–Z", (a, b) => (a.provider || "").localeCompare(b.provider || "", "de")] } });
+  const [cf, setCf] = useState("alle"), [cq, setCq] = useState("");
+  const soonOf = (c) => { const d = ctDates(c); return !c.cancelledAt && !c.inactive && !d.open && d.cancelBy && daysUntil(d.cancelBy) >= 0 && daysUntil(d.cancelBy) <= 60; };
+  const ctF = { alle: (c) => active.includes(c), kuendbar: soonOf, inaktiv: (c) => active.includes(c) && c.inactive, gekuendigt: (c) => !active.includes(c) || !!c.cancelledAt };
+  const CT_F = [["alle", "Aktuell"], ["kuendbar", "Bald kündbar"], ["inaktiv", "Inaktiv"], ["gekuendigt", "Gekündigt"]].map(([k, l]) => [k, l, list.filter(inScope).filter(ctF[k]).length]);
+  const nq = norm(cq.trim());
+  const shown = kit.apply(list.filter(inScope).filter(showOld && cf === "alle" ? () => true : ctF[cf]).filter((c) => !nq || norm(`${c.name} ${c.provider} ${c.customerNo} ${c.cat} ${(c.tags || []).join(" ")}`).includes(nq)))
+    .map((c) => ({ c, d: ctDates(c) }));
+  const { pick, togglePick, setPick } = kit;
+  const ctHead = ["Vertrag", "Anbieter", "Kategorie", "Bereich", "Betrag €", "Intervall", "pro Monat €", "Kundennr.", "Beginn", "Ende", "Kündigen bis", "Status", "Tags"];
+  const ctRow = ({ c, d }) => [c.name || "", c.provider || "", c.cat || "", c.scope === "firma" ? "Firma" : "privat", r2e(c.amount), c.interval || "monatlich", r2e(monthly(c)), c.customerNo || "", c.start || "", d.end || "", d.cancelBy || "", c.cancelledAt ? "gekündigt" : c.inactive ? "inaktiv" : "aktiv", (c.tags || []).join(", ")];
+  const tagCts = (cs) => { const f = kitTagPrompt(cs); if (!f) return; const ids = new Set(cs.map((c) => c.id)); setList((l) => l.map((x) => (ids.has(x.id) ? { ...x, tags: f(x) } : x))); };
   const sum = (sc) => counting.filter((c) => sc === "alle" || (c.scope || "privat") === sc).reduce((s, c) => s + monthly(c), 0);
   const soon = counting.filter(inScope).map((c) => ({ c, d: ctDates(c) })).filter(({ c, d }) => !c.cancelledAt && !d.open && d.cancelBy && daysUntil(d.cancelBy) >= 0 && daysUntil(d.cancelBy) <= 60);
   const docCands = docs.filter((d) => d.contract && !list.some((c) => (c.docIds || []).includes(d.id)));
@@ -8480,6 +8570,22 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
     const done = new Set([...fin.map((d) => d.id), ...gone]);
     setWaitIds((w) => w.filter((id) => !done.has(id)));
   }, [docs, waitIds]);
+  const ctIcs = () => { const ev = shown.filter(({ c, d }) => !c.cancelledAt && d.cancelBy).map(({ c, d }) => icsEvent({ id: "ct-" + c.id, date: d.cancelBy, label: "Kündigung bis" }, { title: `${c.name} (${c.provider || ""})`, summary: `Letzter Tag zum Kündigen. Vertragsende ${d.end ? fmtDate(d.end) : "–"}. Kundennr. ${c.customerNo || "–"}` }));
+    saveBlob(new Blob([["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinDocu//DE", ...ev, "END:VCALENDAR"].join("\r\n")], { type: "text/calendar" }), "kuendigungstermine.ics"); };
+  const ctExp = [{ head: `${shown.length} Verträge (aktueller Filter)` },
+    { label: "🖨 Vertragsübersicht PDF", run: async () => { const rows = shown.map(ctRow); saveBlob(await tablePdf({ title: "Vertragsübersicht", subtitle: `Stand ${fmtDate(isoToday())}`, landscape: true,
+      kpis: [["Verträge", String(shown.length)], ["pro Monat", fmtMoney(sumBy(shown.filter(({ c }) => !c.cancelledAt && !c.inactive), ({ c }) => monthly(c)))], ["pro Jahr", fmtMoney(12 * sumBy(shown.filter(({ c }) => !c.cancelledAt && !c.inactive), ({ c }) => monthly(c)))], ["Kündigung in 60 Tagen", String(soon.length)]],
+      columns: [{ label: "Vertrag", w: 2.4 }, { label: "Anbieter", w: 2 }, { label: "Kategorie", w: 1.4 }, { label: "Betrag", w: 1.1, align: "right" }, { label: "Intervall", w: 1.2 }, { label: "pro Monat", w: 1.1, align: "right" }, { label: "Beginn", w: 1 }, { label: "Ende", w: 1 }, { label: "Kündigen bis", w: 1.1 }, { label: "Status", w: 0.9 }],
+      rows: rows.map((r) => [r[0], r[1], r[2], r[4], r[5], r[6], r[8], r[9], r[10], r[11]]) }), `vertraege-${isoToday()}.pdf`); } },
+    { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`vertraege-${isoToday()}.xlsx`, [{ name: "Verträge", head: ctHead, rows: shown.map(ctRow) }]) },
+    { label: "📄 CSV", run: () => downloadCsv(`vertraege-${isoToday()}.csv`, ctHead, shown.map(ctRow)) },
+    { label: "📅 Kündigungstermine (.ics)", sub: "in den Kalender, mit Erinnerung 2 Tage vorher", run: ctIcs }];
+  const ctFilters = <KitFilters kit={kit} all={list.filter(inScope)} filters={CT_F} filter={cf} setFilter={setCf} q={cq} setQ={setCq} />;
+  const ctBulk = <KitBulk kit={kit} shown={shown} idOf={(o) => o.c.id} actions={[
+    { icon: "⬇", label: "Excel", run: (sel) => downloadXlsx(`Vertraege-Auswahl-${isoToday()}.xlsx`, [{ name: "Auswahl", head: ctHead, rows: sel.map(ctRow) }]) },
+    { icon: "#", label: "Tag", run: (sel) => tagCts(sel.map((o) => o.c)) },
+    { icon: "⏸", label: "Aktiv/Inaktiv", run: (sel) => { const ids = new Set(sel.map((o) => o.c.id)), allOff = sel.every((o) => o.c.inactive); setList((l) => l.map((x) => (ids.has(x.id) ? { ...x, inactive: !allOff } : x))); } }]} />;
+  const newCt = () => setEdit({ id: uid(), scope: scope === "firma" ? "firma" : "privat", interval: "monatlich", noticeUnit: "Monate", cat: "Internet", docIds: [] });
   const dropCt = async (files) => { const ids = await onFiles(files, { stay: true }); setWaitIds((w) => [...w, ...(ids || [])]); };
   return (
     <div className="ctpage">
@@ -8489,24 +8595,26 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
         <MStats items={[{ label: "Kosten pro Monat", value: fmtMoney(sum(scope)), sub: `${fmtMoney(sum(scope) * 12)} im Jahr` },
           { label: "Kündbar in 60 Tagen", value: soon.length, vcls: soon.length ? "neg" : "", alert: !!soon.length, sub: soon[0] ? `${soon[0].c.name} bis ${fmtDate(soon[0].d.cancelBy)}` : "nichts dringend" },
           scope === "alle" && { label: "👤 Privat / 🏢 Firma", value: fmtMoney(sum("privat")), sub: `Firma ${fmtMoney(sum("firma"))} / Monat` }]} />
-        <MActs items={[{ label: "＋ Vertrag", primary: true, run: () => setEdit({ id: uid(), scope: scope === "firma" ? "firma" : "privat", interval: "monatlich", noticeUnit: "Monate", cat: "Internet", docIds: [] }) },
-          !!docCands.length && { label: `📄 Aus Dokumenten (${docCands.length})`, run: () => setImp(!imp) }, { label: showOld ? "Gekündigte ausblenden" : "Gekündigte zeigen", run: () => setShowOld(!showOld) }]} />
+        <div className="mactions ltmacts"><button className="btn primary" onClick={newCt}>＋ Vertrag</button>
+          <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[{ k: "pick", icon: "☑", title: pick ? "Auswahl beenden" : "Auswählen", run: () => setPick(pick ? null : new Set()) },
+            ...(docCands.length ? [{ k: "imp", icon: "📄", title: `Aus Dokumenten (${docCands.length})`, run: () => setImp(!imp) }] : []), { head: "Export" }, ...exp2pick(ctExp.slice(1))]} /></div>
+        <div className="ltmbar"><MBar q={cq} setQ={setCq} placeholder="Vertrag, Anbieter, Tag suchen" chips={[]}>{ctFilters}</MBar></div>
         {imp && <section className="tile">
           {docCands.map((d) => <div key={d.id} className="frow"><Thumb d={d} /><div className="grow"><b>{d.contract.provider}</b><small className="muted block">{d.title}</small></div><button className="btn sm" onClick={() => setEdit(fromDoc(d))}>Übernehmen</button></div>)}
         </section>}
         <MScroll>
-          {!shown.length && <MEmpty>Noch keine Verträge – mit „＋ Vertrag“ z. B. Internet, Handy, Strom oder Versicherungen eintragen.</MEmpty>}
-          {mGroup([...shown].sort((x, y) => (x.c.cat || "~").localeCompare(y.c.cat || "~", "de") || (x.d.cancelBy || "9999").localeCompare(y.d.cancelBy || "9999")), ({ c }) => c.cat || "Sonstiges").map(([g, l]) => (
+          {!shown.length && <MEmpty>{list.length ? "Keine Verträge für diesen Filter." : "Noch keine Verträge – mit „＋ Vertrag“ z. B. Internet, Handy, Strom oder Versicherungen eintragen."}</MEmpty>}
+          {mGroup([...shown].sort((x, y) => (x.c.cat || "~").localeCompare(y.c.cat || "~", "de")), ({ c }) => c.cat || "Sonstiges").map(([g, l]) => (
             <React.Fragment key={g}>
               <MHead right={fmtMoney(l.filter(({ c }) => !c.cancelledAt && !c.inactive).reduce((s, { c }) => s + monthly(c), 0)) + " / Mon."}>{(ctCats()[g] || "📄") + " " + g}</MHead>
               {l.map(({ c, d }) => { const cdocs = (c.docIds || []).map((id) => docs.find((x) => x.id === id)).filter(Boolean); const left = d.cancelBy ? daysUntil(d.cancelBy) : null; return (
                 <MItem key={c.id} icon={<MIco e={ctCats()[c.cat] || "📄"} />} title={c.name || "Vertrag"} dim={c.cancelledAt || c.inactive}
-                  tags={[c.scope === "firma" && "Firma", c.inactive && "inaktiv", cdocs.length && "📎"]}
+                  tags={[pick && (pick.has(c.id) ? "☑ gewählt" : "☐"), c.scope === "firma" && "Firma", c.inactive && "inaktiv", cdocs.length && "📎", ...(c.tags || []).map((t) => "#" + t)]}
                   sub={c.cancelledAt ? `gekündigt${c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}` : d.open ? `${c.provider || ""} · jederzeit kündbar` : d.cancelBy ? `${c.provider ? c.provider + " · " : ""}kündigen bis ${fmtDate(d.cancelBy)}` : c.provider || "Laufzeit nicht eingetragen"}
                   amount={c.amount ? fmtMoney(Number(c.amount)) : "—"} amountSub={c.interval || "monatlich"}
                   pill={!c.cancelledAt && left != null && left >= 0 && left <= 60 && <span className={"stpill " + (left <= 30 ? "st-over" : "st-draft")}>{left === 0 ? "heute" : `in ${left} T.`}</span>}
-                  onClick={() => setEdit(c)}
-                  swipe={{ left: [cdocs[0] && { icon: <IcoEye />, label: "Dokument", bg: "#0ea5e9", run: () => onOpen(cdocs[0].id) }],
+                  onClick={() => (pick ? togglePick(c.id) : setEdit(c))}
+                  swipe={pick ? null : { left: [cdocs[0] && { icon: <IcoEye />, label: "Dokument", bg: "#0ea5e9", run: () => onOpen(cdocs[0].id) }],
                     right: [{ icon: c.inactive ? "▶" : "⏸", label: c.inactive ? "Aktiv" : "Inaktiv", bg: "#64748b", run: () => save({ ...c, inactive: !c.inactive }) },
                       d.cancelBy && !c.cancelledAt && { icon: "📅", label: "Kalender", bg: "#8b5cf6", run: () => saveBlob(new Blob([["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinDocu//DE", icsEvent({ id: "ct-" + c.id, date: d.cancelBy, label: "Kündigung bis" }, { title: `${c.name} (${c.provider || ""})` }), "END:VCALENDAR"].join("\r\n")], { type: "text/calendar" }), "kuendigung.ics") }] }} />); })}
             </React.Fragment>
@@ -8521,27 +8629,15 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
           <div className="tile"><small className="muted">🏢 Firma</small><b>{fmtMoney(sum("firma"))}</b><small className="muted">pro Monat</small></div></>}
         <div className={"tile" + (soon.length ? " alert" : "")}><small className="muted">Kündbar in 60 Tagen</small><b className={soon.length ? "neg" : ""}>{soon.length}</b><small className="muted">{soon[0] ? `${soon[0].c.name} bis ${fmtDate(soon[0].d.cancelBy)}` : "nichts dringend"}</small></div>
       </div>
-      <div className="invbar">
-        <button className="btn primary" onClick={() => setEdit({ id: uid(), scope: scope === "firma" ? "firma" : "privat", interval: "monatlich", noticeUnit: "Monate", cat: "Internet", docIds: [] })}>＋ Vertrag</button>
-        {!!docCands.length && <button className="btn" onClick={() => setImp(!imp)}>📄 Aus Dokumenten übernehmen ({docCands.length})</button>}
-        {onFiles && <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>}
+      <div className="invbar ltbar">
+        <button className="btn primary" onClick={newCt}>＋ Vertrag</button>
+        {!!docCands.length && <button className="btn" onClick={() => setImp(!imp)}>📄 Aus Dokumenten ({docCands.length})</button>}
         <span className="grow" />
-        {(() => {
-          const rows = shown.map(({ c, d }) => [c.name || "", c.provider || "", c.cat || "", c.scope === "firma" ? "Firma" : "privat", r2e(c.amount), c.interval || "monatlich", r2e(monthly(c)), c.customerNo || "", c.start || "", d.end || "", d.cancelBy || "", c.cancelledAt ? "gekündigt" : c.inactive ? "inaktiv" : "aktiv"]);
-          const head = ["Vertrag", "Anbieter", "Kategorie", "Bereich", "Betrag €", "Intervall", "pro Monat €", "Kundennr.", "Beginn", "Ende", "Kündigen bis", "Status"];
-          const ics = () => { const ev = shown.filter(({ c, d }) => !c.cancelledAt && d.cancelBy).map(({ c, d }) => icsEvent({ id: "ct-" + c.id, date: d.cancelBy, label: "Kündigung bis" }, { title: `${c.name} (${c.provider || ""})`, summary: `Letzter Tag zum Kündigen. Vertragsende ${d.end ? fmtDate(d.end) : "–"}. Kundennr. ${c.customerNo || "–"}` }));
-            saveBlob(new Blob([["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinDocu//DE", ...ev, "END:VCALENDAR"].join("\r\n")], { type: "text/calendar" }), "kuendigungstermine.ics"); };
-          return <ExportMenu className="btn" items={[{ head: `${shown.length} Verträge (aktueller Filter)` },
-            { label: "🖨 Vertragsübersicht PDF", run: async () => saveBlob(await tablePdf({ title: "Vertragsübersicht", subtitle: `Stand ${fmtDate(isoToday())}`, landscape: true,
-              kpis: [["Verträge", String(shown.length)], ["pro Monat", fmtMoney(sumBy(shown.filter(({ c }) => !c.cancelledAt && !c.inactive), ({ c }) => monthly(c)))], ["pro Jahr", fmtMoney(12 * sumBy(shown.filter(({ c }) => !c.cancelledAt && !c.inactive), ({ c }) => monthly(c)))], ["Kündigung in 60 Tagen", String(soon.length)]],
-              columns: [{ label: "Vertrag", w: 2.4 }, { label: "Anbieter", w: 2 }, { label: "Kategorie", w: 1.4 }, { label: "Betrag", w: 1.1, align: "right" }, { label: "Intervall", w: 1.2 }, { label: "pro Monat", w: 1.1, align: "right" }, { label: "Beginn", w: 1 }, { label: "Ende", w: 1 }, { label: "Kündigen bis", w: 1.1 }, { label: "Status", w: 0.9 }],
-              rows: rows.map((r) => [r[0], r[1], r[2], r[4], r[5], r[6], r[8], r[9], r[10], r[11]]) }), `vertraege-${isoToday()}.pdf`) },
-            { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`vertraege-${isoToday()}.xlsx`, [{ name: "Verträge", head, rows }]) },
-            { label: "📄 CSV", run: () => downloadCsv(`vertraege-${isoToday()}.csv`, head, rows) },
-            { label: "📅 Kündigungstermine (.ics)", sub: "in den Kalender, mit Erinnerung 2 Tage vorher", run: ics }]} />;
-        })()}
-        <label className="check mini"><input type="checkbox" checked={showOld} onChange={(e) => setShowOld(e.target.checked)} /> Gekündigte anzeigen</label>
+        <button className={"btn" + (pick ? " on" : "")} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
+        <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[...(onFiles ? [{ k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }] : []), { head: "Export" }, ...exp2pick(ctExp.slice(1))]} />
       </div>
+      <SearchBox placeholder="Vertrag, Anbieter, Kundennr., Tag suchen" value={cq} onChange={setCq} />
+      <div className="chips invfilter ltfilter">{ctFilters}</div>
       {onFiles && showDrop && <DropField onFiles={dropCt} onHide={() => setShowDrop(false)} busy={!!docBusy} title="Verträge oder Ordner hierher ziehen" what="PDF & Fotos · Vertrag wird automatisch angelegt" />}
       {docBusy && waitIds.length > 0 && <ImportBar {...docBusy} />}
       <FitScroll card cols={["Vertrag", "Details", "Kosten · Kündigung"]}>
@@ -8550,15 +8646,17 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
         {docCands.map((d) => <div key={d.id} className="frow"><Thumb d={d} /><div className="grow"><b>{d.contract.provider}</b><small className="muted block">{d.title} · {d.contract.amount ? fmtMoney(d.contract.amount) + " " + (d.contract.interval || "") : ""}</small></div>
           <button className="btn sm" onClick={() => setEdit(fromDoc(d))}>Übernehmen</button></div>)}
       </section>}
-      <section className="tile ctlist">
-        {!shown.length && <p className="muted small">Noch keine Verträge hinterlegt. Mit „＋ Vertrag“ z. B. Internet, Handy, Strom, Versicherungen oder Miete eintragen – FinDocu rechnet den letzten Kündigungstag aus. Erkannte Abos aus deinen Kontobuchungen findest du weiterhin unter „Fixkosten & Abos“.</p>}
+      <section className="tile ctlist ltlist">
+        {!shown.length && list.length > 0 && <p className="muted small">Keine Verträge für diesen Filter.</p>}
+        {!list.length && <p className="muted small">Noch keine Verträge hinterlegt. Mit „＋ Vertrag“ z. B. Internet, Handy, Strom, Versicherungen oder Miete eintragen – FinDocu rechnet den letzten Kündigungstag aus. Erkannte Abos aus deinen Kontobuchungen findest du weiterhin unter „Fixkosten & Abos“.</p>}
         {shown.map(({ c, d }) => { const cdocs = (c.docIds || []).map((id) => docs.find((x) => x.id === id)).filter(Boolean); const open = prevCt === c.id && cdocs.length; return (
           <div key={c.id} className={"dwrap ctwrap" + (open ? " open" : "")}>
-          <div className={"frow click ctrow" + (c.cancelledAt ? " ended" : "") + (c.inactive ? " inactive" : "")} onClick={() => setEdit(c)}>
-            {cdocs[0] ? <span onClick={(e) => { e.stopPropagation(); setPrevCt(open ? null : c.id); }} title="Vorschau ein-/ausblenden"><Thumb d={cdocs[0]} /></span>
+          <div className={"frow click ctrow" + (c.cancelledAt ? " ended" : "") + (c.inactive ? " inactive" : "") + (pick?.has(c.id) ? " picked" : "")} onClick={() => (pick ? togglePick(c.id) : setEdit(c))}>
+            {pick && <KitPickBox on={pick.has(c.id)} />}
+            {cdocs[0] ? <span onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevCt(open ? null : c.id); }} title="Vorschau ein-/ausblenden"><Thumb d={cdocs[0]} /></span>
               : <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{ctCats()[c.cat] || "📄"}</span>}
             <div className="grow">
-              <b className={cdocs.length ? "dtitle" : ""} title={cdocs.length ? "Vorschau ein-/ausblenden" : undefined} onClick={cdocs.length ? (e) => { e.stopPropagation(); setPrevCt(open ? null : c.id); } : undefined}>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small>
+              <b className={cdocs.length ? "dtitle" : ""} title={cdocs.length ? "Vorschau ein-/ausblenden" : undefined} onClick={cdocs.length ? (e) => { if (pick) return; e.stopPropagation(); setPrevCt(open ? null : c.id); } : undefined}>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small> <KitTags tags={c.tags} />
               <small className="muted block ctsub">{[c.provider, c.customerNo && "Nr. " + c.customerNo, c.interval || "monatlich", cdocs.length ? `📎 ${cdocs.length}` : ""].filter(Boolean).join(" · ")}{" · "}{c.cancelledAt ? <span className="muted">Gekündigt{c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}</span>
                 : d.open ? <span className="muted">unbefristet · jederzeit kündbar</span>
                 : d.cancelBy ? <span className={daysUntil(d.cancelBy) <= 30 ? "neg" : daysUntil(d.cancelBy) <= 60 ? "warnc" : "muted"}>kündigen bis {fmtDate(d.cancelBy)} · Ende {fmtDate(d.end)}</span>
@@ -8568,7 +8666,8 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
             <div className="ctacts" onClick={(e) => e.stopPropagation()}>
               <button className={"stpill ctstate " + (c.inactive ? "st-draft" : "st-paid")} title={c.inactive ? "Inaktiv – zählt nicht zu den Kosten. Antippen = aktiv" : "Aktiv – antippen = inaktiv"} onClick={() => save({ ...c, inactive: !c.inactive })}>{c.inactive ? "Inaktiv" : "Aktiv"}</button>
               <button className={"iconbtn" + (open ? " on" : "")} disabled={!cdocs.length} title={cdocs.length ? "Vorschau ein-/ausblenden" : "Kein Dokument verknüpft"} onClick={() => setPrevCt(open ? null : c.id)}>{open ? <IcoEyeOff /> : <IcoEye />}</button>
-              {cdocs[0] && <button className="iconbtn" title="Drucken" onClick={() => printDoc(cdocs[0])}><IcoPrint /></button>}
+              {cdocs[0] ? <button className="iconbtn" title="Drucken" onClick={() => printDoc(cdocs[0])}><IcoPrint /></button> : <span className="iconbtn invph" aria-hidden="true" />}
+              <button className="iconbtn" title="Tags bearbeiten" aria-label="Tags bearbeiten" onClick={() => tagCts([c])}>#</button>
             </div>
           </div>
           {open && cdocs.map((x) => <DocPreview key={x.id} d={x} onOpen={() => onOpen(x.id)} />)}
@@ -8576,6 +8675,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
       </section>
       </FitScroll>
       </>)}
+      {ctBulk}
       {edit && <ContractEditor c={edit} docs={docs} me={me} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
     </div>
   );
@@ -10071,6 +10171,29 @@ function DunningPage({ setTab, book }) {
   const history = inv.flatMap((x) => (x.reminders || []).map((r, i) => ({ x, r, i }))).sort((a, b) => (b.r.date || "").localeCompare(a.r.date || "") || b.i - a.i);
   const year = todayISO().slice(0, 4);
   const pdfOf = (x, i) => buildInvoicePdf({ ...x, reminders: (x.reminders || []).slice(0, i + 1) }, co, x.reminders[i]);
+  // Listen-Aufbau wie Rechnungen
+  const kit = useListKit("mahnungen", { def: "tage", dateOf: (o) => (o.r ? o.r.date : o.x.date), tagsOf: (o) => o.x.tags || [], sorts: {
+    tage: ["Überfällig", "am längsten zuerst", (a, b) => (b.since ?? 0) - (a.since ?? 0) || (b.r?.date || "").localeCompare(a.r?.date || "")],
+    betrag: ["Betrag", "höchster zuerst", (a, b) => invTotal(b.x) - invTotal(a.x)],
+    kunde: ["Kunde", "A–Z", (a, b) => (a.x.customer?.name || "").localeCompare(b.x.customer?.name || "", "de")] } });
+  const { pick, setPick, togglePick } = kit;
+  const [mf, setMf] = useState("alle");
+  const MF = [["alle", "Alle", over.length + history.length], ["jetzt", "Jetzt mahnen", over.filter((o) => o.ready).length], ["warten", "Wartezeit", over.filter((o) => !o.ready).length], ["verlauf", "Verlauf", history.length]];
+  const overS = mf === "verlauf" ? [] : kit.apply(over.filter((o) => mqHit(o.x) && (mf === "jetzt" ? o.ready : mf === "warten" ? !o.ready : true)));
+  const histS = mf === "alle" || mf === "verlauf" ? kit.apply(history.filter(({ x, r }) => mqHit(x, r))) : [];
+  const tagInv = (xs) => { const f = kitTagPrompt(xs); if (!f) return; const ids = new Set(xs.map((x) => x.id)); setList((l) => l.map((y) => (ids.has(y.id) ? { ...y, tags: f(y) } : y))); };
+  const printInvs = async (items) => { const imgs = []; for (const [x, i] of items) imgs.push(...(await blobToImages(await (i == null ? buildInvoicePdf(x, co) : pdfOf(x, i))))); if (imgs.length) await printImages(imgs, items.length === 1 ? invFileName(items[0][0], items[0][1] == null ? undefined : items[0][0].reminders[items[0][1]]) : `${items.length} Belege`); };
+  const mnHead = ["Kunde", "Rechnung", "Fällig", "Tage überfällig", "Letzte Stufe", "Betrag €", "Tags"];
+  const mnRow = ({ x, last, since }) => [x.customer?.name || "", x.number, invDueEff(x), since, last ? remindName(last.level) : "", r2e(invTotal(x)), (x.tags || []).join(", ")];
+  const mnExp = [{ label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) },
+    { label: "📄 Offene Posten CSV", run: () => downloadCsv(`Offene-Posten-${isoToday()}.csv`, OP_HEAD, openList(list).map(opRow)) },
+    { label: "📒 Mahnverlauf CSV", run: () => downloadCsv(`Mahnverlauf-${isoToday()}.csv`, ["Datum", "Stufe", "Rechnung", "Kunde", "Frist", "Gebühr €", "Rechnungsbetrag €"], history.map(({ x, r }) => [r.date, remindName(r.level), x.number, x.customer?.name || "", r.due, r2e(r.fee), r2e(invTotal({ ...x, fee: 0 }))])) }];
+  const mnMore = [setTab && { k: "inv", icon: "🧾", title: "Rechnungen", run: () => setTab("invoices") }, setTab && { k: "set", icon: "⚙︎", title: "Mahnwesen einstellen", run: () => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); } }, { head: "Export" }, ...exp2pick(mnExp)].filter(Boolean);
+  const mnFilters = <KitFilters kit={kit} all={[...over, ...history]} filters={MF} filter={mf} setFilter={setMf} q={mq} setQ={setMq} />;
+  const mnBulk = <KitBulk kit={kit} shown={overS} idOf={(o) => o.x.id} actions={[
+    { icon: <IcoPrint />, label: "Drucken", run: (sel) => printInvs(sel.map((o) => [o.x, null])) },
+    { icon: "⬇", label: "Excel", run: (sel) => downloadXlsx(`Mahnungen-Auswahl-${isoToday()}.xlsx`, [{ name: "Auswahl", head: mnHead, rows: sel.map(mnRow) }]) },
+    { icon: "#", label: "Tag", run: (sel) => tagInv(sel.map((o) => o.x)) }]} />;
   return (
     <div className="invpage">
       {mob ? (
@@ -10078,28 +10201,29 @@ function DunningPage({ setTab, book }) {
         <MStats items={[{ label: "Überfällig", value: fmtMoney(over.reduce((s, o) => s + invTotal(o.x), 0)), vcls: over.length ? "neg" : "", alert: !!over.length, sub: `${over.length} Rechnung${over.length === 1 ? "" : "en"}` },
           { label: "Jetzt mahnen", value: over.filter((o) => o.ready).length, sub: `Wartezeit ${dn.waitDays} Tage` },
           { label: `Mahnungen ${year}`, value: history.filter((h) => (h.r.date || "").startsWith(year)).length, sub: "versendet" }]} />
-        <MActs items={[{ label: "📮 Mahnung erstellen", run: () => setPickOpen(true) }, setTab && { label: "🧾 Rechnungen", run: () => setTab("invoices") }]} />
-        <MBar q={mq} setQ={setMq} placeholder="Kunde, Rechnungsnummer suchen" />
+        <div className="mactions ltmacts"><button className="btn primary" onClick={() => setPickOpen(true)}>📮 Mahnung erstellen</button>
+          <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[{ k: "pick", icon: "☑", title: pick ? "Auswahl beenden" : "Auswählen", run: () => setPick(pick ? null : new Set()) }, ...mnMore]} /></div>
+        <div className="ltmbar"><MBar q={mq} setQ={setMq} placeholder="Kunde, Rechnungsnummer, Tag suchen" chips={[]}>{mnFilters}</MBar></div>
         <MScroll>
-          <MHead right={over.filter(({ x }) => mqHit(x)).length}>Zu mahnen</MHead>
-          {!over.filter(({ x }) => mqHit(x)).length && <MEmpty>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</MEmpty>}
-          {over.filter(({ x }) => mqHit(x)).map(({ x, last, since, ready, next }) => (
-            <MItem key={x.id} icon={<MAvatar text={x.customer?.name} color="#ef4444" />} title={x.customer?.name || "Ohne Kunde"}
+          {mf !== "verlauf" && <MHead right={overS.length}>Zu mahnen</MHead>}
+          {mf !== "verlauf" && !overS.length && <MEmpty>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</MEmpty>}
+          {overS.map(({ x, last, since, ready, next }) => (
+            <MItem key={x.id} icon={<MAvatar text={x.customer?.name} color="#ef4444" />} title={x.customer?.name || "Ohne Kunde"} tags={[pick && (pick.has(x.id) ? "☑ gewählt" : "☐"), ...(x.tags || []).map((t) => "#" + t)]}
               sub={`${x.number} · ${since} T. überfällig${last ? " · zuletzt " + remindName(last.level) : ""}`} amount={fmtMoney(invTotal(x))} amountCls="neg"
               pill={<span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? remindName(next) : `in ${(dn.waitDays || 0) - since} T.`}</span>}
-              onClick={() => setRemind(x)}
-              swipe={{ left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }],
+              onClick={() => (pick ? togglePick(x.id) : setRemind(x))}
+              swipe={pick ? null : { left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }, { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInvs([[x, null]]) }],
                 right: [{ icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }, { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayX(x) }] }}
               after={prevInv === x.id && <InvPreview x={x} co={co} />} />
           ))}
-          <MHead right={history.filter(({ x, r }) => mqHit(x, r)).length}>Mahnverlauf</MHead>
-          {!history.filter(({ x, r }) => mqHit(x, r)).length && <MEmpty>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</MEmpty>}
-          {history.filter(({ x, r }) => mqHit(x, r)).map(({ x, r, i }) => { const s = invState(x); return (
+          {(mf === "alle" || mf === "verlauf") && <MHead right={histS.length}>Mahnverlauf</MHead>}
+          {(mf === "alle" || mf === "verlauf") && !histS.length && <MEmpty>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</MEmpty>}
+          {histS.map(({ x, r, i }) => { const s = invState(x); return (
             <MItem key={x.id + i} icon={<MIco e="📮" />} title={`${remindName(r.level)} · ${x.customer?.name || ""}`} sub={`${fmtDate(r.date)} · ${x.number} · Frist ${fmtDate(r.due)}`}
               amount={fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))} amountCls={s === "bezahlt" ? "in" : ""}
               pill={i === x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
               onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}
-              swipe={{ left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id + ":" + i ? null : x.id + ":" + i) }],
+              swipe={{ left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id + ":" + i ? null : x.id + ":" + i) }, { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInvs([[x, i]]) }],
                 right: [{ icon: "📤", label: "Teilen", bg: "#8b5cf6", run: async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email) }] }}
               after={prevInv === x.id + ":" + i && <InvPreview x={x} co={co} make={() => pdfOf(x, i)} name={invFileName(x, r)} />} />); })}
         </MScroll>
@@ -10118,7 +10242,7 @@ function DunningPage({ setTab, book }) {
         <div className="tile"><small className="muted">Mahnungen {year}</small><b>{history.filter((h) => (h.r.date || "").startsWith(year)).length}</b><small className="muted">versendet</small></div>
         <div className="tile"><small className="muted">Mahnspesen {year}</small><b>{fmtMoney(history.filter((h) => (h.r.date || "").startsWith(year)).reduce((s, h) => s + (Number(h.r.fee) || 0), 0))}</b><small className="muted">verrechnet</small></div>
       </div>
-      <div className="invbar">
+      <div className="invbar ltbar">
         {(() => { const cand = [...over.map((o) => o.x), ...openNotOver]; return (
           <details className="more newdun">
             <summary className="btn">📮 Mahnung erstellen</summary>
@@ -10128,21 +10252,20 @@ function DunningPage({ setTab, book }) {
             </div>
           </details>); })()}
         <span className="grow" />
-        <ExportMenu className="btn" items={[{ label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) },
-          { label: "📄 Offene Posten CSV", run: () => downloadCsv(`Offene-Posten-${isoToday()}.csv`, OP_HEAD, openList(list).map(opRow)) },
-          { label: "📒 Mahnverlauf CSV", run: () => downloadCsv(`Mahnverlauf-${isoToday()}.csv`, ["Datum", "Stufe", "Rechnung", "Kunde", "Frist", "Gebühr €", "Rechnungsbetrag €"], history.map(({ x, r }) => [r.date, remindName(r.level), x.number, x.customer?.name || "", r.due, r2e(r.fee), r2e(invTotal({ ...x, fee: 0 }))])) }]} />
-        {setTab && <button className="btn" onClick={() => setTab("invoices")}>🧾 Rechnungen</button>}
-        {setTab && <button className="btn" title="Mahnwesen einstellen" onClick={() => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); }}>⚙︎</button>}
+        <button className={"btn" + (pick ? " on" : "")} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
+        <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={mnMore} />
       </div>
-      <SearchBox placeholder="Kunde, Rechnungsnummer, Mahnstufe suchen" value={mq} onChange={setMq} />
+      <SearchBox placeholder="Kunde, Rechnungsnummer, Mahnstufe, Tag suchen" value={mq} onChange={setMq} />
+      <div className="chips invfilter ltfilter">{mnFilters}</div>
       <FitScroll card className="kinv" cols={["Kunde", "Rechnung · Fälligkeit", "Betrag · Stufe"]}>
-      <section className="tile invlist">
-        <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b><small>{over.filter(({ x }) => mqHit(x)).length}</small></div>
-        {!over.filter(({ x }) => mqHit(x)).length && <p className="muted small" style={{ padding: "0 14px" }}>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</p>}
-        {over.filter(({ x }) => mqHit(x)).map(({ x, last, since, ready, next }) => (<React.Fragment key={x.id}>
-          <div className={"invrow" + (prevInv === x.id ? " prevopen" : "")} onClick={() => setRemind(x)}>
+      {mf !== "verlauf" && <section className="tile invlist ltlist">
+        <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b><small>{overS.length}</small></div>
+        {!overS.length && <p className="muted small" style={{ padding: "0 14px" }}>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</p>}
+        {overS.map(({ x, last, since, ready, next }) => (<React.Fragment key={x.id}>
+          <div className={"invrow" + (prevInv === x.id ? " prevopen" : "") + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setRemind(x))}>
+            {pick && <KitPickBox on={pick.has(x.id)} />}
             <div className="invmain">
-              <div className="row1"><b className="invname" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevInv(prevInv === x.id ? null : x.id); }}>{x.customer?.name || "Ohne Kunde"}</b></div>
+              <div className="row1"><b className="invname" title="Vorschau ein-/ausblenden" onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevInv(prevInv === x.id ? null : x.id); }}>{x.customer?.name || "Ohne Kunde"}</b><KitTags tags={x.tags} /></div>
               <small className="muted block">{x.number} · fällig {fmtDate(invDueEff(x))} · {since} Tage überfällig{last ? ` · zuletzt ${remindName(last.level)} am ${fmtDate(last.date)}` : " · noch nicht gemahnt"}</small>
             </div>
             <b className="invamt neg">{fmtMoney(invTotal(x))}</b>
@@ -10150,15 +10273,17 @@ function DunningPage({ setTab, book }) {
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
               <button className={"btn sm" + (ready ? " danger" : "")} onClick={() => setRemind(x)}>{remindName(next)} erstellen</button>
               <StatusMenu x={x} s={invState(x)} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />
+              <button className="iconbtn" title="Rechnung drucken" aria-label="Drucken" onClick={() => printInvs([[x, null]])}><IcoPrint /></button>
+              <button className="iconbtn" title="Tags bearbeiten" aria-label="Tags bearbeiten" onClick={() => tagInv([x])}>#</button>
             </div>
           </div>
           {prevInv === x.id && <InvPreview x={x} co={co} />}
         </React.Fragment>))}
-      </section>
-      <section className="tile invlist">
-        <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Mahnverlauf</b><small>{history.filter(({ x, r }) => mqHit(x, r)).length}</small></div>
-        {!history.filter(({ x, r }) => mqHit(x, r)).length && <p className="muted small" style={{ padding: "0 14px" }}>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</p>}
-        {history.filter(({ x, r }) => mqHit(x, r)).map(({ x, r, i }) => { const s = invState(x); return (
+      </section>}
+      {(mf === "alle" || mf === "verlauf") && <section className="tile invlist">
+        <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Mahnverlauf</b><small>{histS.length}</small></div>
+        {!histS.length && <p className="muted small" style={{ padding: "0 14px" }}>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</p>}
+        {histS.map(({ x, r, i }) => { const s = invState(x); return (
           <React.Fragment key={x.id + i}>
           <div className={"invrow" + (prevInv === x.id + ":" + i ? " prevopen" : "")} onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>
             <div className="invmain">
@@ -10169,6 +10294,7 @@ function DunningPage({ setTab, book }) {
             {i !== x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
               <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}><IcoEye /></button>
+              <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printInvs([[x, i]])}><IcoPrint /></button>
               <button className="iconbtn" title="Teilen" onClick={async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email)}><IcoShare /></button>
               {i === x.reminders.length - 1 && s !== "bezahlt" && <button className="link small red" onClick={() => confirm("Diese Mahnung aus dem Verlauf entfernen?") && patch(x.id, { reminders: x.reminders.slice(0, -1) })}>Zurücknehmen</button>}
               {i === x.reminders.length - 1 && <StatusMenu x={x} s={s} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />}
@@ -10176,9 +10302,10 @@ function DunningPage({ setTab, book }) {
           </div>
           {prevInv === x.id + ":" + i && <InvPreview x={x} co={co} make={() => pdfOf(x, i)} name={invFileName(x, r)} />}
           </React.Fragment>); })}
-      </section>
+      </section>}
       </FitScroll>
       </>)}
+      {mnBulk}
       {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
       {payX && <PayWin inv={payX} book={book} onClose={() => setPayX(null)} onDone={(p) => patch(payX.id, p)} />}
     </div>
@@ -12344,4 +12471,10 @@ label>.vehpick.block{margin-top:6px}
 .sbclear{flex:none;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;margin:0 2px;padding:0;border:0;border-radius:50%;background:color-mix(in srgb,var(--txt) 14%,transparent);color:var(--card);font-size:13px;font-weight:700;line-height:1;cursor:pointer}
 .sbclear:hover{background:color-mix(in srgb,var(--txt) 28%,transparent)}
 .sbplain{display:block}.sbplain input{width:100%;padding-right:40px}.sbplain .sbclear{position:absolute;right:8px;top:50%;transform:translateY(-50%)}
+
+/* v0.83 Listen-Baukasten */
+.pickbar.ltbulk .ltcount{white-space:nowrap}
+@media (max-width:700px){.pickbar.ltbulk{gap:5px;padding:8px 10px}.pickbar.ltbulk .ltcount{font-size:17px;min-width:22px;text-align:center}.pickbar.ltbulk .btn{padding:8px 10px;min-width:40px}.pickbar.ltbulk .btn.primary{padding:8px 14px}}
+.docbar{margin-bottom:8px}
+.ctrow.picked{background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:12px}
 `;
