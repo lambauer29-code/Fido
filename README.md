@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.74.1
+
+- Ausgabe: **Kategorie** ebenfalls als Auswahlmenü (mit Symbolen, „＋ Neue Kategorie …“ am Ende).
+- Konto- und Kategorie-Menü öffnen nur durch Anklicken, nicht beim Drüberfahren (PickMenu-Option `click`).
+- Auswahlmenüs öffnen nach oben, wenn darunter zu wenig Platz ist, und enden über der unteren Leiste.
+
 ## v0.74.0
 
 - **Ausgabe erfassen** reduziert auf: Firma, Datum, Betrag (brutto), Steuern, Konto, Kategorie, Notizen. Die Positionen-Liste ist aus dem Formular entfernt.

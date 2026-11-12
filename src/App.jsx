@@ -2368,17 +2368,9 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
         </div>
       </div>
       <div className="grid2">
-        <label>Konto<PickMenu icon={curAcc?.icon} label={curAcc?.title || "Konto wählen"} title="Konto" items={accOpt.map((o) => ({ ...o, on: o.k === f.accountId, run: () => set({ accountId: o.k }, true) }))} /></label>
-        <label>Kategorie
-          <select value={cat} onChange={(e) => {
-            if (e.target.value !== "__new") return set({ category: e.target.value }, true);
-            const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return;
-            addCategory?.(n); setExtraCats((x) => [...x, n]); set({ category: n }, true);
-          }}>
-            {cats.map((c) => <option key={c}>{c}</option>)}
-            {addCategory && <option value="__new">＋ Neue Kategorie …</option>}
-          </select>
-        </label>
+        <label>Konto<PickMenu click icon={curAcc?.icon} label={curAcc?.title || "Konto wählen"} title="Konto" items={accOpt.map((o) => ({ ...o, on: o.k === f.accountId, run: () => set({ accountId: o.k }, true) }))} /></label>
+        <label>Kategorie<PickMenu click icon={<CatGlyph c={cat} />} label={cat} title="Kategorie" items={cats.map((c) => ({ k: c, icon: <CatGlyph c={c} />, title: c, on: c === cat, run: () => set({ category: c }, true) }))}
+          extra={[addCategory && { label: "＋ Neue Kategorie …", run: () => { const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return; addCategory(n); setExtraCats((x) => [...x, n]); set({ category: n }, true); } }]} /></label>
       </div>
       <label>Notizen<textarea rows={2} value={f.note} onChange={(e) => set({ note: e.target.value })} placeholder="optional, z. B. Wocheneinkauf, Projekt …" /></label>
       <button className="btn primary cashsave" disabled={!ok} onClick={save}>{busy ? "Speichert …" : reading ? "Speichern (Beleg wird noch gelesen)" : `Speichern${total > 0 ? " · " + fmtMoney(f.dir === "out" ? -total : total) : ""}`}</button>
@@ -2868,11 +2860,13 @@ function VehicleWin({ init, onSave, onDelete, onClose }) {
 }
 
 /* Fahrzeugauswahl als Dropdown: Maus darüber öffnet, Antippen/Klick schaltet um */
-function PickMenu({ label, icon, items, extra = [], title, wide = false }) {
+function PickMenu({ label, icon, items, extra = [], title, wide = false, click = false }) {
   const [open, setOpen] = useState(false), [pos, setPos] = useState(null);
   const ref = useRef(null), t = useRef(null), lastPtr = useRef("mouse");
   const W = wide ? 320 : 292;
-  const place = () => { const r = ref.current?.getBoundingClientRect(); if (r) setPos({ top: Math.round(r.bottom + 6), left: Math.round(Math.max(12, Math.min(r.left, innerWidth - W))), maxH: Math.max(220, Math.round(innerHeight - r.bottom - 24)) }); };
+  // wenig Platz darunter → Menü nach oben öffnen
+  const place = () => { const r = ref.current?.getBoundingClientRect(); if (!r) return; const left = Math.round(Math.max(12, Math.min(r.left, innerWidth - W))), nb = [...document.querySelectorAll("nav.bottom")].find((n) => { const q = n.getBoundingClientRect(); return getComputedStyle(n).position === "fixed" && q.width >= innerWidth * 0.6 && q.top > innerHeight / 2; }), bot = nb ? nb.getBoundingClientRect().top - 10 : innerHeight - 24, below = bot - r.bottom - 6, above = r.top - 24;
+    setPos(below < 300 && above > below ? { bottom: Math.round(innerHeight - r.top + 6), left, maxH: Math.round(above) } : { top: Math.round(r.bottom + 6), left, maxH: Math.max(160, Math.round(below)) }); };
   const show = () => { clearTimeout(t.current); place(); setOpen(true); };
   const hide = (ms = 180) => { clearTimeout(t.current); t.current = setTimeout(() => setOpen(false), ms); };
   useEffect(() => {
@@ -2882,14 +2876,15 @@ function PickMenu({ label, icon, items, extra = [], title, wide = false }) {
     document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true);
     return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); };
   }, [open]);
-  const hov = { onPointerEnter: (e) => { lastPtr.current = e.pointerType; if (e.pointerType === "mouse") show(); }, onPointerLeave: (e) => { if (e.pointerType === "mouse") hide(); } };
+  // click = nur durch Anklicken öffnen (kein Aufklappen beim Drüberfahren)
+  const hov = click ? {} : { onPointerEnter: (e) => { lastPtr.current = e.pointerType; if (e.pointerType === "mouse") show(); }, onPointerLeave: (e) => { if (e.pointerType === "mouse") hide(); } };
   return (
     <span className="vehpick" ref={ref} {...hov}>
       <button className={"chip vehpickbtn" + (open ? " on open" : "")} title={title} aria-haspopup="menu" aria-expanded={open}
         onPointerDown={(e) => { lastPtr.current = e.pointerType; }}
-        onClick={() => { if (lastPtr.current === "mouse" && open) return; open ? setOpen(false) : show(); }}>{icon ? <>{icon} </> : null}{label} <span className="caret">▾</span></button>
+        onClick={() => { if (!click && lastPtr.current === "mouse" && open) return; open ? setOpen(false) : show(); }}>{icon ? <>{icon} </> : null}{label} <span className="caret">▾</span></button>
       {open && pos && createPortal(
-        <div className="moremenu vehmenu pickmenu" role="menu" style={{ position: "fixed", top: pos.top, left: pos.left, right: "auto", maxHeight: pos.maxH, overflowY: "auto" }} {...hov}>
+        <div className="moremenu vehmenu pickmenu" role="menu" style={{ position: "fixed", top: pos.top ?? "auto", bottom: pos.bottom ?? "auto", left: pos.left, right: "auto", maxHeight: pos.maxH, overflowY: "auto" }} {...hov}>
           {items.map((x, i) => x.head ? <small key={"h" + i} className="muted pickhead">{x.head}</small> : (
             <button key={x.k} role="menuitemradio" aria-checked={!!x.on} className={x.on ? "on" : ""} onClick={() => { x.run(); setOpen(false); }}>
               {x.icon != null && <span className="vehmi">{x.icon}</span>}<span className="grow"><b>{x.title}</b>{x.sub && <small className="muted block">{x.sub}</small>}</span>{x.right && <span className="pickright">{x.right}</span>}{x.on && <span className="ok">✓</span>}
@@ -11887,4 +11882,6 @@ html.hdrmin .hdrcol{display:none!important}
 .expform label .vehpickbtn .caret{margin-left:auto}
 
 @media(max-width:700px){.exptaxrow{grid-template-columns:84px minmax(70px,1fr) auto auto;gap:6px}.exptaxv{min-width:0}}
+
+.vehpickbtn .catimg,.pickmenu .vehmi .catimg{width:1.2em;height:1.2em;object-fit:contain;vertical-align:-.2em}
 `;
