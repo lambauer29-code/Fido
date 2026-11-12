@@ -2422,7 +2422,7 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
       <div className="frow click" onClick={() => setOpenId(open ? null : t.id)}>
         <CatIcon c={t.category} size={36} />
         <div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b>
-          <small className="muted block">{fmtDate(t.date)} · {t.category}{a ? " · " + a.name : ""}{t.vat?.length ? " · USt " + t.vat.map((v) => v.rate + " %").join("/") : ""}{d ? " · 📎" : ""}</small></div>
+          <small className="muted block">{t.category}{a ? " · " + a.name : ""}{t.vat?.length ? " · USt " + t.vat.map((v) => v.rate + " %").join("/") : ""}{d ? " · 📎" : ""}</small></div>
         <div className="right"><b className={t.amount < 0 ? "neg" : "pos"}>{fmtMoney(t.amount)}</b></div>
       </div>
       {open && detail(t, d)}
@@ -2434,9 +2434,9 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
       <ExpenseForm accounts={accounts} txs={txs} docs={docs} categories={categories} onSave={onSave} onScan={onScan} onUpload={onUpload} addCategory={addCategory} suggestCat={suggestCat} notify={notify} />
     </section>
   );
+  const dayL = (iso) => { const d = new Date(iso + "T12:00"); const r = relDay(iso); return r === "Heute" || r === "Gestern" ? r : `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}. ${["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][d.getDay()]}`; };
   if (mobile) {
     // Handy: Formular oben, darunter Suchleiste (bleibt oben stehen) und die Liste wie in den Kontodetails
-    const dayL = (iso) => { const d = new Date(iso + "T12:00"); const r = relDay(iso); return r === "Heute" || r === "Gestern" ? r : `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}. ${["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][d.getDay()]}`; };
     return (
       <div className="exppage mpage">
         {form}
@@ -2473,7 +2473,7 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
         <FitScroll card className="expbox" minH={wide ? 160 : Math.round(innerHeight * 0.62)}>
           <div className="tile">
             {!q && cashRows}
-            {list.map(row)}
+            {mGroup(list, (t) => t.date).map(([date, items]) => <React.Fragment key={date}><div className="mday expday">{dayL(date)}{date.slice(0, 4) !== todayISO().slice(0, 4) ? " " + date.slice(0, 4) : ""}</div>{items.map(row)}</React.Fragment>)}
             {empty}
           </div>
         </FitScroll>
@@ -11944,4 +11944,7 @@ html.hdrmin .hdrcol{display:none!important}
 .exppage.mpage .exphead{margin-top:6px}
 .expcashbox{padding:6px 14px!important}
 .mtxlist .expdetail{padding:4px 16px 12px 74px}
+
+.exppage .expbox .expday{position:sticky!important;top:0!important;z-index:2;margin:0 -14px;padding:8px 16px;background:var(--card2);font-size:15px;border-radius:0}
+.exppage .expbox .expday+.expentry>.frow{border-top:0}
 `;

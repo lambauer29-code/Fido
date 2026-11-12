@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.75.1
+
+- Erfasste Ausgaben (iPad/Desktop): Liste nach Tagen gruppiert, das Datum bleibt beim Scrollen oben in der Box stehen – wie am iPhone. Bei älteren Jahren steht die Jahreszahl dabei.
+
 ## v0.75.0
 
 - **Ausgabe – Erfasste Ausgaben** mit Suchleiste (Firma, Notiz, Kategorie, Konto, Datum, Betrag).
