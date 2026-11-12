@@ -8497,13 +8497,12 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
               : <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{ctCats()[c.cat] || "📄"}</span>}
             <div className="grow">
               <b className={cdocs.length ? "dtitle" : ""} title={cdocs.length ? "Vorschau ein-/ausblenden" : undefined} onClick={cdocs.length ? (e) => { e.stopPropagation(); setPrevCt(open ? null : c.id); } : undefined}>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small>
-              <small className="muted block">{[c.provider, c.customerNo && "Nr. " + c.customerNo, cdocs.length ? `📎 ${cdocs.length}` : ""].filter(Boolean).join(" · ")}</small>
-              <small className="block">{c.cancelledAt ? <span className="muted">Gekündigt{c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}</span>
+              <small className="muted block ctsub">{[c.provider, c.customerNo && "Nr. " + c.customerNo, c.interval || "monatlich", cdocs.length ? `📎 ${cdocs.length}` : ""].filter(Boolean).join(" · ")}{" · "}{c.cancelledAt ? <span className="muted">Gekündigt{c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}</span>
                 : d.open ? <span className="muted">unbefristet · jederzeit kündbar</span>
                 : d.cancelBy ? <span className={daysUntil(d.cancelBy) <= 30 ? "neg" : daysUntil(d.cancelBy) <= 60 ? "warnc" : "muted"}>kündigen bis {fmtDate(d.cancelBy)} · Ende {fmtDate(d.end)}</span>
                 : d.end ? <span className="muted">Ende {fmtDate(d.end)}</span> : <span className="muted">Laufzeit nicht eingetragen</span>}</small>
             </div>
-            <div className="right"><b>{c.amount ? fmtMoney(Number(c.amount)) : "—"}</b><small className="muted block">{c.interval || "monatlich"}</small></div>
+            <b className="invamt ctamt">{c.amount ? fmtMoney(Number(c.amount)) : "—"}</b>
             <div className="ctacts" onClick={(e) => e.stopPropagation()}>
               <button className={"stpill ctstate " + (c.inactive ? "st-draft" : "st-paid")} title={c.inactive ? "Inaktiv – zählt nicht zu den Kosten. Antippen = aktiv" : "Aktiv – antippen = inaktiv"} onClick={() => save({ ...c, inactive: !c.inactive })}>{c.inactive ? "Inaktiv" : "Aktiv"}</button>
               <button className={"iconbtn" + (open ? " on" : "")} disabled={!cdocs.length} title={cdocs.length ? "Vorschau ein-/ausblenden" : "Kein Dokument verknüpft"} onClick={() => setPrevCt(open ? null : c.id)}>{open ? <IcoEyeOff /> : <IcoEye />}</button>
@@ -12201,4 +12200,32 @@ label>.vehpick.block{margin-top:6px}
   html.cmp.cmp-klein .kubar{margin:4px 0!important}
 }
 .cmpset{align-items:center}
+
+/* v0.81.1 Verträge-Zeilen in Rechnungen-Größe */
+.ctrow{align-items:center}
+.ctrow .ctsub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (min-width:701px){
+  .ctlist .ctrow{padding:14px!important;gap:12px}
+  .ctlist .ctrow>.thumb,.ctlist .ctrow>span:first-child:not(.caticon),.ctlist .ctrow>.caticon{display:none!important}
+  .ctlist .ctrow .grow>b{font-size:20px;font-weight:500}
+  .ctlist .ctrow .ctamt{flex:none;min-width:96px;text-align:right}
+  .ctlist .ctacts{display:flex;align-items:center;gap:4px;flex:none}
+  .ctlist .ctacts .stpill{min-width:84px;justify-content:center;display:inline-flex}
+  .ctlist .ctacts .iconbtn{width:36px;height:36px;min-width:36px;min-height:36px;padding:0;border-radius:10px;background:transparent;color:var(--mut);display:inline-flex;align-items:center;justify-content:center}
+  .ctlist .ctacts .iconbtn svg{width:18px;height:18px}
+}
+
+/* v0.81.2 Dokumente am Handy in Verträge-Größe */
+@media (max-width:700px){
+  .docbox .ditem{flex-wrap:nowrap!important;align-items:center!important;padding:12px 16px!important;gap:12px!important;row-gap:0!important}
+  .docbox .ditem>.thumb{width:48px!important;height:48px!important;min-width:48px;border-radius:12px;overflow:hidden;flex:none}
+  .docbox .ditem>.thumb img{width:100%;height:100%;object-fit:cover;object-position:top}
+  .docbox .ditem>.grow{min-width:0;flex:1}
+  .docbox .ditem .row1{display:block}
+  .docbox .ditem .dtitle{font-size:17px!important;font-weight:600!important;line-height:1.35!important;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:unset}
+  .docbox .ditem small{font-size:14px!important;line-height:1.35!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .docbox .ditem .labels,.docbox .ditem .dactions,.docbox .ditem .damtin{display:none!important}
+  .docbox .ditem .damtcol{display:block!important;flex:none;text-align:right;white-space:nowrap}
+  .docbox .ditem .damtcol .amt{font-size:16px!important;font-weight:600!important}
+}
 `;

@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.81.2
+
+- Dokumente am Handy in der Größe der Verträge: Zeilenhöhe 72 statt 190 px, Vorschaubild 48 × 48, Titel und Unterzeile je eine Zeile, Betrag rechts. Etiketten und die Symbolleiste je Zeile sind am Handy ausgeblendet – Vorschau, Teilen, Bearbeiten und Löschen gehen über Wischen.
+
+## v0.81.1
+
+- Verträge: Zeilen in der Größe der Rechnungen – ohne Vorschaubild (ab iPad), Anbieter/Nr./Intervall/Laufzeit in einer Unterzeile, Betrag in eigener Spalte, Status-Etikett 84 px, Symbole 36 × 36 px. Vorschau weiterhin über das Auge.
+
 ## v0.81.0 – Test „Kompakt wie Konten“ (iPhone/iPad)
 
 - Neuer Schalter **Einstellungen → Darstellung → Kompakt wie Konten (Test)** mit drei Stufen: **Aus**, **Nur große Zahl**, **Kleine Kacheln**. Wirkt nur am iPhone (≤ 700 px) und iPad (Touch, ab 701 px); am Mac bleibt alles gleich.
