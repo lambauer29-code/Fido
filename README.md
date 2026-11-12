@@ -2,6 +2,21 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.69.0
+
+- **Handy: Listen als abgerundete Karte mit innerer Scroll-Liste** – Rechnungen, Mahnungen, Kunden, Artikel, Lager & Inventur, Besitz & Garantie, Kassabuch, Verträge, Fixkosten & Abos und Fahrtenbuch. Die Karte ist mindestens gut halb so hoch wie der Bildschirm: Erst scrollt die Seite, bis die Karte ganz sichtbar ist, dann scrollt die Liste innen. Tages-/Gruppenüberschriften bleiben innerhalb der Karte oben haften, Wischgesten funktionieren weiter.
+
+## v0.68.0
+
+- **Listen als abgerundete Karte mit innerer Scroll-Liste** (wie im Reiter Konten): Rechnungen, Mahnungen, Kunden, Artikel, Lager & Inventur, Besitz & Garantie, Kassabuch, Fixkosten & Abos, Verträge und Fahrtenbuch (Listen-Ansichten). Die Karte ist oben und unten abgerundet, gescrollt wird innerhalb der Karte. Ist über der Liste wenig Platz (z. B. bei offenem Ablagefeld), bekommt die Karte trotzdem eine feste Höhe von rund 60 % des Bildschirms.
+- Kassabuch: ab iPad gleiche Scroll-Karte wie die anderen Listen, Hinweistext in die Karte verschoben.
+- Konten: Link „Konto löschen“ unter der Umsatzliste entfernt (Löschen weiterhin über „Konto bearbeiten“).
+
+## v0.67.1
+
+- Kassabuch: Die Buchungstabelle (Einnahmen/Ausgaben) bleibt ab dem iPad im Desktop-Design. Bei schmaler Tabelle stehen Belegnummer unter dem Datum und Kategorie unter dem Text, statt dass Spalten zusammenfallen.
+- Kassensturz-Protokolle: Anzahl neben der Überschrift 3 px nach rechts (alle Ansichten).
+
 ## v0.67.0
 
 - **Neuer Reiter „Besitz & Garantie“** für Anschaffungen – umschaltbar zwischen **Privat**, **Firma** und beidem.

@@ -3085,7 +3085,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
         </div>
       </section>
       <ChipBar seg storeKey="fbViews" cfg={viewCfg} setCfg={setViewCfg} className="fbseg" items={VIEWS.map(([k, l]) => ({ k, label: l, el: <button className={view === k ? "on" : ""} onClick={() => setView(k)}>{l}</button> }))} />
-      <FitScroll>
+      <FitScroll card={view !== "bericht"}>
       {["verlauf", "fuel", "trip", "expense"].includes(view) && (
         <section className="tile">
           {view === "trip" && trips.length > 0 && <div className="tilehead"><b>Fahrten {year}</b><button className="link" onClick={exportCsv}>⬇︎ CSV fürs Finanzamt</button></div>}
@@ -4898,7 +4898,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
         </div>
       </div>
 
-      <FitScroll>
+      <FitScroll card>
       {!list.length ? (
         <div className="tile hintrow">
           <span className="caticon" style={{ width: 40, height: 40, background: "#8b5cf622", fontSize: 18 }}>📑</span>
@@ -5365,7 +5365,6 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       ))}
       {list.length > limit && <button className="btn txmore" onClick={() => setLimit(limit + 300)}>Mehr laden ({list.length - limit})</button>}
       </div>}
-      {acc && <button className="link red" style={{ marginTop: 16 }} onClick={() => confirm(`Konto „${accName(acc)}“ samt Umsätzen löschen?`) && (deleteAccount(acc), setAcc(""))}>Konto löschen</button>}
 
       </div>
       {modals}
@@ -6961,14 +6960,20 @@ function nextInvNumber(list, kind, co, date) {
   return pre + String(max + 1).padStart(3, "0");
 }
 /* Bereich unterhalb eines festen Kopfes: scrollt für sich, wenn genug Platz ist (sonst normal) */
-function FitScroll({ children, className = "", cols }) {
+// Handy-Liste als abgerundete Karte mit eigener Scroll-Liste
+function MScroll({ children }) {
   const ref = useRef(null);
-  const h = useFitHeight(ref);
+  const h = useFitHeight(ref, 160, true, true, 0.55);
+  return <div ref={ref} className={"mtxlist mscard" + (h ? " fit" : "")} style={h ? { maxHeight: h } : undefined}>{children}</div>;
+}
+function FitScroll({ children, className = "", cols, card = false }) {
+  const ref = useRef(null);
+  const h = useFitHeight(ref, 200, card, card, card ? 0.55 : 0);
   const k = useKLook();
-  return <div ref={ref} className={"fitscroll" + (h ? " fit" : "") + (className ? " " + className : "")} style={h ? { maxHeight: h } : undefined}>
+  return <div ref={ref} className={"fitscroll" + (card ? " fscard" : "") + (h ? " fit" : "") + (className ? " " + className : "")} style={h ? { maxHeight: h } : undefined}>
     {k && cols && <div className="khead"><span>{cols[0]}</span><span>{cols[1]}</span><span>{cols[2]}</span></div>}{children}</div>;
 }
-function useFitHeight(ref, min = 200) {
+function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0) {
   const [h, setH] = useState(null);
   useEffect(() => {
     let raf = 0;
@@ -6979,7 +6984,8 @@ function useFitHeight(ref, min = 200) {
       const app = document.querySelector(".app"), appPad = app ? parseFloat(getComputedStyle(app).paddingBottom) || 0 : 0;
       const bottom = Math.max(bar ? innerHeight - bar.getBoundingClientRect().top + 8 : 0, appPad + 4);
       const avail = Math.floor(innerHeight - top - bottom - 8);
-      setH((o) => { const n = avail >= min && innerWidth >= 700 ? avail : null; return o === n ? o : n; });
+      setH((o) => { const pm = innerWidth < 700 && phoneMin ? Math.round(innerHeight * phoneMin) : 0;
+      const n = innerWidth < 700 && !phone ? null : Math.max(avail, pm) >= min ? Math.max(avail, pm) : force ? Math.max(min, Math.round(innerHeight * 0.62)) : null; return o === n ? o : n; });
     }); };
     calc();
     addEventListener("resize", calc);
@@ -7787,7 +7793,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           { label: `Bezahlt ${year}`, value: fmtMoney(paidYear), vcls: "pos", onClick: () => setFilter("bezahlt") }, { label: `Umsatz ${year}`, value: fmtMoney(yearRev) }]} />
         <MActs items={[{ label: "＋ Rechnung", primary: true, run: () => newDoc("rechnung") }, { label: "＋ Angebot", run: () => newDoc("angebot") }, { label: "🏢 Firma", run: () => setCoOpen(true) }, setTab && { label: "📮 Mahnungen", run: () => setTab("mahnungen") }]} />
         <MBar q={q} setQ={setQ} placeholder="Nummer, Kunde, Leistung suchen" chips={FILTERS.map(([k, l]) => [k, l, cnt(k), filter === k, () => setFilter(k)])} />
-        <div className="mtxlist">
+        <MScroll>
           {filter === "wiederkehrend" ? (<>
             {!templates.length && <MEmpty>Keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „wiederkehrend“ wählen.</MEmpty>}
             {templates.map((t) => <MItem key={t.id} icon={<MIco e="🔁" />} title={t.name} sub={`${t.interval} · nächster Entwurf ${fmtDate(t.next)}`} amount={fmtMoney(invTotal(t.inv || {}))} dim={!t.active}
@@ -7808,7 +7814,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
               </React.Fragment>
             ))}
           </>)}
-        </div>
+        </MScroll>
       </div>
       ) : (<>
       {!coOk && <div className="healthbox"><b>Zuerst Firmendaten eintragen</b><p className="small muted">Name, Anschrift, Bankverbindung und Logo erscheinen auf jeder Rechnung.</p><button className="btn primary" onClick={() => setCoOpen(true)}>Firmendaten eintragen</button></div>}
@@ -7839,7 +7845,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Nummer, Kunde, Leistung suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <div className="chips invfilter">{FILTERS.map(([k, l]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({cnt(k)})</small></button>)}</div>
 
-      <FitScroll className="kinv" cols={["Kunde", "Nummer · Datum", "Betrag · Status"]}>
+      <FitScroll card className="kinv" cols={["Kunde", "Nummer · Datum", "Betrag · Status"]}>
       {filter === "wiederkehrend" ? (
         <section className="tile">
           {!templates.length && <p className="muted small">Noch keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „Wiederkehrend“ anhaken – FinDocu legt dann zum Termin automatisch einen Entwurf an, den du nur noch prüfst und ausstellst.</p>}
@@ -8066,7 +8072,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
         {imp && <section className="tile">
           {docCands.map((d) => <div key={d.id} className="frow"><Thumb d={d} /><div className="grow"><b>{d.contract.provider}</b><small className="muted block">{d.title}</small></div><button className="btn sm" onClick={() => setEdit(fromDoc(d))}>Übernehmen</button></div>)}
         </section>}
-        <div className="mtxlist">
+        <MScroll>
           {!shown.length && <MEmpty>Noch keine Verträge – mit „＋ Vertrag“ z. B. Internet, Handy, Strom oder Versicherungen eintragen.</MEmpty>}
           {mGroup([...shown].sort((x, y) => (x.c.cat || "~").localeCompare(y.c.cat || "~", "de") || (x.d.cancelBy || "9999").localeCompare(y.d.cancelBy || "9999")), ({ c }) => c.cat || "Sonstiges").map(([g, l]) => (
             <React.Fragment key={g}>
@@ -8083,7 +8089,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
                       d.cancelBy && !c.cancelledAt && { icon: "📅", label: "Kalender", bg: "#8b5cf6", run: () => saveBlob(new Blob([["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinDocu//DE", icsEvent({ id: "ct-" + c.id, date: d.cancelBy, label: "Kündigung bis" }, { title: `${c.name} (${c.provider || ""})` }), "END:VCALENDAR"].join("\r\n")], { type: "text/calendar" }), "kuendigung.ics") }] }} />); })}
             </React.Fragment>
           ))}
-        </div>
+        </MScroll>
       </div>
       ) : (<>
       <div className="seg scopeseg">{[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small className="cnt">({k === "alle" ? active.length : active.filter((c) => (c.scope || "privat") === k).length})</small></button>)}</div>
@@ -8116,7 +8122,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
       </div>
       {onFiles && showDrop && <DropField onFiles={dropCt} onHide={() => setShowDrop(false)} busy={!!docBusy} title="Verträge oder Ordner hierher ziehen" what="PDF & Fotos · Vertrag wird automatisch angelegt" />}
       {docBusy && waitIds.length > 0 && <ImportBar {...docBusy} />}
-      <FitScroll cols={["Vertrag", "Details", "Kosten · Kündigung"]}>
+      <FitScroll card cols={["Vertrag", "Details", "Kosten · Kündigung"]}>
       {imp && <section className="tile">
         <div className="tilehead"><b>Von Claude erkannte Verträge in deinen Dokumenten</b></div>
         {docCands.map((d) => <div key={d.id} className="frow"><Thumb d={d} /><div className="grow"><b>{d.contract.provider}</b><small className="muted block">{d.title} · {d.contract.amount ? fmtMoney(d.contract.amount) + " " + (d.contract.interval || "") : ""}</small></div>
@@ -8341,7 +8347,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         <MBar q={q} setQ={setQ} placeholder="Name, E-Mail, Telefon, Ort suchen"
           chips={[["alle", "Alle", list.length, type === "alle", () => setType("alle")], ...types.map((t) => ["t:" + t.id, <><TypeGlyph t={t} /> {t.name}</>, list.filter((c) => (c.type || "Kunde") === t.name).length, type === t.name, () => setType(t.name)])]} />
         {busy && <ImportBar {...busy} />}
-        <div className="mtxlist">
+        <MScroll>
           {!shown.length && <MEmpty>{list.length ? "Keine Treffer." : "Noch keine Kontakte – mit „＋ Kontakt“ anlegen oder aus dem Handy übernehmen."}</MEmpty>}
           {mGroup(shown, (c) => ((c.name || "#").trim()[0] || "#").toUpperCase()).map(([L, l]) => (
             <React.Fragment key={L}>
@@ -8355,7 +8361,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
                     right: [tel && { icon: "📞", label: "Anrufen", bg: "#16a34a", run: () => (location.href = "tel:" + tel) }, c.email && { icon: "✉️", label: "Mail", bg: "#3b82f6", run: () => (location.href = "mailto:" + c.email) }] }} />); })}
             </React.Fragment>
           ))}
-        </div>
+        </MScroll>
       </div>
       ) : (<>
       <div className="invbar">
@@ -8386,7 +8392,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         accept=".vcf,text/vcard,text/x-vcard" isOk={(f) => /\.vcf$/i.test(f.name) || /vcard/i.test(f.type)} emptyMsg="Keine .vcf-Kontaktdateien gefunden." />
         : null}
       {busy && <ImportBar {...busy} />}
-      <FitScroll cols={["Name", "Art · Ort", "Offen"]}>
+      <FitScroll card cols={["Name", "Art · Ort", "Offen"]}>
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📱 Aus Handy-Kontakten“ übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
         {shown.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
@@ -8700,7 +8706,7 @@ function ArticlesPage({ setTab }) {
             .filter(([k, , n]) => k === "alle" || n || C.groups.includes(k)).map(([k, l, n]) => [k, l, n, grp === k, () => setGrp(k)])}>
           <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">↕ Name</option><option value="preis">↕ Preis</option><option value="umsatz">↕ Umsatz</option></select>
         </MBar>
-        <div className="mtxlist">
+        <MScroll>
           {!shown.length && <MEmpty>{list.length ? "Keine Treffer." : "Noch keine Artikel – mit „＋ Artikel“ anlegen."}</MEmpty>}
           {(grp === "alle" && sort === "name" ? mGroup([...shown].sort((x, y) => (x.a.group || "~").localeCompare(y.a.group || "~", "de") || (x.a.text || "").localeCompare(y.a.text || "", "de")), ({ a }) => a.group || "Ohne Gruppe") : [["", shown]]).map(([g, l]) => (
             <React.Fragment key={g || "all"}>
@@ -8714,7 +8720,7 @@ function ArticlesPage({ setTab }) {
               ))}
             </React.Fragment>
           ))}
-        </div>
+        </MScroll>
       </div>
       ) : (<>
       <div className="invbar">
@@ -8738,7 +8744,7 @@ function ArticlesPage({ setTab }) {
         {[["alle", "Alle", list.length], ...groups.map((g) => [g, g, list.filter((a) => a.group === g).length]), ["ohne", "Ohne Gruppe", list.filter((a) => !a.group).length]]
           .filter(([k, , n]) => k === "alle" || n || C.groups.includes(k)).map(([k, l, n]) => <button key={k} className={"chip" + (grp === k ? " on" : "")} onClick={() => setGrp(k)}>{l} <small>({n})</small></button>)}
       </div>
-      <FitScroll cols={["Bezeichnung", "Nummer · Gruppe", "Preis"]}>
+      <FitScroll card cols={["Bezeichnung", "Nummer · Gruppe", "Preis"]}>
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Artikel. Mit „＋ Artikel“ anlegen oder beim Schreiben einer Rechnung mit ☆ merken – beim Tippen der Bezeichnung werden sie vorgeschlagen."}</p>}
         {shown.map(({ a, u }) => (
@@ -8929,7 +8935,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
         <MActs items={[{ label: "＋ Gerät", primary: true, run: newAsset }, { label: "📷 Beleg scannen", run: () => { newAsset(); setTimeout(() => document.querySelector(".win .expbig, .sheet .expbig")?.click(), 60); } }, { label: mode === "cal" ? "☰ Liste" : "📅 Kalender", run: () => setMode(mode === "cal" ? "list" : "cal") }]} />
         <MBar q={q} setQ={setQ} placeholder="Gerät, Marke, Seriennummer suchen" chips={chips.filter(([k, , n]) => n || k === "alle").map(([k, l, n]) => [k, l, n, filter === k, () => setFilter(k)])}><ExportMenu items={exportItems} /></MBar>
         {mode === "cal" ? cal : (
-          <div className="mtxlist">
+          <MScroll>
             {!shown.length && empty}
             {shown.map((a) => (
               <MItem key={a.id} icon={<AstIco a={a} />} title={a.name} dim={astOut(a)} tags={[(a.scope || "privat") === "firma" && "Firma", a.docId && "📎"]}
@@ -8938,7 +8944,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
                   right: [{ icon: "📅", label: "Kalender", bg: "#8b5cf6", run: () => downloadIcs(assetDlDocs([a]).flatMap((d) => d.deadlines.map((dl) => [dl, d])), "garantie.ics") },
                     { icon: astOut(a) ? "▶" : "📤", label: astOut(a) ? "Aktiv" : "Aus", bg: "#64748b", run: () => save({ ...a, soldAt: astOut(a) ? "" : todayISO(), inactive: false }) }] }} />
             ))}
-          </div>
+          </MScroll>
         )}
       </div>
       ) : (<>
@@ -8954,7 +8960,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
       {mode === "cal" ? cal : (<>
         <div className="searchbar"><span>🔍</span><input type="search" placeholder="Gerät, Marke, Seriennummer, Händler suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         <div className="chips invfilter">{chips.filter(([k, , n]) => n || k === "alle").map(([k, l, n]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({n})</small></button>)}</div>
-        <FitScroll cols={["Gerät", "Marke · Kauf · Garantie", "Kaufpreis"]}>
+        <FitScroll card cols={["Gerät", "Marke · Kauf · Garantie", "Kaufpreis"]}>
           <section className="tile ctlist">
             {!shown.length && empty}
             {shown.map((a) => (
@@ -8967,9 +8973,10 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
               </div>
             ))}
           </section>
+          <p className="muted small fsnote">Gewährleistung in Österreich: 2 Jahre ab Übergabe; eine Herstellergarantie kann länger laufen. Garantie-Enden erscheinen automatisch im Reiter „Umtauschfrist“ und im Kalender-Abo.</p>
         </FitScroll>
       </>)}
-      <p className="muted small">Gewährleistung in Österreich: 2 Jahre ab Übergabe; eine Herstellergarantie kann länger laufen. Garantie-Enden erscheinen automatisch im Reiter „Umtauschfrist“ und im Kalender-Abo.</p>
+      
       </>)}
       {edit && <AssetEditor a={edit} docs={docs} onScan={onScan} onUpload={onUpload} onOpenDoc={onOpen} notify={notify}
         onSave={save} onDelete={(a) => setList((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
@@ -9198,7 +9205,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
     { label: "Kassensturz", value: lastCount ? fmtDate(lastCount.date) : "noch keiner", sub: lastCount ? (lastCount.diff ? "Differenz " + fmtMoney(lastCount.diff) : "stimmte ✓") : "jetzt zählen", alert: !lastCount || daysUntil(lastCount.date) < -7, onClick: () => setCountOpen(true) }];
   const countsList = (
     <section className="tile">
-      <div className="row"><b className="grow">Kassensturz-Protokolle</b><span className="muted small">{kCounts.length}</span></div>
+      <div className="row"><b className="grow">Kassensturz-Protokolle<span className="muted small kbcnt">{kCounts.length}</span></b></div>
       {!kCounts.length && <p className="muted small">Noch kein Kassensturz. Empfehlung: mindestens wöchentlich, besser täglich zählen.</p>}
       {kCounts.map((c) => <div key={c.id} className="frow"><span className="grow"><b>{new Date(c.created).toLocaleString("de-AT", { dateStyle: "short", timeStyle: "short" })}</b><small className="muted block">Soll {fmtMoney(c.book)} · Ist {fmtMoney(c.counted)}{c.note ? " · " + c.note : ""}</small></span>
         <b className={c.diff < 0 ? "neg" : c.diff > 0 ? "pos" : ""}>{c.diff ? fmtMoney(c.diff) : "✓"}</b><button className="chip" onClick={() => countPdf(c)}>🖨</button></div>)}
@@ -9221,7 +9228,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
         </MBar>
         <div className="mchips">{kassen.length > 1 && <select className="chip" value={kasse.id} onChange={(e) => setSel(e.target.value)}>{kassen.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</select>}{perSel}<ExportMenu items={exportItems} /><button className="chip" onClick={() => setSetup(true)}>⚙︎</button><button className={"chip" + (showCounts ? " on" : "")} onClick={() => setShowCounts(!showCounts)}>Protokolle</button></div>
         {showCounts && countsList}
-        <div className="mtxlist">
+        <MScroll>
           {!shown.length && <MEmpty>{mine.length ? "Keine Buchungen in diesem Zeitraum." : "Noch keine Buchungen – mit „＋ Einnahme“ oder „− Ausgabe“ beginnen."}</MEmpty>}
           {mGroup([...shown].reverse(), (e) => e.date).map(([d, l]) => (
             <React.Fragment key={d}>
@@ -9232,7 +9239,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
                 onClick={() => setDet(e.id)} swipe={!e.stornoBy && !e.stornoOf ? { right: [{ icon: "↩︎", label: "Storno", bg: "#ef4444", run: () => doStorno(e) }] } : undefined} />)}
             </React.Fragment>
           ))}
-        </div>
+        </MScroll>
       </div>
       ) : (<>
       <div className="kbstats">{stats.map((s, i) => <div key={i} className={"tile kbstat" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b><small className="muted">{s.sub}</small></div>)}</div>
@@ -9249,23 +9256,23 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
       </div>
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Text, Kategorie, Beleg, Nummer suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {showCounts && countsList}
-      <FitScroll>
+      <FitScroll card>
       <section className="tile kbtable">
         <div className="kbr kbh"><span>Nr.</span><span>Datum</span><span>Text</span><span>Kategorie</span><span className="r">Einnahme</span><span className="r">Ausgabe</span><span className="r">Saldo</span></div>
         {per !== "alle" && <div className="kbr kbopen"><span /><span>{fmtDate(first)}</span><span>Anfangsbestand</span><span /><span /><span /><span className="r">{fmtMoney(opening)}</span></div>}
         {!shown.length && <p className="muted small" style={{ padding: 12 }}>{mine.length ? "Keine Buchungen in diesem Zeitraum." : "Noch keine Buchungen. Jede Bareinnahme und -ausgabe einzeln mit Beleg erfassen."}</p>}
         {shown.map((e) => (
           <div key={e.id} className={"kbr click" + rowCls(e)} onClick={() => setDet(e.id)}>
-            <span className="muted">{kbNo(e)}</span><span>{fmtDate(e.date)}</span>
-            <span className="one"><b>{e.text}</b>{e.docId && " 📎"}{e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}</span>
-            <span className="muted one">{e.cat}</span>
+            <span className="muted kbcno">{kbNo(e)}</span><span className="kbcdate">{fmtDate(e.date)}<small className="muted kbsub">{kbNo(e)}</small></span>
+            <span className="one kbctext"><b>{e.text}</b>{e.docId && " 📎"}{e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}<small className="muted kbsub one">{e.cat}</small></span>
+            <span className="muted one kbccat">{e.cat}</span>
             <span className="r pos">{e.kind === "ein" ? fmtMoney(e.amount) : ""}</span><span className="r neg">{e.kind === "aus" ? fmtMoney(e.amount) : ""}</span><span className="r"><b>{fmtMoney(saldo[e.id])}</b></span>
           </div>
         ))}
         {!!shown.length && <div className="kbr kbh kbfoot"><span /><span /><span>Summe {perLabel}</span><span /><span className="r pos">{fmtMoney(sumIn)}</span><span className="r neg">{fmtMoney(sumOut)}</span><span className="r">{fmtMoney(kbR2(opening + sumIn - sumOut))}</span></div>}
       </section>
+      <p className="muted small fsnote">🔒 Unveränderbare Einzelaufzeichnung mit fortlaufender Nummer je Jahr, Storno statt Löschen, Kassenminus wird verhindert. Ersetzt keine Registrierkasse (RKSV).</p>
       </FitScroll>
-      <p className="muted small">🔒 Unveränderbare Einzelaufzeichnung mit fortlaufender Nummer je Jahr, Storno statt Löschen, Kassenminus wird verhindert. Ersetzt keine Registrierkasse (RKSV).</p>
       </>)}
       {modals}
     </div>
@@ -9573,7 +9580,7 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
         <MBar q={q} setQ={setQ} placeholder="Artikel, Nummer, Lagerort suchen">{null}</MBar>
         <div className="mchips">{viewChips}<ExportMenu items={exportItems} /></div>
         {!!locChips.length && (view === "bestand" || view === "nachbestellen") && <div className="mchips">{locChips.map(([k, l]) => <button key={k} className={"chip" + (loc === k ? " on" : "")} onClick={() => setLoc(k)}>{l}</button>)}</div>}
-        <div className="mtxlist">{body}</div>
+        <MScroll>{body}</MScroll>
       </div>
       ) : (<>
       <div className="kbstats">{stats.map((s, i) => <div key={i} className={"tile kbstat" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b><small className="muted">{s.sub}</small></div>)}</div>
@@ -9589,7 +9596,7 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
       <div className="chips invfilter">{viewChips}</div>
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Artikel, Nummer, Lagerort, Lieferant suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {!!locChips.length && (view === "bestand" || view === "nachbestellen") && <div className="chips invfilter">{locChips.map(([k, l]) => <button key={k} className={"chip" + (loc === k ? " on" : "")} onClick={() => setLoc(k)}>{l}</button>)}</div>}
-      <FitScroll cols={view === "inventur" ? ["Inventur", "Stichtag · Umfang", "Status"] : view === "bewegungen" ? ["Artikel", "Datum · Art", "Menge"] : ["Artikel", "Lagerort · Lieferant", "Bestand"]}><section className="tile ctlist">{body}</section></FitScroll>
+      <FitScroll card cols={view === "inventur" ? ["Inventur", "Stichtag · Umfang", "Status"] : view === "bewegungen" ? ["Artikel", "Datum · Art", "Menge"] : ["Artikel", "Lagerort · Lieferant", "Bestand"]}><section className="tile ctlist">{body}</section></FitScroll>
       </>)}
       {mv && <StockMoveWin a={mv.a} type={mv.type} st={st(mv.a)} onSave={addMove} onClose={() => setMv(null)} />}
       {scan && <CodeScanWin title="Lagerartikel scannen" onClose={() => setScan(false)} onResult={scanHit} />}
@@ -9633,7 +9640,7 @@ function DunningPage({ setTab, book }) {
           { label: "Jetzt mahnen", value: over.filter((o) => o.ready).length, sub: `Wartezeit ${dn.waitDays} Tage` },
           { label: `Mahnungen ${year}`, value: history.filter((h) => (h.r.date || "").startsWith(year)).length, sub: "versendet" }]} />
         <MActs items={[{ label: "＋ Mahnung", primary: true, run: () => setPickOpen(true) }, setTab && { label: "🧾 Rechnungen", run: () => setTab("invoices") }]} />
-        <div className="mtxlist">
+        <MScroll>
           <MHead right={over.length}>Zu mahnen</MHead>
           {!over.length && <MEmpty>Keine überfälligen Rechnungen 🎉</MEmpty>}
           {over.map(({ x, last, since, ready, next }) => (
@@ -9655,7 +9662,7 @@ function DunningPage({ setTab, book }) {
               swipe={{ left: [{ icon: "👁", label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id + ":" + i ? null : x.id + ":" + i) }],
                 right: [{ icon: "📤", label: "Teilen", bg: "#8b5cf6", run: async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email) }] }}
               after={prevInv === x.id + ":" + i && <InvPreview x={x} co={co} make={() => pdfOf(x, i)} name={invFileName(x, r)} />} />); })}
-        </div>
+        </MScroll>
         {pickOpen && (
           <Win id="dunpick" onClose={() => setPickOpen(false)} dirty={false} small>
             <div className="panelhead"><b>Mahnung für …</b><XBtn /></div>
@@ -9687,7 +9694,7 @@ function DunningPage({ setTab, book }) {
         {setTab && <button className="btn" onClick={() => setTab("invoices")}>🧾 Rechnungen</button>}
         {setTab && <button className="btn" title="Mahnwesen einstellen" onClick={() => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); }}>⚙︎</button>}
       </div>
-      <FitScroll className="kinv" cols={["Kunde", "Rechnung · Fälligkeit", "Betrag · Stufe"]}>
+      <FitScroll card className="kinv" cols={["Kunde", "Rechnung · Fälligkeit", "Betrag · Stufe"]}>
       <section className="tile invlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b></div>
         {!over.length && <p className="muted small" style={{ padding: "0 14px" }}>Keine überfälligen Rechnungen 🎉</p>}
@@ -11583,4 +11590,37 @@ html.klook .invbar .chip,html.klook .invbar summary.chip,html.klook .invbar sele
 .astwarr p{margin:2px 0 0}
 .astpage .frow.ended{opacity:.55}
 .astpage .frow .right{min-width:92px}
+
+/* v0.67.1 Kassabuch-Tabelle ab iPad im Desktop-Design */
+.kbtable{container-type:inline-size}
+.kbsub{display:none}
+.kbcnt{margin-left:3px;font-weight:400}
+.kbr>span{min-width:0}
+@container (max-width:860px){
+  .kbr{grid-template-columns:96px minmax(0,1fr) 92px 92px 100px;gap:8px;padding:9px 12px}
+  .kbr>.kbcno,.kbr>.kbccat,.kbh>span:nth-child(1),.kbh>span:nth-child(4),.kbopen>span:nth-child(1),.kbopen>span:nth-child(4),.kbfoot>span:nth-child(1),.kbfoot>span:nth-child(4){display:none}
+  .kbr .kbsub{display:block;font-size:11px;font-weight:400;line-height:1.3}
+  .kbr .kbctext{display:flex;flex-direction:column;white-space:normal}
+  .kbr .kbctext>b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kbr .kbctext .stpill{align-self:flex-start;margin:2px 0 0}
+}
+@container (max-width:520px){ .kbr{grid-template-columns:82px minmax(0,1fr) 80px 80px 88px;font-size:13px;gap:6px;padding:8px 10px} }
+
+/* v0.68 Listen als abgerundete Karte mit innerer Scroll-Liste (wie Konten) */
+.fitscroll.fscard{background:var(--card);border-radius:26px;box-shadow:var(--shadow);margin:0!important;padding:0!important;gap:0!important;overflow:hidden;isolation:isolate}
+.fitscroll.fscard.fit{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.fscard>.tile,.fscard>section{background:none!important;box-shadow:none!important;border-radius:0!important;margin:0!important}
+.fscard>.tile+.tile,.fscard>section+section,.fscard>.tile+section,.fscard>section+.tile{border-top:1px solid var(--line)}
+.fscard>.khead{border-radius:0!important;margin-bottom:0!important}
+.fscard .kbh{top:0}
+.fscard>.fsnote{padding:6px 18px 16px;margin:0}
+html:not(.fg) .fitscroll.fscard{border-radius:18px}
+
+/* v0.69 Handy: Listen als abgerundete Karte mit innerer Scroll-Liste */
+.mtxlist.mscard{margin:0;background:var(--card);border-radius:22px;overflow:hidden;isolation:isolate}
+.mtxlist.mscard.fit{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.mscard>.mday:first-child,.mscard>.mhead:first-child{border-radius:0}
+.mscard .mtx{background:transparent}
+.mscard .swfront,.mscard .mtx,.fscard .swfront{background:var(--card)}
+.mscard>.mday,.mscard .mday{top:0}
 `;
