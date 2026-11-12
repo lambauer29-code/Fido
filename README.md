@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.72.3
+
+- Handy: In Reitern ohne eigene Suchleiste (Mahnungen, Verträge, Fixkosten & Abos, Fahrtenbuch) bleibt beim Scrollen oben eine schmale Leiste in Hintergrundfarbe stehen – wie die Suchleiste bei den Rechnungen. Dadurch färbt Safari die Statusleiste nicht mehr grau ein, wenn eine graue Überschrift („Zu mahnen“) nach oben kommt.
+
 ## v0.72.2
 
 - Handy: Listen scrollen jetzt mit dem ganz normalen Seiten-Scrollen von iOS (mit Schwung, ohne Eingriffe per Skript). Titel, Kennzahlen und Knöpfe wandern dabei nach oben weg, die Suche/Filter bleiben oben stehen. Die Liste sieht trotzdem wie eine feste Box aus: oben eine mitlaufende abgerundete Kante direkt unter der Suchleiste, unten eine feste abgerundete Kante 15 px über der Leiste. Gilt für alle Listen-Reiter inkl. Fixkosten & Abos und Fahrtenbuch.

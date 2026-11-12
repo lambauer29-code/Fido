@@ -7025,16 +7025,18 @@ function useHdrReset() { useEffect(() => () => document.documentElement.classLis
 // unten eine feste abgerundete Kante 15 px über der Leiste.
 function MScroll({ children, extra = "" }) {
   const ref = useRef(null);
-  const [cap, setCap] = useState(null);
+  const [cap, setCap] = useState(null), [guard, setGuard] = useState(false);
   useEffect(() => {
     const root = document.documentElement; root.classList.add("mnat");
+    // Reiter ohne eigene Suchleiste: schmale schwarze Leiste oben fixieren, damit Safari die Statusleiste nicht grau einfärbt
+    setGuard(!ref.current?.closest(".mpage, .ctpage, .invpage, .fbpage, main")?.querySelector(".msticky:not(.mguard)"));
     let raf = 0;
     const calc = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
       const el = ref.current; if (!el) return;
       const nb = [...document.querySelectorAll("nav.bottom")].find((b) => { const r = b.getBoundingClientRect(); return getComputedStyle(b).position === "fixed" && r.width >= innerWidth * 0.6 && r.top > innerHeight / 2; });
       const navTop = nb ? nb.getBoundingClientRect().top : innerHeight;
-      const st = el.closest(".mpage")?.querySelector(".msticky");
-      const stk = st ? Math.round(st.getBoundingClientRect().height) : 0;
+      const st = el.parentElement?.querySelector(".msticky:not(.mguard)") || el.closest(".mpage")?.querySelector(".msticky:not(.mguard)") || el.previousElementSibling?.classList?.contains("mguard") && el.previousElementSibling;
+      const stk = st ? (st.classList.contains("mguard") ? 12 : Math.round(st.getBoundingClientRect().height)) : 0;
       root.style.setProperty("--navgap", Math.round(innerHeight - navTop) + "px");
       root.style.setProperty("--mstk", stk + "px");
       const r = el.getBoundingClientRect();
@@ -7046,6 +7048,7 @@ function MScroll({ children, extra = "" }) {
     return () => { cancelAnimationFrame(raf); removeEventListener("resize", calc); ro.disconnect(); root.classList.remove("mnat"); };
   }, []);
   return (<>
+    {guard && <div className="msticky mguard" aria-hidden="true" />}
     <div ref={ref} className={"mtxlist mscard mnative" + (extra ? " " + extra : "")}><div className="mcap" aria-hidden="true" />{children}</div>
     {cap && createPortal(<div className="mbotcap" aria-hidden="true" style={{ top: cap.top - 22 }}><i style={{ left: cap.left, right: cap.right }} /></div>, document.body)}
   </>);
@@ -11790,4 +11793,8 @@ html.mnat main{padding-bottom:0!important}
 .mbotcap::after{content:"";position:absolute;left:0;right:0;top:22px;bottom:0;background:var(--bg)}
 .mnative.fscard{overflow:clip!important;background:var(--card)}
 .mnative.fscard>.tile,.mnative.fscard>section{padding-left:14px;padding-right:14px}
+.msticky.mguard{height:0;min-height:0;padding:0!important;margin-top:0!important;margin-bottom:0!important;pointer-events:none;z-index:3;box-shadow:none!important;background:none!important;top:calc(env(safe-area-inset-top) + 12px)!important}
+.msticky.mguard::before{content:"";position:absolute;left:0;right:0;bottom:0;height:calc(env(safe-area-inset-top) + 12px);background:var(--bg)}
+.mpage>.msticky.mguard{margin-bottom:-12px!important}
+@media(max-width:700px){.fbseg{top:calc(env(safe-area-inset-top) + 12px)!important}}
 `;
