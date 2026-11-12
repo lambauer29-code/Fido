@@ -4425,8 +4425,6 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
 
   return (
     <>
-      <KStats items={[{ label: "Dokumente", value: docs.length, sub: `${list.length} im aktuellen Filter` }, { label: "Heuer", value: docs.filter((d) => (d.documentDate || "").startsWith(todayISO().slice(0, 4))).length },
-        { label: "Steuerrelevant", value: docs.filter((d) => d.taxRelevant).length }, { label: "Kategorien", value: new Set(docs.map((d) => d.category)).size }, { label: "Summe Filter", value: fmtMoney(list.reduce((t, d) => t + (Number(d.amount?.total) || 0), 0)) }]} />
       <div className="searchbar">
         <span>🔍</span>
         <input placeholder="Dokumente durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} type="search" />
@@ -5577,34 +5575,11 @@ function MobileBetaSetting() {
   return <label className="switchrow"><span><b>Neue Handy-Ansichten (Test)</b><small className="muted block">Konten, Rechnungen, Mahnungen, Kunden, Artikel und Verträge im neuen Listen-Design (nur am Handy)</small></span>
     <input type="checkbox" className="switch" checked={on} onChange={(e) => set(e.target.checked)} /></label>;
 }
-/* ---------- Konten-Design für alle Reiter (Test, Einstellungen → Darstellung) ---------- */
-if (typeof document !== "undefined" && ls.get("kontoLook", false)) document.documentElement.classList.add("klook");
-function useKLook() { return useFlag("kontoLook", false)[0]; }
-function KLookSetting() {
-  const [on, set] = useFlag("kontoLook", false);
-  useEffect(() => { document.documentElement.classList.toggle("klook", !!on); }, [on]);
-  return <label className="switchrow"><span><b>Konten-Design für alle Reiter (Test)</b><small className="muted block">Kopfkarte mit Kennzahlen, Chip-Leiste und Tabellen mit fixer Kopfzeile wie im Reiter Konten – nur Optik, jederzeit abschaltbar</small></span>
-    <input type="checkbox" className="switch" checked={!!on} onChange={(e) => set(e.target.checked)} /></label>;
-}
-// Kopfkarte im Konten-Stil: erster Wert groß, die übrigen als Kennzahlen-Reihe
-function KHero({ items }) {
-  const [a, ...rest] = items.filter(Boolean);
-  if (!a) return null;
-  return (
-    <div className="hero hero-stable khero">
-      <small>{a.label}</small>
-      <div className={"hero-v" + (a.onClick ? " click" : "")} onClick={a.onClick}>{a.value}</div>
-      <div className="hsub"><span>{a.sub || "\u00a0"}</span></div>
-      {!!rest.length && <div className={"hero-row" + (rest.length >= 4 ? " four" : "")}>{rest.slice(0, 4).map((s, i) => <div key={i} className={s.onClick ? "click" : ""} onClick={s.onClick}><small>{s.label}</small><b>{s.value}</b></div>)}</div>}
-    </div>
-  );
-}
-// Nur im Test-Design sichtbar: Kennzahlen für Reiter, die bisher keine hatten
-function KStats({ items }) { return useKLook() ? <KHero items={items} /> : null; }
+/* Konten-Design-Test (v0.66) entfernt – alte Einstellung aufräumen */
+if (typeof document !== "undefined") { document.documentElement.classList.remove("klook"); try { localStorage.removeItem("kontoLook"); } catch {} }
 const mGroup = (arr, keyFn) => { const out = []; for (const x of arr) { const k = keyFn(x); const g = out[out.length - 1]; if (g && g[0] === k) g[1].push(x); else out.push([k, [x]]); } return out; };
-const MStats = ({ items }) => useKLook() ? <KHero items={items} /> : <div className="mstats">{items.filter(Boolean).map((s, i) => <div key={i} className={"tile mstatc" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b>{s.sub && <small className="muted">{s.sub}</small>}</div>)}</div>;
-const MActs = ({ items }) => useKLook() ? <div className="mchips kacts">{items.filter(Boolean).map((a, i) => <button key={i} className={"chip" + (a.primary ? " on" : "")} onClick={a.run}>{a.label}</button>)}</div>
-  : <div className="mactions">{items.filter(Boolean).map((a, i) => <button key={i} className={"btn" + (a.primary ? " primary" : "")} onClick={a.run}>{a.label}</button>)}</div>;
+const MStats = ({ items }) => <div className="mstats">{items.filter(Boolean).map((s, i) => <div key={i} className={"tile mstatc" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b>{s.sub && <small className="muted">{s.sub}</small>}</div>)}</div>;
+const MActs = ({ items }) => <div className="mactions">{items.filter(Boolean).map((a, i) => <button key={i} className={"btn" + (a.primary ? " primary" : "")} onClick={a.run}>{a.label}</button>)}</div>;
 const MBar = ({ q, setQ, placeholder, chips, children }) => (
   <div className="msticky">
     {setQ && <div className="searchbar"><span>🔍</span><input type="search" placeholder={placeholder} value={q} onChange={(e) => setQ(e.target.value)} /></div>}
@@ -6866,7 +6841,6 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
   const sections = {
     "darstellung": <><SetSec id="darstellung" title="Darstellung">
         <TabbarSetting />
-        <KLookSetting />
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
             <button key={k} role="radio" aria-checked={themeMode === k} className={themeMode === k ? "on" : ""} onClick={() => setThemeMode(k)}>
@@ -7177,11 +7151,10 @@ function FitScroll({ children, className = "", cols, card = false }) {
   const h = useFitHeight(ref, card ? 160 : 200, false, card, 0, card);
   useHdrReset();
   useHdrCollapse(ref, card);
-  const k = useKLook();
   const phoneW = useMedia("(max-width:700px)");
   if (card && phoneW) return <MScroll extra={"fscard" + (className ? " " + className : "")}>{children}</MScroll>;
   return <div ref={ref} className={"fitscroll" + (card ? " fscard" : "") + (h ? " fit" : "") + (className ? " " + className : "")} style={h ? { maxHeight: h } : undefined} onScroll={card ? hdrScroll : undefined}>
-    {k && cols && <div className="khead"><span>{cols[0]}</span><span>{cols[1]}</span><span>{cols[2]}</span></div>}{children}</div>;
+    {children}</div>;
 }
 function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0, lock = false) {
   const [h, setH] = useState(null);
@@ -8554,8 +8527,6 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
   };
   return (
     <div className="ctpage">
-      <KStats items={[{ label: "Kontakte", value: list.length, sub: `${list.filter((c) => (c.type || "Kunde") === "Kunde").length} Kunden` }, { label: "Lieferanten", value: list.filter((c) => c.type === "Lieferant").length },
-        { label: "Mit offenen Rechnungen", value: list.filter((c) => invOf(c).some((i) => i.status !== "bezahlt")).length }, { label: "Offen gesamt", value: fmtMoney(list.reduce((t, c) => t + invOf(c).filter((i) => i.status !== "bezahlt").reduce((a, i) => a + invTotal(i), 0), 0)) }, { label: "Umsatz gesamt", value: fmtMoney(list.reduce((t, c) => t + invOf(c).reduce((a, i) => a + invTotal(i), 0), 0)) }]} />
       {mob ? (
       <div className="mpage">
         <MActs items={[{ label: "＋ Kontakt", primary: true, run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) }, { label: "📱 Aus Handy", run: fromPhone }, { label: "📇 .vcf", run: () => vcfRef.current?.click() }]} />
@@ -8917,8 +8888,6 @@ function ArticlesPage({ setTab }) {
     .sort((x, y) => (sort === "umsatz" ? y.u.sum - x.u.sum : sort === "preis" ? (Number(y.a.price) || 0) - (Number(x.a.price) || 0) : (x.a.text || "").localeCompare(y.a.text || "", "de")));
   return (
     <div className="ctpage">
-      <KStats items={[{ label: "Artikel & Leistungen", value: list.length, sub: `${list.filter((a) => !a.inactive).length} aktiv` }, { label: "Lagerartikel", value: list.filter((a) => a.stock).length },
-        { label: "Gruppen", value: groups.length }, { label: "Verrechnet", value: fmtMoney(list.reduce((t, a) => t + usage(a).sum, 0)) }, { label: "Ø Preis", value: fmtMoney(list.length ? list.reduce((t, a) => t + (Number(a.price) || 0), 0) / list.length : 0) }]} />
       {mob ? (
       <div className="mpage">
         <MActs items={[{ label: "＋ Artikel", primary: true, run: () => setEdit({ id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: grp !== "alle" && grp !== "ohne" ? grp : "" }) }, { label: "📷 Scannen", run: () => setScan(true) }]} />
@@ -11777,45 +11746,10 @@ html,body{min-height:100%}
 .srrow>input[type=checkbox]{width:18px;height:18px;min-height:0;padding:0}
 @media(max-width:700px){.srmain{flex:1 1 0;min-width:calc(100% - 30px)}}
 
-/* v0.66 Konten-Design für alle Reiter (Test) – nur aktiv mit html.klook */
 .khero{margin:0 0 4px}.khero .hero-v.click,.khero .hero-row .click{cursor:pointer}
 .khead{display:none}
-html.klook .invstats,html.klook .kbstats{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--card);border-radius:26px;padding:20px 22px}
-html.klook :is(.invstats,.kbstats)>.tile{flex:1 1 150px;min-width:0;background:var(--card2)!important;box-shadow:none!important;border:0!important;padding:10px 12px!important;border-radius:14px;display:flex;flex-direction:column;gap:2px;margin:0}
-html.klook :is(.invstats,.kbstats)>.tile small{font-size:13px!important}
-html.klook :is(.invstats,.kbstats)>.tile b{font-size:17px!important}
-html.klook :is(.invstats,.kbstats)>.tile:first-child{flex:0 1 auto;min-width:230px;background:none!important;padding:0 16px 0 4px!important}
-html.klook :is(.invstats,.kbstats)>.tile:first-child b{font-size:38px!important;font-weight:700;letter-spacing:-.02em;line-height:1.15}
-html.klook :is(.invstats,.kbstats)>.tile:first-child small:first-child{font-size:17px!important}
-html.klook .invbar .btn,html.klook .kacts .chip{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:500;min-height:0;height:auto;box-shadow:none}
-html.klook .invbar .btn.primary,html.klook .kacts .chip.on{background:color-mix(in srgb,var(--acc) 22%,var(--card));color:var(--acc);border-color:transparent}
-html.klook .kacts{flex-wrap:wrap;overflow:visible;margin:0;padding:0}
 @media(min-width:768px){
-html.klook .fitscroll>.khead{display:grid;grid-template-columns:54px 300px minmax(0,1fr) auto;gap:12px;position:sticky;top:0;z-index:3;background:var(--card);border-radius:14px 14px 0 0;padding:10px 16px;font-size:12px;font-weight:700;color:var(--mut);border-bottom:1px solid var(--line)}
-html.klook .fitscroll>.khead span:first-child{grid-column:2}html.klook .fitscroll>.khead span:last-child{text-align:right}
-html.klook .fitscroll>.khead+.tile,html.klook .fitscroll>.khead~.tile{border-radius:0 0 14px 14px;margin-top:0;padding-top:0;padding-bottom:0}
-html.klook .fitscroll .tile>.frow,html.klook .fitscroll .tile .dwrap>.frow{border:0;border-bottom:1px solid var(--line);border-radius:0;padding:7px 2px;gap:12px;align-items:center}
-html.klook .fitscroll .tile .frow:hover{background:var(--card2)}
-html.klook .fitscroll .tile .frow>.caticon,html.klook .fitscroll .tile .frow>.artphoto,html.klook .fitscroll .tile .frow>.thumb{width:34px!important;height:34px!important;font-size:16px!important;margin:0 4px}
-html.klook .fitscroll .tile .frow>.grow{display:grid;grid-template-columns:300px minmax(0,1fr);column-gap:12px;align-items:center;min-width:0}
-html.klook .fitscroll .tile .frow>.grow>b{grid-column:1;font-size:14px!important;font-weight:600!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-html.klook .fitscroll .tile .frow>.grow>small{grid-column:2;font-size:13px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
-html.klook .fitscroll .tile .frow>.grow>.stpill{grid-column:2;justify-self:start;margin:0!important}
-html.klook .fitscroll .tile .frow>.grow>.cactions{grid-column:2;margin:0}
-html.klook .fitscroll .tile .frow .right b{font-size:14px}
-html.klook .fitscroll .invrow{padding:8px 16px!important}
-html.klook .fitscroll .invrow .invmain{display:grid;grid-template-columns:200px minmax(0,1fr);column-gap:12px;align-items:center}
-html.klook .fitscroll .invrow .invmain>.link{grid-column:1/-1}
-html.klook .fitscroll .invamt{font-size:14px!important;font-weight:600!important}
-html.klook .fitscroll.kinv>.khead{grid-template-columns:0 200px minmax(0,1fr) auto;padding-left:4px}
-html.klook .fitscroll.fit>.khead{flex:none}
-html.klook .fitscroll>.khead{margin-bottom:-12px}
-html.klook .fitscroll .invrow .row1 b{font-size:14px!important;font-weight:600!important}
-html.klook .fitscroll .invrow small{font-size:13px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
-@media(max-width:700px){html.klook .khero{margin:0}html.klook .khero .hero-row{flex-wrap:wrap}html.klook .khero .hero-row>div{flex:1 1 40%;min-width:0}}
-html.klook .invbar .chip,html.klook .invbar summary.chip,html.klook .invbar select.chip{font-size:13px!important;padding:6px 12px!important;min-height:0!important;height:auto!important}
-@media(min-width:768px){html.klook .fitscroll .invacts{width:auto!important;min-width:0!important;flex:none}html.klook .fitscroll .invrow .invmain{grid-template-columns:200px minmax(0,1fr)}}
 
 /* v0.67 Besitz & Garantie */
 .astpage .scopeseg{margin-bottom:12px}

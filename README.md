@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.73.4
+
+- Test „Konten-Design für alle Reiter“ (v0.66) komplett entfernt: Schalter in Darstellung, Kopfkarten, Chip-Leisten und Spaltenköpfe. Die alte Einstellung wird beim Start automatisch gelöscht.
+
 ## v0.73.3
 
 - Kopfbereich-Einklappen (Desktop mit Maus/Trackpad) überarbeitet: Es verschwinden jetzt alle Elemente über der Liste, die Platz kosten – Kennzahlen, Hinweistexte, Ablagefeld und die Fahrzeugkarte. Vorher klappten Kunden, Artikel und Fixkosten nur ~9 px ein.
