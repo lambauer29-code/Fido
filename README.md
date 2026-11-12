@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.72.0
+
+- Kopfbereich klappt beim Scrollen ein: Sobald man in einer Listen-Box nach unten scrollt, wird der Seitentitel klein und die Kennzahlen-Karte blendet sich aus – die Box wird entsprechend größer (am Handy z. B. Mahnungen 448 → 613 px). Ganz nach oben scrollen klappt alles wieder auf. Gilt für alle Listen-Reiter auf Handy, iPad und Desktop.
+
 ## v0.71.0
 
 - Listen-Box (Rechnungen, Mahnungen, Kunden, Artikel, Lager, Besitz, Kassabuch, Fixkosten, Verträge, Fahrtenbuch) ist fest: Sie reicht bis 15 px über den unteren Rand (am Handy bis 15 px über die Leiste unten), die Seite selbst scrollt nicht mehr, nur der Inhalt der Box. Ist über der Liste zu wenig Platz (unter 160 px, z. B. bei offenem Ablagefeld), scrollt die Seite wie bisher, damit nichts hinter der Leiste verschwindet.

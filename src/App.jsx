@@ -6992,17 +6992,22 @@ function nextInvNumber(list, kind, co, date) {
   return pre + String(max + 1).padStart(3, "0");
 }
 /* Bereich unterhalb eines festen Kopfes: scrollt für sich, wenn genug Platz ist (sonst normal) */
+// Kopfbereich beim Scrollen in der Liste einklappen, damit die Liste mehr Platz bekommt
+const hdrScroll = (e) => { const t = e.currentTarget.scrollTop, c = document.documentElement.classList; if (t > 30) c.add("hdrmin"); else if (t < 4) c.remove("hdrmin"); };
+function useHdrReset() { useEffect(() => () => document.documentElement.classList.remove("hdrmin"), []); }
 // Handy-Liste als abgerundete Karte mit eigener Scroll-Liste
 function MScroll({ children }) {
   const ref = useRef(null);
   const h = useFitHeight(ref, 160, false, true, 0, true);
-  return <div ref={ref} className={"mtxlist mscard" + (h ? " fit" : "")} style={h ? { maxHeight: h } : undefined}>{children}</div>;
+  useHdrReset();
+  return <div ref={ref} className={"mtxlist mscard" + (h ? " fit" : "")} style={h ? { maxHeight: h } : undefined} onScroll={hdrScroll}>{children}</div>;
 }
 function FitScroll({ children, className = "", cols, card = false }) {
   const ref = useRef(null);
   const h = useFitHeight(ref, card ? 160 : 200, false, card, 0, card);
+  useHdrReset();
   const k = useKLook();
-  return <div ref={ref} className={"fitscroll" + (card ? " fscard" : "") + (h ? " fit" : "") + (className ? " " + className : "")} style={h ? { maxHeight: h } : undefined}>
+  return <div ref={ref} className={"fitscroll" + (card ? " fscard" : "") + (h ? " fit" : "") + (className ? " " + className : "")} style={h ? { maxHeight: h } : undefined} onScroll={card ? hdrScroll : undefined}>
     {k && cols && <div className="khead"><span>{cols[0]}</span><span>{cols[1]}</span><span>{cols[2]}</span></div>}{children}</div>;
 }
 function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0, lock = false) {
@@ -11717,4 +11722,11 @@ html:not(.fg) .fitscroll.fscard{border-radius:18px}
 html.fitlock .app{min-height:0!important;padding-bottom:0!important}
 html.fitlock main{padding-bottom:0!important;margin-bottom:0!important}
 html.fitlock .fscard.fit,html.fitlock .mscard.fit{margin-bottom:0!important}
+
+/* v0.72 Kopfbereich klappt beim Scrollen in der Liste ein */
+header.top,header.top h1{transition:padding .22s ease,font-size .22s ease,margin .22s ease}
+.mpage>.mstats,.mpage>.khero,.ctpage>.khero,.kbstats,.invstats,.ctpage .hero,.fbstats,.fbspecs{transition:max-height .25s ease,opacity .2s ease,margin .25s ease,padding .25s ease;max-height:900px}
+html.hdrmin header.top{padding-top:10px!important;padding-bottom:4px!important}
+html.hdrmin header.top h1{font-size:26px!important;line-height:1.2!important}
+html.hdrmin .mpage>.mstats,html.hdrmin .mpage>.khero,html.hdrmin .ctpage>.khero,html.hdrmin .kbstats,html.hdrmin .invstats,html.hdrmin .ctpage .hero,html.hdrmin .fbstats,html.hdrmin .fbspecs{max-height:0!important;opacity:0;overflow:hidden;margin-top:0!important;margin-bottom:-12px!important;padding-top:0!important;padding-bottom:0!important;border:0!important;pointer-events:none}
 `;
