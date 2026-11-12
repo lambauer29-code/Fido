@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.72.2
+
+- Handy: Listen scrollen jetzt mit dem ganz normalen Seiten-Scrollen von iOS (mit Schwung, ohne Eingriffe per Skript). Titel, Kennzahlen und Knöpfe wandern dabei nach oben weg, die Suche/Filter bleiben oben stehen. Die Liste sieht trotzdem wie eine feste Box aus: oben eine mitlaufende abgerundete Kante direkt unter der Suchleiste, unten eine feste abgerundete Kante 15 px über der Leiste. Gilt für alle Listen-Reiter inkl. Fixkosten & Abos und Fahrtenbuch.
+- Das automatische Einklappen per Skript gibt es nur noch am Desktop mit Maus; auf iPad/Touch bleibt die Box fest mit eigener Scroll-Liste.
+
 ## v0.72.1
 
 - Einklappen des Kopfbereichs flüssig: kein Animieren der Höhe mehr (das hat bei jedem Bild die Box neu berechnet und geruckelt). Stattdessen klappt der Kopf in einem Schritt ein bzw. aus und die Liste wird dabei so verschoben, dass die Einträge unter dem Finger an derselben Stelle bleiben – die Box wächst einfach nach oben. Eingeklappt wird erst, wenn man weiter als die Höhe des Kopfbereichs gescrollt hat; ausgeklappt kurz vor dem Listenanfang. Dadurch kein Hin-und-her-Springen mehr.

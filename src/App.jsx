@@ -6994,7 +6994,9 @@ function nextInvNumber(list, kind, co, date) {
 /* Bereich unterhalb eines festen Kopfes: scrollt für sich, wenn genug Platz ist (sonst normal) */
 // Kopfbereich beim Scrollen in der Liste einklappen, damit die Liste mehr Platz bekommt
 // Ein-/Ausklappen in einem Schritt: Box wächst bzw. schrumpft oben, der Inhalt bleibt an derselben Stelle stehen (kein Springen)
+const fineMouse = typeof matchMedia !== "undefined" && matchMedia("(hover:hover) and (pointer:fine)").matches;
 const hdrScroll = (e) => {
+  if (!fineMouse) return;
   const el = e.currentTarget; if (el._hdrBusy) return;
   const c = document.documentElement.classList, on = c.contains("hdrmin"), t = el.scrollTop;
   const apply = (want) => {
@@ -7018,17 +7020,43 @@ const hdrScroll = (e) => {
 };
 function useHdrReset() { useEffect(() => () => document.documentElement.classList.remove("hdrmin"), []); }
 // Handy-Liste als abgerundete Karte mit eigener Scroll-Liste
-function MScroll({ children }) {
+// Handy: die Seite scrollt nativ (flüssig, mit Schwung) – Titel, Kennzahlen und Knöpfe wandern nach oben weg.
+// Die Liste wirkt trotzdem wie eine feste Box: oben eine mitlaufende abgerundete Kante unter der Suchleiste,
+// unten eine feste abgerundete Kante 15 px über der Leiste.
+function MScroll({ children, extra = "" }) {
   const ref = useRef(null);
-  const h = useFitHeight(ref, 160, false, true, 0, true);
-  useHdrReset();
-  return <div ref={ref} className={"mtxlist mscard" + (h ? " fit" : "")} style={h ? { maxHeight: h } : undefined} onScroll={hdrScroll}>{children}</div>;
+  const [cap, setCap] = useState(null);
+  useEffect(() => {
+    const root = document.documentElement; root.classList.add("mnat");
+    let raf = 0;
+    const calc = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
+      const el = ref.current; if (!el) return;
+      const nb = [...document.querySelectorAll("nav.bottom")].find((b) => { const r = b.getBoundingClientRect(); return getComputedStyle(b).position === "fixed" && r.width >= innerWidth * 0.6 && r.top > innerHeight / 2; });
+      const navTop = nb ? nb.getBoundingClientRect().top : innerHeight;
+      const st = el.closest(".mpage")?.querySelector(".msticky");
+      const stk = st ? Math.round(st.getBoundingClientRect().height) : 0;
+      root.style.setProperty("--navgap", Math.round(innerHeight - navTop) + "px");
+      root.style.setProperty("--mstk", stk + "px");
+      const r = el.getBoundingClientRect();
+      setCap((o) => { const n = { top: Math.round(navTop - 15), left: Math.round(r.left), right: Math.round(innerWidth - r.right) }; return o && o.top === n.top && o.left === n.left && o.right === n.right ? o : n; });
+    }); };
+    calc();
+    addEventListener("resize", calc);
+    const ro = new ResizeObserver(calc); ro.observe(document.body); const st = ref.current?.closest(".mpage")?.querySelector(".msticky"); if (st) ro.observe(st);
+    return () => { cancelAnimationFrame(raf); removeEventListener("resize", calc); ro.disconnect(); root.classList.remove("mnat"); };
+  }, []);
+  return (<>
+    <div ref={ref} className={"mtxlist mscard mnative" + (extra ? " " + extra : "")}><div className="mcap" aria-hidden="true" />{children}</div>
+    {cap && createPortal(<div className="mbotcap" aria-hidden="true" style={{ top: cap.top - 22 }}><i style={{ left: cap.left, right: cap.right }} /></div>, document.body)}
+  </>);
 }
 function FitScroll({ children, className = "", cols, card = false }) {
   const ref = useRef(null);
   const h = useFitHeight(ref, card ? 160 : 200, false, card, 0, card);
   useHdrReset();
   const k = useKLook();
+  const phoneW = useMedia("(max-width:700px)");
+  if (card && phoneW) return <MScroll extra={"fscard" + (className ? " " + className : "")}>{children}</MScroll>;
   return <div ref={ref} className={"fitscroll" + (card ? " fscard" : "") + (h ? " fit" : "") + (className ? " " + className : "")} style={h ? { maxHeight: h } : undefined} onScroll={card ? hdrScroll : undefined}>
     {k && cols && <div className="khead"><span>{cols[0]}</span><span>{cols[1]}</span><span>{cols[2]}</span></div>}{children}</div>;
 }
@@ -11749,4 +11777,17 @@ html.fitlock .fscard.fit,html.fitlock .mscard.fit{margin-bottom:0!important}
 html.hdrmin header.top{padding-top:10px!important;padding-bottom:4px!important}
 html.hdrmin header.top h1{font-size:26px!important;line-height:1.2!important}
 html.hdrmin .mpage>.mstats,html.hdrmin .mpage>.khero,html.hdrmin .ctpage>.khero,html.hdrmin .kbstats,html.hdrmin .invstats,html.hdrmin .ctpage .hero,html.hdrmin .fbstats,html.hdrmin .fbspecs{display:none!important}
+
+/* v0.72.2 Handy: natives Scrollen mit fester Listen-Box-Optik */
+html.mnat .app{padding-bottom:calc(var(--navgap,96px) + 15px)!important;min-height:0!important}
+html.mnat main{padding-bottom:0!important}
+.mscard.mnative{overflow:clip;isolation:auto;border-radius:22px}
+.mnative .mday,.mnative .mhead{position:sticky!important;top:calc(env(safe-area-inset-top) + var(--mstk,0px))!important;z-index:2}
+.mnative>.mcap{position:sticky;top:calc(env(safe-area-inset-top) + var(--mstk,0px));height:22px;margin-bottom:-22px;z-index:4;pointer-events:none;
+  background:radial-gradient(circle at 100% 100%,transparent 21.5px,var(--bg) 22px) left top/22px 22px no-repeat,radial-gradient(circle at 0 100%,transparent 21.5px,var(--bg) 22px) right top/22px 22px no-repeat}
+.mbotcap{position:fixed;left:0;right:0;bottom:0;z-index:3;pointer-events:none}
+.mbotcap>i{position:absolute;top:0;height:22px;background:radial-gradient(circle at 100% 0,transparent 21.5px,var(--bg) 22px) left bottom/22px 22px no-repeat,radial-gradient(circle at 0 0,transparent 21.5px,var(--bg) 22px) right bottom/22px 22px no-repeat}
+.mbotcap::after{content:"";position:absolute;left:0;right:0;top:22px;bottom:0;background:var(--bg)}
+.mnative.fscard{overflow:clip!important;background:var(--card)}
+.mnative.fscard>.tile,.mnative.fscard>section{padding-left:14px;padding-right:14px}
 `;
