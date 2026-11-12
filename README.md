@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.74.2
+
+- Ausgabe: „＋ Kategorie“ (neue Kategorie anlegen) steht jetzt ganz oben im Kategorie-Menü – vorher nur am Ende der langen Liste.
+
 ## v0.74.1
 
 - Ausgabe: **Kategorie** ebenfalls als Auswahlmenü (mit Symbolen, „＋ Neue Kategorie …“ am Ende).

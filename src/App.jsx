@@ -2369,8 +2369,8 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
       </div>
       <div className="grid2">
         <label>Konto<PickMenu click icon={curAcc?.icon} label={curAcc?.title || "Konto wählen"} title="Konto" items={accOpt.map((o) => ({ ...o, on: o.k === f.accountId, run: () => set({ accountId: o.k }, true) }))} /></label>
-        <label>Kategorie<PickMenu click icon={<CatGlyph c={cat} />} label={cat} title="Kategorie" items={cats.map((c) => ({ k: c, icon: <CatGlyph c={c} />, title: c, on: c === cat, run: () => set({ category: c }, true) }))}
-          extra={[addCategory && { label: "＋ Neue Kategorie …", run: () => { const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return; addCategory(n); setExtraCats((x) => [...x, n]); set({ category: n }, true); } }]} /></label>
+        <label>Kategorie<PickMenu click icon={<CatGlyph c={cat} />} label={cat} title="Kategorie" items={[{ k: "__new", icon: "＋", title: "Kategorie", sub: "neue Kategorie anlegen", run: () => { const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return; addCategory?.(n); setExtraCats((x) => [...x, n]); set({ category: n }, true); } },
+            ...cats.map((c) => ({ k: c, icon: <CatGlyph c={c} />, title: c, on: c === cat, run: () => set({ category: c }, true) }))]} /></label>
       </div>
       <label>Notizen<textarea rows={2} value={f.note} onChange={(e) => set({ note: e.target.value })} placeholder="optional, z. B. Wocheneinkauf, Projekt …" /></label>
       <button className="btn primary cashsave" disabled={!ok} onClick={save}>{busy ? "Speichert …" : reading ? "Speichern (Beleg wird noch gelesen)" : `Speichern${total > 0 ? " · " + fmtMoney(f.dir === "out" ? -total : total) : ""}`}</button>
