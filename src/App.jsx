@@ -5628,6 +5628,11 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
 }
 
 /* ---------- Handy-Ansichten (Standard bis 700 px Breite) ---------- */
+function ListTestSetting() {
+  const [on, set] = useFlag("listTest", false);
+  return <label className="switchrow"><span><b>Neue Listen (Test)</b><small className="muted block">Einheitlicher Listen-Aufbau – vorerst nur im Reiter Rechnungen: eine Hauptaktion + „Mehr“, Jahr/Sortierung/Tags als Menüs, gespeicherte Ansichten, Mehrfachauswahl, Drucken in der Zeile. Jederzeit abschaltbar.</small></span>
+    <input type="checkbox" className="switch" checked={!!on} onChange={(e) => set(e.target.checked)} /></label>;
+}
 function useFlag(key, def) {
   const [v, setV] = useState(() => ls.get(key, def));
   useEffect(() => { const f = () => setV(ls.get(key, def)); addEventListener("findocu-flag", f); return () => removeEventListener("findocu-flag", f); }, []);
@@ -6905,6 +6910,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
   const sections = {
     "darstellung": <><SetSec id="darstellung" title="Darstellung">
         <TabbarSetting />
+        <ListTestSetting />
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
             <button key={k} role="radio" aria-checked={themeMode === k} className={themeMode === k ? "on" : ""} onClick={() => setThemeMode(k)}>
@@ -7968,6 +7974,11 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
     patch(x.id, { status: "offen", paidAt: null, paidTx: null, paidTxCreated: false, paidAccount: null, payMethod: null });
   };
   const [filter, setFilter] = useState("alle"), [q, setQ] = useState("");
+  // Test „Neue Listen“: Jahr, Sortierung, Tags, gespeicherte Ansichten, Mehrfachauswahl
+  const [lt] = useFlag("listTest", false);
+  const [yr, setYr] = useState(""), [sortBy, setSortBy] = useState("datum"), [tagF, setTagF] = useState(""), [pick, setPick] = useState(null);
+  const [views, setViews] = useLsState("views:invoices", []);
+  const togglePick = (id) => setPick((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const coOk = co.name && co.street && co.city;
 
   // wiederkehrende Rechnungen: fällige Entwürfe anlegen
@@ -8044,9 +8055,51 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
   const paidYear = sumOf(inv.filter((x) => st(x) === "bezahlt" && (x.paidAt || x.date || "").startsWith(year)));
   const FILTERS = [["alle", "Alle"], ["entwurf", "Entwürfe"], ["offen", "Offen"], ["überfällig", "Überfällig"], ["bezahlt", "Bezahlt"], ["angebote", "Angebote"], ["wiederkehrend", "Wiederkehrend"]];
   const cnt = (k) => (k === "alle" ? list.length : k === "angebote" ? list.filter((x) => x.kind === "angebot").length : k === "wiederkehrend" ? templates.length : inv.filter((x) => st(x) === k).length);
+  const allTags = [...new Set(list.flatMap((x) => x.tags || []))].sort((a, b) => a.localeCompare(b, "de"));
+  const years = [...new Set(list.map((x) => (x.date || "").slice(0, 4)).filter(Boolean))].sort().reverse();
+  const SORTS = { datum: (a, b) => (b.date || "").localeCompare(a.date || "") || (b.number || "").localeCompare(a.number || ""), betrag: (a, b) => invTotal(b) - invTotal(a), kunde: (a, b) => (a.customer?.name || "").localeCompare(b.customer?.name || "", "de"), faellig: (a, b) => (invDueEff(a) || "9").localeCompare(invDueEff(b) || "9") };
   const shown = list.filter((x) => (filter === "alle" ? true : filter === "angebote" ? x.kind === "angebot" : x.kind === "rechnung" && st(x) === filter))
-    .filter((x) => !q || norm(`${x.number} ${x.customer?.name} ${(x.items || []).map((i) => i.text).join(" ")}`).includes(norm(q)))
-    .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.number || "").localeCompare(a.number || ""));
+    .filter((x) => !q || norm(`${x.number} ${x.customer?.name} ${(x.items || []).map((i) => i.text).join(" ")} ${(x.tags || []).join(" ")}`).includes(norm(q)))
+    .filter((x) => !lt || ((!yr || (x.date || "").startsWith(yr)) && (!tagF || (x.tags || []).includes(tagF))))
+    .sort(lt ? SORTS[sortBy] || SORTS.datum : SORTS.datum);
+  const expItems = [
+          { head: `${inv.length} Rechnungen · ${list.length - inv.length} Angebote` },
+          { label: "📒 Rechnungsausgangsbuch Excel", sub: "alle Rechnungen und Angebote mit Status", run: () => downloadXlsx(`Rechnungsausgangsbuch-${isoToday()}.xlsx`, [{ name: "Rechnungen", head: INV_HEAD, rows: list.filter((x) => x.kind === "rechnung").map(invRow) }, { name: "Angebote", head: INV_HEAD, rows: list.filter((x) => x.kind === "angebot").map(invRow) }]) },
+          { label: "📄 Rechnungsausgangsbuch CSV", run: () => downloadCsv(`Rechnungsausgangsbuch-${isoToday()}.csv`, INV_HEAD, list.filter((x) => x.kind === "rechnung").map(invRow)) },
+          { label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) },
+          { label: "📮 Offene Posten CSV", run: () => downloadCsv(`Offene-Posten-${isoToday()}.csv`, OP_HEAD, openList(list).map(opRow)) },
+          { label: `🗂 Rechnungen ${year} als PDF (ZIP)`, run: async () => { const l = list.filter((x) => x.kind === "rechnung" && x.number && invState(x) !== "entwurf" && (x.date || "").startsWith(year)); const files = []; for (const x of l) files.push({ name: invFileName(x), data: await buildInvoicePdf(x, co) }); saveBlob(await zipBlob(files), `Rechnungen-${year}.zip`); } }];
+  const editTags = (ids) => { const one = ids.length === 1 ? list.find((x) => x.id === ids[0]) : null;
+    const v = prompt(one ? "Tags (mit Komma getrennt):" : `Tag zu ${ids.length} Einträgen hinzufügen:`, one ? (one.tags || []).join(", ") : ""); if (v == null) return;
+    const t = v.split(",").map((x) => x.trim()).filter(Boolean);
+    setList((l) => l.map((x) => (ids.includes(x.id) ? { ...x, tags: one ? t : [...new Set([...(x.tags || []), ...t])] } : x))); };
+  const printInv = async (xs) => { notify?.("Druck wird vorbereitet …"); const imgs = []; for (const x of xs) imgs.push(...(await blobToImages(await buildInvoicePdf(x, co)))); await printImages(imgs, xs.length === 1 ? invFileName(xs[0]) : `${xs.length} Rechnungen`); };
+  const picked = () => list.filter((x) => pick?.has(x.id));
+  const saveView = () => { const n = prompt("Name der Ansicht:", [FILTERS.find(([k]) => k === filter)?.[1], yr, tagF && "#" + tagF, q && "„" + q + "“"].filter((x) => x && x !== "Alle").join(" ")); if (!n) return; setViews((v) => [...v, { id: uid(), n, filter, q, yr, tagF, sortBy }]); };
+  const applyView = (v) => { setFilter(v.filter); setQ(v.q || ""); setYr(v.yr || ""); setTagF(v.tagF || ""); setSortBy(v.sortBy || "datum"); };
+  const viewOn = (v) => v.filter === filter && (v.q || "") === q && (v.yr || "") === yr && (v.tagF || "") === tagF;
+  const ltMore = [{ head: "Bereiche" }, setTab && { k: "kunden", icon: "👥", title: "Kunden", run: () => setTab("kunden") }, { k: "artikel", icon: "📦", title: "Artikel", run: () => (setTab ? setTab("artikel") : setMdOpen(true)) }, setTab && { k: "mahn", icon: "📮", title: "Mahnungen", run: () => setTab("mahnungen") }, { k: "firma", icon: "🏢", title: "Firmendaten", run: () => setCoOpen(true) },
+    { head: "Export" }, ...expItems.filter((e) => !e.head).map((e, i) => ({ k: "e" + i, title: e.label, sub: e.sub, run: e.run }))].filter(Boolean);
+  const ltFilterRow = (<>
+    {views.map((v) => <span key={v.id} className="ltview"><button className={"chip" + (viewOn(v) ? " on" : "")} onClick={() => applyView(v)}>☆ {v.n}</button><button className="ltx" title="Ansicht löschen" aria-label="Ansicht löschen" onClick={() => confirm(`Ansicht „${v.n}“ löschen?`) && setViews((l) => l.filter((y) => y.id !== v.id))}>✕</button></span>)}
+    {FILTERS.map(([k, l]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({cnt(k)})</small></button>)}
+    <span className="grow" />
+    <PickMenu icon="📅" label={yr || "Alle Jahre"} title="Jahr" items={[{ k: "", title: "Alle Jahre", on: !yr, run: () => setYr("") }, ...years.map((y) => ({ k: y, title: y, on: yr === y, run: () => setYr(y) }))]} />
+    <PickMenu icon="↕" label={{ datum: "Datum", betrag: "Betrag", kunde: "Kunde", faellig: "Fälligkeit" }[sortBy]} title="Sortierung" items={[["datum", "Datum", "neueste zuerst"], ["betrag", "Betrag", "höchste zuerst"], ["kunde", "Kunde", "A–Z"], ["faellig", "Fälligkeit", "früheste zuerst"]].map(([k, t, sub]) => ({ k, title: t, sub, on: sortBy === k, run: () => setSortBy(k) }))} />
+    <PickMenu icon="#" label={tagF || "Tags"} title="Tags" items={[{ k: "", title: "Alle Tags", on: !tagF, run: () => setTagF("") }, ...allTags.map((t) => ({ k: t, title: "#" + t, sub: `${list.filter((x) => (x.tags || []).includes(t)).length} Einträge`, on: tagF === t, run: () => setTagF(t) }))]}
+      extra={[{ label: "Tags vergeben: ⋯ in einer Zeile oder „Auswählen“", run: () => {} }]} />
+    {(filter !== "alle" || q || yr || tagF) && <button className="chip" onClick={saveView}>☆ Ansicht merken</button>}
+  </>);
+  const bulkBar = pick && (
+    <div className="pickbar ltbulk">
+      <b>{pick.size} ausgewählt</b>
+      <button className="link" onClick={() => setPick(pick.size === shown.length ? new Set() : new Set(shown.map((x) => x.id)))}>{pick.size === shown.length ? "Keine" : "Alle"}</button>
+      <span className="grow" />
+      <button className="btn" disabled={!pick.size} onClick={() => printInv(picked().filter((x) => x.number))}><IcoPrint /><span className="ltl"> Drucken</span></button>
+      <button className="btn" disabled={!pick.size} onClick={() => downloadXlsx(`Auswahl-${isoToday()}.xlsx`, [{ name: "Auswahl", head: INV_HEAD, rows: picked().map(invRow) }])}>⬇<span className="ltl"> Excel</span></button>
+      <button className="btn" disabled={!pick.size} onClick={() => editTags([...pick])}>#<span className="ltl"> Tag</span></button>
+      <button className="btn primary" onClick={() => setPick(null)}>Fertig</button>
+    </div>);
 
   return (
     <div className="invpage">
@@ -8056,8 +8109,11 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
         <MStats items={[{ label: "Offen", value: fmtMoney(sumOf(openL)), sub: `${openL.length} Rechnung${openL.length === 1 ? "" : "en"}`, onClick: () => setFilter("offen") },
           { label: "Überfällig", value: fmtMoney(sumOf(overL)), vcls: overL.length ? "neg" : "", alert: !!overL.length, sub: `${overL.length} Rechnung${overL.length === 1 ? "" : "en"}`, onClick: () => setFilter("überfällig") },
           { label: `Bezahlt ${year}`, value: fmtMoney(paidYear), vcls: "pos", onClick: () => setFilter("bezahlt") }, { label: `Umsatz ${year}`, value: fmtMoney(yearRev) }]} />
-        <MActs items={[{ label: "＋ Rechnung", primary: true, run: () => newDoc("rechnung") }, { label: "＋ Angebot", run: () => newDoc("angebot") }, { label: "🏢 Firma", run: () => setCoOpen(true) }, setTab && { label: "📮 Mahnungen", run: () => setTab("mahnungen") }]} />
-        <MBar q={q} setQ={setQ} placeholder="Nummer, Kunde, Leistung suchen" chips={FILTERS.map(([k, l]) => [k, l, cnt(k), filter === k, () => setFilter(k)])} />
+        {lt ? <div className="mactions ltmacts"><button className="btn primary" onClick={() => newDoc("rechnung")}>＋ Rechnung</button><button className="btn" onClick={() => newDoc("angebot")}>＋ Angebot</button>
+          <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[{ k: "pick", icon: "☑", title: pick ? "Auswahl beenden" : "Auswählen", run: () => setPick(pick ? null : new Set()) }, ...ltMore]} /></div>
+        : <MActs items={[{ label: "＋ Rechnung", primary: true, run: () => newDoc("rechnung") }, { label: "＋ Angebot", run: () => newDoc("angebot") }, { label: "🏢 Firma", run: () => setCoOpen(true) }, setTab && { label: "📮 Mahnungen", run: () => setTab("mahnungen") }]} />}
+        {lt ? <div className="ltmbar"><MBar q={q} setQ={setQ} placeholder="Nummer, Kunde, Tag suchen" chips={[]}>{ltFilterRow}</MBar></div>
+        : <MBar q={q} setQ={setQ} placeholder="Nummer, Kunde, Leistung suchen" chips={FILTERS.map(([k, l]) => [k, l, cnt(k), filter === k, () => setFilter(k)])} />}
         <MScroll>
           {filter === "wiederkehrend" ? (<>
             {!templates.length && <MEmpty>Keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „wiederkehrend“ wählen.</MEmpty>}
@@ -8070,16 +8126,17 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                 <MHead right={fmtMoney(sumOf(l))}>{m ? monthLabel(m) : "Ohne Datum"}</MHead>
                 {l.map((x) => { const sx = x.kind === "angebot" ? (x.status || "offen") : st(x), ui = STATE_UI[sx] || [sx, ""]; const payable = x.kind === "rechnung" && ["offen", "überfällig"].includes(sx); return (
                   <MItem key={x.id} icon={x.kind === "angebot" ? <MIco e="📝" /> : <MAvatar text={x.customer?.name} />} title={x.customer?.name || "Ohne Kunde"}
-                    tags={[x.kind === "angebot" && "Angebot"]} sub={`${x.number || "Entwurf"} · ${fmtDate(x.date)}${payable ? " · fällig " + fmtDate(invDueEff(x)) : ""}`}
+                    tags={[pick && (pick.has(x.id) ? "☑ gewählt" : "☐"), x.kind === "angebot" && "Angebot", ...(lt ? (x.tags || []).map((t) => "#" + t) : [])]} sub={`${x.number || "Entwurf"} · ${fmtDate(x.date)}${payable ? " · fällig " + fmtDate(invDueEff(x)) : ""}`}
                     amount={fmtMoney(invTotal(x))} amountCls={sx === "bezahlt" ? "in" : sx === "überfällig" ? "neg" : ""} pill={<span className={"stpill " + ui[1]}>{ui[0]}</span>}
-                    onClick={() => setEdit(x)}
-                    swipe={{ left: [x.number && { icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }, { icon: "⧉", label: "Kopie", bg: "#8b5cf6", run: () => copyAsNew(x) }],
+                    onClick={() => (pick ? togglePick(x.id) : setEdit(x))}
+                    swipe={pick ? null : { left: [x.number && { icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }, lt && x.number && { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInv([x]) }, { icon: "⧉", label: "Kopie", bg: "#8b5cf6", run: () => copyAsNew(x) }],
                       right: [payable && { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayFor2(x) }, sx === "überfällig" && { icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }] }}
                     after={prevInv === x.id && <InvPreview x={x} co={co} />} />); })}
               </React.Fragment>
             ))}
           </>)}
         </MScroll>
+        {bulkBar}
       </div>
       ) : (<>
       {!coOk && <div className="healthbox"><b>Zuerst Firmendaten eintragen</b><p className="small muted">Name, Anschrift, Bankverbindung und Logo erscheinen auf jeder Rechnung.</p><button className="btn primary" onClick={() => setCoOpen(true)}>Firmendaten eintragen</button></div>}
@@ -8091,6 +8148,17 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           <div className="kubar"><i style={{ width: Math.min(100, (yearRev / KU_LIMIT) * 100) + "%", background: yearRev > KU_LIMIT * 0.9 ? "var(--red)" : yearRev > KU_LIMIT * 0.75 ? "#f59e0b" : "var(--acc)" }} /></div>
           <small className="muted">{Math.round((yearRev / KU_LIMIT) * 100)} % von € 55.000 (netto/Jahr)</small></div>
       </div>
+      {lt ? (<>
+      <div className="invbar ltbar">
+        <button className="btn primary" onClick={() => newDoc("rechnung")}>＋ Rechnung</button>
+        <button className="btn" onClick={() => newDoc("angebot")}>＋ Angebot</button>
+        <span className="grow" />
+        <button className={"btn" + (pick ? " on" : "")} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
+        <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={ltMore} />
+      </div>
+      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Nummer, Kunde, Leistung, Tag suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="chips invfilter ltfilter">{ltFilterRow}</div>
+      </>) : (<>
       <div className="invbar">
         <button className="btn primary" onClick={() => newDoc("rechnung")}>＋ Rechnung</button>
         <button className="btn" onClick={() => newDoc("angebot")}>＋ Angebot</button>
@@ -8099,16 +8167,11 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
         <button className="btn" onClick={() => (setTab ? setTab("artikel") : setMdOpen(true))}>📦 Artikel</button>
         <button className="btn" onClick={() => setTab?.("mahnungen")}>📮 Mahnungen</button>
         <button className="btn" onClick={() => setCoOpen(true)}>🏢 Firmendaten</button>
-        <ExportMenu className="btn" items={[
-          { head: `${inv.length} Rechnungen · ${list.length - inv.length} Angebote` },
-          { label: "📒 Rechnungsausgangsbuch Excel", sub: "alle Rechnungen und Angebote mit Status", run: () => downloadXlsx(`Rechnungsausgangsbuch-${isoToday()}.xlsx`, [{ name: "Rechnungen", head: INV_HEAD, rows: list.filter((x) => x.kind === "rechnung").map(invRow) }, { name: "Angebote", head: INV_HEAD, rows: list.filter((x) => x.kind === "angebot").map(invRow) }]) },
-          { label: "📄 Rechnungsausgangsbuch CSV", run: () => downloadCsv(`Rechnungsausgangsbuch-${isoToday()}.csv`, INV_HEAD, list.filter((x) => x.kind === "rechnung").map(invRow)) },
-          { label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) },
-          { label: "📮 Offene Posten CSV", run: () => downloadCsv(`Offene-Posten-${isoToday()}.csv`, OP_HEAD, openList(list).map(opRow)) },
-          { label: `🗂 Rechnungen ${year} als PDF (ZIP)`, run: async () => { const l = list.filter((x) => x.kind === "rechnung" && x.number && invState(x) !== "entwurf" && (x.date || "").startsWith(year)); const files = []; for (const x of l) files.push({ name: invFileName(x), data: await buildInvoicePdf(x, co) }); saveBlob(await zipBlob(files), `Rechnungen-${year}.zip`); } }]} />
+        <ExportMenu className="btn" items={expItems} />
       </div>
       <div className="searchbar"><span>🔍</span><input type="search" placeholder="Nummer, Kunde, Leistung suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <div className="chips invfilter">{FILTERS.map(([k, l]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({cnt(k)})</small></button>)}</div>
+      </>)}
 
       <FitScroll card className="kinv" cols={["Kunde", "Nummer · Datum", "Betrag · Status"]}>
       {filter === "wiederkehrend" ? (
@@ -8125,14 +8188,16 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           ))}
         </section>
       ) : (
-        <section className="tile invlist">
+        <section className={"tile invlist" + (lt ? " ltlist" : "")}>
+          {lt && !!shown.length && <div className={"lthead" + (pick ? " pk" : "")}>{pick && <span />}<span>Kunde · Nummer · Datum</span><span className="r">Betrag</span><span className="c">Status · Aktionen</span></div>}
           {!shown.length && <p className="muted small">{list.length ? "Keine Einträge für diesen Filter." : "Noch keine Rechnungen. Mit „＋ Rechnung“ legst du die erste an – die Nummer wird beim Ausstellen fortlaufend vergeben."}</p>}
           {shown.map((x) => {
             const s = st(x), [label, cls] = STATE_UI[s] || [s, ""], pay = payFor(x);
             return (<React.Fragment key={x.id}>
-              <div className={"invrow" + (prevInv === x.id ? " prevopen" : "")} onClick={() => setEdit(x)}>
+              <div className={"invrow" + (prevInv === x.id ? " prevopen" : "") + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setEdit(x))}>
+                {pick && <span className={"pickbox inline" + (pick.has(x.id) ? " on" : "")}>✓</span>}
                 <div className="invmain">
-                  <div className="row1"><b className="invname" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevInv(prevInv === x.id ? null : x.id); }}>{x.customer?.name || "Ohne Kunde"}</b></div>
+                  <div className="row1"><b className="invname" title="Vorschau ein-/ausblenden" onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevInv(prevInv === x.id ? null : x.id); }}>{x.customer?.name || "Ohne Kunde"}</b>{lt && (x.tags || []).map((t) => <span key={t} className="label tag lttag">#{t}</span>)}</div>
                   <small className="muted block">
                     {x.kind === "angebot" ? "Angebot " : ""}{x.number || "Entwurf"} · {fmtDate(x.date)}
                     {x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) && ` · fällig ${fmtDate(invDueEff(x))}`}
@@ -8144,14 +8209,16 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                 </div>
                 <b className="invamt">{fmtMoney(invTotal(x))}</b>
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
-                  {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>}
+                  {s === "überfällig" && (lt ? <button className="iconbtn ltremind" title={remindName((x.reminders || []).length)} aria-label={remindName((x.reminders || []).length)} onClick={() => setRemind(x)}>📮</button> : <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>)}
                   {x.kind === "angebot" && s === "offen" && <button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button>}
                   {x.kind === "rechnung" && s !== "entwurf" ? <StatusMenu x={x} s={s} book={book} onPay={setPayFor2} onUnpay={unpay} onPatch={patch} /> : <span className={"stpill invst " + cls}>{label}</span>}
                   {s !== "entwurf" ? <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button> : <span className="iconbtn invph" aria-hidden="true" />}
+                  {lt && (s !== "entwurf" ? <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printInv([x])}><IcoPrint /></button> : <span className="iconbtn invph" aria-hidden="true" />)}
                   {s !== "entwurf" ? <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button> : <span className="iconbtn invph" aria-hidden="true" />}
                   <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
                     <div className="moremenu">
                       {x.kind === "angebot" && s === "offen" && <button onClick={(e) => { e.currentTarget.closest("details").open = false; patch(x.id, { status: "abgelehnt" }); }}>✕ Als abgelehnt markieren</button>}
+                      {lt && <button onClick={(e) => { e.currentTarget.closest("details").open = false; editTags([x.id]); }}># Tags bearbeiten</button>}
                       <button onClick={() => copyAsNew(x)}>Als neue {x.kind === "angebot" ? "Angebot" : "Rechnung"} kopieren</button>
                       {s !== "entwurf" && onArchive && <button onClick={async () => { await onArchive(await buildInvoicePdf(x, co), invFileName(x), x); }}>In Dokumente ablegen</button>}
                       {s === "entwurf" && <button className="red" onClick={() => confirm("Entwurf löschen?") && setList((l) => l.filter((y) => y.id !== x.id))}>Entwurf löschen</button>}
@@ -8165,6 +8232,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
         </section>
       )}
       </FitScroll>
+      {bulkBar}
       </>)}
       {edit && <InvoiceEditor book={book} accounts={book?.accounts || []} txs={book?.txs || []} onPayWin={book ? (x) => { setEdit(null); setPayFor2(x); } : null} onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
       {coOpen && <CompanyWin co={co} setCo={setCo} onClose={() => setCoOpen(false)} />}
@@ -12037,4 +12105,25 @@ label>.vehpick.block{margin-top:6px}
 .ctbar{min-height:0}
 
 .invhint{margin-left:5px}
+
+/* v0.80 Test „Neue Listen“ (Rechnungen) */
+.ltbar .ltmore,.ltmacts .ltmore{min-width:0}
+.ltfilter{flex-wrap:wrap;align-items:center}
+.ltfilter .grow{flex:1 1 0}
+.ltview{display:inline-flex;align-items:center;position:relative}
+.ltview .ltx{border:0;background:none;color:var(--mut);font-size:11px;padding:0 4px;margin-left:-4px;cursor:pointer;min-height:0}
+.ltlist .lthead{display:flex;gap:12px;padding:6px 16px 4px;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;z-index:2;background:var(--card)}
+.ltlist .lthead>span:nth-child(1){flex:1}.ltlist .lthead.pk>span:nth-child(2){flex:1}.ltlist .lthead.pk>span:nth-child(1){width:24px;flex:none}
+.ltlist .lthead .r{width:96px;text-align:right;flex:none}.ltlist .lthead .c{width:380px;text-align:right;flex:none;padding-right:4px}
+.ltlist .invrow.picked{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.lttag{margin-left:8px;font-size:11px;vertical-align:2px}
+.pickbar.ltbulk{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;width:min(760px,calc(100vw - 32px));margin:0;z-index:40;box-shadow:0 10px 30px #0008}
+@media (min-width:701px){.pickbar.ltbulk{left:calc(50% + var(--side,0px) / 2)}}
+@media (max-width:700px){.pickbar.ltbulk{bottom:calc(var(--navgap,96px) + 10px);flex-wrap:nowrap;gap:6px}.pickbar.ltbulk .btn{padding:8px 12px}.pickbar.ltbulk .ltl{display:none}}
+.ltremind{color:#ef4444!important}
+.ltmacts{display:flex;gap:8px}
+@media (max-width:900px){.ltlist .lthead{display:none}}
+
+.ltmbar .mchips .grow{display:none}
+.ltmbar{display:contents}
 `;

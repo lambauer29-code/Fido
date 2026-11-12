@@ -2,6 +2,17 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.80.0 – Test „Neue Listen“ (Pilot Rechnungen)
+
+- Neuer Schalter **Einstellungen → Darstellung → Neue Listen (Test)**. Aus = alles wie bisher.
+- Wenn an, im Reiter Rechnungen:
+  - Aktionsleiste: ＋ Rechnung (Hauptaktion), ＋ Angebot, ☑ Auswählen, **Mehr ▾** (Kunden, Artikel, Mahnungen, Firmendaten und alle Exporte).
+  - Filterzeile: gespeicherte Ansichten (☆), Status-Chips mit Anzahl, Menüs **Jahr**, **Sortierung** (Datum, Betrag, Kunde, Fälligkeit) und **Tags**, „☆ Ansicht merken“ sobald ein Filter aktiv ist (Ansichten in `views:invoices`, ✕ zum Löschen).
+  - Liste: Spaltenköpfe, Tags als #Etikett beim Kunden, Drucker-Symbol je Zeile (Rechnung direkt drucken), Mahnung als 📮-Symbol; ⋯ → „# Tags bearbeiten“.
+  - Mehrfachauswahl: Zeilen antippen, Leiste unten mit Drucken (alle gewählten in einem Druckauftrag), Excel, # Tag, Fertig.
+  - iPhone: ＋ Rechnung, ＋ Angebot, Mehr ▾ (inkl. Auswählen); Wischen nach rechts jetzt auch „Drucken“.
+- Tags werden als `tags` an der Rechnung gespeichert (im Backup enthalten).
+
 ## v0.79.2
 
 - Abgeschlossene Inventur: Druckersymbol neben dem Auge – druckt die Inventurliste direkt (Druckdialog des Systems).
