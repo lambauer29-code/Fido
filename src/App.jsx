@@ -4841,17 +4841,17 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
       )}
       <div className="calhead">
         <button className={"chip calupbtn" + (upOpen ? " on" : "") + (overdue.length ? " warn" : "")} onClick={() => setUpOpen(!upOpen)} title="Bevorstehende Fristen">⏰ Bevorstehend <b>{overdue.length + upcoming.length}</b></button>
-        <button className="iconbtn" onClick={() => shift(-1)} aria-label="Zurück">‹</button>
-        <b className="grow">{view === "jahr" ? cursor.slice(0, 4)
-          : view === "woche" ? (() => { const ws = weekStart(cursor), we = addDays(ws, 6); const kw = isoWeek(ws); return `KW ${kw} · ${fmtDate(ws).slice(0, 6)} – ${fmtDate(we)}`; })()
+        <button className="iconbtn calprev" onClick={() => shift(-1)} aria-label="Zurück">‹</button>
+        <b className="grow callabel">{view === "jahr" ? cursor.slice(0, 4)
+          : view === "woche" ? (() => { const ws = weekStart(cursor), we = addDays(ws, 6); const kw = isoWeek(ws); return <><span className="calfull">KW {kw} · {fmtDate(ws).slice(0, 6)} – {fmtDate(we)}</span><span className="calshort">KW {kw} · {fmtDate(ws).slice(0, 3)}–{fmtDate(we).slice(0, 6)}</span></>; })()
           : first.toLocaleDateString("de-AT", { month: "long", year: "numeric" })}</b>
         <div className="seg calmodes" role="group" aria-label="Ansicht">
           {[["woche", "Woche"], ["monat", "Monat"], ["jahr", "Jahr"], ["kompakt", "Kompakt"]].map(([k, l]) => (
             <button key={k} className={view === k ? "on" : ""} onClick={() => { setView(k); setCursor(selDay); }}>{l}</button>
           ))}
         </div>
-        <button className="chip" onClick={() => pick(today)}>Heute</button>
-        <button className="iconbtn" onClick={() => shift(1)} aria-label="Weiter">›</button>
+        <button className="chip caltoday" onClick={() => pick(today)}>Heute</button>
+        <button className="iconbtn calnext" onClick={() => shift(1)} aria-label="Weiter">›</button>
       </div>
 
       {view === "woche" && (
@@ -12227,5 +12227,27 @@ label>.vehpick.block{margin-top:6px}
   .docbox .ditem .labels,.docbox .ditem .dactions,.docbox .ditem .damtin{display:none!important}
   .docbox .ditem .damtcol{display:block!important;flex:none;text-align:right;white-space:nowrap}
   .docbox .ditem .damtcol .amt{font-size:16px!important;font-weight:600!important}
+}
+
+/* v0.81.3 Fristen-Kopf am Handy: Zeile 1 ‹ KW … Heute ›, Zeile 2 Ansichten */
+@media (max-width:700px){
+  .calhead .calprev{order:1;flex:none}
+  .calhead .callabel{order:2;flex:1 1 0;min-width:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:16px!important}
+  .calhead .caltoday{order:3;flex:none}
+  .calhead .calnext{order:4;flex:none}
+  .calhead .calmodes{order:5;flex:1 1 100%;display:flex}
+  .calhead .calmodes button{flex:1}
+}
+
+.calshort{display:none}
+@media (max-width:700px){.calhead .calfull{display:none}.calhead .calshort{display:inline}.calhead .caltoday{padding:0 12px;min-height:40px;height:40px}}
+
+/* v0.81.4 Fristen-Kopf am Handy: Schrift −3 px */
+@media (max-width:700px){
+  .calhead .callabel{font-size:13px!important}
+  .calhead .caltoday{font-size:14px!important}
+  .calhead .calmodes button{font-size:13px!important}
+  .calhead .calprev,.calhead .calnext{font-size:15px!important}
+  .calhead .calupbtn{font-size:14px!important}
 }
 `;

@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.81.4
+
+- Fristen-Kopf am Handy: Schrift um 3 px kleiner (KW-Anzeige 13 px, Heute 14 px, Woche/Monat/Jahr/Kompakt 13 px, Bevorstehend 14 px, Pfeile 15 px).
+
+## v0.81.3
+
+- Fristen/Kalender am Handy: Kopfzeile neu angeordnet – Zeile 1 „‹ KW 46 · 09.–15.11. Heute ›“, Zeile 2 Woche/Monat/Jahr/Kompakt über die ganze Breite. Vorher wurde die KW-Anzeige Buchstabe für Buchstabe untereinander gequetscht.
+
 ## v0.81.2
 
 - Dokumente am Handy in der Größe der Verträge: Zeilenhöhe 72 statt 190 px, Vorschaubild 48 × 48, Titel und Unterzeile je eine Zeile, Betrag rechts. Etiketten und die Symbolleiste je Zeile sind am Handy ausgeblendet – Vorschau, Teilen, Bearbeiten und Löschen gehen über Wischen.
