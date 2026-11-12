@@ -5647,14 +5647,38 @@ function MobileBetaSetting() {
 /* Konten-Design-Test (v0.66) entfernt – alte Einstellung aufräumen */
 if (typeof document !== "undefined") { document.documentElement.classList.remove("klook"); try { localStorage.removeItem("kontoLook"); } catch {} }
 const mGroup = (arr, keyFn) => { const out = []; for (const x of arr) { const k = keyFn(x); const g = out[out.length - 1]; if (g && g[0] === k) g[1].push(x); else out.push([k, [x]]); } return out; };
-const MStats = ({ items }) => <div className="mstats">{items.filter(Boolean).map((s, i) => <div key={i} className={"tile mstatc" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b>{s.sub && <small className="muted">{s.sub}</small>}</div>)}</div>;
-const MActs = ({ items }) => <div className="mactions">{items.filter(Boolean).map((a, i) => <button key={i} className={"btn" + (a.primary ? " primary" : "")} onClick={a.run}>{a.label}</button>)}</div>;
-const MBar = ({ q, setQ, placeholder, chips, children }) => (
+// Test „Kompakt wie Konten“ (iPhone/iPad): "aus" | "zahl" (nur große Zahl) | "klein" (kleine Kacheln)
+const CMP_MODES = [["aus", "Aus", "alles wie bisher"], ["zahl", "Nur große Zahl", "Kennzahlen als eine Zeile wie bei den Konten"], ["klein", "Kleine Kacheln", "Kennzahlen bleiben, aber kompakt"]];
+const cmpApply = (v) => { const c = document.documentElement.classList; c.toggle("cmp", v !== "aus"); c.toggle("cmp-zahl", v === "zahl"); c.toggle("cmp-klein", v === "klein"); };
+if (typeof document !== "undefined") cmpApply(ls.get("cmpTest", "aus"));
+const useCmp = () => { const [v] = useFlag("cmpTest", "aus"); const ph = useMedia("(max-width:700px)"); return ph ? v : "aus"; };
+function CmpSetting() {
+  const [v, set] = useFlag("cmpTest", "aus");
+  useEffect(() => cmpApply(v), [v]);
+  return <label className="switchrow cmpset"><span><b>Kompakt wie Konten (Test)</b><small className="muted block">Nur iPhone und iPad: alle Listen-Reiter so kompakt wie der Reiter Konten – kleine Buttons, Filter als Menü, Suchleiste bleibt sichtbar.</small></span>
+    <PickMenu label={(CMP_MODES.find(([k]) => k === v) || CMP_MODES[0])[1]} title="Kompakt-Test" items={CMP_MODES.map(([k, t, sub]) => ({ k, title: t, sub, on: v === k, run: () => set(k) }))} /></label>;
+}
+const MStatsCmp = ({ items }) => { const l = items.filter(Boolean), [a, b2] = l; if (!a) return null;
+  return <div className="cmpnum"><div className={"cmpmain" + (a.onClick ? " click" : "")} onClick={a.onClick}><small className="muted">{a.label}</small><b className={a.vcls || ""}>{a.value}</b></div>
+    {(b2 || a.sub) && <small className="muted cmpsub">{b2 ? <span className={b2.onClick ? "click" : ""} onClick={b2.onClick}>{b2.label} <b className={b2.vcls || ""}>{b2.value}</b>{b2.sub ? " · " + b2.sub : ""}</span> : a.sub}</small>}</div>; };
+const MStats = ({ items }) => { const cm = useCmp(); if (cm === "zahl") return <MStatsCmp items={items} />; return <div className={"mstats" + (cm === "klein" ? " cmpsmall" : "")}>{items.filter(Boolean).map((s, i) => <div key={i} className={"tile mstatc" + (s.onClick ? " click" : "") + (s.alert ? " mwarn" : "")} onClick={s.onClick}><small className="muted">{s.label}</small><b className={s.vcls || ""}>{s.value}</b>{s.sub && <small className="muted">{s.sub}</small>}</div>)}</div>; };
+const MActs = ({ items }) => { const cm = useCmp(), l = items.filter(Boolean);
+  if (cm !== "aus" && l.length) { const main = l.find((a) => a.primary) || l[0], rest = l.filter((a) => a !== main);
+    return <div className="mactions cmpacts"><button className={"btn sm" + (main.primary ? " primary" : "")} onClick={main.run}>{main.label}</button>
+      {!!rest.length && <PickMenu btnClass="btn sm cmpmore" label="⋯" title="Weitere Aktionen" items={rest.map((a, i) => ({ k: "a" + i, title: a.label, run: a.run }))} />}</div>; }
+  return <div className="mactions">{l.map((a, i) => <button key={i} className={"btn" + (a.primary ? " primary" : "")} onClick={a.run}>{a.label}</button>)}</div>; };
+const MBar = ({ q, setQ, placeholder, chips, children }) => { const cm = useCmp(), cl = (chips || []).filter(Boolean);
+  if (cm !== "aus") { const on = cl.find((c) => c[3]) || cl[0];
+    return (<div className="msticky cmpbar"><div className="cmprow">
+      {!!cl.length && <PickMenu label={on ? `${on[1]}${on[2] != null ? " " + on[2] : ""}` : "Filter"} title="Filter" items={cl.map(([k, l, n, o, click]) => ({ k, title: l, right: n != null ? String(n) : undefined, on: !!o, run: click }))} />}
+      {setQ && <div className="searchbar"><span>🔍</span><input type="search" placeholder={placeholder} value={q} onChange={(e) => setQ(e.target.value)} /></div>}
+    </div>{children && <div className="mchips cmpextra">{children}</div>}</div>); }
+  return (
   <div className="msticky">
     {setQ && <div className="searchbar"><span>🔍</span><input type="search" placeholder={placeholder} value={q} onChange={(e) => setQ(e.target.value)} /></div>}
     {chips && <div className="mchips">{chips.filter(Boolean).map(([k, l, n, on, click]) => <button key={k} className={"chip" + (on ? " on" : "")} onClick={click}>{l}{n != null && <small> {n}</small>}</button>)}{children}</div>}
   </div>
-);
+); };
 const MHead = ({ children, right }) => <div className="mday mhead"><span>{children}</span>{right != null && <span className="muted">{right}</span>}</div>;
 const MAvatar = ({ text, color = "#64748b" }) => <span className="caticon mavatar" style={{ width: 46, height: 46, color }}>{(text || "?").trim().slice(0, 1).toUpperCase()}</span>;
 const MIco = ({ e }) => <span className="caticon" style={{ width: 46, height: 46, background: "var(--card2)", fontSize: 22 }}>{e}</span>;
@@ -6911,6 +6935,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
     "darstellung": <><SetSec id="darstellung" title="Darstellung">
         <TabbarSetting />
         <ListTestSetting />
+        <CmpSetting />
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
             <button key={k} role="radio" aria-checked={themeMode === k} className={themeMode === k ? "on" : ""} onClick={() => setThemeMode(k)}>
@@ -12128,4 +12153,52 @@ label>.vehpick.block{margin-top:6px}
 
 .ltmbar .mchips .grow{display:none}
 .ltmbar{display:contents}
+
+/* v0.81 Test „Kompakt wie Konten“ – iPhone */
+@media (max-width:700px){
+  html.cmp .cmpacts{display:flex;justify-content:flex-end;gap:8px;margin:-6px 0 6px}
+  html.cmp .cmpacts .btn{min-height:36px;height:36px;padding:0 14px;font-size:15px;border-radius:12px;flex:none!important;width:auto!important}
+  html.cmp .cmpacts .cmpmore{min-width:40px;justify-content:center}
+  html.cmp .cmpacts .cmpmore .caret{display:none}
+  html.cmp .cmpnum{margin:2px 0 10px}
+  html.cmp .cmpnum .cmpmain{display:flex;align-items:baseline;gap:10px}
+  html.cmp .cmpnum .cmpmain b{font-size:28px;font-weight:700;letter-spacing:-.01em}
+  html.cmp .cmpnum .cmpsub{display:block;font-size:14px;margin-top:2px}
+  html.cmp .mstats.cmpsmall{display:grid!important;grid-template-columns:1fr 1fr;gap:8px;overflow:visible!important;margin:0 0 8px}
+  html.cmp .mstats.cmpsmall .tile{min-width:0!important;width:auto!important;padding:8px 10px!important;border-radius:14px!important}
+  html.cmp .mstats.cmpsmall .tile b{font-size:17px!important}
+  html.cmp .mstats.cmpsmall .tile small{font-size:12px!important}
+  html.cmp .cmpbar .cmprow{display:flex;gap:8px;align-items:center}
+  html.cmp .cmpbar .cmprow .searchbar{flex:1;min-width:0;height:42px}
+  html.cmp .cmpbar .cmprow .vehpickbtn{height:42px;min-height:42px;font-size:15px;padding:0 12px;white-space:nowrap;max-width:46vw;overflow:hidden;text-overflow:ellipsis}
+  html.cmp .cmpbar .searchbar input{font-size:15px}
+  html.cmp .cmpextra{margin-top:6px}
+  html.cmp .mchips .chip,html.cmp .chips .chip{min-height:34px!important;height:34px!important;font-size:14px!important;padding:0 12px!important}
+  html.cmp .mactions:not(.cmpacts) .btn{min-height:38px;font-size:15px}
+  html.cmp.cmp-zahl .fbstats,html.cmp.cmp-zahl .fbspecs{display:none!important}
+  html.cmp .fbcar .tile,html.cmp .fbqbtn{padding:8px!important}
+}
+/* iPad (Touch, ab 701 px) */
+@media (min-width:701px) and (pointer:coarse){
+  html.cmp .invbar .btn,html.cmp .invbar summary.btn,html.cmp .chips .chip,html.cmp .invbar .chip{min-height:36px!important;height:36px!important;font-size:14px!important;padding:0 12px!important}
+  html.cmp .searchbar{height:42px}
+  html.cmp .searchbar input{font-size:15px}
+  html.cmp .invrow{padding-top:9px!important;padding-bottom:9px!important}
+  html.cmp .invrow .row1 b,html.cmp .ditem .dtitle{font-size:16px!important}
+  html.cmp .invrow small{font-size:13px!important}
+  html.cmp .invamt{font-size:16px!important}
+  html.cmp.cmp-zahl :is(.invstats,.kbstats){display:flex!important;align-items:baseline;gap:14px;flex-wrap:wrap;background:none!important;padding:0!important;margin:0 0 8px!important}
+  html.cmp.cmp-zahl :is(.invstats,.kbstats)>.tile{background:none!important;box-shadow:none!important;border:0!important;padding:0!important;min-width:0!important;flex:none!important;display:flex!important;align-items:baseline;gap:6px}
+  html.cmp.cmp-zahl :is(.invstats,.kbstats)>.tile:first-child b{font-size:26px!important}
+  html.cmp.cmp-zahl :is(.invstats,.kbstats)>.tile:nth-child(n+2) b{font-size:15px!important}
+  html.cmp.cmp-zahl :is(.invstats,.kbstats)>.tile:nth-child(n+3){display:none!important}
+  html.cmp.cmp-zahl :is(.invstats,.kbstats)>.tile small:last-child:not(:first-child),html.cmp.cmp-zahl :is(.invstats,.kbstats) .kubar{display:none!important}
+  html.cmp.cmp-zahl .ctpage .hero .hero-row,html.cmp.cmp-zahl .fbstats,html.cmp.cmp-zahl .fbspecs{display:none!important}
+  html.cmp.cmp-zahl .ctpage .hero{padding:10px 14px!important}
+  html.cmp.cmp-klein :is(.invstats,.kbstats)>.tile{padding:8px 12px!important}
+  html.cmp.cmp-klein :is(.invstats,.kbstats)>.tile b{font-size:18px!important}
+  html.cmp.cmp-klein :is(.invstats,.kbstats)>.tile small{font-size:12px!important}
+  html.cmp.cmp-klein .kubar{margin:4px 0!important}
+}
+.cmpset{align-items:center}
 `;

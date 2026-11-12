@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.81.0 – Test „Kompakt wie Konten“ (iPhone/iPad)
+
+- Neuer Schalter **Einstellungen → Darstellung → Kompakt wie Konten (Test)** mit drei Stufen: **Aus**, **Nur große Zahl**, **Kleine Kacheln**. Wirkt nur am iPhone (≤ 700 px) und iPad (Touch, ab 701 px); am Mac bleibt alles gleich.
+- iPhone: Kennzahlen als eine Zeile (große Zahl + zweite Kennzahl klein) bzw. 2×2-Kacheln in klein; Aktionen = eine kleine Hauptaktion + ⋯-Menü; Status-Chips werden zu einem Auswahlmenü links neben der Suchleiste; Suchleiste bleibt immer sichtbar; übrige Chips kleiner.
+- iPad: kleinere Buttons/Chips/Suchleiste, kompaktere Zeilen; „Nur große Zahl“ zeigt die ersten zwei Kennzahlen als Zeile, „Kleine Kacheln“ verkleinert die Kacheln.
+- Gilt für Rechnungen, Mahnungen, Kunden, Artikel, Lager & Inventur, Besitz & Garantie, Kassabuch (und Fixkosten/Verträge über dieselben Bausteine). Fahrtenbuch nur teilweise (eigener Aufbau).
+
 ## v0.80.1
 
 - Einklappen des Kopfbereichs beim Scrollen (Titel wird klein, Kennzahlen/Hinweise/Ablagefeld verschwinden) in allen Reitern wieder entfernt. Abschaltbar über `HDR_COLLAPSE` im Code, falls es später wieder gewünscht ist.
