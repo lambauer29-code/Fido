@@ -2877,7 +2877,7 @@ function PickMenu({ label, icon, items, extra = [], title, wide = false }) {
   const hov = { onPointerEnter: (e) => { lastPtr.current = e.pointerType; if (e.pointerType === "mouse") show(); }, onPointerLeave: (e) => { if (e.pointerType === "mouse") hide(); } };
   return (
     <span className="vehpick" ref={ref} {...hov}>
-      <button className={"chip on vehpickbtn" + (open ? " open" : "")} title={title} aria-haspopup="menu" aria-expanded={open}
+      <button className={"chip vehpickbtn" + (open ? " on open" : "")} title={title} aria-haspopup="menu" aria-expanded={open}
         onPointerDown={(e) => { lastPtr.current = e.pointerType; }}
         onClick={() => { if (lastPtr.current === "mouse" && open) return; open ? setOpen(false) : show(); }}>{icon ? <>{icon} </> : null}{label} <span className="caret">▾</span></button>
       {open && pos && createPortal(
@@ -6995,23 +6995,34 @@ function nextInvNumber(list, kind, co, date) {
 // Handy-Liste als abgerundete Karte mit eigener Scroll-Liste
 function MScroll({ children }) {
   const ref = useRef(null);
-  const h = useFitHeight(ref, 160, true, true, 0.55);
+  const h = useFitHeight(ref, 160, false, true, 0, true);
   return <div ref={ref} className={"mtxlist mscard" + (h ? " fit" : "")} style={h ? { maxHeight: h } : undefined}>{children}</div>;
 }
 function FitScroll({ children, className = "", cols, card = false }) {
   const ref = useRef(null);
-  const h = useFitHeight(ref, 200, card, card, card ? 0.55 : 0);
+  const h = useFitHeight(ref, card ? 160 : 200, false, card, 0, card);
   const k = useKLook();
   return <div ref={ref} className={"fitscroll" + (card ? " fscard" : "") + (h ? " fit" : "") + (className ? " " + className : "")} style={h ? { maxHeight: h } : undefined}>
     {k && cols && <div className="khead"><span>{cols[0]}</span><span>{cols[1]}</span><span>{cols[2]}</span></div>}{children}</div>;
 }
-function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0) {
+function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0, lock = false) {
   const [h, setH] = useState(null);
   useEffect(() => {
     let raf = 0;
+
     const calc = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
       const el = ref.current; if (!el) return setH(null);
       const top = el.getBoundingClientRect().top + window.scrollY;
+      if (lock) {
+        // Box fest bis 15 px über den unteren Rand (am Handy: über die Leiste unten), nur der Inhalt scrollt
+        const nb = [...document.querySelectorAll("nav.bottom")].find((b) => { const r = b.getBoundingClientRect(); return getComputedStyle(b).position === "fixed" && r.width >= innerWidth * 0.6 && r.top > innerHeight / 2; });
+        const limit = (nb ? nb.getBoundingClientRect().top : innerHeight) - 15;
+        const fits = Math.floor(limit - top) >= min;
+        // Seite nur sperren, wenn die Box ganz hineinpasst – sonst normal scrollen, damit nichts hinter der Leiste verschwindet
+        document.documentElement.classList.toggle("fitlock", fits);
+        const n = fits ? Math.floor(limit - top) : min;
+        return setH((o) => (o === n ? o : n));
+      }
       const bar = [...document.querySelectorAll("nav.bottom")].find((b) => b.offsetParent && b.getBoundingClientRect().top < innerHeight - 1);
       const app = document.querySelector(".app"), appPad = app ? parseFloat(getComputedStyle(app).paddingBottom) || 0 : 0;
       const bottom = Math.max(bar ? innerHeight - bar.getBoundingClientRect().top + 8 : 0, appPad + 4);
@@ -7023,7 +7034,7 @@ function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0
     addEventListener("resize", calc);
     const ro = new ResizeObserver(calc); const root = document.querySelector(".app") || document.body;
     [...root.querySelectorAll(".maincol > :not(.txtable):not(.txscroll)")].forEach((x) => ro.observe(x)); ro.observe(root);
-    return () => { cancelAnimationFrame(raf); removeEventListener("resize", calc); ro.disconnect(); };
+    return () => { cancelAnimationFrame(raf); removeEventListener("resize", calc); ro.disconnect(); if (lock) document.documentElement.classList.remove("fitlock"); };
   }, []);
   return h;
 }
@@ -11701,4 +11712,9 @@ html:not(.fg) .fitscroll.fscard{border-radius:18px}
 .pickmenu .pickright{font-size:13px;color:var(--mut);white-space:nowrap}
 .pickmenu{scrollbar-width:thin}
 .kbacts{width:auto!important;flex:none;flex-wrap:nowrap;gap:4px;margin-left:6px}
+
+/* v0.71 Listen-Box fest bis 15 px über den unteren Rand – Seite scrollt nicht mehr mit */
+html.fitlock .app{min-height:0!important;padding-bottom:0!important}
+html.fitlock main{padding-bottom:0!important;margin-bottom:0!important}
+html.fitlock .fscard.fit,html.fitlock .mscard.fit{margin-bottom:0!important}
 `;
