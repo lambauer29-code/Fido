@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.73.3
+
+- Kopfbereich-Einklappen (Desktop mit Maus/Trackpad) überarbeitet: Es verschwinden jetzt alle Elemente über der Liste, die Platz kosten – Kennzahlen, Hinweistexte, Ablagefeld und die Fahrzeugkarte. Vorher klappten Kunden, Artikel und Fixkosten nur ~9 px ein.
+- Fahrtenbuch: Passte die Liste nicht auf den Bildschirm, scrollte die Seite und es klappte nie ein. Jetzt klappt der Kopf auch beim Scrollen der Seite ein; die Liste bekommt dann die volle Höhe.
+- Beim Ausklappen springt die Liste im Fahrtenbuch an den Anfang statt irgendwohin.
+- Fehlerprüfung aller Reiter auf Desktop, iPad- und Handy-Größe: keine Script-Fehler, kein seitliches Überlaufen.
+
 ## v0.73.2
 
 - „Backup speichern“ und „Jetzt sichern“ sind nicht mehr dauerhaft hervorgehoben – die Akzentfarbe erscheint nur beim Antippen bzw. solange der Vorgang läuft.

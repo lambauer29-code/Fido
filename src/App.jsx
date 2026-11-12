@@ -7103,6 +7103,8 @@ const hdrScroll = (e) => {
     c.toggle("hdrmin", want);
     const d = top0 - el.getBoundingClientRect().top;      // > 0 beim Einklappen, < 0 beim Ausklappen
     if (!d) return;
+    // passt die Box nach dem Ausklappen nicht mehr ganz hinein (z. B. Fahrtenbuch), scrollt die Seite – Liste einfach an den Anfang
+    if (!want && el.getBoundingClientRect().top + 160 > innerHeight - 15) { el.style.maxHeight = "160px"; el.scrollTop = 0; return; }
     el.style.maxHeight = Math.max(160, h0 + d) + "px";
     el._hdrBusy = true;
     el.scrollTop = Math.max(0, t - d);
@@ -7118,6 +7120,24 @@ const hdrScroll = (e) => {
   } else if (on && t < 8) apply(false);
 };
 function useHdrReset() { useEffect(() => () => document.documentElement.classList.remove("hdrmin"), []); }
+// Elemente über der Liste, die beim Einklappen verschwinden (Kennzahlen, Hinweise, Ablagefeld, Fahrzeugkarte …)
+const HDR_COL = ".docdrop,.hint,.hero,.khero,.mstats,.invstats,.kbstats,.fbcar,.fbstats,.fbspecs";
+function useHdrCollapse(ref, on) {
+  useEffect(() => {
+    if (!on || !fineMouse) return;
+    const el = ref.current; if (!el?.parentElement) return;
+    const mark = () => { for (let n = el.previousElementSibling; n; n = n.previousElementSibling) if (n.matches(HDR_COL) && !n.classList.contains("hdrcol")) n.classList.add("hdrcol"); };
+    mark();
+    const mo = new MutationObserver(mark); mo.observe(el.parentElement, { childList: true });
+    // passt die Box nicht ganz auf den Bildschirm, scrollt die Seite – dann ebenfalls einklappen, damit die Box Platz bekommt
+    const onWin = () => {
+      const c = document.documentElement.classList;
+      if (scrollY > 30 && !c.contains("hdrmin") && !c.contains("fitlock")) { c.add("hdrmin"); requestAnimationFrame(() => { if (c.contains("fitlock")) scrollTo(0, 0); }); }
+    };
+    addEventListener("scroll", onWin, { passive: true });
+    return () => { mo.disconnect(); removeEventListener("scroll", onWin); };
+  }, [on]);
+}
 // Handy-Liste als abgerundete Karte mit eigener Scroll-Liste
 // Handy: die Seite scrollt nativ (flüssig, mit Schwung) – Titel, Kennzahlen und Knöpfe wandern nach oben weg.
 // Die Liste wirkt trotzdem wie eine feste Box: oben eine mitlaufende abgerundete Kante unter der Suchleiste,
@@ -7156,6 +7176,7 @@ function FitScroll({ children, className = "", cols, card = false }) {
   const ref = useRef(null);
   const h = useFitHeight(ref, card ? 160 : 200, false, card, 0, card);
   useHdrReset();
+  useHdrCollapse(ref, card);
   const k = useKLook();
   const phoneW = useMedia("(max-width:700px)");
   if (card && phoneW) return <MScroll extra={"fscard" + (className ? " " + className : "")}>{children}</MScroll>;
@@ -11912,4 +11933,6 @@ html.mnat main{padding-bottom:0!important}
 
 .btn.bkpress:active,.btn.bkpress.on{background:var(--acc);border-color:var(--acc);color:#fff}
 .btn.bkpress.on:disabled{opacity:1}
+
+html.hdrmin .hdrcol{display:none!important}
 `;
