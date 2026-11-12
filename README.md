@@ -2,6 +2,16 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.70.0
+
+- Kassabuch: Kassenauswahl und Zeitraum als Auswahlmenü im Stil der Fahrzeugauswahl (Hover am Desktop, Tippen am Handy). Kassen mit Kassenstand und Anzahl Buchungen, dazu „bearbeiten“ und „Kasse hinzufügen“; Zeitraum nach Monat und Jahr mit Anzahl Buchungen und Einnahmen/Ausgaben.
+- Kassensturz-Protokolle: neuer Knopf „👁 Anzeigen“ (PDF in der App), 🖨 öffnet direkt den Druckdialog.
+
+## v0.69.1
+
+- Seitenleiste: Logo „FinDocu – Finanzen & Dokumente“ bleibt oben fixiert und scrollt nicht mehr mit (iPad und Desktop).
+- Kassabuch ab iPad: Tabelle mit derselben Schrift und Größe wie die anderen Listen (Text 20 px, Details 17/15 px, Beträge 20 px). Bei schmaler Tabelle stehen Belegnummer und Kategorie klein unter Datum bzw. Text, auf breiten Bildschirmen als eigene Spalten.
+
 ## v0.69.0
 
 - **Handy: Listen als abgerundete Karte mit innerer Scroll-Liste** – Rechnungen, Mahnungen, Kunden, Artikel, Lager & Inventur, Besitz & Garantie, Kassabuch, Verträge, Fixkosten & Abos und Fahrtenbuch. Die Karte ist mindestens gut halb so hoch wie der Bildschirm: Erst scrollt die Seite, bis die Karte ganz sichtbar ist, dann scrollt die Liste innen. Tages-/Gruppenüberschriften bleiben innerhalb der Karte oben haften, Wischgesten funktionieren weiter.

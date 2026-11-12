@@ -2860,6 +2860,38 @@ function VehicleWin({ init, onSave, onDelete, onClose }) {
 }
 
 /* Fahrzeugauswahl als Dropdown: Maus darüber öffnet, Antippen/Klick schaltet um */
+function PickMenu({ label, icon, items, extra = [], title, wide = false }) {
+  const [open, setOpen] = useState(false), [pos, setPos] = useState(null);
+  const ref = useRef(null), t = useRef(null), lastPtr = useRef("mouse");
+  const W = wide ? 320 : 292;
+  const place = () => { const r = ref.current?.getBoundingClientRect(); if (r) setPos({ top: Math.round(r.bottom + 6), left: Math.round(Math.max(12, Math.min(r.left, innerWidth - W))), maxH: Math.max(220, Math.round(innerHeight - r.bottom - 24)) }); };
+  const show = () => { clearTimeout(t.current); place(); setOpen(true); };
+  const hide = (ms = 180) => { clearTimeout(t.current); t.current = setTimeout(() => setOpen(false), ms); };
+  useEffect(() => {
+    if (!open) return;
+    const out = (e) => { if (!ref.current?.contains(e.target) && !e.target.closest?.(".pickmenu")) setOpen(false); };
+    const re = (e) => { if (e?.target?.closest?.(".pickmenu")) return; place(); };
+    document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true);
+    return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); };
+  }, [open]);
+  const hov = { onPointerEnter: (e) => { lastPtr.current = e.pointerType; if (e.pointerType === "mouse") show(); }, onPointerLeave: (e) => { if (e.pointerType === "mouse") hide(); } };
+  return (
+    <span className="vehpick" ref={ref} {...hov}>
+      <button className={"chip on vehpickbtn" + (open ? " open" : "")} title={title} aria-haspopup="menu" aria-expanded={open}
+        onPointerDown={(e) => { lastPtr.current = e.pointerType; }}
+        onClick={() => { if (lastPtr.current === "mouse" && open) return; open ? setOpen(false) : show(); }}>{icon ? <>{icon} </> : null}{label} <span className="caret">▾</span></button>
+      {open && pos && createPortal(
+        <div className="moremenu vehmenu pickmenu" role="menu" style={{ position: "fixed", top: pos.top, left: pos.left, right: "auto", maxHeight: pos.maxH, overflowY: "auto" }} {...hov}>
+          {items.map((x, i) => x.head ? <small key={"h" + i} className="muted pickhead">{x.head}</small> : (
+            <button key={x.k} role="menuitemradio" aria-checked={!!x.on} className={x.on ? "on" : ""} onClick={() => { x.run(); setOpen(false); }}>
+              {x.icon != null && <span className="vehmi">{x.icon}</span>}<span className="grow"><b>{x.title}</b>{x.sub && <small className="muted block">{x.sub}</small>}</span>{x.right && <span className="pickright">{x.right}</span>}{x.on && <span className="ok">✓</span>}
+            </button>))}
+          {!!extra.filter(Boolean).length && <div className="menusep" />}
+          {extra.filter(Boolean).map((x, i) => <button key={"x" + i} onClick={() => { setOpen(false); x.run(); }}>{x.label}</button>)}
+        </div>, document.querySelector(".app") || document.body)}
+    </span>
+  );
+}
 function VehPicker({ vehicles, v, onPick, onEdit, onAdd }) {
   const [open, setOpen] = useState(false), [pos, setPos] = useState(null);
   const ref = useRef(null), t = useRef(null), lastPtr = useRef("mouse");
@@ -9194,12 +9226,20 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
     { label: "📊 Excel (.xlsx)", sub: "Buchungen + Kassenstürze", run: () => downloadXlsx(`kassabuch-${kasse.name}-${per}.xlsx`, [{ name: "Kassabuch", head, rows: rows() },
       { name: "Kassensturz", head: ["Datum", "Buchbestand €", "Gezählt €", "Differenz €", "Anmerkung"], rows: kCounts.filter((c) => per === "alle" || c.date.startsWith(per)).map((c) => [fmtDate(c.date), c.book, c.counted, c.diff, c.note || ""]) }]) },
     { label: "📄 CSV", run: () => downloadCsv(`kassabuch-${kasse.name}-${per}.csv`, head, rows()) }];
-  const countPdf = async (c) => saveBlob(await tablePdf({ title: `Kassensturz-Protokoll ${kasse.name}`, subtitle: `${new Date(c.created).toLocaleString("de-AT")}`,
+  const countBlob = async (c) => (await tablePdf({ title: `Kassensturz-Protokoll ${kasse.name}`, subtitle: `${new Date(c.created).toLocaleString("de-AT")}`,
     kpis: [["Buchbestand", fmtMoney(c.book)], ["Gezählt", fmtMoney(c.counted)], ["Differenz", fmtMoney(c.diff)]],
     columns: [{ label: "Stückelung", w: 2 }, { label: "Anzahl", w: 1, align: "right" }, { label: "Summe €", w: 1.5, align: "right" }],
     rows: KB_DENOMS.filter((d) => Number(c.denoms?.[d])).map((d) => [d >= 1 ? d + " €" : Math.round(d * 100) + " ct", Number(c.denoms[d]), kbR2(d * c.denoms[d])]), totals: ["Gesamt", "", c.counted],
-    note: (c.note ? "Anmerkung: " + c.note + "\n" : "") + "\n\n______________________________   Unterschrift" }), `kassensturz-${c.date}.pdf`);
-  const perSel = <select className="chip" value={per} onChange={(e) => setPer(e.target.value)}>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}{years.map((y) => <option key={y} value={y}>Jahr {y}</option>)}<option value="alle">Alle</option></select>;
+    note: (c.note ? "Anmerkung: " + c.note + "\n" : "") + "\n\n______________________________   Unterschrift" }));
+  const countName = (c) => `Kassensturz ${kasse.name} ${fmtDate(c.date)}`;
+  const countShow = async (c) => openPdf(await countBlob(c), `kassensturz-${c.date}.pdf`, countName(c));
+  const countPrint = async (c) => { notify?.("Druck wird vorbereitet …"); await printImages(await blobToImages(await countBlob(c)), countName(c)); };
+  const perStat = (pre) => { const l = mine.filter((e) => pre === "alle" || e.date.startsWith(pre)); const i = l.filter((e) => e.kind === "ein").reduce((t, e) => t + e.amount, 0), o = l.filter((e) => e.kind === "aus").reduce((t, e) => t + e.amount, 0);
+    return l.length ? `${l.length} Buchung${l.length === 1 ? "" : "en"} · +${fmtMoney(i)} / −${fmtMoney(o)}` : "keine Buchungen"; };
+  const perSel = <PickMenu icon="📅" label={per === "alle" ? "Alle" : per.length === 4 ? "Jahr " + per : perLabel} title="Zeitraum" wide items={[{ head: "Monat" }, ...months.map((m) => ({ k: m, title: monthLabel(m), sub: perStat(m), on: per === m, run: () => setPer(m) })),
+    { head: "Jahr" }, ...years.map((y) => ({ k: "y" + y, title: "Jahr " + y, sub: perStat(y), on: per === y, run: () => setPer(y) })), { k: "alle", title: "Alle Buchungen", sub: perStat("alle"), on: per === "alle", run: () => setPer("alle") }]} />;
+  const kassaSel = <PickMenu icon="💶" label={kasse.name} title="Kasse wählen" items={kassen.map((k) => { const b = kbRun(entries, k).bal; return { k: k.id, icon: "💶", title: k.name, sub: `Kassenstand ${fmtMoney(b)} · ${entries.filter((e) => e.kasse === k.id).length} Buchungen`, on: k.id === kasse.id, run: () => setSel(k.id) }; })}
+    extra={[{ label: `✎ „${kasse.name}“ bearbeiten`, run: () => setSetup(true) }, { label: "＋ Kasse hinzufügen", run: () => setSetup("neu") }]} />;
   const stats = [{ label: "Kassenstand", value: fmtMoney(bal), vcls: bal < 0 ? "neg" : "", sub: kasse.name },
     { label: "Einnahmen", value: fmtMoney(sumIn), vcls: "pos", sub: perLabel }, { label: "Ausgaben", value: fmtMoney(sumOut), vcls: "neg", sub: perLabel },
     { label: "Kassensturz", value: lastCount ? fmtDate(lastCount.date) : "noch keiner", sub: lastCount ? (lastCount.diff ? "Differenz " + fmtMoney(lastCount.diff) : "stimmte ✓") : "jetzt zählen", alert: !lastCount || daysUntil(lastCount.date) < -7, onClick: () => setCountOpen(true) }];
@@ -9208,14 +9248,15 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
       <div className="row"><b className="grow">Kassensturz-Protokolle<span className="muted small kbcnt">{kCounts.length}</span></b></div>
       {!kCounts.length && <p className="muted small">Noch kein Kassensturz. Empfehlung: mindestens wöchentlich, besser täglich zählen.</p>}
       {kCounts.map((c) => <div key={c.id} className="frow"><span className="grow"><b>{new Date(c.created).toLocaleString("de-AT", { dateStyle: "short", timeStyle: "short" })}</b><small className="muted block">Soll {fmtMoney(c.book)} · Ist {fmtMoney(c.counted)}{c.note ? " · " + c.note : ""}</small></span>
-        <b className={c.diff < 0 ? "neg" : c.diff > 0 ? "pos" : ""}>{c.diff ? fmtMoney(c.diff) : "✓"}</b><button className="chip" onClick={() => countPdf(c)}>🖨</button></div>)}
+        <b className={c.diff < 0 ? "neg" : c.diff > 0 ? "pos" : ""}>{c.diff ? fmtMoney(c.diff) : "✓"}</b>
+        <button className="chip" title="Protokoll anzeigen" onClick={() => countShow(c)}>👁 Anzeigen</button><button className="chip" title="Drucken" onClick={() => countPrint(c)}>🖨</button></div>)}
     </section>
   );
   const modals = (<>
     {form && <KassaEntryWin init={form} kasse={kasse} entries={entries} lastCount={lastCount} docs={docs} onUpload={onUpload} onScan={onScan} onOpen={onOpen} notify={notify} onSave={(n) => { setEntries((l) => [...l, n]); notify?.(`Gebucht: ${kbNo(n)}`); }} onClose={() => setForm(null)} />}
     {countOpen && <KassaCountWin kasse={kasse} entries={entries} onSave={saveCount} onClose={() => setCountOpen(false)} />}
     {det && <KassaDetailWin e={entries.find((x) => x.id === det) || {}} kasse={kasse} saldo={saldo[det]} entries={entries} docs={docs} onOpen={onOpen} onStorno={doStorno} onClose={() => setDet(null)} />}
-    {setup && <KassaSetupWin kassen={kassen} setKassen={setKassen} entries={entries} sel={kasse.id} setSel={setSel} onClose={() => setSetup(false)} />}
+    {setup && <KassaSetupWin addNew={setup === "neu"} kassen={kassen} setKassen={setKassen} entries={entries} sel={kasse.id} setSel={setSel} onClose={() => setSetup(false)} />}
   </>);
   const rowCls = (e) => (e.stornoBy || e.stornoOf ? " kbstorno" : "");
   return (
@@ -9226,7 +9267,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
         <MActs items={[{ label: "＋ Einnahme", primary: true, run: () => newEntry("ein") }, { label: "− Ausgabe", run: () => newEntry("aus") }, { label: "🧮 Kassensturz", run: () => setCountOpen(true) }]} />
         <MBar q={q} setQ={setQ} placeholder="Text, Kategorie, Beleg suchen">
         </MBar>
-        <div className="mchips">{kassen.length > 1 && <select className="chip" value={kasse.id} onChange={(e) => setSel(e.target.value)}>{kassen.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</select>}{perSel}<ExportMenu items={exportItems} /><button className="chip" onClick={() => setSetup(true)}>⚙︎</button><button className={"chip" + (showCounts ? " on" : "")} onClick={() => setShowCounts(!showCounts)}>Protokolle</button></div>
+        <div className="mchips">{kassaSel}{perSel}<ExportMenu items={exportItems} /><button className="chip" onClick={() => setSetup(true)}>⚙︎</button><button className={"chip" + (showCounts ? " on" : "")} onClick={() => setShowCounts(!showCounts)}>Protokolle</button></div>
         {showCounts && countsList}
         <MScroll>
           {!shown.length && <MEmpty>{mine.length ? "Keine Buchungen in diesem Zeitraum." : "Noch keine Buchungen – mit „＋ Einnahme“ oder „− Ausgabe“ beginnen."}</MEmpty>}
@@ -9248,7 +9289,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
         <button className="btn" onClick={() => newEntry("aus")}>− Ausgabe</button>
         <button className="btn" onClick={() => setCountOpen(true)}>🧮 Kassensturz</button>
         <span className="grow" />
-        {kassen.length > 1 && <select className="chip" value={kasse.id} onChange={(e) => setSel(e.target.value)}>{kassen.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</select>}
+        {kassaSel}
         {perSel}
         <ExportMenu items={exportItems} />
         <button className={"chip" + (showCounts ? " on" : "")} onClick={() => setShowCounts(!showCounts)}>Protokolle ({kCounts.length})</button>
@@ -9297,8 +9338,8 @@ function AccVisWin({ accounts, txs, onHide, onUnhide, onClose }) {
   );
 }
 
-function KassaSetupWin({ kassen, setKassen, entries, sel, setSel, onClose }) {
-  const [list, setList] = useState(kassen);
+function KassaSetupWin({ kassen, setKassen, entries, sel, setSel, onClose, addNew = false }) {
+  const [list, setList] = useState(() => addNew ? [...kassen, { id: uid(), name: "Kasse " + (kassen.length + 1), start: 0, startDate: todayISO() }] : kassen);
   const used = (k) => entries.some((e) => e.kasse === k.id);
   const upd = (id, p) => setList((l) => l.map((k) => (k.id === id ? { ...k, ...p } : k)));
   return (
@@ -11623,4 +11664,40 @@ html:not(.fg) .fitscroll.fscard{border-radius:18px}
 .mscard .mtx{background:transparent}
 .mscard .swfront,.mscard .mtx,.fscard .swfront{background:var(--card)}
 .mscard>.mday,.mscard .mday{top:0}
+
+/* v0.69.1 Seitenleiste: Logo fixiert · Kassabuch-Tabelle mit Listen-Schrift ab iPad */
+@media(min-width:768px){
+  nav.bottom>.brand{position:sticky;top:-18px;z-index:5;background:inherit;margin:-18px -10px 6px;padding:18px 20px 16px!important;border-bottom:1px solid var(--line)}
+  html.side-mini nav.bottom>.brand{margin-left:-8px;margin-right:-8px;padding-left:0!important;padding-right:0!important}
+  .kbr{gap:10px;padding:15px 18px;font-size:17px}
+  .kbr>span{line-height:1.3}
+  .kbr .kbctext>b,.kbr>span>b{font-size:20px;font-weight:500}
+  .kbr>.kbcno,.kbr>.kbcdate,.kbr>.kbccat,.kbopen>span{font-size:17px}
+  .kbr>.r{font-size:20px;font-weight:500}
+  .kbr>.r>b{font-size:20px;font-weight:600}
+  .kbh{padding-top:13px;padding-bottom:13px}
+  .kbh>span,.kbh>.r{font-size:14px!important;font-weight:700}
+  .kbfoot>span{font-size:20px!important;font-weight:600!important}
+  .kbr .stpill{font-size:12px}
+  .kbr .kbsub{font-size:15px;margin-top:2px}
+  @container (min-width:1001px){ .kbr{grid-template-columns:112px 116px minmax(0,2fr) minmax(0,1fr) 124px 124px 134px} }
+  @container (max-width:1000px){
+    .kbr{grid-template-columns:124px minmax(0,1fr) 120px 120px 132px}
+    .kbr>.kbcno,.kbr>.kbccat,.kbh>span:nth-child(1),.kbh>span:nth-child(4),.kbopen>span:nth-child(1),.kbopen>span:nth-child(4),.kbfoot>span:nth-child(1),.kbfoot>span:nth-child(4){display:none}
+    .kbr .kbsub{display:block;font-weight:400;line-height:1.3}
+    .kbr .kbctext{display:flex;flex-direction:column;white-space:normal}
+    .kbr .kbctext>b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  }
+  @container (max-width:640px){
+    .kbr{grid-template-columns:88px minmax(0,1fr) 74px 74px 86px;gap:8px;padding:12px 12px;font-size:15px}
+    .kbr>.kbcdate,.kbopen>span{font-size:15px}
+    .kbr>.r,.kbr .kbctext>b,.kbr>.r>b,.kbfoot>span{font-size:16px!important}
+    .kbr .kbsub{font-size:13px}
+  }
+}
+
+/* v0.70 Auswahlmenüs Kasse/Zeitraum */
+.pickmenu .pickhead{display:block;padding:8px 12px 2px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.pickmenu .pickright{font-size:13px;color:var(--mut);white-space:nowrap}
+.pickmenu{scrollbar-width:thin}
 `;
