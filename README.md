@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.82.1
+- **✕ zum Löschen in jedem Suchfeld**: erscheint, sobald etwas eingegeben ist, leert das Feld mit einem Tipp und lässt die Tastatur offen. Ersetzt das Browser-X, das es nicht in jedem Browser gibt (z. B. Firefox) – damit sieht es überall gleich aus.
+
 ## v0.82.0
 - **„Kompakt wie Konten“ fix übernommen** (iPhone/iPad): kein Test mehr. In Einstellungen → Darstellung wählst du nur noch, wie die Kennzahlen aussehen („Nur große Zahl“ oder „Kleine Kacheln“).
 - **„Neue Listen“ fix übernommen** im Reiter Rechnungen (Jahr, Sortierung, Tags, gespeicherte Ansichten, Mehrfachauswahl, Drucken). Der Test-Schalter ist entfernt.

@@ -5682,6 +5682,7 @@ function SearchBox({ value, onChange, placeholder, id, words, className = "searc
       onFocus={(e) => { sugCollect(e.target, key); place(); setOpen(true); setAct(-1); }}
       onChange={(e) => { onChange(e.target.value); if (!open) place(); setOpen(true); setAct(-1); }}
       onBlur={(e) => { remember(e.target.value); setOpen(false); }} onKeyDown={key2} />
+    {!!value && <button type="button" className="sbclear" aria-label="Eingabe löschen" title="Eingabe löschen" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(""); setAct(-1); inp.current?.focus(); }}>✕</button>}
     {children}
     {show && pos && createPortal(<ul id={lid} role="listbox" aria-label={mode === "recent" ? "Zuletzt gesucht" : "Vorschläge"} className="sugmenu" style={{ top: pos.top, left: pos.left, width: pos.width }}
       onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onMouseDown={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()}>
@@ -12336,4 +12337,11 @@ label>.vehpick.block{margin-top:6px}
   html.cmp .cmpbar.cmpone .cmprow>:not(.searchbar){flex:none}
   html.cmp .cmpbar.cmpone .cmprow .chip,html.cmp .cmpbar.cmpone .cmprow .btn{height:42px;min-height:42px;white-space:nowrap;font-size:15px;padding:0 12px;margin:0}
 }
+
+/* v0.82.1 Löschen-X in jedem Suchfeld (eigener Button statt Browser-X, das es nicht überall gibt) */
+.sbx input[type=search]::-webkit-search-cancel-button,.sbx input[type=search]::-webkit-search-decoration{-webkit-appearance:none;appearance:none;display:none}
+.sbx{position:relative}
+.sbclear{flex:none;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;margin:0 2px;padding:0;border:0;border-radius:50%;background:color-mix(in srgb,var(--txt) 14%,transparent);color:var(--card);font-size:13px;font-weight:700;line-height:1;cursor:pointer}
+.sbclear:hover{background:color-mix(in srgb,var(--txt) 28%,transparent)}
+.sbplain{display:block}.sbplain input{width:100%;padding-right:40px}.sbplain .sbclear{position:absolute;right:8px;top:50%;transform:translateY(-50%)}
 `;
