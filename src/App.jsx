@@ -7138,8 +7138,10 @@ function nextInvNumber(list, kind, co, date) {
 // Kopfbereich beim Scrollen in der Liste einklappen, damit die Liste mehr Platz bekommt
 // Ein-/Ausklappen in einem Schritt: Box wächst bzw. schrumpft oben, der Inhalt bleibt an derselben Stelle stehen (kein Springen)
 const fineMouse = typeof matchMedia !== "undefined" && matchMedia("(hover:hover) and (pointer:fine)").matches;
+// v0.80.1: Einklappen des Kopfbereichs beim Scrollen abgeschaltet (auf Wunsch entfernt)
+const HDR_COLLAPSE = false;
 const hdrScroll = (e) => {
-  if (!fineMouse) return;
+  if (!HDR_COLLAPSE || !fineMouse) return;
   const el = e.currentTarget; if (el._hdrBusy) return;
   const c = document.documentElement.classList, on = c.contains("hdrmin"), t = el.scrollTop;
   const apply = (want) => {
@@ -7168,7 +7170,7 @@ function useHdrReset() { useEffect(() => () => document.documentElement.classLis
 const HDR_COL = ".docdrop,.hint,.hero,.khero,.mstats,.invstats,.kbstats,.fbcar,.fbstats,.fbspecs";
 function useHdrCollapse(ref, on) {
   useEffect(() => {
-    if (!on || !fineMouse) return;
+    if (!HDR_COLLAPSE || !on || !fineMouse) return;
     const el = ref.current; if (!el?.parentElement) return;
     const mark = () => { for (let n = el.previousElementSibling; n; n = n.previousElementSibling) if (n.matches(HDR_COL) && !n.classList.contains("hdrcol")) n.classList.add("hdrcol"); };
     mark();

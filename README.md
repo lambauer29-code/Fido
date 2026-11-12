@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.80.1
+
+- Einklappen des Kopfbereichs beim Scrollen (Titel wird klein, Kennzahlen/Hinweise/Ablagefeld verschwinden) in allen Reitern wieder entfernt. Abschaltbar über `HDR_COLLAPSE` im Code, falls es später wieder gewünscht ist.
+
 ## v0.80.0 – Test „Neue Listen“ (Pilot Rechnungen)
 
 - Neuer Schalter **Einstellungen → Darstellung → Neue Listen (Test)**. Aus = alles wie bisher.
