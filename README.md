@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.79.0
+
+- **Fixkosten & Abos** im Aufbau wie Rechnungen: Kennzahlen oben, Suchleiste, Filter-Chips mit Anzahl (Alle · Verträge · Aus Umsätzen · Bald kündbar · Bestätigt · Inaktiv) und Sortierung, darunter eine feste Box mit einer gemeinsamen Liste aus Vertragsdokumenten und bestätigten Abos aus den Umsätzen.
+- Jede Zeile: Anbieter + Details, Betrag mit Intervall, Status-Etikett (Vertrag / kündbar bis … / Frist verpasst / Bestätigt / Erkannt / Inaktiv / Beendet), dann Aktionen – bei Verträgen Ansehen und Kündigungsschreiben, bei Abos ✓ Bestätigen und ✕ Beenden – und ⋯ mit „Buchungen anzeigen“.
+
 ## v0.78.0
 
 - Konten: Chip „Alle Konten ▾“ (Fenster „Konten auswählen“) entfernt – die Auswahl läuft über die Seitenleiste.

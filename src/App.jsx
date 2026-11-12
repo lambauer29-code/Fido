@@ -4991,6 +4991,24 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
   const sorter = { monat: (a, b) => perMonth(b) - perMonth(a), name: (a, b) => a.name.localeCompare(b.name), zuletzt: (a, b) => (b.last || "").localeCompare(a.last || "") }[sortBy];
   const rows = [...live, ...(showStale ? stale : [])].sort(sorter);
   const remove = (r) => setSubs?.({ ...subs, confirmed: subs.confirmed.filter((k) => k !== r.key), dismissed: [...subs.dismissed, r.key] });
+  // Eine Liste für Vertragsdokumente und erkannte Abos (Aufbau wie Rechnungen)
+  const [cq, setCq] = useState(""), [cf, setCf] = useState("alle");
+  const IV = (k) => (INTERVAL_SHORT[k] || "").replace("/ ", "") || k || "";
+  const items = [
+    ...list.map((d) => { const c = d.contract, n = c.cancelBy ? daysUntil(c.cancelBy) : null;
+      const [label, cls] = c.cancelBy ? (n < 0 ? ["Frist verpasst", "st-over"] : n <= 60 ? [`kündbar bis ${fmtDate(c.cancelBy)}`, "st-open"] : ["Vertrag", "st-paid"]) : ["Vertrag", "st-paid"];
+      return { key: d.id, doc: d, name: c.provider, category: d.category, amount: c.amount, int: IV(c.interval), month: monthlyCost(c), last: "", soon: n != null && n >= 0 && n <= 60, ok: true, stale: false, label, cls,
+        sub: [c.name, c.customerNumber && "Nr. " + c.customerNumber, c.cancelBy ? `Kündigung bis ${fmtDate(c.cancelBy)}` : c.noticePeriod ? "Frist: " + c.noticePeriod : ""].filter(Boolean).join(" · ") || d.category, txs: txFor(c) }; }),
+    ...extra.map((r) => { const st = inactive(r);
+      const [label, cls] = isEnded(r) ? ["Beendet", "st-void"] : st ? ["Inaktiv", "st-void"] : isOk(r) ? ["Bestätigt", "st-paid"] : ["Erkannt", "st-draft"];
+      return { key: r.key, r, name: r.name, category: r.category, amount: r.amount, int: IV(r.interval), month: perMonth(r), last: r.last || "", soon: false, ok: isOk(r), stale: st, label, cls,
+        sub: [r.category, `${fmtMoney(perMonth(r))} / Monat`, r.last && "zuletzt " + fmtDate(r.last)].filter(Boolean).join(" · "), txs: (r.txIds || []).map((id) => txById[id]).filter(Boolean) }; }),
+  ];
+  const ctF = { alle: (x) => !x.stale, vertraege: (x) => !!x.doc, umsaetze: (x) => !x.doc && !x.stale, kuendbar: (x) => x.soon, bestaetigt: (x) => !x.doc && x.ok && !x.stale, inaktiv: (x) => x.stale };
+  const CT_FILTERS = [["alle", "Alle"], ["vertraege", "Verträge"], ["umsaetze", "Aus Umsätzen"], ["kuendbar", "Bald kündbar"], ["bestaetigt", "Bestätigt"], ["inaktiv", "Inaktiv"]];
+  const nq = norm(cq.trim());
+  const shown = items.filter(ctF[cf] || ctF.alle).filter((x) => !nq || norm(`${x.name} ${x.sub} ${x.category || ""}`).includes(nq))
+    .sort({ monat: (a, b) => b.month - a.month, name: (a, b) => a.name.localeCompare(b.name), zuletzt: (a, b) => (b.last || "").localeCompare(a.last || "") }[sortBy]);
 
   return (
     <div className="cdash">
@@ -5005,77 +5023,46 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
         </div>
       </div>
 
+      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Anbieter, Kategorie, Kundennummer suchen" value={cq} onChange={(e) => setCq(e.target.value)} /></div>
+      <div className="chips invfilter">
+        {CT_FILTERS.map(([k, l]) => <button key={k} className={"chip" + (cf === k ? " on" : "")} onClick={() => setCf(k)}>{l} <small>({items.filter(ctF[k]).length})</small></button>)}
+        <PSelect className="chip" value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sortieren">
+          <option value="monat">↕ Kosten</option><option value="name">↕ Name</option><option value="zuletzt">↕ Zuletzt</option>
+        </PSelect>
+      </div>
+
       <FitScroll card>
-      {!list.length ? (
-        <div className="tile hintrow">
-          <span className="caticon" style={{ width: 40, height: 40, background: "#8b5cf622", fontSize: 18 }}>📑</span>
-          <div className="grow"><b>Noch keine Vertragsdokumente</b><small className="muted block">Lade einen Vertrag, eine Polizze oder eine Abo-Rechnung hoch – Kündigungsfristen und Kündigungsschreiben gibt es dann automatisch.</small></div>
-        </div>
-      ) : (
-        <section className="tile">
-          <div className="tilehead"><b>Vertragsordner</b><small>{list.length} · nach Kosten</small></div>
-          <div className="cgrid">
-          {list.map((d) => {
-            const c = d.contract, n = c.cancelBy ? daysUntil(c.cancelBy) : null;
-            return (
-              <div key={d.id} className="crow">
-                <div className="frow click" onClick={() => onOpen(d.id)}>
-                  <CatIcon c={d.category} />
-                  <div className="grow">
-                    <b>{c.provider}</b>
-                    <small className="muted block">{[c.name, c.customerNumber && "Nr. " + c.customerNumber].filter(Boolean).join(" · ") || d.category}</small>
-                  </div>
-                  <div className="right"><b>{c.amount ? fmtMoney(c.amount) : "–"}</b><small className="muted block">{(INTERVAL_SHORT[c.interval] || "").replace("/ ", "")}</small></div>
+        <section className="tile invlist ctlist">
+          {!shown.length && <p className="muted small">{items.length ? "Keine Einträge für diesen Filter." : "Noch keine Verträge oder Abos. Lade einen Vertrag, eine Polizze oder eine Abo-Rechnung hoch – oder importiere Kontoumsätze, dann werden wiederkehrende Zahlungen erkannt."}</p>}
+          {shown.map((x) => (
+            <React.Fragment key={x.key}>
+              <div className={"invrow" + (x.stale ? " stale" : "") + (open[x.key] ? " prevopen" : "")} onClick={() => (x.doc ? onOpen(x.doc.id) : toggleOpen(x.key))}>
+                <CatIcon c={x.category || "Sonstiges"} size={36} />
+                <div className="invmain">
+                  <div className="row1"><b className="invname">{x.name}</b></div>
+                  <small className="muted block">{x.sub}</small>
                 </div>
-                <div className="cmeta">
-                  {c.cancelBy
-                    ? <span className={"pill " + (n < 0 ? "red" : n <= 30 ? "warn" : "")}>⏰ bis {fmtDate(c.cancelBy)}{n >= 0 ? ` · ${n} T.` : " · verpasst"}</span>
-                    : c.noticePeriod ? <span className="pill">Frist: {c.noticePeriod}</span> : <span className="pill muted">Kündigungsfrist unbekannt</span>}
-                  <span className="grow" />
-                  <button className="link" onClick={() => toggleOpen(d.id)}>{open[d.id] ? "Buchungen ▴" : `Buchungen (${txFor(c).length}) ▾`}</button>
-                  <button className="link" onClick={() => setLetterFor(d)}>Kündigen ›</button>
+                <b className="invamt">{x.amount ? fmtMoney(x.amount) : "–"}<small className="muted block ctint">{x.int}</small></b>
+                <div className="invacts" onClick={(e) => e.stopPropagation()}>
+                  <span className={"stpill invst " + x.cls}>{x.label}</span>
+                  {x.doc ? <button className="iconbtn" title="Vertrag ansehen" onClick={() => onOpen(x.doc.id)}><IcoEye /></button>
+                    : <button className={"iconbtn ok" + (isOk(x.r) ? " on" : "")} title={isOk(x.r) ? "Bestätigung aufheben" : "Bestätigen: läuft noch, zählt zu den Fixkosten"} aria-pressed={isOk(x.r)} onClick={() => verify(x.r)}>✓</button>}
+                  {x.doc ? <button className="iconbtn" title="Kündigungsschreiben" onClick={() => setLetterFor(x.doc)}>✉︎</button>
+                    : <button className={"iconbtn no" + (isEnded(x.r) ? " on" : "")} title={isEnded(x.r) ? "Wieder aktivieren" : "Deaktivieren: Vertrag beendet, zählt nicht mehr"} aria-pressed={isEnded(x.r)} onClick={() => endIt(x.r)}>✕</button>}
+                  <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
+                    <div className="moremenu">
+                      <button onClick={(e) => { e.currentTarget.closest("details").open = false; toggleOpen(x.key); }}>{open[x.key] ? "Buchungen ausblenden" : `Buchungen anzeigen (${x.txs.length})`}</button>
+                      {x.doc && <button onClick={(e) => { e.currentTarget.closest("details").open = false; setLetterFor(x.doc); }}>✉︎ Kündigungsschreiben</button>}
+                      {!x.doc && setSubs && <button className="red" onClick={(e) => { e.currentTarget.closest("details").open = false; remove(x.r); }}>Aus der Liste entfernen</button>}
+                    </div>
+                  </details>
                 </div>
-                {open[d.id] && <TxFold list={txFor(c)} accounts={accounts} />}
               </div>
-            );
-          })}
-          </div>
+              {open[x.key] && <TxFold list={x.txs} accounts={accounts} />}
+            </React.Fragment>
+          ))}
+          {!!ended.length && cf === "alle" && <p className="muted small" style={{ padding: "10px 16px" }}>{ended.length} beendete Verträge (im Dokument unter „Vertrag / Abo“ abgewählt)</p>}
         </section>
-      )}
-      {!!extra.length && (
-        <section className="tile subtile">
-          <div className="tilehead"><b>Aus Kontoumsätzen</b>
-            <span className="subctl">
-              <PSelect className="chip" value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sortieren">
-                <option value="monat">nach Kosten</option><option value="name">nach Name</option><option value="zuletzt">zuletzt gebucht</option>
-              </PSelect>
-              {!!stale.length && <button className={"chip" + (showStale ? " on" : "")} onClick={() => setShowStale(!showStale)}>{showStale ? "Inaktive ausblenden" : `+ ${stale.length} beendet / inaktiv`}</button>}
-            </span>
-          </div>
-          <div className="subtable">
-            <div className="subhead"><span>Anbieter</span><span>Kategorie</span><span>Intervall</span><span className="r">Betrag</span><span className="r">pro Monat</span><span className="r">pro Jahr</span><span>Zuletzt</span><span className="r">Status</span></div>
-            {rows.map((r) => (
-              <React.Fragment key={r.key}>
-              <div className={"subrow" + (inactive(r) ? " stale" : "") + (open[r.key] ? " open" : "")}>
-                <span className="sname click" onClick={() => toggleOpen(r.key)} title="Buchungen ein-/ausklappen"><IcoChev open={!!open[r.key]} /><CatIcon c={r.category || "Sonstiges"} size={32} /><span className="grow"><b className="one">{r.name}</b><small className="muted block">{r.count}× gebucht{isEnded(r) ? " · deaktiviert" : isOk(r) ? " · bestätigt" : subStale(r) ? " · vermutlich beendet" : ""}</small></span></span>
-                <span className="muted one">{r.category || "–"}</span>
-                <span className="muted">{(INTERVAL_SHORT[r.interval] || "").replace("/ ", "") || r.interval}</span>
-                <b className="r">{fmtMoney(r.amount)}</b>
-                <span className="r">{fmtMoney(perMonth(r))}</span>
-                <span className="r muted">{fmtMoney(perMonth(r) * 12)}</span>
-                <span className={"muted" + (subStale(r) && !isOk(r) ? " red" : "")}>{fmtDate(r.last)}</span>
-                <span className="subact">{setSubs && <>
-                  <button className={"iconbtn ok" + (isOk(r) ? " on" : "")} title={isOk(r) ? "Bestätigung aufheben" : "Bestätigen: läuft noch, zählt zu den Fixkosten"} aria-pressed={isOk(r)} onClick={() => verify(r)}>✓</button>
-                  <button className={"iconbtn no" + (isEnded(r) ? " on" : "")} title={isEnded(r) ? "Wieder aktivieren" : "Deaktivieren: Vertrag beendet, zählt nicht mehr"} aria-pressed={isEnded(r)} onClick={() => endIt(r)}>✕</button>
-                </>}</span>
-              </div>
-              {open[r.key] && <TxFold list={(r.txIds || []).map((id) => txById[id]).filter(Boolean)} accounts={accounts} />}
-              </React.Fragment>
-            ))}
-          </div>
-        </section>
-      )}
-      {!!ended.length && <p className="muted small" style={{ marginTop: 16 }}>{ended.length} beendete Verträge (im Dokument unter „Vertrag / Abo“ abgewählt)</p>}
       </FitScroll>
 
       {letterFor && (
@@ -12035,4 +12022,12 @@ label>.vehpick.block{margin-top:6px}
 .quickpick.accvisqp{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
 .quickpick.accvisqp button{border:1px solid var(--line);background:none;color:var(--mut);border-radius:999px;padding:8px 16px;font-size:15px;cursor:pointer}
 .quickpick.accvisqp button:hover{color:var(--acc);border-color:var(--acc)}
+
+/* v0.79 Fixkosten & Abos wie Rechnungen */
+.ctlist .invrow{gap:12px;align-items:center}
+.ctlist .invrow>.caticon{flex:none}
+.ctlist .invamt small.ctint{font-size:12px;font-weight:400;text-align:right}
+.ctlist .invrow.stale{opacity:.6}
+.ctlist .iconbtn.ok.on{color:#22c55e}.ctlist .iconbtn.no.on{color:#ef4444}
+.ctbar{min-height:0}
 `;
