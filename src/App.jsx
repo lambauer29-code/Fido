@@ -6993,7 +6993,29 @@ function nextInvNumber(list, kind, co, date) {
 }
 /* Bereich unterhalb eines festen Kopfes: scrollt für sich, wenn genug Platz ist (sonst normal) */
 // Kopfbereich beim Scrollen in der Liste einklappen, damit die Liste mehr Platz bekommt
-const hdrScroll = (e) => { const t = e.currentTarget.scrollTop, c = document.documentElement.classList; if (t > 30) c.add("hdrmin"); else if (t < 4) c.remove("hdrmin"); };
+// Ein-/Ausklappen in einem Schritt: Box wächst bzw. schrumpft oben, der Inhalt bleibt an derselben Stelle stehen (kein Springen)
+const hdrScroll = (e) => {
+  const el = e.currentTarget; if (el._hdrBusy) return;
+  const c = document.documentElement.classList, on = c.contains("hdrmin"), t = el.scrollTop;
+  const apply = (want) => {
+    const top0 = el.getBoundingClientRect().top, h0 = el.offsetHeight;
+    c.toggle("hdrmin", want);
+    const d = top0 - el.getBoundingClientRect().top;      // > 0 beim Einklappen, < 0 beim Ausklappen
+    if (!d) return;
+    el.style.maxHeight = Math.max(160, h0 + d) + "px";
+    el._hdrBusy = true;
+    el.scrollTop = Math.max(0, t - d);
+    requestAnimationFrame(() => requestAnimationFrame(() => { el._hdrBusy = false; }));
+  };
+  if (!on && t > 30) {
+    const now = performance.now();
+    if (el._hdrD == null || now - (el._hdrDt || 0) > 1500) { // Höhe des Kopfbereichs einmal messen (ohne sichtbare Änderung)
+      const a = el.getBoundingClientRect().top; c.add("hdrmin"); const b = el.getBoundingClientRect().top; c.remove("hdrmin");
+      el._hdrD = Math.max(0, a - b); el._hdrDt = now;
+    }
+    if (t > el._hdrD + 24) apply(true);
+  } else if (on && t < 8) apply(false);
+};
 function useHdrReset() { useEffect(() => () => document.documentElement.classList.remove("hdrmin"), []); }
 // Handy-Liste als abgerundete Karte mit eigener Scroll-Liste
 function MScroll({ children }) {
@@ -11724,9 +11746,7 @@ html.fitlock main{padding-bottom:0!important;margin-bottom:0!important}
 html.fitlock .fscard.fit,html.fitlock .mscard.fit{margin-bottom:0!important}
 
 /* v0.72 Kopfbereich klappt beim Scrollen in der Liste ein */
-header.top,header.top h1{transition:padding .22s ease,font-size .22s ease,margin .22s ease}
-.mpage>.mstats,.mpage>.khero,.ctpage>.khero,.kbstats,.invstats,.ctpage .hero,.fbstats,.fbspecs{transition:max-height .25s ease,opacity .2s ease,margin .25s ease,padding .25s ease;max-height:900px}
 html.hdrmin header.top{padding-top:10px!important;padding-bottom:4px!important}
 html.hdrmin header.top h1{font-size:26px!important;line-height:1.2!important}
-html.hdrmin .mpage>.mstats,html.hdrmin .mpage>.khero,html.hdrmin .ctpage>.khero,html.hdrmin .kbstats,html.hdrmin .invstats,html.hdrmin .ctpage .hero,html.hdrmin .fbstats,html.hdrmin .fbspecs{max-height:0!important;opacity:0;overflow:hidden;margin-top:0!important;margin-bottom:-12px!important;padding-top:0!important;padding-bottom:0!important;border:0!important;pointer-events:none}
+html.hdrmin .mpage>.mstats,html.hdrmin .mpage>.khero,html.hdrmin .ctpage>.khero,html.hdrmin .kbstats,html.hdrmin .invstats,html.hdrmin .ctpage .hero,html.hdrmin .fbstats,html.hdrmin .fbspecs{display:none!important}
 `;
