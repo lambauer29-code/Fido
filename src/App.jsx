@@ -355,6 +355,8 @@ const Ico = ({ d, size = 18 }) => (
 const IcoEye = () => <Ico d={<><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>} />;
 const IcoEyeOff = () => <Ico d={<><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.5M6.6 6.6C3.8 8.3 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="M3 3l18 18" /></>} />;
 const IcoLayout = () => <Ico d={<><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></>} />;
+const IcoPdf = () => <Ico d={<><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M8.5 16v-3.5h1.2a1.1 1.1 0 0 1 0 2.2H8.5M12.5 12.5V16h.8a1.6 1.6 0 0 0 0-3.5zM16 16v-3.5h1.6M16 14.2h1.3" strokeWidth="1.3" /></>} />;
+const IcoXls = () => <Ico d={<><rect x="3.5" y="4" width="17" height="16" rx="2" /><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5V20" /></>} />;
 const IcoEdit = () => <Ico d={<><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></>} />;
 const IcoOpen = () => <Ico d={<><path d="M14 4h6v6" /><path d="M10 14L20 4" /><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></>} />;
 const IcoTrash = () => <Ico d={<><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V4h6v3" /></>} />;
@@ -9782,12 +9784,15 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
     setCounts((l) => l.map((x) => (x.id === c.id ? { ...c, status: "abgeschlossen", closedAt: new Date().toISOString(), snapshot: lines } : x)));
     setCnt(null); setView("inventur"); notify?.(`Inventur abgeschlossen · ${mvNew.length} Differenzen gebucht`);
   };
-  const invPdf = async (c) => { const L = c.snapshot || []; const tot = kbR2(L.reduce((s, l) => s + l.ist * l.ek, 0));
-    saveBlob(await tablePdf({ title: `Inventurliste – ${c.name}`, subtitle: `Stichtag ${fmtDate(c.date)} · ${({ ...CO_DEFAULT, ...ls.get("company", {}) }).name || ""} · Bewertung zu Einstandspreisen (netto)`, landscape: true,
+  const invPdf = async (c) => saveBlob(await invBlob(c), `inventur-${c.date}.pdf`);
+  const invPrint = async (c) => { notify?.("Druck wird vorbereitet …"); await printImages(await blobToImages(await invBlob(c)), `Inventurliste – ${c.name}`); };
+  const invShow = async (c) => openPdf(await invBlob(c), `inventur-${c.date}.pdf`, `Inventurliste – ${c.name}`);
+  const invBlob = async (c) => { const L = c.snapshot || []; const tot = kbR2(L.reduce((s, l) => s + l.ist * l.ek, 0));
+    return await tablePdf({ title: `Inventurliste – ${c.name}`, subtitle: `Stichtag ${fmtDate(c.date)} · ${({ ...CO_DEFAULT, ...ls.get("company", {}) }).name || ""} · Bewertung zu Einstandspreisen (netto)`, landscape: true,
       kpis: [["Positionen", String(L.length)], ["Differenzen", String(L.filter((l) => l.ist !== l.soll).length)], ["Inventurwert", fmtMoney(tot)]],
       columns: [{ label: "Art.-Nr.", w: 1.1 }, { label: "Bezeichnung", w: 4 }, { label: "Lagerort", w: 1.5 }, { label: "Soll", w: 0.8, align: "right" }, { label: "Ist", w: 0.8, align: "right" }, { label: "Diff.", w: 0.8, align: "right" }, { label: "Einheit", w: 0.8 }, { label: "EK €", w: 1, align: "right" }, { label: "Wert €", w: 1.2, align: "right" }],
       rows: L.map((l) => [l.number, l.text, l.loc, fmtQty(l.soll), fmtQty(l.ist), fmtQty(l.ist - l.soll), l.unit, l.ek, kbR2(l.ist * l.ek)]), totals: ["", "Summe", "", "", "", "", "", "", tot],
-      note: "\n\n______________________________   Gezählt von / Datum            ______________________________   Geprüft von" }), `inventur-${c.date}.pdf`); };
+      note: "\n\n______________________________   Gezählt von / Datum            ______________________________   Geprüft von" }); };
   const invXlsx = (c) => downloadXlsx(`inventur-${c.date}.xlsx`, [{ name: "Inventur", head: ["Art.-Nr.", "Bezeichnung", "Lagerort", "Soll", "Ist", "Differenz", "Einheit", "EK €", "Wert €"], rows: (c.snapshot || []).map((l) => [l.number, l.text, l.loc, l.soll, l.ist, kbR2(l.ist - l.soll), l.unit, l.ek, kbR2(l.ist * l.ek)]) }]);
   const listPdf = async (c) => { const scope = stockArts.filter((a) => (!c.loc || a.loc === c.loc) && (!c.group || a.group === c.group)); const by = {};
     scope.forEach((a) => (by[a.loc || "Ohne Lagerort"] = by[a.loc || "Ohne Lagerort"] || []).push(a));
@@ -9830,14 +9835,14 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
         <b className={m.qty < 0 ? "neg" : "pos"}>{m.qty > 0 ? "+" : ""}{fmtQty(m.qty)} <small>{a.unit || ""}</small></b>
         {!m.derived ? <button className="chip" title="Löschen" onClick={() => confirm("Bewegung löschen?") && setMoves((x) => x.filter((y) => y.id !== m.id))}>✕</button> : <span style={{ width: 34 }} />}</div>); })
   ) : view === "inventur" ? (<>
-    <div className="row"><button className="btn primary" onClick={() => setNewCnt({ loc: "", group: "" })}>＋ Neue Inventur</button><span className="muted small grow">Stichtagsinventur oder permanente Teil-Inventur je Lagerort/Gruppe</span></div>
+    <div className="row"><button className="btn primary" onClick={() => setNewCnt({ loc: "", group: "" })}>＋ Neue Inventur</button><span className="muted small grow invhint">Stichtagsinventur oder permanente Teil-Inventur je Lagerort/Gruppe</span></div>
     {!counts.length && <MEmpty>Noch keine Inventur. Starte eine Zählung – am Handy auch per Strichcode-Scan.</MEmpty>}
     {[...counts].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map((c) => { const closed = c.status === "abgeschlossen", L = c.snapshot || [], tot = kbR2(L.reduce((s, l) => s + l.ist * l.ek, 0)); return (
       <div key={c.id} className={"frow" + (closed ? "" : " click")} onClick={() => !closed && setCnt(c.id)}>
         <span className="caticon" style={{ width: 40, height: 40, background: "var(--card2)" }}>{closed ? "✅" : "📝"}</span>
         <div className="grow"><b>{c.name}</b><small className="muted block">Stichtag {fmtDate(c.date)}{c.loc ? " · " + c.loc : ""}{c.group ? " · " + c.group : ""} · {closed ? `${L.length} Pos. · ${L.filter((l) => l.ist !== l.soll).length} Diff. · Wert ${fmtMoney(tot)}` : `${Object.values(c.lines || {}).filter((v) => v !== "").length} gezählt`}</small></div>
-        {closed ? <><button className="chip" onClick={(e) => { e.stopPropagation(); invPdf(c); }}>🖨 PDF</button><button className="chip" onClick={(e) => { e.stopPropagation(); invXlsx(c); }}>📊</button></>
-          : <><span className="stpill st-open">offen</span><button className="chip" title="Zählliste drucken" onClick={(e) => { e.stopPropagation(); listPdf(c); }}>🖨</button></>}
+        {closed ? <span className="invacts kbacts" onClick={(e) => e.stopPropagation()}><button className="iconbtn" title="Bericht anzeigen" aria-label="Bericht anzeigen" onClick={() => invShow(c)}><IcoEye /></button><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => invPrint(c)}><IcoPrint /></button><button className="iconbtn" title="PDF herunterladen" aria-label="PDF herunterladen" onClick={() => invPdf(c)}><IcoPdf /></button><button className="iconbtn" title="Excel herunterladen" aria-label="Excel herunterladen" onClick={() => invXlsx(c)}><IcoXls /></button></span>
+          : <><span className="stpill st-open">offen</span><span className="invacts kbacts" onClick={(e) => e.stopPropagation()}><button className="iconbtn" title="Zählliste drucken" aria-label="Zählliste drucken" onClick={() => listPdf(c)}><IcoPrint /></button></span></>}
       </div>); })}
   </>) : (() => { const l = filt(view === "nachbestellen" ? low : stockArts).sort((x, y) => (x.text || "").localeCompare(y.text || "", "de"));
     if (!stockArts.length) return <MEmpty>Noch keine Lagerartikel. Öffne einen Artikel und aktiviere „Lagerartikel“ – oder lege direkt einen neuen an.</MEmpty>;
@@ -12030,4 +12035,6 @@ label>.vehpick.block{margin-top:6px}
 .ctlist .invrow.stale{opacity:.6}
 .ctlist .iconbtn.ok.on{color:#22c55e}.ctlist .iconbtn.no.on{color:#ef4444}
 .ctbar{min-height:0}
+
+.invhint{margin-left:5px}
 `;

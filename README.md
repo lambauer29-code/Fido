@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.79.2
+
+- Abgeschlossene Inventur: Druckersymbol neben dem Auge – druckt die Inventurliste direkt (Druckdialog des Systems).
+
+## v0.79.1
+
+- Lager & Inventur → Inventuren: Hinweistext neben „＋ Neue Inventur“ 5 px weiter rechts.
+- Abgeschlossene Inventur: neues Auge (Bericht im PDF-Fenster ansehen), PDF- und Excel-Download als Linien-Symbole in derselben Größe wie bei Rechnungen (36 × 36 px, Symbol 18 px). Bei offenen Inventuren ist „Zählliste drucken“ ebenfalls ein solches Symbol.
+
 ## v0.79.0
 
 - **Fixkosten & Abos** im Aufbau wie Rechnungen: Kennzahlen oben, Suchleiste, Filter-Chips mit Anzahl (Alle · Verträge · Aus Umsätzen · Bald kündbar · Bestätigt · Inaktiv) und Sortierung, darunter eine feste Box mit einer gemeinsamen Liste aus Vertragsdokumenten und bestätigten Abos aus den Umsätzen.
