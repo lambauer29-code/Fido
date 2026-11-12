@@ -385,7 +385,7 @@ const ls = {
 };
 
 if (typeof document !== "undefined" && ls.get("tabbarIcons", false)) document.documentElement.classList.add("tbicons");
-const BACKUP_SKIP = /^(appToken|appLock|pending|openSettingsSec|win:|scanFilter)/;
+const BACKUP_SKIP = /^(appToken|appLock|srch:|pending|openSettingsSec|win:|scanFilter)/;
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -1196,7 +1196,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
     let block = false;
     const down = (e) => {
       const el = rootRef.current; if (!el || el.contains(e.target)) return;
-      if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost,.sharepop,.sidetip,.pickmenu")) return;
+      if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost,.sharepop,.sidetip,.pickmenu,.sugmenu")) return;
       if (dirtyRef.current) block = true; // Klick nicht weiterreichen, sonst gehen Eingaben verloren
       reqRef.current();
     };
@@ -2471,7 +2471,7 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
       {form}
       <div className="expside">
         <div className="exphead"><b>Erfasste Ausgaben</b><small className="muted">{monthLabel(month)}: {fmtMoney(monthOut)}</small>{exportMenu}</div>
-        <div className="searchbar"><span>🔍</span><input type="search" placeholder="Ausgaben durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <SearchBox placeholder="Ausgaben durchsuchen" value={q} onChange={setQ} />
         <FitScroll card className="expbox" minH={wide ? 160 : Math.round(innerHeight * 0.62)}>
           <div className="tile">
             {!q && cashRows}
@@ -2831,7 +2831,7 @@ function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onD
               {x.acct === "new" && <PSelect value={x.bookAcc} onChange={(e) => set({ bookAcc: e.target.value })}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}</PSelect>}
               {x.acct === "link" && (
                 <div className="fbtxpick">
-                  <div className="searchbar"><span>🔍</span><input type="search" value={txQ} placeholder="Buchung suchen – Name oder Betrag" onChange={(e) => setTxQ(e.target.value)} /></div>
+                  <SearchBox value={txQ} placeholder="Buchung suchen – Name oder Betrag" onChange={setTxQ} />
                   {cands.map(({ tx, score }) => (
                     <div key={tx.id} className={"frow click" + (x.txId === tx.id ? " on" : "")} onClick={() => set({ txId: tx.id })}>
                       <span className={"txradio" + (x.txId === tx.id ? " on" : "")} />
@@ -4501,11 +4501,9 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
 
   return (
     <>
-      <div className="searchbar">
-        <span>🔍</span>
-        <input placeholder="Dokumente durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} type="search" />
+      <SearchBox placeholder="Dokumente durchsuchen" value={q} onChange={setQ}>
         <button className="iconbtn" onClick={() => setView(view === "list" ? "grid" : "list")} aria-label="Ansicht">{view === "list" ? "▦" : "☰"}</button>
-      </div>
+      </SearchBox>
 
       {!chipCfg.hidden.includes("scopebar") && <div className="seg scopeseg" role="group" aria-label="Privat oder Firma">
         {[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => (
@@ -5025,7 +5023,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
         </div>
       </div>
 
-      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Anbieter, Kategorie, Kundennummer suchen" value={cq} onChange={(e) => setCq(e.target.value)} /></div>
+      <SearchBox placeholder="Anbieter, Kategorie, Kundennummer suchen" value={cq} onChange={setCq} />
       <div className="chips invfilter">
         {CT_FILTERS.map(([k, l]) => <button key={k} className={"chip" + (cf === k ? " on" : "")} onClick={() => setCf(k)}>{l} <small>({items.filter(ctF[k]).length})</small></button>)}
         <PSelect className="chip" value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sortieren">
@@ -5267,7 +5265,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           </details>
         </div>
         <input ref={fileRef} type="file" hidden multiple accept=".csv,.txt,.xml,.sta,.mt940,.940,.ofx,.qif,.pdf,.xlsx,.xls,.json" onChange={(e) => { const f = [...e.target.files]; e.target.value = ""; if (f.length) dropFiles(f); }} />
-        {mSearch && <div className="searchbar"><span>🔍</span><input type="search" autoFocus placeholder="Buchungen durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>}
+        {mSearch && <SearchBox autoFocus placeholder="Buchungen durchsuchen" value={q} onChange={setQ} />}
         <div className="mbalrow">
           <PSelect className="mmonth" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Heute</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</PSelect>
           <Money v={month ? list.reduce((x, t) => x + t.amount, 0) : bal} cls="big" />
@@ -5409,7 +5407,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           <p>Noch keine Umsätze.<br />Exportiere deine Umsätze im Online-Banking oder beim Broker (CSV, CAMT, MT940 …) oder nimm einfach den PDF-Kontoauszug – und importiere die Datei hier. Für Bargeld legst du ein Konto „Geldbörse“ an.</p></div>
       )}
 
-      {!!txs.length && <div className="searchbar"><span>🔍</span><input type="search" placeholder="Umsätze durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>}
+      {!!txs.length && <SearchBox placeholder="Umsätze durchsuchen" value={q} onChange={setQ} />}
 
       {wideTx ? (
         <div className={"txtable" + (!acc && sel.length > 1 ? " withacc" : "")}>
@@ -5628,10 +5626,72 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
 }
 
 /* ---------- Handy-Ansichten (Standard bis 700 px Breite) ---------- */
-function ListTestSetting() {
-  const [on, set] = useFlag("listTest", false);
-  return <label className="switchrow"><span><b>Neue Listen (Test)</b><small className="muted block">Einheitlicher Listen-Aufbau – vorerst nur im Reiter Rechnungen: eine Hauptaktion + „Mehr“, Jahr/Sortierung/Tags als Menüs, gespeicherte Ansichten, Mehrfachauswahl, Drucken in der Zeile. Jederzeit abschaltbar.</small></span>
-    <input type="checkbox" className="switch" checked={!!on} onChange={(e) => set(e.target.checked)} /></label>;
+
+/* ---------- Suchfeld mit Vorschlägen (v0.82) ----------
+   Vorschläge aus den sichtbaren Listeneinträgen + zuletzt gesucht. Ab 2 Zeichen Treffer, leeres Feld zeigt den Verlauf.
+   Max. 8 Einträge am Handy, 10 am Desktop, nie hinter der Tastatur. Tastatur: ↑ ↓ Enter Esc. */
+const SUG_SKIP = "button,nav,.sbx,.pickmenu,.sugmenu,.mchips,.chip,.pill,.stpill,.mstats,.mstatc,.stats,.kpis,.cmpnum,.mactions,.cmpbar,select,option,textarea,.calhead,.toast,.pickbar,.topbar,.hdr,.tabs,.settabs,.mhead,.mday,.mempty,.hint,h1,h2,h3";
+const sugVocab = {};
+function sugCollect(el, key) {
+  const root = el.closest(".win,.sheet,.linkpick,.pickdocs,.txpicker") || document.querySelector("main") || document.body;
+  const set = sugVocab[key] || (sugVocab[key] = new Map());
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n, c = 0;
+  while ((n = w.nextNode()) && c++ < 6000) {
+    const p = n.parentElement; if (!p || p.closest(SUG_SKIP)) continue;
+    for (let t of n.nodeValue.split(/\s+[·•|–]\s+|,\s+|\n/)) {
+      t = t.replace(/\s+/g, " ").trim().replace(/^[^\p{L}\p{N}]+/u, "");
+      if (t.length < 2 || t.length > 60 || !/[A-Za-zÄÖÜäöüß]{2}/.test(t) || /^\d/.test(t)) continue;
+      const k = t.toLowerCase(); if (!set.has(k)) set.set(k, t);
+    }
+  }
+}
+function SearchBox({ value, onChange, placeholder, id, words, className = "searchbar", icon = true, autoFocus, children }) {
+  const ref = useRef(null), inp = useRef(null), [open, setOpen] = useState(false), [act, setAct] = useState(-1), [pos, setPos] = useState(null), [, bump] = useState(0);
+  const key = "srch:" + (id || placeholder || "x"), lid = useMemo(() => "sug" + Math.random().toString(36).slice(2, 8), []);
+  const phone = useMedia("(max-width:700px)");
+  const q = String(value || "").trim(), ql = q.toLowerCase(), recent = ls.get(key, []);
+  let mode = "", list = [];
+  if (open) {
+    if (q.length < 2) { mode = "recent"; list = recent.filter((r) => { const l = r.toLowerCase(); return !ql || (l.startsWith(ql) && l !== ql); }); }
+    else { mode = "sug"; const pool = new Map(sugVocab[key] || []); for (const w of [...(words || []), ...recent]) if (w) pool.set(String(w).toLowerCase(), String(w));
+      const out = []; for (const [l, w] of pool) { if (l === ql) continue; const i = l.indexOf(ql); if (i < 0) continue; out.push([i === 0 ? 0 : /[\s\-/(.,#]/.test(l[i - 1]) ? 1 : 2, recent.includes(w) ? 0 : 1, w.length, w]); }
+      out.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]); list = out.map((x) => x[3]); }
+  }
+  list = list.slice(0, Math.min(phone ? 8 : 10, pos?.fit ?? 10));
+  const show = open && list.length > 0;
+  const place = () => { const el = ref.current; if (!el) return; const r0 = el.getBoundingClientRect(), row = phone && el.closest(".cmprow"), r = row ? row.getBoundingClientRect() : r0; const vv = window.visualViewport, bottom = vv ? vv.offsetTop + vv.height : innerHeight;
+    setPos({ top: r0.bottom + 4, left: r.left, width: Math.max(r.width, 220), fit: Math.max(3, Math.floor((bottom - r0.bottom - 40) / 44)) }); };
+  useEffect(() => { if (!open) return;
+    const re = () => place(), out = (e) => { if (!ref.current?.contains(e.target) && !e.target.closest?.(".sugmenu")) setOpen(false); };
+    addEventListener("resize", re); addEventListener("scroll", re, true); visualViewport?.addEventListener("resize", re); visualViewport?.addEventListener("scroll", re); document.addEventListener("pointerdown", out, true);
+    return () => { removeEventListener("resize", re); removeEventListener("scroll", re, true); visualViewport?.removeEventListener("resize", re); visualViewport?.removeEventListener("scroll", re); document.removeEventListener("pointerdown", out, true); };
+  }, [open]);
+  const remember = (t) => { t = String(t || "").trim(); if (t.length < 2) return; ls.set(key, [t, ...recent.filter((x) => x.toLowerCase() !== t.toLowerCase())].slice(0, 6)); };
+  const pick = (w) => { onChange(w); remember(w); setOpen(false); setAct(-1); if (phone) setTimeout(() => inp.current?.blur(), 0); };
+  const hl = (w) => { const i = ql ? w.toLowerCase().indexOf(ql) : -1; return i < 0 ? w : <>{w.slice(0, i)}<mark>{w.slice(i, i + ql.length)}</mark>{w.slice(i + ql.length)}</>; };
+  const key2 = (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); if (!open) { place(); setOpen(true); return; } const n = list.length; if (!n) return; setAct((a) => e.key === "ArrowDown" ? (a + 1) % n : (a <= 0 ? n - 1 : a - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (show && act >= 0 && list[act]) pick(list[act]); else { remember(q); setOpen(false); if (phone) inp.current?.blur(); } }
+    else if (e.key === "Escape") { if (show) { e.preventDefault(); e.stopPropagation(); setOpen(false); setAct(-1); } else if (value) { e.preventDefault(); e.stopPropagation(); onChange(""); } }
+  };
+  return (<div ref={ref} className={className + " sbx"}>
+    {icon && <span>🔍</span>}
+    <input ref={inp} type="search" role="combobox" aria-expanded={show} aria-controls={lid} aria-autocomplete="list" aria-activedescendant={show && act >= 0 ? lid + "-" + act : undefined}
+      enterKeyHint="search" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus={autoFocus}
+      placeholder={placeholder} value={value ?? ""}
+      onFocus={(e) => { sugCollect(e.target, key); place(); setOpen(true); setAct(-1); }}
+      onChange={(e) => { onChange(e.target.value); if (!open) place(); setOpen(true); setAct(-1); }}
+      onBlur={(e) => { remember(e.target.value); setOpen(false); }} onKeyDown={key2} />
+    {children}
+    {show && pos && createPortal(<ul id={lid} role="listbox" aria-label={mode === "recent" ? "Zuletzt gesucht" : "Vorschläge"} className="sugmenu" style={{ top: pos.top, left: pos.left, width: pos.width }}
+      onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onMouseDown={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()}>
+      {mode === "recent" && <li className="sughead" role="presentation">Zuletzt gesucht</li>}
+      {list.map((w, i) => <li key={w} id={lid + "-" + i} role="option" aria-selected={i === act} className={i === act ? "on" : ""} onClick={() => pick(w)} onMouseEnter={() => setAct(i)}>
+        <span className="sugico" aria-hidden="true">{mode === "recent" ? "🕘" : "🔍"}</span><span className="sugt">{hl(w)}</span>
+        {mode === "recent" && <button type="button" className="sugx" aria-label={"„" + w + "“ aus dem Verlauf entfernen"} onClick={(e) => { e.stopPropagation(); ls.set(key, recent.filter((x) => x !== w)); bump((x) => x + 1); }}>✕</button>}
+      </li>)}
+    </ul>, document.body)}
+  </div>);
 }
 function useFlag(key, def) {
   const [v, setV] = useState(() => ls.get(key, def));
@@ -5648,15 +5708,16 @@ function MobileBetaSetting() {
 if (typeof document !== "undefined") { document.documentElement.classList.remove("klook"); try { localStorage.removeItem("kontoLook"); } catch {} }
 const mGroup = (arr, keyFn) => { const out = []; for (const x of arr) { const k = keyFn(x); const g = out[out.length - 1]; if (g && g[0] === k) g[1].push(x); else out.push([k, [x]]); } return out; };
 // Test „Kompakt wie Konten“ (iPhone/iPad): "aus" | "zahl" (nur große Zahl) | "klein" (kleine Kacheln)
-const CMP_MODES = [["aus", "Aus", "alles wie bisher"], ["zahl", "Nur große Zahl", "Kennzahlen als eine Zeile wie bei den Konten"], ["klein", "Kleine Kacheln", "Kennzahlen bleiben, aber kompakt"]];
+const CMP_MODES = [["zahl", "Nur große Zahl", "Kennzahlen als eine Zeile wie bei den Konten"], ["klein", "Kleine Kacheln", "Kennzahlen bleiben, aber kompakt"]];
 const cmpApply = (v) => { const c = document.documentElement.classList; c.toggle("cmp", v !== "aus"); c.toggle("cmp-zahl", v === "zahl"); c.toggle("cmp-klein", v === "klein"); };
-if (typeof document !== "undefined") cmpApply(ls.get("cmpTest", "aus"));
-const useCmp = () => { const [v] = useFlag("cmpTest", "aus"); const ph = useMedia("(max-width:700px)"); return ph ? v : "aus"; };
+const cmpNorm = (v) => v === "klein" ? "klein" : "zahl";
+if (typeof document !== "undefined") cmpApply(cmpNorm(ls.get("cmpTest", "zahl")));
+const useCmp = () => { const [v] = useFlag("cmpTest", "zahl"); const ph = useMedia("(max-width:700px)"); return ph ? cmpNorm(v) : "aus"; };
 function CmpSetting() {
-  const [v, set] = useFlag("cmpTest", "aus");
+  const [v0, set] = useFlag("cmpTest", "zahl"), v = cmpNorm(v0);
   useEffect(() => cmpApply(v), [v]);
-  return <label className="switchrow cmpset"><span><b>Kompakt wie Konten (Test)</b><small className="muted block">Nur iPhone und iPad: alle Listen-Reiter so kompakt wie der Reiter Konten – kleine Buttons, Filter als Menü, Suchleiste bleibt sichtbar.</small></span>
-    <PickMenu label={(CMP_MODES.find(([k]) => k === v) || CMP_MODES[0])[1]} title="Kompakt-Test" items={CMP_MODES.map(([k, t, sub]) => ({ k, title: t, sub, on: v === k, run: () => set(k) }))} /></label>;
+  return <label className="switchrow cmpset"><span><b>Kennzahlen am iPhone/iPad</b><small className="muted block">Alle Listen-Reiter sind kompakt wie die Konten (kleine Buttons, Filter als Menü, Suchleiste immer sichtbar). Hier wählst du, wie die Kennzahlen oben aussehen.</small></span>
+    <PickMenu label={(CMP_MODES.find(([k]) => k === v) || CMP_MODES[0])[1]} title="Kennzahlen" items={CMP_MODES.map(([k, t, sub]) => ({ k, title: t, sub, on: v === k, run: () => set(k) }))} /></label>;
 }
 const MStatsCmp = ({ items }) => { const l = items.filter(Boolean), [a, b2] = l; if (!a) return null;
   return <div className="cmpnum"><div className={"cmpmain" + (a.onClick ? " click" : "")} onClick={a.onClick}><small className="muted">{a.label}</small><b className={a.vcls || ""}>{a.value}</b></div>
@@ -5667,15 +5728,16 @@ const MActs = ({ items }) => { const cm = useCmp(), l = items.filter(Boolean);
     return <div className="mactions cmpacts"><button className={"btn sm" + (main.primary ? " primary" : "")} onClick={main.run}>{main.label}</button>
       {!!rest.length && <PickMenu btnClass="btn sm cmpmore" label="⋯" title="Weitere Aktionen" items={rest.map((a, i) => ({ k: "a" + i, title: a.label, run: a.run }))} />}</div>; }
   return <div className="mactions">{l.map((a, i) => <button key={i} className={"btn" + (a.primary ? " primary" : "")} onClick={a.run}>{a.label}</button>)}</div>; };
-const MBar = ({ q, setQ, placeholder, chips, children }) => { const cm = useCmp(), cl = (chips || []).filter(Boolean);
-  if (cm !== "aus") { const on = cl.find((c) => c[3]) || cl[0];
-    return (<div className="msticky cmpbar"><div className="cmprow">
+const MBar = ({ q, setQ, placeholder, chips, children, inline }) => { const cm = useCmp(), cl = (chips || []).filter(Boolean);
+  if (cm !== "aus") { const on = cl.find((c) => c[3]) || cl[0], inl = inline ?? cl.length > 0;
+    return (<div className={"msticky cmpbar" + (inl && children ? " cmpone" : "")}><div className="cmprow">
       {!!cl.length && <PickMenu label={on ? `${on[1]}${on[2] != null ? " " + on[2] : ""}` : "Filter"} title="Filter" items={cl.map(([k, l, n, o, click]) => ({ k, title: l, right: n != null ? String(n) : undefined, on: !!o, run: click }))} />}
-      {setQ && <div className="searchbar"><span>🔍</span><input type="search" placeholder={placeholder} value={q} onChange={(e) => setQ(e.target.value)} /></div>}
-    </div>{children && <div className="mchips cmpextra">{children}</div>}</div>); }
+      {setQ && <SearchBox placeholder={placeholder} value={q} onChange={setQ} />}
+      {inl && children}
+    </div>{!inl && children && <div className="mchips cmpextra">{children}</div>}</div>); }
   return (
   <div className="msticky">
-    {setQ && <div className="searchbar"><span>🔍</span><input type="search" placeholder={placeholder} value={q} onChange={(e) => setQ(e.target.value)} /></div>}
+    {setQ && <SearchBox placeholder={placeholder} value={q} onChange={setQ} />}
     {chips && <div className="mchips">{chips.filter(Boolean).map(([k, l, n, on, click]) => <button key={k} className={"chip" + (on ? " on" : "")} onClick={click}>{l}{n != null && <small> {n}</small>}</button>)}{children}</div>}
   </div>
 ); };
@@ -6012,7 +6074,7 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
               const cand = docs.filter((d) => !qn || norm(`${d.title} ${d.sender}`).includes(qn))
                 .map((d) => ({ d, s: (Math.abs((d.amount?.total || 0) - amtAbs) < 0.01 ? 2 : 0) + (norm(d.sender || "").includes(norm(t.counterparty || "").split(" ")[0] || "#") ? 1 : 0) }))
                 .sort((a, b) => b.s - a.s || (b.d.documentDate || "").localeCompare(a.d.documentDate || "")).slice(0, 8);
-              return <div className="pickdocs"><input type="search" placeholder="Dokument suchen" value={dq} onChange={(e) => setDq(e.target.value)} />
+              return <div className="pickdocs"><SearchBox className="sbplain" icon={false} placeholder="Dokument suchen" value={dq} onChange={setDq} />
                 {cand.map(({ d }) => <div key={d.id} className="frow click" onClick={() => { linkTx(t.id, d.id); onClose(); }}><Thumb d={d} /><div className="grow"><b className="clamp small">{d.title}</b><small className="muted block">{d.sender} · {d.documentDate && fmtDate(d.documentDate)}{d.amount?.total ? " · " + fmtMoney(d.amount.total) : ""}</small></div></div>)}
               </div>;
             })()}
@@ -6497,7 +6559,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
               ) : <p className="muted small">Noch keiner Kontobuchung zugeordnet.</p>}
               {!linkOpen ? <button className="btn" onClick={() => setLinkOpen(true)}>🔗 {linked ? "Andere Buchung wählen" : "Mit Buchung verknüpfen"}</button> : (
                 <div className="linkpick">
-                  <input type="search" placeholder="Buchung suchen (Empfänger, Betrag …)" value={lq} onChange={(e) => setLq(e.target.value)} />
+                  <SearchBox className="sbplain" icon={false} placeholder="Buchung suchen (Empfänger, Betrag …)" value={lq} onChange={setLq} />
                   {cands.map((t) => (
                     <button key={t.id} className="frow click linkopt" onClick={() => { linkTx(t.id, doc.id); setLinkOpen(false); notify("Beleg mit Buchung verknüpft"); }}>
                       <CatIcon c={t.category} size={32} />
@@ -6934,7 +6996,6 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
   const sections = {
     "darstellung": <><SetSec id="darstellung" title="Darstellung">
         <TabbarSetting />
-        <ListTestSetting />
         <CmpSetting />
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
@@ -7737,8 +7798,8 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
         <legend>Daten</legend>
         <div className="grid2">
           <label>{isA ? "Angebotsdatum" : "Rechnungsdatum"}<input type="date" value={inv.date} onChange={(e) => set({ date: e.target.value })} /></label>
-          {isA ? <label>Gültig (Tage)<input type="number" value={inv.validDays ?? co.validDays} onChange={(e) => set({ validDays: Number(e.target.value) })} /></label>
-            : <label>Zahlungsziel (Tage)<input type="number" value={inv.dueDays ?? co.dueDays} onChange={(e) => set({ dueDays: Number(e.target.value) })} /></label>}
+          {isA ? <label>Gültig (Tage)<input type="number" inputMode="numeric" value={inv.validDays ?? co.validDays} onChange={(e) => set({ validDays: Number(e.target.value) })} /></label>
+            : <label>Zahlungsziel (Tage)<input type="number" inputMode="numeric" value={inv.dueDays ?? co.dueDays} onChange={(e) => set({ dueDays: Number(e.target.value) })} /></label>}
         </div>
         {!isA && <div className="grid2">
           <label>Leistung am / ab<input type="date" value={inv.serviceFrom || ""} onChange={(e) => set({ serviceFrom: e.target.value })} /></label>
@@ -7854,7 +7915,7 @@ function RemindWin({ inv, co, onDone, onClose }) {
       <div className="panelhead"><b>{remindName(level)}</b><XBtn /></div>
       <p className="small">Rechnung <b>{inv.number}</b> an {inv.customer?.name} über <b>{fmtMoney(invTotal({ ...inv, fee: 0 }))}</b>, fällig seit {fmtDate(invDueEff(inv))} ({-daysUntil(invDueEff(inv))} Tage).</p>
       <div className="grid2">
-        <label>Neue Frist (Tage)<input type="number" value={days} onChange={(e) => setDays(Number(e.target.value))} /></label>
+        <label>Neue Frist (Tage)<input type="number" inputMode="numeric" value={days} onChange={(e) => setDays(Number(e.target.value))} /></label>
         <label>Mahnspesen € (optional)<input inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="0" /></label>
       </div>
       <div className="actions">
@@ -7884,7 +7945,7 @@ function TxPicker({ txs = [], accountId, amount, number = "", customer = "", fro
     .sort((a, b) => b.score - a.score || b.t.date.localeCompare(a.t.date)).slice(0, 40);
   return (
     <div className="txpicker">
-      <div className="searchbar"><span>🔍</span><input type="search" value={q} placeholder="Buchung suchen – Name, Text oder Betrag" onChange={(e) => setQ(e.target.value)} /></div>
+      <SearchBox value={q} placeholder="Buchung suchen – Name, Text oder Betrag" onChange={setQ} />
       <div className="txpfilter">
         {amtHits > 0 && !q && <button className={"chip" + (onlyAmt ? " on" : "")} onClick={() => setOnlyAmt(!onlyAmt)}>Betrag {fmtMoney(amount)} ({amtHits})</button>}
         {fromDate && !q && <button className={"chip" + (older ? " on" : "")} onClick={() => setOlder(!older)}>auch vor {fmtDate(addDays(fromDate, -7))}</button>}
@@ -8002,7 +8063,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
   };
   const [filter, setFilter] = useState("alle"), [q, setQ] = useState("");
   // Test „Neue Listen“: Jahr, Sortierung, Tags, gespeicherte Ansichten, Mehrfachauswahl
-  const [lt] = useFlag("listTest", false);
+  const lt = true; // „Neue Listen“ fix übernommen (v0.82)
   const [yr, setYr] = useState(""), [sortBy, setSortBy] = useState("datum"), [tagF, setTagF] = useState(""), [pick, setPick] = useState(null);
   const [views, setViews] = useLsState("views:invoices", []);
   const togglePick = (id) => setPick((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -8183,7 +8244,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
         <button className={"btn" + (pick ? " on" : "")} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
         <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={ltMore} />
       </div>
-      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Nummer, Kunde, Leistung, Tag suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <SearchBox placeholder="Nummer, Kunde, Leistung, Tag suchen" value={q} onChange={setQ} />
       <div className="chips invfilter ltfilter">{ltFilterRow}</div>
       </>) : (<>
       <div className="invbar">
@@ -8196,7 +8257,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
         <button className="btn" onClick={() => setCoOpen(true)}>🏢 Firmendaten</button>
         <ExportMenu className="btn" items={expItems} />
       </div>
-      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Nummer, Kunde, Leistung suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <SearchBox placeholder="Nummer, Kunde, Leistung suchen" value={q} onChange={setQ} />
       <div className="chips invfilter">{FILTERS.map(([k, l]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({cnt(k)})</small></button>)}</div>
       </>)}
 
@@ -8339,12 +8400,12 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
       <fieldset><legend>Laufzeit & Kündigung</legend>
         <div className="grid2">
           <label>Vertragsbeginn<input type="date" value={c.start || ""} onChange={(e) => set({ start: e.target.value })} /></label>
-          <label>Mindestlaufzeit (Monate)<input type="number" value={c.minMonths ?? ""} placeholder="z. B. 24, leer = unbefristet" onChange={(e) => set({ minMonths: e.target.value })} /></label>
+          <label>Mindestlaufzeit (Monate)<input type="number" inputMode="numeric" value={c.minMonths ?? ""} placeholder="z. B. 24, leer = unbefristet" onChange={(e) => set({ minMonths: e.target.value })} /></label>
         </div>
         <div className="grid2">
-          <label>Kündigungsfrist<div className="inrow"><input type="number" value={c.notice ?? ""} placeholder="z. B. 1" onChange={(e) => set({ notice: e.target.value })} />
+          <label>Kündigungsfrist<div className="inrow"><input type="number" inputMode="numeric" value={c.notice ?? ""} placeholder="z. B. 1" onChange={(e) => set({ notice: e.target.value })} />
             <PSelect value={c.noticeUnit || "Monate"} onChange={(e) => set({ noticeUnit: e.target.value })}><option>Monate</option><option>Wochen</option><option>Tage</option></PSelect></div></label>
-          <label>Verlängert sich um (Monate)<input type="number" value={c.renewMonths ?? ""} placeholder="z. B. 12 oder 1" onChange={(e) => set({ renewMonths: e.target.value })} /></label>
+          <label>Verlängert sich um (Monate)<input type="number" inputMode="numeric" value={c.renewMonths ?? ""} placeholder="z. B. 12 oder 1" onChange={(e) => set({ renewMonths: e.target.value })} /></label>
         </div>
         <div className="ctcalc">
           {c.cancelledAt ? <span>✕ Gekündigt am {fmtDate(c.cancelledAt)}</span>
@@ -8640,7 +8701,7 @@ function ContactImportWin({ items: init, existing, onImport, onClose }) {
     <Win id="ctimport" onClose={onClose} dirty={false}>
       <div className="panelhead"><b>Kontakte übernehmen</b><button className="btn primary" disabled={!sel.length} onClick={() => onImport(sel)}>{sel.length} übernehmen</button><XBtn /></div>
       <p className="muted small">{items.length} Kontakt{items.length === 1 ? "" : "e"} gefunden. Bereits vorhandene (gleicher Name oder E-Mail) sind abgewählt.</p>
-      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Filtern" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <SearchBox placeholder="Filtern" value={q} onChange={setQ} />
       <div className="actions" style={{ marginTop: 0 }}>
         <button className="link" onClick={() => setItems((l) => l.map((c) => ({ ...c, on: true })))}>Alle</button>
         <button className="link" onClick={() => setItems((l) => l.map((c) => ({ ...c, on: false })))}>Keine</button>
@@ -8734,7 +8795,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         <small className="muted">{list.length} Kontakt{list.length === 1 ? "" : "e"}</small>
       </div>
       {!("contacts" in navigator && "select" in (navigator.contacts || {})) && <p className="muted small hint">📱 <b>iPhone – direkt aus dem Adressbuch:</b> Einstellungen → Apps → Safari → Erweitert → Feature Flags → „Contact Picker API“ einschalten, dann FinDocu neu öffnen. Danach öffnet „Aus Handy-Kontakten“ die Kontaktauswahl des iPhones. <b>Ohne diese Einstellung:</b> Kontakte-App → Kontakte markieren → Teilen → „In Dateien sichern“ und die .vcf-Datei hier wählen. <b>Mac:</b> Kontakte → Ablage → Exportieren → vCard. <b>Android/Chrome:</b> funktioniert direkt.</p>}
-      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Name, E-Mail, Telefon, Ort suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <SearchBox placeholder="Name, E-Mail, Telefon, Ort suchen" value={q} onChange={setQ} />
       <ChipBar storeKey="ctChips" className="invfilter" items={[
         { k: "drop", label: "📥 Ablagefeld", el: <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button> },
         { k: "alle", label: "Alle", el: <button className={"chip" + (type === "alle" ? " on" : "")} onClick={() => setType("alle")}>Alle <small>({list.length})</small></button> },
@@ -8851,7 +8912,7 @@ function DunningSettings() {
   return (<>
     <p className="muted small">Stufen, Fristen, Mahnspesen und Texte für Zahlungserinnerungen und Mahnungen. Platzhalter im Text: <code>{"{nummer}"}</code> <code>{"{datum}"}</code> <code>{"{betrag}"}</code> <code>{"{faellig}"}</code> <code>{"{frist}"}</code> <code>{"{kunde}"}</code>. Das Aussehen kommt aus „Rechnungsdesign“.</p>
     <div className="grid2">
-      <label>Wartezeit bis zur nächsten Stufe (Tage)<input type="number" value={dn.waitDays} onChange={(e) => set({ waitDays: Number(e.target.value) })} /></label>
+      <label>Wartezeit bis zur nächsten Stufe (Tage)<input type="number" inputMode="numeric" value={dn.waitDays} onChange={(e) => set({ waitDays: Number(e.target.value) })} /></label>
       <label>Anrede<input value={dn.salutation} onChange={(e) => set({ salutation: e.target.value })} /></label>
     </div>
     {dn.levels.map((l, i) => (
@@ -8860,7 +8921,7 @@ function DunningSettings() {
         {open === i && <>
           <div className="grid2">
             <label>Bezeichnung<input value={l.title} onChange={(e) => setL(i, { title: e.target.value })} /></label>
-            <div className="grid2"><label>Frist (Tage)<input type="number" value={l.days} onChange={(e) => setL(i, { days: Number(e.target.value) })} /></label>
+            <div className="grid2"><label>Frist (Tage)<input type="number" inputMode="numeric" value={l.days} onChange={(e) => setL(i, { days: Number(e.target.value) })} /></label>
               <label>Spesen €<input inputMode="decimal" value={l.fee} onChange={(e) => setL(i, { fee: e.target.value.replace(",", ".") })} /></label></div>
           </div>
           <label>Text<textarea rows={4} value={l.text} onChange={(e) => setL(i, { text: e.target.value })} /></label>
@@ -9094,7 +9155,7 @@ function ArticlesPage({ setTab }) {
         {setTab && <button className="chip" onClick={() => setTab("inventur")}>📋 Lager</button>}
         {setTab && <button className="chip" title="Einstellungen" onClick={() => { ls.set("openSettingsSec", "artikel"); setTab("settings"); }}>⚙︎</button>}
       </div>
-      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Bezeichnung, Nummer, Gruppe suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <SearchBox placeholder="Bezeichnung, Nummer, Gruppe suchen" value={q} onChange={setQ} />
       <div className="chips invfilter">
         {[["alle", "Alle", list.length], ...groups.map((g) => [g, g, list.filter((a) => a.group === g).length]), ["ohne", "Ohne Gruppe", list.filter((a) => !a.group).length]]
           .filter(([k, , n]) => k === "alle" || n || C.groups.includes(k)).map(([k, l, n]) => <button key={k} className={"chip" + (grp === k ? " on" : "")} onClick={() => setGrp(k)}>{l} <small>({n})</small></button>)}
@@ -9313,7 +9374,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
         <ExportMenu items={exportItems} />
       </div>
       {mode === "cal" ? cal : (<>
-        <div className="searchbar"><span>🔍</span><input type="search" placeholder="Gerät, Marke, Seriennummer, Händler suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <SearchBox placeholder="Gerät, Marke, Seriennummer, Händler suchen" value={q} onChange={setQ} />
         <div className="chips invfilter">{chips.filter(([k, , n]) => n || k === "alle").map(([k, l, n]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({n})</small></button>)}</div>
         <FitScroll card cols={["Gerät", "Marke · Kauf · Garantie", "Kaufpreis"]}>
           <section className="tile ctlist">
@@ -9618,7 +9679,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
         <button className={"chip" + (showCounts ? " on" : "")} onClick={() => setShowCounts(!showCounts)}>Protokolle ({kCounts.length})</button>
         <button className="chip" title="Kassen verwalten" onClick={() => setSetup(true)}>⚙︎</button>
       </div>
-      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Text, Kategorie, Beleg, Nummer suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <SearchBox placeholder="Text, Kategorie, Beleg, Nummer suchen" value={q} onChange={setQ} />
       {showCounts && countsList}
       <FitScroll card>
       <section className="tile kbtable">
@@ -9752,7 +9813,7 @@ function CountWin({ count, arts, moves, onChange, onFinish, onDelete, onClose })
       <div className="cntprog"><div style={{ width: (scope.length ? (done / scope.length) * 100 : 0) + "%" }} /></div>
       <p className="muted small">{done} / {scope.length} gezählt · {diffs.length} Differenzen{count.loc ? " · Lagerort " + count.loc : ""}{count.group ? " · Gruppe " + count.group : ""} · wird automatisch gespeichert</p>
       <div className="row cntbar">
-        <div className="searchbar grow"><span>🔍</span><input type="search" placeholder="Artikel suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <SearchBox className="searchbar grow" placeholder="Artikel suchen" value={q} onChange={setQ} />
         <button className={"chip" + (open ? " on" : "")} onClick={() => setOpen(!open)}>nur offene</button>
         <button className="btn" onClick={() => setScan(true)}>📷 Scan-Zählung</button>
       </div>
@@ -9969,7 +10030,7 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
         {setTab && <button className="chip" onClick={() => setTab("artikel")}>📦 Artikel</button>}
       </div>
       <div className="chips invfilter">{viewChips}</div>
-      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Artikel, Nummer, Lagerort, Lieferant suchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <SearchBox placeholder="Artikel, Nummer, Lagerort, Lieferant suchen" value={q} onChange={setQ} />
       {!!locChips.length && (view === "bestand" || view === "nachbestellen") && <div className="chips invfilter">{locChips.map(([k, l]) => <button key={k} className={"chip" + (loc === k ? " on" : "")} onClick={() => setLoc(k)}>{l}</button>)}</div>}
       <FitScroll card cols={view === "inventur" ? ["Inventur", "Stichtag · Umfang", "Status"] : view === "bewegungen" ? ["Artikel", "Datum · Art", "Menge"] : ["Artikel", "Lagerort · Lieferant", "Bestand"]}><section className="tile ctlist">{body}</section></FitScroll>
       </>)}
@@ -10072,7 +10133,7 @@ function DunningPage({ setTab, book }) {
         {setTab && <button className="btn" onClick={() => setTab("invoices")}>🧾 Rechnungen</button>}
         {setTab && <button className="btn" title="Mahnwesen einstellen" onClick={() => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); }}>⚙︎</button>}
       </div>
-      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Kunde, Rechnungsnummer, Mahnstufe suchen" value={mq} onChange={(e) => setMq(e.target.value)} /></div>
+      <SearchBox placeholder="Kunde, Rechnungsnummer, Mahnstufe suchen" value={mq} onChange={setMq} />
       <FitScroll card className="kinv" cols={["Kunde", "Rechnung · Fälligkeit", "Betrag · Stufe"]}>
       <section className="tile invlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b><small>{over.filter(({ x }) => mqHit(x)).length}</small></div>
@@ -12168,7 +12229,7 @@ label>.vehpick.block{margin-top:6px}
   html.cmp .mstats.cmpsmall .tile b{font-size:17px!important}
   html.cmp .mstats.cmpsmall .tile small{font-size:12px!important}
   html.cmp .cmpbar .cmprow{display:flex;gap:8px;align-items:center}
-  html.cmp .cmpbar .cmprow .searchbar{flex:1;min-width:0;height:42px}
+  html.cmp .cmpbar .cmprow .searchbar{flex:1;min-width:0;height:42px;min-height:42px;margin:0}
   html.cmp .cmpbar .cmprow .vehpickbtn{height:42px;min-height:42px;font-size:15px;padding:0 12px;white-space:nowrap;max-width:46vw;overflow:hidden;text-overflow:ellipsis}
   html.cmp .cmpbar .searchbar input{font-size:15px}
   html.cmp .cmpextra{margin-top:6px}
@@ -12249,5 +12310,30 @@ label>.vehpick.block{margin-top:6px}
   .calhead .calmodes button{font-size:13px!important}
   .calhead .calprev,.calhead .calnext{font-size:15px!important}
   .calhead .calupbtn{font-size:14px!important}
+}
+
+/* v0.82 Suchvorschläge */
+.sugmenu{position:fixed;z-index:400;margin:0;padding:6px;list-style:none;background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.18);max-width:calc(100vw - 16px);overflow:hidden}
+.sugmenu li{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border-radius:10px;cursor:pointer;font-size:15px}
+.sugmenu li.on,.sugmenu li:hover{background:var(--card2)}
+.sugmenu .sughead{min-height:28px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);cursor:default}
+.sugmenu .sughead:hover{background:none}
+.sugmenu .sugico{font-size:14px;opacity:.55;flex:none}
+.sugmenu .sugt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sugmenu mark{background:none;color:inherit;font-weight:700}
+.sugmenu .sugx{border:0;background:none;color:var(--mut);font-size:14px;width:32px;height:32px;border-radius:8px;cursor:pointer;flex:none}
+.sugmenu .sugx:hover{background:var(--line)}
+@media (max-width:700px){.sugmenu li{min-height:46px;font-size:16px}}
+.sbplain{display:block}.sbplain input{width:100%}
+.searchbar.sbx input{flex:1;min-width:0}
+/* iOS zoomt bei Eingabefeldern unter 16px hinein – auf Touch-Geräten immer 16px */
+@media (pointer:coarse){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),textarea,select{font-size:16px!important}}
+/* v0.82 Kompakt: Filter, Suche und Extras in einer Zeile */
+@media (max-width:700px){
+  html.cmp .cmpbar.cmpone .cmprow{flex-wrap:nowrap}
+  html.cmp .cmpbar.cmpone .cmprow .searchbar{flex:1 1 0;min-width:96px}
+  html.cmp .cmpbar.cmpone .cmprow>.vehpickbtn,html.cmp .cmpbar.cmpone .cmprow>.pickwrap>.vehpickbtn{max-width:32vw}
+  html.cmp .cmpbar.cmpone .cmprow>:not(.searchbar){flex:none}
+  html.cmp .cmpbar.cmpone .cmprow .chip,html.cmp .cmpbar.cmpone .cmprow .btn{height:42px;min-height:42px;white-space:nowrap;font-size:15px;padding:0 12px;margin:0}
 }
 `;

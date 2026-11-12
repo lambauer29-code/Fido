@@ -2,6 +2,21 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.82.0
+- **„Kompakt wie Konten“ fix übernommen** (iPhone/iPad): kein Test mehr. In Einstellungen → Darstellung wählst du nur noch, wie die Kennzahlen aussehen („Nur große Zahl“ oder „Kleine Kacheln“).
+- **„Neue Listen“ fix übernommen** im Reiter Rechnungen (Jahr, Sortierung, Tags, gespeicherte Ansichten, Mehrfachauswahl, Drucken). Der Test-Schalter ist entfernt.
+- **Artikel und Besitz & Garantie einzeilig**: Filter, Suchleiste und Sortierung/Export stehen am Handy in einer Zeile.
+- **Suchvorschläge in allen Suchleisten** (21 Suchfelder, alle Geräte):
+  - Ab 2 Zeichen erscheint unter dem Feld ein Dropdown mit passenden Einträgen aus der Liste, der getippte Teil ist fett.
+  - Höchstens 8 Vorschläge am Handy und 10 am Desktop. Die Liste geht nie hinter die Tastatur.
+  - Bei leerem Feld zeigt das Dropdown „Zuletzt gesucht“ (pro Suchfeld, mit ✕ zum Entfernen).
+  - Bedienung mit ↑ ↓ Enter Esc; Screenreader-tauglich (Combobox).
+  - Der Verlauf wird nicht ins Backup übernommen.
+- **Eingabeverhalten**:
+  - Alle Suchfelder: Tastatur zeigt „Suchen“, keine Autokorrektur oder Großschreibung.
+  - Touch-Geräte: Eingabefelder mindestens 16 px, damit iOS beim Antippen nicht hineinzoomt.
+  - Ganzzahl-Felder (Tage, Monate): Ziffernblock.
+
 ## v0.81.4
 
 - Fristen-Kopf am Handy: Schrift um 3 px kleiner (KW-Anzeige 13 px, Heute 14 px, Woche/Monat/Jahr/Kompakt 13 px, Bevorstehend 14 px, Pfeile 15 px).
