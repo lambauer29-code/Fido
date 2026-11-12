@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.72.5
+
+- Mahnungen: Suchleiste auch auf iPad und Desktop (über der Liste, filtert „Zu mahnen“ und Mahnverlauf, Anzahl in den Überschriften).
+
 ## v0.72.4
 
 - Mahnungen: Suchleiste über „Zu mahnen“ (Kunde, Rechnungsnummer, Mahnstufe, Betrag) – filtert „Zu mahnen“ und den Mahnverlauf; bleibt am Handy beim Scrollen oben stehen.

@@ -9807,11 +9807,12 @@ function DunningPage({ setTab, book }) {
         {setTab && <button className="btn" onClick={() => setTab("invoices")}>🧾 Rechnungen</button>}
         {setTab && <button className="btn" title="Mahnwesen einstellen" onClick={() => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); }}>⚙︎</button>}
       </div>
+      <div className="searchbar"><span>🔍</span><input type="search" placeholder="Kunde, Rechnungsnummer, Mahnstufe suchen" value={mq} onChange={(e) => setMq(e.target.value)} /></div>
       <FitScroll card className="kinv" cols={["Kunde", "Rechnung · Fälligkeit", "Betrag · Stufe"]}>
       <section className="tile invlist">
-        <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b></div>
-        {!over.length && <p className="muted small" style={{ padding: "0 14px" }}>Keine überfälligen Rechnungen 🎉</p>}
-        {over.map(({ x, last, since, ready, next }) => (<React.Fragment key={x.id}>
+        <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b><small>{over.filter(({ x }) => mqHit(x)).length}</small></div>
+        {!over.filter(({ x }) => mqHit(x)).length && <p className="muted small" style={{ padding: "0 14px" }}>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</p>}
+        {over.filter(({ x }) => mqHit(x)).map(({ x, last, since, ready, next }) => (<React.Fragment key={x.id}>
           <div className={"invrow" + (prevInv === x.id ? " prevopen" : "")} onClick={() => setRemind(x)}>
             <div className="invmain">
               <div className="row1"><b className="invname" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevInv(prevInv === x.id ? null : x.id); }}>{x.customer?.name || "Ohne Kunde"}</b></div>
@@ -9828,9 +9829,9 @@ function DunningPage({ setTab, book }) {
         </React.Fragment>))}
       </section>
       <section className="tile invlist">
-        <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Mahnverlauf</b><small>{history.length}</small></div>
-        {!history.length && <p className="muted small" style={{ padding: "0 14px" }}>Noch keine Mahnungen erstellt.</p>}
-        {history.map(({ x, r, i }) => { const s = invState(x); return (
+        <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Mahnverlauf</b><small>{history.filter(({ x, r }) => mqHit(x, r)).length}</small></div>
+        {!history.filter(({ x, r }) => mqHit(x, r)).length && <p className="muted small" style={{ padding: "0 14px" }}>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</p>}
+        {history.filter(({ x, r }) => mqHit(x, r)).map(({ x, r, i }) => { const s = invState(x); return (
           <React.Fragment key={x.id + i}>
           <div className={"invrow" + (prevInv === x.id + ":" + i ? " prevopen" : "")} onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>
             <div className="invmain">
