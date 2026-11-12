@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.74.0
+
+- **Ausgabe erfassen** reduziert auf: Firma, Datum, Betrag (brutto), Steuern, Konto, Kategorie, Notizen. Die Positionen-Liste ist aus dem Formular entfernt.
+- **Steuern**: je Steuersatz (20 / 13 / 10 / 0 %) eine Zeile mit Brutto-Anteil, USt wird automatisch gerechnet; eine einzelne Zeile ohne Betrag gilt für den ganzen Betrag. Differenz-Hinweis, wenn die Anteile nicht zum Betrag passen. Gespeichert als `vat` an der Buchung; im Excel/CSV-Export Spalten „USt €“, „Steuersätze“, „Notizen“.
+- KI-Scan liefert jetzt die USt-Aufschlüsselung je Steuersatz (`amount.vat_lines`); der RKSV-QR-Code füllt die Steuerzeilen ebenfalls.
+- **Konto** als Auswahlmenü wie die Fahrzeugauswahl im Fahrtenbuch; Hinweis „alle Konten“ entfernt.
+
 ## v0.73.4
 
 - Test „Konten-Design für alle Reiter“ (v0.66) komplett entfernt: Schalter in Darstellung, Kopfkarten, Chip-Leisten und Spaltenköpfe. Die alte Einstellung wird beim Start automatisch gelöscht.

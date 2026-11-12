@@ -29,6 +29,7 @@ const tool = (categories) => ({
           total: { type: ["number", "null"], description: "Bruttobetrag / Endsumme" },
           net: { type: ["number", "null"] },
           vat: { type: ["number", "null"], description: "USt-Betrag" },
+          vat_lines: { type: "array", description: "USt-Aufschlüsselung je Steuersatz laut Beleg (z. B. 20 % und 10 % auf einem Kassenbon). Leer, wenn nicht ausgewiesen.", items: { type: "object", properties: { rate: { type: "number", description: "Steuersatz in Prozent, z. B. 20, 13, 10, 0" }, net: { type: ["number", "null"] }, vat: { type: ["number", "null"] }, gross: { type: ["number", "null"], description: "Brutto-Anteil dieses Steuersatzes" } }, required: ["rate"] } },
           payout: { type: ["number", "null"], description: "Tatsächlich überwiesener/ausbezahlter Betrag, falls abweichend von total – bei Lohnzettel/Gehaltsabrechnung der Netto-Auszahlungsbetrag (Überweisung aufs Konto)" },
           currency: { type: "string", description: "ISO-Code, meist EUR" }
         }
@@ -129,6 +130,7 @@ export default async function handler(req, res) {
 - Zahlung: IBAN/BIC/Zahlungsreferenz nur übernehmen, wenn sie auf dem Dokument stehen – nichts erfinden.
 - scope: "firma" nur für Dokumente der eigenen Firma${company ? ` („${String(company).slice(0, 80)}“)` : ""}, sonst "privat".
 - amount.payout: bei Lohnzetteln den Netto-Auszahlungsbetrag.
+- amount.vat_lines: bei ausgewiesener Umsatzsteuer je Steuersatz eine Zeile (Satz, Netto, USt, Brutto), z. B. Lebensmittel 10 % und Drogerie 20 % auf einem Bon.
 - Kassenbon/Kaufbeleg: doc_type "Beleg", merchant = Geschäft, purchase_date = Kaufdatum, amount.total = Endsumme, line_items = alle Positionen (Menge, Name, Einzelpreis, Gesamtpreis, Warengruppe${Array.isArray(itemCategories) && itemCategories.length ? ` aus: ${itemCategories.slice(0, 60).join(", ")}` : ""}). Die Summe der Positionen soll der Endsumme entsprechen.
 - full_text: den Text so vollständig wie möglich übernehmen.
 Rufe das Tool dokument_speichern auf.`;

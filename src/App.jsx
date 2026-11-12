@@ -2221,12 +2221,21 @@ const parseAmt = (x) => { const v = Number(String(x ?? "").replace(/\s|€/g, ""
 const amtStr = (v) => (v == null || isNaN(v) ? "" : (Math.round(v * 100) / 100).toFixed(2).replace(".", ","));
 const GENERIC_DOC_CATS = ["Rechnungen", "Sonstiges", "Garantie & Kaufbelege", "Verträge"];
 
+// Steuerzeilen aus dem KI-Ergebnis: je Satz (vat_lines) oder aus Netto/USt abgeleitet
+function docTaxRows(am) {
+  if (!am) return [];
+  const ok = (r) => [20, 13, 10, 0].includes(r);
+  const l = (am.vat_lines || []).filter((x) => x && Number.isFinite(+x.rate) && ok(Math.round(+x.rate)) && (+x.gross > 0 || +x.vat > 0 || +x.net > 0));
+  if (l.length) return l.map((x) => { const rate = Math.round(+x.rate); const g = +x.gross > 0 ? +x.gross : +x.net > 0 ? +x.net * (1 + rate / 100) : rate ? +x.vat * (100 + rate) / rate : 0; return { id: uid(), rate, gross: l.length === 1 ? "" : amtStr(g) }; });
+  if (am.vat > 0 && am.net > 0) { const q = am.vat / am.net * 100; const r = [20, 13, 10].reduce((b, v) => (Math.abs(q - v) < Math.abs(q - b) ? v : b), 20); return [{ id: uid(), rate: r, gross: "" }]; }
+  return [];
+}
 function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload, addCategory, suggestCat, notify, initAccount }) {
   const today = todayISO();
   const cashAcc = accounts.find((a) => a.kind === "cash");
   const lastAcc = ls.get("expAcc", "");
   const defAcc = initAccount && accounts.some((a) => a.id === initAccount) ? initAccount : accounts.some((a) => a.id === lastAcc) ? lastAcc : cashAcc?.id || accounts[0]?.id || "new-cash";
-  const blank = () => ({ dir: "out", merchant: "", amount: "", date: today, accountId: defAcc, category: "", note: "", items: [], docId: null, file: null, url: null, qr: null, touched: {} });
+  const blank = () => ({ dir: "out", merchant: "", amount: "", date: today, accountId: defAcc, category: "", note: "", items: [], taxes: [], docId: null, file: null, url: null, qr: null, touched: {} });
   const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false), [qrOpen, setQrOpen] = useState(false), [extraCats, setExtraCats] = useState([]);
   const [icats, setIcats] = useState(itemCats);
@@ -2247,9 +2256,10 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
         amount: t.amount && x.amount ? x.amount : doc.amount?.total != null ? amtStr(doc.amount.total) : x.amount,
         date: t.date ? x.date : pastOrToday(doc.purchaseDate || doc.documentDate, today),
         category: t.category && x.category ? x.category : docCat || suggestCat(merchant) || x.category,
-        dir: doc.direction === "einnahme" ? "in" : x.dir, items };
+        dir: doc.direction === "einnahme" ? "in" : x.dir, items: [], taxes: x.taxes.length ? x.taxes : docTaxRows(doc.amount) };
     });
-    notify(doc.lineItems?.length ? `Beleg ausgelesen: ${doc.lineItems.length} Position${doc.lineItems.length === 1 ? "" : "en"}` : "Beleg ausgelesen");
+    const tr = docTaxRows(doc.amount);
+    notify(tr.length ? `Beleg ausgelesen · USt ${tr.map((t) => t.rate + " %").join(", ")}` : "Beleg ausgelesen");
   }, [doc?.status, doc?.id]);
   useEffect(() => () => f.url && URL.revokeObjectURL(f.url), []);
 
@@ -2267,7 +2277,8 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
     if (!q) return notify("Kein Kassenbon-QR erkannt (RKSV/TSE). Tipp: Beleg stattdessen scannen – die KI liest ihn aus.");
     const known = q.register && txs.find((t) => t.receiptQr?.register === q.register && t.counterparty);
     setF((x) => ({ ...x, qr: q, amount: x.touched.amount && x.amount ? x.amount : amtStr(q.total), date: x.touched.date ? x.date : pastOrToday(q.date, today),
-      merchant: x.merchant || known?.counterparty || "", category: x.category || known?.category || "" }));
+      merchant: x.merchant || known?.counterparty || "", category: x.category || known?.category || "",
+      taxes: x.taxes.length ? x.taxes : (q.vat || []).map((v) => ({ id: uid(), rate: parseInt(v.rate) || 0, gross: amtStr(v.gross) })) }));
     notify(`QR-Code gelesen: ${fmtMoney(q.total)}${q.date ? " · " + fmtDate(q.date) : ""}${known ? " · " + known.counterparty : ""}`);
   };
   const items = f.items, setItems = (fn) => setF((x) => ({ ...x, items: typeof fn === "function" ? fn(x.items) : fn }));
@@ -2277,6 +2288,13 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
   const diff = items.length && val > 0 ? Math.round((val - itemSum) * 100) / 100 : 0;
   const cat = f.category || suggestCat(f.merchant) || "Lebensmittel & Haushalt";
   const ok = total > 0 && f.date && f.merchant.trim() && !busy;
+  // Steuern: je Steuersatz der Brutto-Anteil; eine einzelne Zeile ohne Betrag gilt für den ganzen Betrag
+  const taxRows = f.taxes.map((x) => { const g = parseAmt(x.gross) > 0 ? parseAmt(x.gross) : f.taxes.length === 1 && total > 0 ? total : 0; return { ...x, g, v: g * x.rate / (100 + x.rate) }; });
+  const vatSum = taxRows.reduce((a, x) => a + x.v, 0), taxGross = taxRows.reduce((a, x) => a + x.g, 0);
+  const taxDiff = taxRows.length > 1 && total > 0 ? Math.round((total - taxGross) * 100) / 100 : 0;
+  const setTax = (id, p) => setF((x) => ({ ...x, taxes: x.taxes.map((t) => (t.id === id ? { ...t, ...p } : t)) }));
+  const accOpt = [...accounts.map((a) => ({ k: a.id, icon: a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind), title: a.name, sub: (KIND_DEFS[a.kind] || KIND_DEFS.bank)[1] })), ...(!cashAcc ? [{ k: "new-cash", icon: "💶", title: "Geldbörse (neu)", sub: "Bargeld-Konto anlegen" }] : [])];
+  const curAcc = accOpt.find((o) => o.k === f.accountId) || accOpt[0];
   const cats = [...new Set([...categories, ...extraCats, cat])];
   const merchants = useMemo(() => {
     const m = {}; txs.forEach((t) => { if (t.counterparty && t.amount < 0) m[t.counterparty] = (m[t.counterparty] || 0) + 1; });
@@ -2285,11 +2303,13 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
   const save = async () => {
     if (!ok) return; setBusy(true);
     try {
-      const it = items.filter((x) => x.name.trim() || parseAmt(x.total)).map((x) => ({ name: x.name.trim(), qty: parseAmt(x.qty) || 1, total: Math.round((parseAmt(x.total) || 0) * 100) / 100, category: x.category || "Sonstiges" }));
+      const it = [];
+      const vat = taxRows.filter((x) => x.g > 0).map((x) => ({ rate: x.rate, gross: r2e(x.g), vat: r2e(x.v) }));
       const date = pastOrToday(f.date, today);
       ls.set("expAcc", f.accountId);
       await onSave({ accountId: f.accountId, date, amount: f.dir === "out" ? -total : total, counterparty: f.merchant.trim(), purpose: f.note.trim(),
         category: f.dir === "in" && !f.category ? "Einnahmen" : cat, ...(it.length ? { items: it } : {}),
+        ...(vat.length ? { vat } : {}),
         ...(f.qr ? { receiptQr: { kind: f.qr.kind, register: f.qr.register, receiptNo: f.qr.receiptNo } } : {}) },
         { docId: f.docId, file: f.docId ? null : f.file });
       if (f.url) URL.revokeObjectURL(f.url);
@@ -2302,7 +2322,7 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
     <div className="expform">
       <div className="expscan">
         <button className="expbig" onClick={() => onScan((file, o) => attach(file, { ...o, scanned: true }))}>
-          <span className="expico">📷</span><b>Beleg scannen</b><small>KI liest Firma, Betrag & Positionen</small>
+          <span className="expico">📷</span><b>Beleg scannen</b><small>KI liest Firma, Datum, Betrag & Steuern</small>
         </button>
         <button className="expbig" onClick={() => setQrOpen(true)}>
           <span className="expico">▦</span><b>QR-Code</b><small>Registrierkassen-QR (RKSV)</small>
@@ -2317,7 +2337,7 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
           {f.file && (f.url ? <img src={f.url} alt="" /> : <span className="attpdf">PDF</span>)}
           <div className="grow">
             {f.file && <b>{reading ? "KI liest den Beleg …" : doc?.status === "error" ? "Auslesen fehlgeschlagen" : doc?.status === "done" ? "Beleg ausgelesen" : "Beleg wird hochgeladen …"}</b>}
-            {f.file && <small className="muted block">{doc?.status === "error" ? doc.error : reading ? "Felder werden gleich automatisch ausgefüllt" : doc?.status === "done" ? `${doc.lineItems?.length || 0} Positionen erkannt` : f.file.name}</small>}
+            {f.file && <small className="muted block">{doc?.status === "error" ? doc.error : reading ? "Felder werden gleich automatisch ausgefüllt" : doc?.status === "done" ? (docTaxRows(doc.amount).length ? "USt erkannt: " + docTaxRows(doc.amount).map((t) => t.rate + " %").join(", ") : "Firma, Datum und Betrag übernommen") : f.file.name}</small>}
             {f.qr && <small className="muted block">▦ {f.qr.kind} · Beleg {f.qr.receiptNo || "—"}{f.qr.time ? " · " + f.qr.time + " Uhr" : ""}{f.qr.vat?.length ? " · " + f.qr.vat.map((v) => `${v.rate}: ${fmtMoney(v.gross)}`).join(", ") : ""}</small>}
           </div>
           {reading && <span className="spin" aria-hidden="true" />}
@@ -2330,50 +2350,37 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
       </div>
       <label>Firma<input list="expmerchants" value={f.merchant} placeholder="z. B. Penny, BILLA, OMV" onChange={(e) => set({ merchant: e.target.value }, true)} /></label>
       <datalist id="expmerchants">{merchants.map((m) => <option key={m} value={m} />)}</datalist>
-      <label>Gesamtbetrag<input className="bigamount" inputMode="decimal" placeholder={items.length ? amtStr(itemSum) + " €" : "0,00 €"} value={f.amount} onChange={(e) => set({ amount: e.target.value }, true)} /></label>
-      <div className="grid2">
-        <label>Datum<input type="date" max={today} value={f.date} onChange={(e) => set({ date: e.target.value > today ? today : e.target.value }, true)} /></label>
-        <label>Konto
-          <select value={f.accountId} onChange={(e) => set({ accountId: e.target.value }, true)}>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}
-            {!cashAcc && <option value="new-cash">💶 Geldbörse (neu)</option>}
-          </select>
-        </label>
-      </div>
-      <label>Kategorie
-        <select value={cat} onChange={(e) => {
-          if (e.target.value !== "__new") return set({ category: e.target.value }, true);
-          const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return;
-          addCategory?.(n); setExtraCats((x) => [...x, n]); set({ category: n }, true);
-        }}>
-          {cats.map((c) => <option key={c}>{c}</option>)}
-          {addCategory && <option value="__new">＋ Neue Kategorie …</option>}
-        </select>
-      </label>
-      <div className="expitems">
-        <div className="expitemshead"><b>Positionen</b><small className="muted">{items.length ? `${items.length} · ${fmtMoney(itemSum)}` : "optional"}</small></div>
-        {items.map((it, i) => (
-          <div key={it.id} className="expitem">
-            <input className="q" inputMode="decimal" aria-label="Menge" value={it.qty} onChange={(e) => setItems((l) => l.map((x) => (x.id === it.id ? { ...x, qty: e.target.value } : x)))} />
-            <span className="x">×</span>
-            <input className="n" aria-label="Bezeichnung" placeholder="Artikel" value={it.name} onChange={(e) => setItems((l) => l.map((x) => (x.id === it.id ? { ...x, name: e.target.value } : x)))} />
-            <input className="p" inputMode="decimal" aria-label="Preis" placeholder="0,00" value={it.total} onChange={(e) => setItems((l) => l.map((x) => (x.id === it.id ? { ...x, total: e.target.value } : x)))} />
-            <select className="c" aria-label="Kategorie der Position" value={it.category} onChange={(e) => {
-              const v = e.target.value === "__new" ? newItemCat() : e.target.value; if (v) setItems((l) => l.map((x) => (x.id === it.id ? { ...x, category: v } : x)));
-            }}>
-              {[...new Set([...icats, it.category])].map((c) => <option key={c}>{c}</option>)}
-              <option value="__new">＋ Neue …</option>
-            </select>
-            <button className="iconbtn" title="Position entfernen" aria-label="Position entfernen" onClick={() => setItems((l) => l.filter((x) => x.id !== it.id))}>✕</button>
+      <label>Datum<input type="date" max={today} value={f.date} onChange={(e) => set({ date: e.target.value > today ? today : e.target.value }, true)} /></label>
+      <label>Betrag (brutto)<input className="bigamount" inputMode="decimal" placeholder="0,00 €" value={f.amount} onChange={(e) => set({ amount: e.target.value }, true)} /></label>
+      <div className="exptax">
+        <div className="expitemshead"><b>Steuern</b><small className="muted">{taxRows.length ? `USt gesamt ${fmtMoney(vatSum)}` : "optional"}</small></div>
+        {taxRows.map((t) => (
+          <div key={t.id} className="exptaxrow">
+            <select aria-label="Steuersatz" value={t.rate} onChange={(e) => setTax(t.id, { rate: +e.target.value })}>{[20, 13, 10, 0].map((v) => <option key={v} value={v}>{v} %</option>)}</select>
+            <input inputMode="decimal" aria-label="Brutto-Anteil" placeholder={f.taxes.length === 1 ? (total > 0 ? amtStr(total) : "ganzer Betrag") : "Brutto"} value={t.gross} onChange={(e) => setTax(t.id, { gross: e.target.value })} />
+            <span className="muted small exptaxv">USt {fmtMoney(t.v)}</span>
+            <button className="iconbtn" title="Steuersatz entfernen" aria-label="Steuersatz entfernen" onClick={() => setF((x) => ({ ...x, taxes: x.taxes.filter((y) => y.id !== t.id) }))}>✕</button>
           </div>
         ))}
         <div className="expitemsfoot">
-          <button className="link" onClick={() => setItems((l) => [...l, { id: uid(), qty: "1", name: "", total: "", category: l[l.length - 1]?.category || icats[0] }])}>＋ Position</button>
-          {diff !== 0 && <span className={"expdiff" + (Math.abs(diff) > 0.009 ? " warn" : "")}>Differenz {fmtMoney(diff)}
-            <button className="link" onClick={() => set({ amount: amtStr(itemSum) }, true)}>Summe übernehmen</button></span>}
+          <button className="link" onClick={() => setF((x) => ({ ...x, taxes: [...x.taxes, { id: uid(), rate: x.taxes.length ? (x.taxes.some((y) => y.rate === 10) ? 20 : 10) : 20, gross: "" }] }))}>＋ {f.taxes.length ? "weiterer Steuersatz" : "USt / Steuersatz"}</button>
+          {taxDiff !== 0 && <span className="expdiff warn">Differenz zum Betrag {fmtMoney(taxDiff)}</span>}
         </div>
       </div>
-      <label>Notiz (optional)<input value={f.note} onChange={(e) => set({ note: e.target.value })} placeholder="z. B. Wocheneinkauf" /></label>
+      <div className="grid2">
+        <label>Konto<PickMenu icon={curAcc?.icon} label={curAcc?.title || "Konto wählen"} title="Konto" items={accOpt.map((o) => ({ ...o, on: o.k === f.accountId, run: () => set({ accountId: o.k }, true) }))} /></label>
+        <label>Kategorie
+          <select value={cat} onChange={(e) => {
+            if (e.target.value !== "__new") return set({ category: e.target.value }, true);
+            const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return;
+            addCategory?.(n); setExtraCats((x) => [...x, n]); set({ category: n }, true);
+          }}>
+            {cats.map((c) => <option key={c}>{c}</option>)}
+            {addCategory && <option value="__new">＋ Neue Kategorie …</option>}
+          </select>
+        </label>
+      </div>
+      <label>Notizen<textarea rows={2} value={f.note} onChange={(e) => set({ note: e.target.value })} placeholder="optional, z. B. Wocheneinkauf, Projekt …" /></label>
       <button className="btn primary cashsave" disabled={!ok} onClick={save}>{busy ? "Speichert …" : reading ? "Speichern (Beleg wird noch gelesen)" : `Speichern${total > 0 ? " · " + fmtMoney(f.dir === "out" ? -total : total) : ""}`}</button>
       {qrOpen && createPortal(<CodeScanWin title="Kassenbon-QR scannen" onClose={() => setQrOpen(false)} onResult={(code) => onQr(code)} />, document.querySelector(".app") || document.body)}
     </div>
@@ -2390,15 +2397,15 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
   return (
     <div className="exppage">
       <section className="tile">
-        <div className="tilehead"><b>Ausgabe erfassen</b><small>alle Konten</small></div>
+        <div className="tilehead"><b>Ausgabe erfassen</b></div>
         <ExpenseForm accounts={accounts} txs={txs} docs={docs} categories={categories} onSave={onSave} onScan={onScan} onUpload={onUpload} addCategory={addCategory} suggestCat={suggestCat} notify={notify} />
       </section>
       <section className="tile">
         <div className="tilehead"><b>Erfasste Ausgaben</b><small>{monthLabel(month)}: {fmtMoney(monthOut)}</small>
           {(() => { const all = txs.filter((t) => t.manual).sort((a, b) => a.date.localeCompare(b.date)); const accN = (id) => accounts.find((a) => a.id === id)?.name || "";
             const pos = all.flatMap((t) => (t.items || []).map((i) => [t.date, t.counterparty || "", accN(t.accountId), i.name, i.qty, i.qty ? r2e(i.total / i.qty) : "", r2e(i.total), i.category || ""]));
-            const bons = all.map((t) => [t.date, t.counterparty || "", accN(t.accountId), t.category || "", (t.items || []).length, -t.amount, t.receiptQr?.receiptNo || "", t.docId ? "ja" : ""]);
-            const PH = ["Datum", "Geschäft", "Konto", "Artikel", "Menge", "Einzelpreis €", "Gesamt €", "Warengruppe"], BH = ["Datum", "Geschäft", "Konto", "Kategorie", "Positionen", "Betrag €", "Beleg-Nr.", "Beleg"];
+            const bons = all.map((t) => [t.date, t.counterparty || "", accN(t.accountId), t.category || "", (t.items || []).length, -t.amount, t.vat?.length ? r2e(t.vat.reduce((a, v) => a + v.vat, 0)) : "", (t.vat || []).map((v) => v.rate + " %").join(" / "), t.purpose || "", t.receiptQr?.receiptNo || "", t.docId ? "ja" : ""]);
+            const PH = ["Datum", "Geschäft", "Konto", "Artikel", "Menge", "Einzelpreis €", "Gesamt €", "Warengruppe"], BH = ["Datum", "Geschäft", "Konto", "Kategorie", "Positionen", "Betrag €", "USt €", "Steuersätze", "Notizen", "Beleg-Nr.", "Beleg"];
             return <ExportMenu items={[{ head: `${all.length} Ausgaben · ${pos.length} Positionen` },
               { label: "📊 Excel (.xlsx)", sub: "Blätter: Positionen, Einkäufe, Warengruppen", run: () => { const g = {}; pos.forEach((p) => { const o = g[p[7] || "Sonstiges"] || (g[p[7] || "Sonstiges"] = [0, 0]); o[0] += p[6]; o[1]++; });
                 downloadXlsx(`einkaeufe-${isoToday()}.xlsx`, [{ name: "Positionen", head: PH, rows: pos }, { name: "Einkäufe", head: BH, rows: bons }, { name: "Warengruppen", head: ["Warengruppe", "Summe €", "Positionen"], rows: Object.entries(g).sort((a, b) => b[1][0] - a[1][0]).map(([k, [v, n]]) => [k, r2e(v), n]) }]); } },
@@ -2411,7 +2418,7 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
             <div className="right"><b className={cashBalance(a, txs) < 0 ? "neg" : "pos"}>{fmtMoney(cashBalance(a, txs))}</b></div>
           </div>
         ))}
-        {!list.length && <p className="muted small">Noch keine Ausgaben erfasst. Scanne einen Kassenbon – Firma, Betrag, Datum und Positionen werden automatisch ausgefüllt.</p>}
+        {!list.length && <p className="muted small">Noch keine Ausgaben erfasst. Scanne einen Kassenbon – Firma, Datum, Betrag und Steuern werden automatisch ausgefüllt.</p>}
         {list.map((t) => { const d = t.docId && docs.find((x) => x.id === t.docId), a = accOf(t.accountId), open = openId === t.id; return (
           <div key={t.id} className="expentry">
             <div className="frow click" onClick={() => setOpenId(open ? null : t.id)}>
@@ -5903,7 +5910,7 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
           <div className="txkv col"><span>Beleg / Rechnung</span>
             <div className="expscan">
               <button className="expbig" onClick={() => { scanReceiptFor ? scanReceiptFor(t.id) : attachNew(t.id, "scan"); onClose(); }}>
-                <span className="expico">📷</span><b>Beleg scannen</b><small>KI liest Firma, Betrag & Positionen</small>
+                <span className="expico">📷</span><b>Beleg scannen</b><small>KI liest Firma, Datum, Betrag & Steuern</small>
               </button>
               <button className="expbig" onClick={() => setQrOpen(true)}>
                 <span className="expico">▦</span><b>QR-Code</b><small>Registrierkassen-QR (RKSV)</small>
@@ -11869,4 +11876,15 @@ html.mnat main{padding-bottom:0!important}
 .btn.bkpress.on:disabled{opacity:1}
 
 html.hdrmin .hdrcol{display:none!important}
+
+.exptax{display:flex;flex-direction:column;gap:6px;margin:4px 0 10px}
+.exptaxrow{display:grid;grid-template-columns:104px minmax(0,1fr) auto auto;gap:8px;align-items:center}
+.exptaxrow select{padding-left:12px;padding-right:22px;text-overflow:clip}
+.exptaxrow select,.exptaxrow input{margin:0}
+.exptaxv{white-space:nowrap;min-width:84px;text-align:right}
+.expform label .vehpick{display:block;margin-top:6px}
+.expform label .vehpickbtn{width:100%;justify-content:flex-start;text-align:left;min-height:44px;font-size:inherit}
+.expform label .vehpickbtn .caret{margin-left:auto}
+
+@media(max-width:700px){.exptaxrow{grid-template-columns:84px minmax(70px,1fr) auto auto;gap:6px}.exptaxv{min-width:0}}
 `;
