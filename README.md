@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.72.4
+
+- Mahnungen: Suchleiste über „Zu mahnen“ (Kunde, Rechnungsnummer, Mahnstufe, Betrag) – filtert „Zu mahnen“ und den Mahnverlauf; bleibt am Handy beim Scrollen oben stehen.
+- „＋ Mahnung“ heißt jetzt „📮 Mahnung erstellen“ und ist nicht mehr dauerhaft hervorgehoben (Handy und Desktop).
+
 ## v0.72.3
 
 - Handy: In Reitern ohne eigene Suchleiste (Mahnungen, Verträge, Fixkosten & Abos, Fahrtenbuch) bleibt beim Scrollen oben eine schmale Leiste in Hintergrundfarbe stehen – wie die Suchleiste bei den Rechnungen. Dadurch färbt Safari die Statusleiste nicht mehr grau ein, wenn eine graue Überschrift („Zu mahnen“) nach oben kommt.

@@ -9732,6 +9732,8 @@ function DunningPage({ setTab, book }) {
   const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
   const dn = dunning();
   const [remind, setRemind] = useState(null), [other, setOther] = useState(""), [payX, setPayX] = useState(null), [prevInv, setPrevInv] = useState(null);
+  const [mq, setMq] = useState("");
+  const mqHit = (x, r) => !mq || norm(`${x.customer?.name || ""} ${x.number || ""} ${r ? remindName(r.level) : ""} ${invTotal(x)}`).includes(norm(mq));
   const patch = (id, p) => setList((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
   const inv = list.filter((x) => x.kind === "rechnung");
   const over = inv.filter((x) => invState(x) === "überfällig").map((x) => {
@@ -9749,11 +9751,12 @@ function DunningPage({ setTab, book }) {
         <MStats items={[{ label: "Überfällig", value: fmtMoney(over.reduce((s, o) => s + invTotal(o.x), 0)), vcls: over.length ? "neg" : "", alert: !!over.length, sub: `${over.length} Rechnung${over.length === 1 ? "" : "en"}` },
           { label: "Jetzt mahnen", value: over.filter((o) => o.ready).length, sub: `Wartezeit ${dn.waitDays} Tage` },
           { label: `Mahnungen ${year}`, value: history.filter((h) => (h.r.date || "").startsWith(year)).length, sub: "versendet" }]} />
-        <MActs items={[{ label: "＋ Mahnung", primary: true, run: () => setPickOpen(true) }, setTab && { label: "🧾 Rechnungen", run: () => setTab("invoices") }]} />
+        <MActs items={[{ label: "📮 Mahnung erstellen", run: () => setPickOpen(true) }, setTab && { label: "🧾 Rechnungen", run: () => setTab("invoices") }]} />
+        <MBar q={mq} setQ={setMq} placeholder="Kunde, Rechnungsnummer suchen" />
         <MScroll>
-          <MHead right={over.length}>Zu mahnen</MHead>
-          {!over.length && <MEmpty>Keine überfälligen Rechnungen 🎉</MEmpty>}
-          {over.map(({ x, last, since, ready, next }) => (
+          <MHead right={over.filter(({ x }) => mqHit(x)).length}>Zu mahnen</MHead>
+          {!over.filter(({ x }) => mqHit(x)).length && <MEmpty>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</MEmpty>}
+          {over.filter(({ x }) => mqHit(x)).map(({ x, last, since, ready, next }) => (
             <MItem key={x.id} icon={<MAvatar text={x.customer?.name} color="#ef4444" />} title={x.customer?.name || "Ohne Kunde"}
               sub={`${x.number} · ${since} T. überfällig${last ? " · zuletzt " + remindName(last.level) : ""}`} amount={fmtMoney(invTotal(x))} amountCls="neg"
               pill={<span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? remindName(next) : `in ${(dn.waitDays || 0) - since} T.`}</span>}
@@ -9762,9 +9765,9 @@ function DunningPage({ setTab, book }) {
                 right: [{ icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }, { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayX(x) }] }}
               after={prevInv === x.id && <InvPreview x={x} co={co} />} />
           ))}
-          <MHead right={history.length}>Mahnverlauf</MHead>
-          {!history.length && <MEmpty>Noch keine Mahnungen erstellt.</MEmpty>}
-          {history.map(({ x, r, i }) => { const s = invState(x); return (
+          <MHead right={history.filter(({ x, r }) => mqHit(x, r)).length}>Mahnverlauf</MHead>
+          {!history.filter(({ x, r }) => mqHit(x, r)).length && <MEmpty>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</MEmpty>}
+          {history.filter(({ x, r }) => mqHit(x, r)).map(({ x, r, i }) => { const s = invState(x); return (
             <MItem key={x.id + i} icon={<MIco e="📮" />} title={`${remindName(r.level)} · ${x.customer?.name || ""}`} sub={`${fmtDate(r.date)} · ${x.number} · Frist ${fmtDate(r.due)}`}
               amount={fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))} amountCls={s === "bezahlt" ? "in" : ""}
               pill={i === x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
@@ -9791,7 +9794,7 @@ function DunningPage({ setTab, book }) {
       <div className="invbar">
         {(() => { const cand = [...over.map((o) => o.x), ...openNotOver]; return (
           <details className="more newdun">
-            <summary className="btn primary">＋ Mahnung</summary>
+            <summary className="btn">📮 Mahnung erstellen</summary>
             <div className="moremenu" onClick={(e) => { if (e.target.closest("button")) e.currentTarget.closest("details").open = false; }}>
               {!cand.length && <p className="muted small" style={{ margin: 8 }}>Keine offenen Rechnungen – alles bezahlt 🎉</p>}
               {cand.map((x) => <button key={x.id} onClick={() => setRemind(x)}><b>{x.number}</b> · {x.customer?.name || "Ohne Kunde"} <span className="muted">· {fmtMoney(invTotal(x))}{invState(x) === "überfällig" ? " · überfällig" : ""}</span></button>)}
