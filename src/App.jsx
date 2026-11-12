@@ -4583,7 +4583,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         <div className="dlist">
           {list.map((d) => (
             <div key={d.id} className={"dwrap" + (prevId === d.id ? " open" : "")}>
-            <SwipeRow left={pick ? [] : [{ icon: "👁", label: "Vorschau", bg: "#0ea5e9", run: () => setPrevId(prevId === d.id ? null : d.id) }, { icon: "📤", label: "Teilen", bg: "#8b5cf6", run: () => shareDocs([d]) }]}
+            <SwipeRow left={pick ? [] : [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevId(prevId === d.id ? null : d.id) }, { icon: "📤", label: "Teilen", bg: "#8b5cf6", run: () => shareDocs([d]) }]}
               right={pick ? [] : [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: () => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && trashDoc(d) }, { icon: "✎", label: "Bearbeiten", bg: "#3b82f6", run: () => onOpen(d.id) }]}>
             <div className={"ditem" + (pick?.has(d.id) ? " picked" : "")} onClick={() => (pick ? togglePick(d.id) : onOpen(d.id))}>
               {pick && <span className={"pickbox inline" + (pick.has(d.id) ? " on" : "")}>✓</span>}
@@ -4679,7 +4679,7 @@ function Deadlines({ docs, onOpen: onEdit, saveDoc, calSync, setCalSync, token, 
               const n = daysUntil(dl.date);
               return (
                 <SwipeRow key={dl.id} left={[{ icon: dl.done ? "↺" : "✓", label: dl.done ? "Offen" : "Erledigt", bg: "#16a34a", run: () => toggle(dl, doc) }]}
-                  right={[{ icon: "👁", label: "Öffnen", bg: "#3b82f6", run: () => onOpen(doc.id) }, { icon: "📅", label: "Kalender", bg: "#8b5cf6", run: () => downloadIcs([[dl, doc]], "frist.ics") }]}>
+                  right={[{ icon: <IcoEye />, label: "Öffnen", bg: "#3b82f6", run: () => onOpen(doc.id) }, { icon: "📅", label: "Kalender", bg: "#8b5cf6", run: () => downloadIcs([[dl, doc]], "frist.ics") }]}>
                 <li className={dl.done ? "done" : ""}>
                   <div className="row1">
                     <label className="check" onClick={(e) => e.stopPropagation()}>
@@ -5362,10 +5362,9 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       {!!accounts.length && (
         <div className="chips">
           <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>
-          <button className="chip on chipdrop" onClick={() => setPick(true)}>{allSel ? "Alle Konten" : acc ? accName(acc) : `${sel.length} Konten`} <span aria-hidden="true">▾</span></button>
           {!allSel && <button className="chip" onClick={() => setSel([])}>✕ Alle anzeigen</button>}
           {selA && !peek && <button className="chip" onClick={() => setEditAcc(selA)}>✎ Konto bearbeiten</button>}
-          <button className={"chip desktop-only" + (hiddenAccs.length ? " on" : "")} title="Konten aktivieren / deaktivieren" onClick={() => setAccVis(true)}>👁 Konten ein/aus{hiddenAccs.length ? ` (${hiddenAccs.length} aus)` : ""}</button>
+          <button className={"chip desktop-only" + (hiddenAccs.length ? " on" : "")} title="Konten aktivieren / deaktivieren" onClick={() => setAccVis(true)}><IcoEye /> Konten ein/aus{hiddenAccs.length ? ` (${hiddenAccs.length} aus)` : ""}</button>
           <PSelect className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</PSelect>
           {(() => { const cl = ls.get("txColls", []); if (!cl.length) return null;
             return coll ? <button className="chip on" onClick={() => setColl("")} title="Sammlungsfilter aufheben">📁 {cl.find((c) => c.id === coll)?.name || "Sammlung"} · {fmtMoney(list.reduce((a, t) => a + t.amount, 0))} ✕</button>
@@ -7261,7 +7260,14 @@ function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0
     addEventListener("resize", calc);
     const ro = new ResizeObserver(calc); const root = document.querySelector(".app") || document.body;
     [...root.querySelectorAll(".maincol > :not(.txtable):not(.txscroll)")].forEach((x) => ro.observe(x)); ro.observe(root);
-    return () => { cancelAnimationFrame(raf); removeEventListener("resize", calc); ro.disconnect(); if (lock) document.documentElement.classList.remove("fitlock"); };
+    // alles, was über der Box steht (auch neu eingefügte Elemente), beobachten – sonst bleibt die Höhe nach einem Wechsel (z. B. nur 1 Konto) falsch
+    const ro2 = new ResizeObserver(calc);
+    const watch = () => { ro2.disconnect(); for (let el = ref.current; el && el !== document.body; el = el.parentElement) for (let x = el.previousElementSibling; x; x = x.previousElementSibling) ro2.observe(x); };
+    watch();
+    let mt = 0; const mo = new MutationObserver(() => { clearTimeout(mt); mt = setTimeout(() => { watch(); calc(); }, 60); });
+    mo.observe(root, { childList: true, subtree: true });
+    addEventListener("transitionend", calc);
+    return () => { cancelAnimationFrame(raf); clearTimeout(mt); removeEventListener("resize", calc); removeEventListener("transitionend", calc); ro.disconnect(); ro2.disconnect(); mo.disconnect(); if (lock) document.documentElement.classList.remove("fitlock"); };
   }, []);
   return h;
 }
@@ -8078,7 +8084,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                     tags={[x.kind === "angebot" && "Angebot"]} sub={`${x.number || "Entwurf"} · ${fmtDate(x.date)}${payable ? " · fällig " + fmtDate(invDueEff(x)) : ""}`}
                     amount={fmtMoney(invTotal(x))} amountCls={sx === "bezahlt" ? "in" : sx === "überfällig" ? "neg" : ""} pill={<span className={"stpill " + ui[1]}>{ui[0]}</span>}
                     onClick={() => setEdit(x)}
-                    swipe={{ left: [x.number && { icon: "👁", label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }, { icon: "⧉", label: "Kopie", bg: "#8b5cf6", run: () => copyAsNew(x) }],
+                    swipe={{ left: [x.number && { icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }, { icon: "⧉", label: "Kopie", bg: "#8b5cf6", run: () => copyAsNew(x) }],
                       right: [payable && { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayFor2(x) }, sx === "überfällig" && { icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }] }}
                     after={prevInv === x.id && <InvPreview x={x} co={co} />} />); })}
               </React.Fragment>
@@ -8354,7 +8360,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
                   amount={c.amount ? fmtMoney(Number(c.amount)) : "—"} amountSub={c.interval || "monatlich"}
                   pill={!c.cancelledAt && left != null && left >= 0 && left <= 60 && <span className={"stpill " + (left <= 30 ? "st-over" : "st-draft")}>{left === 0 ? "heute" : `in ${left} T.`}</span>}
                   onClick={() => setEdit(c)}
-                  swipe={{ left: [cdocs[0] && { icon: "👁", label: "Dokument", bg: "#0ea5e9", run: () => onOpen(cdocs[0].id) }],
+                  swipe={{ left: [cdocs[0] && { icon: <IcoEye />, label: "Dokument", bg: "#0ea5e9", run: () => onOpen(cdocs[0].id) }],
                     right: [{ icon: c.inactive ? "▶" : "⏸", label: c.inactive ? "Aktiv" : "Inaktiv", bg: "#64748b", run: () => save({ ...c, inactive: !c.inactive }) },
                       d.cancelBy && !c.cancelledAt && { icon: "📅", label: "Kalender", bg: "#8b5cf6", run: () => saveBlob(new Blob([["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinDocu//DE", icsEvent({ id: "ct-" + c.id, date: d.cancelBy, label: "Kündigung bis" }, { title: `${c.name} (${c.provider || ""})` }), "END:VCALENDAR"].join("\r\n")], { type: "text/calendar" }), "kuendigung.ics") }] }} />); })}
             </React.Fragment>
@@ -9206,7 +9212,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
             {shown.map((a) => (
               <MItem key={a.id} icon={<AstIco a={a} />} title={a.name} dim={astOut(a)} tags={[(a.scope || "privat") === "firma" && "Firma", a.docId && "📎"]}
                 sub={sub(a)} amount={a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"} pill={pill(a)} onClick={() => setEdit(a)}
-                swipe={{ left: [a.docId && { icon: "👁", label: "Beleg", bg: "#0ea5e9", run: () => onOpen(a.docId) }],
+                swipe={{ left: [a.docId && { icon: <IcoEye />, label: "Beleg", bg: "#0ea5e9", run: () => onOpen(a.docId) }],
                   right: [{ icon: "📅", label: "Kalender", bg: "#8b5cf6", run: () => downloadIcs(assetDlDocs([a]).flatMap((d) => d.deadlines.map((dl) => [dl, d])), "garantie.ics") },
                     { icon: astOut(a) ? "▶" : "📤", label: astOut(a) ? "Aktiv" : "Aus", bg: "#64748b", run: () => save({ ...a, soldAt: astOut(a) ? "" : todayISO(), inactive: false }) }] }} />
             ))}
@@ -9556,12 +9562,20 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
 
 function AccVisWin({ accounts, txs, onHide, onUnhide, onClose }) {
   const on = accounts.filter((a) => !a.hidden).length;
+  // Schnellwahl: passende Konten aktivieren, alle anderen deaktivieren
+  const setOnly = (want) => accounts.forEach((a) => { const w = !!want(a); if (w && a.hidden) onUnhide(a.id); else if (!w && !a.hidden) onHide(a.id); });
   return (
     <Win id="accvis" onClose={onClose} small dirty={false}>
       <div className="panelhead"><b>Konten aktivieren / deaktivieren</b><XBtn /></div>
       <p className="muted small">Deaktivierte Konten verschwinden aus Kontenliste, Übersicht, Analyse und Vermögen. Die Buchungen bleiben gespeichert und sind nach dem Aktivieren wieder da.</p>
       <div className="accvishead"><span className="muted small grow">{on} von {accounts.length} aktiv</span>
-        <button className="chip" disabled={on === accounts.length} onClick={() => accounts.filter((a) => a.hidden).forEach((a) => onUnhide(a.id))}>Alle aktivieren</button></div>
+        </div>
+      <div className="quickpick accvisqp">
+        <button onClick={() => setOnly(() => true)}>Alle</button>
+        <button onClick={() => setOnly(() => false)}>Keine</button>
+        <button onClick={() => setOnly((a) => (accountBalance(a, txs) || 0) > 0)}>Nur Guthaben</button>
+        <button onClick={() => setOnly((a) => (accountBalance(a, txs) || 0) < 0)}>Nur Schulden</button>
+      </div>
       {accounts.map((a) => (
         <label key={a.id} className={"switchrow accvisrow" + (a.hidden ? " off" : "")}>
           <span className="accvisname"><AccIcon a={a} force /><span><b style={accStyle(a)}>{a.name}</b><small className="muted block">{txs.filter((t) => t.accountId === a.id).length} Buchungen</small></span></span>
@@ -9926,7 +9940,7 @@ function DunningPage({ setTab, book }) {
               sub={`${x.number} · ${since} T. überfällig${last ? " · zuletzt " + remindName(last.level) : ""}`} amount={fmtMoney(invTotal(x))} amountCls="neg"
               pill={<span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? remindName(next) : `in ${(dn.waitDays || 0) - since} T.`}</span>}
               onClick={() => setRemind(x)}
-              swipe={{ left: [{ icon: "👁", label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }],
+              swipe={{ left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }],
                 right: [{ icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }, { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayX(x) }] }}
               after={prevInv === x.id && <InvPreview x={x} co={co} />} />
           ))}
@@ -9937,7 +9951,7 @@ function DunningPage({ setTab, book }) {
               amount={fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))} amountCls={s === "bezahlt" ? "in" : ""}
               pill={i === x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
               onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}
-              swipe={{ left: [{ icon: "👁", label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id + ":" + i ? null : x.id + ":" + i) }],
+              swipe={{ left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id + ":" + i ? null : x.id + ":" + i) }],
                 right: [{ icon: "📤", label: "Teilen", bg: "#8b5cf6", run: async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email) }] }}
               after={prevInv === x.id + ":" + i && <InvPreview x={x} co={co} make={() => pdfOf(x, i)} name={invFileName(x, r)} />} />); })}
         </MScroll>
@@ -12015,4 +12029,10 @@ label>.vehpick.block{margin-top:6px}
   .docbox .dcatcol .label{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
   .docbox .ditem .dactions button{width:34px;height:34px}
 }
+
+.chip svg{width:16px;height:16px;vertical-align:-3px}
+
+.quickpick.accvisqp{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.quickpick.accvisqp button{border:1px solid var(--line);background:none;color:var(--mut);border-radius:999px;padding:8px 16px;font-size:15px;cursor:pointer}
+.quickpick.accvisqp button:hover{color:var(--acc);border-color:var(--acc)}
 `;

@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.78.0
+
+- Konten: Chip „Alle Konten ▾“ (Fenster „Konten auswählen“) entfernt – die Auswahl läuft über die Seitenleiste.
+- „Konten ein/aus“: Schnellwahl **Alle · Keine · Nur Guthaben · Nur Schulden** (aktiviert passende Konten, deaktiviert die anderen). Das Emoji-Auge im Chip ist jetzt das schlichte Linien-Auge wie bei den anderen Symbolen; ebenso die Wisch-Aktionen „Vorschau/Öffnen/Beleg“.
+- Umsätze-Box: Höhe wird jetzt auch neu berechnet, wenn sich darüber etwas ändert (anderes Konto gewählt, Kennzahlen/Chips neu, Seitenleiste ein-/ausgeklappt) – vorher konnte unten eine Lücke bleiben.
+
 ## v0.77.0
 
 - **Alle Auswahlfelder (53 `<select>`) im Fahrtenbuch-Stil**: neue Komponente `PSelect` – gleiche Optionen/Logik wie vorher, aber als Auswahlmenü mit Haken bei der aktuellen Wahl. Filter-Chips bleiben Chips, Formularfelder sehen aus wie Eingabefelder. Öffnet nach oben, wenn unten kein Platz ist.
