@@ -4520,8 +4520,8 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
       ]} />
       {onFiles && showDrop && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} />}
       {docBusy && <ImportBar {...docBusy} />}
-      <FitScroll>
       <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>
+      <FitScroll card={view !== "grid"} className="docbox">
 
       {!docs.length && (
         <div className="empty"><div style={{ fontSize: 48 }}>📥</div>
@@ -4565,7 +4565,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
               {pick && <span className={"pickbox inline" + (pick.has(d.id) ? " on" : "")}>✓</span>}
               <Thumb d={d} />
               <div className="grow">
-                <div className="row1"><b className="clamp dtitle" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevId(prevId === d.id ? null : d.id); }}>{d.title}</b>{amt(d)}</div>
+                <div className="row1"><b className="clamp dtitle" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevId(prevId === d.id ? null : d.id); }}>{d.title}</b><span className="damtin">{amt(d)}</span></div>
                 <small className="muted block">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
                 <div className="labels">
                   <Label c={d.category} />
@@ -4575,6 +4575,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
                 </div>
                 {status(d)}
               </div>
+              <span className="damtcol">{amt(d)}</span>
               <DocActions d={d} prevOpen={prevId === d.id} onPreview={() => setPrevId(prevId === d.id ? null : d.id)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
             </div></SwipeRow>
             {prevId === d.id && <DocPreview d={d} onOpen={() => onOpen(d.id)} />}
@@ -6995,7 +6996,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         <section className="bkcard">
           <h4>Automatische Backups</h4>
           <label className="bklabel">Intervall</label>
-          <PickMenu icon="🔄" label={AB_INTERVALS.find(([k]) => k === abIv)?.[1] || "Aus"} title="Intervall" items={AB_INTERVALS.map(([k, l, sub]) => ({ k, title: l, sub, on: abIv === k, run: () => setAbIv(k) }))} />
+          <PickMenu click icon="🔄" label={AB_INTERVALS.find(([k]) => k === abIv)?.[1] || "Aus"} title="Intervall" items={AB_INTERVALS.map(([k, l, sub]) => ({ k, title: l, sub, on: abIv === k, run: () => setAbIv(k) }))} />
           <p className="muted small bkline">Letztes Auto-Backup: <b>{fmtStamp(ls.get("lastAutoBackup", ""))}</b>{abIv === "aus" ? " (deaktiviert)" : ""}{abCount != null ? ` · ${abCount} von ${AB_MAX} gespeichert` : ""}</p>
           <p className="muted small bkline">Letztes externes Backup: <b>{fmtStamp(ls.get("lastExtBackup", ""))}</b>{(() => { const l = ls.get("lastExtBackup", ""); const d = l ? Math.floor((Date.now() - new Date(l)) / 864e5) : null; return d == null ? <span className="red"> – bitte bald sichern</span> : d > 30 ? <span className="red"> – vor {d} Tagen</span> : null; })()}</p>
           <div className="actions">
@@ -8122,15 +8123,15 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                   {pay && <button className="link pos small" onClick={async (e) => { e.stopPropagation(); if (book) await book.link(pay.id, x); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id, paidAccount: pay.accountId, payMethod: "Überweisung" }); }}>💡 Zahlungseingang vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}
                 </div>
                 <b className="invamt">{fmtMoney(invTotal(x))}</b>
-            {!(x.kind === "rechnung" && s !== "entwurf") && <span className={"stpill " + cls}>{label}</span>}
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
-                  {s !== "entwurf" && <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button>}
-                  {s !== "entwurf" && <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button>}
                   {s === "überfällig" && <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>}
-                  {x.kind === "angebot" && s === "offen" && <><button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button><button className="link small" onClick={() => patch(x.id, { status: "abgelehnt" })}>Abgelehnt</button></>}
-                  {x.kind === "rechnung" && s !== "entwurf" && <StatusMenu x={x} s={s} book={book} onPay={setPayFor2} onUnpay={unpay} onPatch={patch} />}
+                  {x.kind === "angebot" && s === "offen" && <button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button>}
+                  {x.kind === "rechnung" && s !== "entwurf" ? <StatusMenu x={x} s={s} book={book} onPay={setPayFor2} onUnpay={unpay} onPatch={patch} /> : <span className={"stpill invst " + cls}>{label}</span>}
+                  {s !== "entwurf" ? <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button> : <span className="iconbtn invph" aria-hidden="true" />}
+                  {s !== "entwurf" ? <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button> : <span className="iconbtn invph" aria-hidden="true" />}
                   <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
                     <div className="moremenu">
+                      {x.kind === "angebot" && s === "offen" && <button onClick={(e) => { e.currentTarget.closest("details").open = false; patch(x.id, { status: "abgelehnt" }); }}>✕ Als abgelehnt markieren</button>}
                       <button onClick={() => copyAsNew(x)}>Als neue {x.kind === "angebot" ? "Angebot" : "Rechnung"} kopieren</button>
                       {s !== "entwurf" && onArchive && <button onClick={async () => { await onArchive(await buildInvoicePdf(x, co), invFileName(x), x); }}>In Dokumente ablegen</button>}
                       {s === "entwurf" && <button className="red" onClick={() => confirm("Entwurf löschen?") && setList((l) => l.filter((y) => y.id !== x.id))}>Entwurf löschen</button>}
@@ -11947,4 +11948,21 @@ html.hdrmin .hdrcol{display:none!important}
 
 .exppage .expbox .expday{position:sticky!important;top:0!important;z-index:2;margin:0 -14px;padding:8px 16px;background:var(--card2);font-size:15px;border-radius:0}
 .exppage .expbox .expday+.expentry>.frow{border-top:0}
+
+.invacts .stpill.invst{min-width:84px;display:inline-flex;justify-content:center;flex:none}
+
+/* v0.76 Dokumente als einspaltige Liste in der Box (wie Rechnungen) */
+.docbox .dlist,.tab-docs .docbox .dlist{display:block!important;background:none;box-shadow:none;border-radius:0;overflow:visible}
+.docbox .dwrap+.dwrap{border-top:1px solid var(--line)}
+.damtcol{display:none}
+@media (min-width:701px){
+  .docbox .ditem{flex-wrap:nowrap!important;align-items:center}
+  .docbox .damtin{display:none}
+  .docbox .damtcol{display:block;flex:none;min-width:110px;text-align:right;white-space:nowrap}
+  .docbox .damtcol:empty{visibility:hidden}
+  .docbox .ditem .dactions{flex-direction:row!important;gap:2px;flex:none;width:auto}
+  .docbox .ditem .dactions button{width:36px;height:36px}
+}
+
+.invacts .invph{visibility:hidden;pointer-events:none}
 `;

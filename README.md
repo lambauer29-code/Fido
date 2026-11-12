@@ -2,6 +2,19 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.76.1
+
+- Rechnungen/Angebote: Reihenfolge rechts jetzt Status (Offen/Bezahlt …) → Auge → Teilen → ⋯. Bei Entwürfen bleiben die Plätze von Auge/Teilen frei, damit alle Status-Etiketten untereinander stehen.
+
+## v0.76.0
+
+- **Dokumente** als einspaltige Liste in einer festen abgerundeten Box (wie Rechnungen): Vorschaubild, Titel/Absender/Datum/Etiketten, Betrag in eigener Spalte rechtsbündig, dann Bearbeiten/Drucken/Teilen/Löschen in einer Reihe. Am Handy dieselbe Box mit nativer Seiten-Scroll. Die Kachel-Ansicht (⇄) bleibt unverändert.
+- **Rechnungen/Angebote**: Der Statushinweis bei Angeboten und Entwürfen (Offen, Angenommen, Abgelehnt, Entwurf) steht jetzt rechts an derselben Stelle wie das Status-Menü der Rechnungen – dadurch stehen alle Beträge in einer Linie. „Abgelehnt“ bei offenen Angeboten ist ins ⋯-Menü gewandert („Als abgelehnt markieren“).
+
+## v0.75.2
+
+- Backup → Automatische Backups: Intervall-Menü öffnet nur noch per Klick, nicht beim Drüberfahren mit der Maus.
+
 ## v0.75.1
 
 - Erfasste Ausgaben (iPad/Desktop): Liste nach Tagen gruppiert, das Datum bleibt beim Scrollen oben in der Box stehen – wie am iPhone. Bei älteren Jahren steht die Jahreszahl dabei.
