@@ -6957,7 +6957,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         <section className="bkcard">
           <h4>Verschlüsseltes Backup</h4>
           <div className="actions">
-            <button className="btn primary" disabled={busy} onClick={() => setBkOpen(true)}>🔐 Backup speichern</button>
+            <button className={"btn bkpress" + (bkOpen ? " on" : "")} disabled={busy} onClick={() => setBkOpen(true)}>🔐 Backup speichern</button>
             <button className="btn" disabled={busy} onClick={() => importRef.current.click()}>🔓 Backup wiederherstellen</button>
           </div>
           {bkFile && <div className="bkimp">
@@ -6975,7 +6975,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
           <p className="muted small bkline">Letztes Auto-Backup: <b>{fmtStamp(ls.get("lastAutoBackup", ""))}</b>{abIv === "aus" ? " (deaktiviert)" : ""}{abCount != null ? ` · ${abCount} von ${AB_MAX} gespeichert` : ""}</p>
           <p className="muted small bkline">Letztes externes Backup: <b>{fmtStamp(ls.get("lastExtBackup", ""))}</b>{(() => { const l = ls.get("lastExtBackup", ""); const d = l ? Math.floor((Date.now() - new Date(l)) / 864e5) : null; return d == null ? <span className="red"> – bitte bald sichern</span> : d > 30 ? <span className="red"> – vor {d} Tagen</span> : null; })()}</p>
           <div className="actions">
-            <button className="btn primary" disabled={abBusy} onClick={async () => { setAbBusy(true); try { await createAutoBackup("manuell"); notify("Sicherung im Browser erstellt"); } catch (e) { notify("Sicherung fehlgeschlagen: " + e.message); } finally { setAbBusy(false); } }}>{abBusy ? "⏳ Sichere …" : "💾 Jetzt sichern"}</button>
+            <button className={"btn bkpress" + (abBusy ? " on" : "")} disabled={abBusy} onClick={async () => { setAbBusy(true); try { await createAutoBackup("manuell"); notify("Sicherung im Browser erstellt"); } catch (e) { notify("Sicherung fehlgeschlagen: " + e.message); } finally { setAbBusy(false); } }}>{abBusy ? "⏳ Sichere …" : "💾 Jetzt sichern"}</button>
             <button className="btn" onClick={() => setAbOpen(true)}>📋 Auto-Backups verwalten</button>
           </div>
           <p className="muted small">Auto-Backups werden im Browser gespeichert (rotierend max. {AB_MAX} Stück). Das schützt vor versehentlichem Datenverlust in FinDocu, aber nicht vor dem Löschen der Website-Daten oder einem Geräteverlust – erstelle daher zusätzlich regelmäßig externe Backups. Die Original-Dateien (PDFs, Fotos) sind nur im externen Backup enthalten.</p>
@@ -11909,4 +11909,7 @@ html.mnat main{padding-bottom:0!important}
 .bkcard .bkline{margin:10px 0 0}
 .bkbar{height:8px;border-radius:99px;background:var(--card2);overflow:hidden;margin:4px 0 6px}.bkbar i{display:block;height:100%;background:var(--acc);border-radius:99px}
 .abrow .grow b{font-size:16px}
+
+.btn.bkpress:active,.btn.bkpress.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.bkpress.on:disabled{opacity:1}
 `;

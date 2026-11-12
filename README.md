@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.73.2
+
+- „Backup speichern“ und „Jetzt sichern“ sind nicht mehr dauerhaft hervorgehoben – die Akzentfarbe erscheint nur beim Antippen bzw. solange der Vorgang läuft.
+
 ## v0.73.1
 
 - Auto-Backup-Intervalle **Alle 5 / 10 / 30 Minuten** und **Stündlich** ergänzt.
