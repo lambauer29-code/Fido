@@ -1545,6 +1545,7 @@ function AppMain() {
   useEffect(() => ls.set("rules", rules), [rules]);
   useEffect(() => ls.set("subs", subs), [subs]);
   useEffect(() => ls.set("nav", nav), [nav]);
+  useAutoBackup();
   useEffect(() => ls.set("docArea", docAreaSel), [docAreaSel]);
   useEffect(() => { db.allTx().then(setTxs); }, []);
 
@@ -6713,6 +6714,68 @@ async function bkKey(pw, salt, iter) {
   const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
+/* ---------- Automatische Backups (im Browser, rotierend max. 10) ---------- */
+const AB_INTERVALS = [["aus", "Aus", "keine automatischen Sicherungen"], ["5min", "Alle 5 Minuten", "nur wenn sich etwas geändert hat"], ["10min", "Alle 10 Minuten", "nur wenn sich etwas geändert hat"], ["30min", "Alle 30 Minuten", "nur wenn sich etwas geändert hat"], ["stuendlich", "Stündlich", "nur wenn sich etwas geändert hat"], ["start", "Bei jedem App-Start", "höchstens alle 2 Stunden"], ["taeglich", "Täglich", "einmal pro Tag"], ["woechentlich", "Wöchentlich", "einmal pro Woche"], ["monatlich", "Monatlich", "einmal pro Monat"]];
+const AB_MS = { "5min": 5 * 60e3, "10min": 10 * 60e3, "30min": 30 * 60e3, stuendlich: 3600e3, start: 2 * 3600e3, taeglich: 24 * 3600e3, woechentlich: 7 * 24 * 3600e3, monatlich: 30 * 24 * 3600e3 };
+const AB_MAX = 10;
+const abDb = () => new Promise((res, rej) => { const r = indexedDB.open("findocu-autobak", 1); r.onupgradeneeded = () => r.result.createObjectStore("b", { keyPath: "id" }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+async function abRun(mode, fn) { const d = await abDb(); return new Promise((res, rej) => { const t = d.transaction("b", mode); const q = fn(t.objectStore("b")); t.oncomplete = () => { res(q?.result); d.close(); }; t.onerror = () => { rej(t.error); d.close(); }; }); }
+const abList = async () => ((await abRun("readonly", (st) => st.getAll())) || []).sort((a, b) => b.at.localeCompare(a.at));
+const AB_META = /^(lastAutoBackup|lastAutoCheck|lastAutoHash|lastExtBackup)$/;
+const abHash = (str) => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(36) + ":" + str.length; };
+async function createAutoBackup(reason = "auto") {
+  const docs = await db.allDocs(), txs = await db.allTx();
+  const store = {}, cmp = {};
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (BACKUP_SKIP.test(k)) continue; store[k] = localStorage.getItem(k); if (!AB_META.test(k)) cmp[k] = store[k]; }
+  const at = new Date().toISOString();
+  const body = JSON.stringify({ store: cmp, txs, docs }), hash = abHash(body);
+  // automatische Sicherungen nur, wenn sich seit der letzten etwas geändert hat (sonst verdrängen 10 gleiche Kopien die älteren)
+  if (reason !== "manuell" && hash === ls.get("lastAutoHash", "") && (await abList()).length) { ls.set("lastAutoCheck", at); return null; }
+  const data = JSON.stringify({ version: 5, exported: at, auto: true, store, txs, items: docs.map((d) => ({ doc: d, file: null })) });
+  await abRun("readwrite", (st) => st.put({ id: uid(), at, reason, size: data.length, docs: docs.length, txs: txs.length, data }));
+  const all = await abList();
+  for (const x of all.slice(AB_MAX)) await abRun("readwrite", (st) => st.delete(x.id));
+  ls.set("lastAutoBackup", at); ls.set("lastAutoCheck", at); ls.set("lastAutoHash", hash);
+  dispatchEvent(new Event("findocu-autobak"));
+  return at;
+}
+function useAutoBackup() {
+  useEffect(() => {
+    let dead = false, first = true;
+    const check = async () => {
+      const iv = ls.get("autoBackup", "taeglich"); if (iv === "aus" || !AB_MS[iv]) return;
+      const last = [ls.get("lastAutoBackup", ""), ls.get("lastAutoCheck", "")].filter(Boolean).sort().pop(), age = last ? Date.now() - new Date(last) : Infinity;
+      if (age >= AB_MS[iv] || (iv === "start" && first && age > 10 * 60e3)) { try { if (!dead) await createAutoBackup(iv === "start" ? "start" : "auto"); } catch {} }
+      first = false;
+    };
+    const t0 = setTimeout(check, 15000); // nach dem Start (wenn die Daten geladen sind)
+    const iv = setInterval(check, 60e3); // jede Minute prüfen (kurze Intervalle ab 5 Min.)
+    return () => { dead = true; clearTimeout(t0); clearInterval(iv); };
+  }, []);
+}
+const fmtSize = (n) => (n >= 1048576 ? (n / 1048576).toLocaleString("de-AT", { maximumFractionDigits: 1 }) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
+const fmtStamp = (iso) => (iso ? new Date(iso).toLocaleString("de-AT", { dateStyle: "medium", timeStyle: "short" }) : "noch nie");
+function AutoBackupWin({ onRestore, onClose, notify }) {
+  const [list, setList] = useState(null), [busy, setBusy] = useState(false);
+  const load = async () => setList(await abList().catch(() => []));
+  useEffect(() => { load(); }, []);
+  return (
+    <Win id="autobak" onClose={onClose} small dirty={false}>
+      <div className="panelhead"><b>📋 Auto-Backups</b><XBtn /></div>
+      <p className="muted small">Die letzten {AB_MAX} automatischen Sicherungen in diesem Browser. Enthalten sind Dokument-Daten, Umsätze, Konten, Rechnungen, Kunden, Kassabuch, Lager und alle Einstellungen – die Original-Dateien (PDFs, Fotos) nur im externen Backup.</p>
+      {!list ? <p className="muted small">Lade …</p> : !list.length ? <MEmpty>Noch keine automatische Sicherung.</MEmpty> : list.map((b) => (
+        <div key={b.id} className="frow abrow">
+          <span className="caticon" style={{ width: 40, height: 40, background: "var(--card2)" }}>{b.reason === "manuell" ? "💾" : "🔄"}</span>
+          <div className="grow"><b>{fmtStamp(b.at)}</b><small className="muted block">{b.reason === "manuell" ? "manuell" : "automatisch"} · {fmtSize(b.size)} · {b.docs} Dokumente · {b.txs} Umsätze</small></div>
+          <button className="iconbtn" title="Herunterladen" aria-label="Herunterladen" onClick={() => download(new Blob([b.data], { type: "application/json" }), `findocu-autobackup-${b.at.slice(0, 16).replace(/[:T]/g, "-")}.json`)}>⬇︎</button>
+          <button className="btn sm" disabled={busy} onClick={async () => { if (!confirm(`Stand vom ${fmtStamp(b.at)} wiederherstellen?\nAktuelle Daten werden mit diesem Stand überschrieben.`)) return; setBusy(true); await createAutoBackup("manuell").catch(() => {}); onRestore(new File([b.data], "auto-backup.json", { type: "application/json" })); }}>Wiederherstellen</button>
+          <button className="iconbtn" title="Löschen" aria-label="Löschen" onClick={async () => { if (!confirm("Diese Sicherung löschen?")) return; await abRun("readwrite", (st) => st.delete(b.id)); load(); notify?.("Sicherung gelöscht"); }}><IcoTrash /></button>
+        </div>
+      ))}
+    </Win>
+  );
+}
+
 async function encryptBackup(text, pw) {
   const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await bkKey(pw, salt, BK_ITER), new TextEncoder().encode(text)));
@@ -6749,6 +6812,14 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
   const [bkPw, setBkPw] = useState(""), [bkPw2, setBkPw2] = useState(""), [bkPlain, setBkPlain] = useState(false), [bkShow, setBkShow] = useState(false);
   const [bkFile, setBkFile] = useState(null), [bkImpPw, setBkImpPw] = useState("");
   const bkOk = bkPlain || (bkPw.length >= 8 && bkPw === bkPw2);
+  const [bkOpen, setBkOpen] = useState(false), [abOpen, setAbOpen] = useState(false), [abBusy, setAbBusy] = useState(false), [abVer, setAbVer] = useState(0);
+  const [abIv, setAbIvState] = useState(() => ls.get("autoBackup", "taeglich"));
+  const setAbIv = (v) => { ls.set("autoBackup", v); setAbIvState(v); };
+  const [abCount, setAbCount] = useState(null), [quota, setQuota] = useState(null), [persist, setPersist] = useState(null);
+  useEffect(() => { const f = () => setAbVer((v) => v + 1); addEventListener("findocu-autobak", f); return () => removeEventListener("findocu-autobak", f); }, []);
+  useEffect(() => { abList().then((l) => setAbCount(l.length)).catch(() => setAbCount(0));
+    navigator.storage?.estimate?.().then((e) => setQuota(e)).catch(() => {});
+    navigator.storage?.persisted?.().then(setPersist).catch(() => {}); }, [abVer, docs.length]);
   async function exportBackup() {
     setBusy(true);
     try {
@@ -6761,6 +6832,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
       const enc = !bkPlain;
       download(new Blob([enc ? await encryptBackup(plain, bkPw) : plain], { type: "application/json" }),
         `findocu-backup-${todayISO()}${enc ? "-verschluesselt" : ""}.json`);
+      ls.set("lastExtBackup", new Date().toISOString()); setAbVer((v) => v + 1); setBkOpen(false);
       if (enc) { setBkPw(""); setBkPw2(""); notify("Verschlüsseltes Backup erstellt – Passwort gut aufbewahren, ohne es ist das Backup nicht lesbar"); }
     } catch (e) { notify("Backup fehlgeschlagen: " + e.message); }
     finally { setBusy(false); }
@@ -6881,29 +6953,56 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
           ))}
         </ul>
       </SetSec></>,
-    "backup": <><SetSec id="backup" title="Backup">
-        <p className="muted small">Das Backup enthält Dokumente, Umsätze, Konten sowie Rechnungen, Kunden, Artikel, Verträge, Firmendaten und alle Einstellungen. Die Daten liegen nur in diesem Browser auf diesem Gerät. Regelmäßig sichern (z. B. in iCloud Drive) – darüber auch auf ein anderes Gerät übertragen.</p>
-        <h4 className="bkh">🔒 Verschlüsselt exportieren</h4>
-        <p className="muted small">AES-256-GCM, Schlüssel per PBKDF2 mit SHA-256 ({BK_ITER.toLocaleString("de-AT")} Durchläufe) aus deinem Passwort. Ohne Passwort kann niemand – auch nicht FinDocu – das Backup öffnen. <b>Passwort nicht vergessen!</b></p>
-        {!bkPlain && <div className="grid2">
-          <label>Passwort (mind. 8 Zeichen)<PwInput show={bkShow} setShow={setBkShow} autoComplete="new-password" value={bkPw} onChange={(e) => setBkPw(e.target.value)} /></label>
-          <label>Passwort wiederholen<PwInput show={bkShow} setShow={setBkShow} autoComplete="new-password" value={bkPw2} onChange={(e) => setBkPw2(e.target.value)} /></label>
-        </div>}
-        {!bkPlain && bkPw2 && bkPw !== bkPw2 && <small className="red block">Passwörter stimmen nicht überein</small>}
-        {!bkPlain && bkPw2 && bkPw === bkPw2 && <small className={"block " + (bkPw.length >= 8 ? "ok" : "warnc")}>{bkPw.length >= 8 ? "✓ Passwörter stimmen überein" : "Passwörter gleich – aber mindestens 8 Zeichen nötig"}</small>}
-        <label className="check"><input type="checkbox" checked={bkPlain} onChange={(e) => setBkPlain(e.target.checked)} /> Ohne Verschlüsselung exportieren (nicht empfohlen)</label>
-        <div className="actions">
-          <button className="btn primary" disabled={busy || !bkOk} onClick={exportBackup}>⬇︎ Backup exportieren</button>
-          <button className="btn" disabled={busy} onClick={() => importRef.current.click()}>⬆︎ Backup importieren</button>
-        </div>
-        {bkFile && <div className="bkimp">
-          <b>🔒 „{bkFile.name}“ ist verschlüsselt</b>
-          <label>Passwort<PwInput show={bkShow} setShow={setBkShow} autoFocus value={bkImpPw} onChange={(e) => setBkImpPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && bkImpPw && importBackup(bkFile, bkImpPw)} /></label>
-          <div className="actions"><button className="btn primary" disabled={busy || !bkImpPw} onClick={() => importBackup(bkFile, bkImpPw)}>Entschlüsseln &amp; importieren</button><button className="link" onClick={() => { setBkFile(null); setBkImpPw(""); }}>Abbrechen</button></div>
-        </div>}
-        <input ref={importRef} type="file" accept="application/json,.json" hidden onChange={(e) => { e.target.files[0] && importBackup(e.target.files[0]); e.target.value = ""; }} />
-        <p className="muted small">{docs.length} Dokumente · {txs.length} Umsätze · {usage}</p>
+    "backup": <><SetSec id="backup" title="Datensicherung">
+        <section className="bkcard">
+          <h4>Verschlüsseltes Backup</h4>
+          <div className="actions">
+            <button className="btn primary" disabled={busy} onClick={() => setBkOpen(true)}>🔐 Backup speichern</button>
+            <button className="btn" disabled={busy} onClick={() => importRef.current.click()}>🔓 Backup wiederherstellen</button>
+          </div>
+          {bkFile && <div className="bkimp">
+            <b>🔒 „{bkFile.name}“ ist verschlüsselt</b>
+            <label>Passwort<PwInput show={bkShow} setShow={setBkShow} autoFocus value={bkImpPw} onChange={(e) => setBkImpPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && bkImpPw && importBackup(bkFile, bkImpPw)} /></label>
+            <div className="actions"><button className="btn primary" disabled={busy || !bkImpPw} onClick={() => importBackup(bkFile, bkImpPw)}>Entschlüsseln &amp; importieren</button><button className="link" onClick={() => { setBkFile(null); setBkImpPw(""); }}>Abbrechen</button></div>
+          </div>}
+          <p className="muted small">Das Backup wird AES-256 verschlüsselt gespeichert (.json) und enthält <b>alle Dokumente samt Dateien, Umsätze, Konten, Rechnungen, Kunden, Artikel, Kassabuch, Lager, Verträge, Firmendaten und Einstellungen</b>. Nur mit dem richtigen Passwort wiederherstellbar. Regelmäßig sichern (z. B. in iCloud Drive) – darüber auch auf ein anderes Gerät übertragen.</p>
+          <input ref={importRef} type="file" accept="application/json,.json" hidden onChange={(e) => { e.target.files[0] && importBackup(e.target.files[0]); e.target.value = ""; }} />
+        </section>
+        <section className="bkcard">
+          <h4>Automatische Backups</h4>
+          <label className="bklabel">Intervall</label>
+          <PickMenu icon="🔄" label={AB_INTERVALS.find(([k]) => k === abIv)?.[1] || "Aus"} title="Intervall" items={AB_INTERVALS.map(([k, l, sub]) => ({ k, title: l, sub, on: abIv === k, run: () => setAbIv(k) }))} />
+          <p className="muted small bkline">Letztes Auto-Backup: <b>{fmtStamp(ls.get("lastAutoBackup", ""))}</b>{abIv === "aus" ? " (deaktiviert)" : ""}{abCount != null ? ` · ${abCount} von ${AB_MAX} gespeichert` : ""}</p>
+          <p className="muted small bkline">Letztes externes Backup: <b>{fmtStamp(ls.get("lastExtBackup", ""))}</b>{(() => { const l = ls.get("lastExtBackup", ""); const d = l ? Math.floor((Date.now() - new Date(l)) / 864e5) : null; return d == null ? <span className="red"> – bitte bald sichern</span> : d > 30 ? <span className="red"> – vor {d} Tagen</span> : null; })()}</p>
+          <div className="actions">
+            <button className="btn primary" disabled={abBusy} onClick={async () => { setAbBusy(true); try { await createAutoBackup("manuell"); notify("Sicherung im Browser erstellt"); } catch (e) { notify("Sicherung fehlgeschlagen: " + e.message); } finally { setAbBusy(false); } }}>{abBusy ? "⏳ Sichere …" : "💾 Jetzt sichern"}</button>
+            <button className="btn" onClick={() => setAbOpen(true)}>📋 Auto-Backups verwalten</button>
+          </div>
+          <p className="muted small">Auto-Backups werden im Browser gespeichert (rotierend max. {AB_MAX} Stück). Das schützt vor versehentlichem Datenverlust in FinDocu, aber nicht vor dem Löschen der Website-Daten oder einem Geräteverlust – erstelle daher zusätzlich regelmäßig externe Backups. Die Original-Dateien (PDFs, Fotos) sind nur im externen Backup enthalten.</p>
+        </section>
+        <section className="bkcard">
+          <h4>Speicherverbrauch (Browser)</h4>
+          {quota ? <>
+            <div className="bkbar"><i style={{ width: Math.max(1, Math.min(100, (quota.usage / quota.quota) * 100)) + "%" }} /></div>
+            <p className="muted small bkline">Genutzt: <b>{fmtSize(quota.usage || 0)}</b> von ca. {quota.quota >= 1073741824 ? (quota.quota / 1073741824).toLocaleString("de-AT", { maximumFractionDigits: 1 }) + " GB" : fmtSize(quota.quota)} (IndexedDB)</p>
+          </> : <p className="muted small">Speicherangaben werden von diesem Browser nicht unterstützt.</p>}
+          <p className="muted small bkline">{docs.length} Dokumente · {txs.length} Umsätze</p>
+          <p className="muted small bkline">Dauerhafter Speicher: {persist ? <b className="ok">✓ aktiv – der Browser löscht die Daten nicht von selbst</b> : <><b>nicht aktiv</b> <button className="link" onClick={async () => { const ok = await navigator.storage?.persist?.(); setPersist(!!ok); notify(ok ? "Dauerhafter Speicher aktiviert" : "Der Browser hat dauerhaften Speicher abgelehnt – am iPhone hilft „Zum Home-Bildschirm“"); }}>aktivieren</button></>}</p>
+          <p className="muted small">Dokumente, Dateien und Umsätze liegen in IndexedDB, Einstellungen und Listen (Rechnungen, Kunden, Kassabuch …) im localStorage – beides nur in diesem Browser auf diesem Gerät.</p>
+        </section>
         <WipeAll docs={docs.length} txs={txs.length} />
+        {bkOpen && <Win id="bksave" onClose={() => setBkOpen(false)} small dirty={!!(bkPw || bkPw2)}>
+          <div className="panelhead"><b>🔐 Backup speichern</b><button className="btn primary" disabled={busy || !bkOk} onClick={exportBackup}>{busy ? "⏳ …" : "Speichern"}</button><XBtn /></div>
+          <p className="muted small">AES-256-GCM, Schlüssel per PBKDF2 mit SHA-256 ({BK_ITER.toLocaleString("de-AT")} Durchläufe) aus deinem Passwort. Ohne Passwort kann niemand – auch nicht FinDocu – das Backup öffnen. <b>Passwort nicht vergessen!</b></p>
+          {!bkPlain && <div className="grid2">
+            <label>Passwort (mind. 8 Zeichen)<PwInput show={bkShow} setShow={setBkShow} autoFocus autoComplete="new-password" value={bkPw} onChange={(e) => setBkPw(e.target.value)} /></label>
+            <label>Passwort wiederholen<PwInput show={bkShow} setShow={setBkShow} autoComplete="new-password" value={bkPw2} onChange={(e) => setBkPw2(e.target.value)} onKeyDown={(e) => e.key === "Enter" && bkOk && exportBackup()} /></label>
+          </div>}
+          {!bkPlain && bkPw2 && bkPw !== bkPw2 && <small className="red block">Passwörter stimmen nicht überein</small>}
+          {!bkPlain && bkPw2 && bkPw === bkPw2 && <small className={"block " + (bkPw.length >= 8 ? "ok" : "warnc")}>{bkPw.length >= 8 ? "✓ Passwörter stimmen überein" : "Passwörter gleich – aber mindestens 8 Zeichen nötig"}</small>}
+          <label className="check"><input type="checkbox" checked={bkPlain} onChange={(e) => setBkPlain(e.target.checked)} /> Ohne Verschlüsselung speichern (nicht empfohlen)</label>
+        </Win>}
+        {abOpen && <AutoBackupWin notify={notify} onClose={() => setAbOpen(false)} onRestore={(f) => { setAbOpen(false); importBackup(f); }} />}
       </SetSec></>,
     "verbindung": <><SetSec id="verbindung" title="Verbindung">
         <label>App-Token (wie APP_TOKEN in Vercel)
@@ -11801,4 +11900,13 @@ html.mnat main{padding-bottom:0!important}
 .msticky.mguard::before{content:"";position:absolute;left:0;right:0;bottom:0;height:calc(env(safe-area-inset-top) + 12px);background:var(--bg)}
 .mpage>.msticky.mguard{margin-bottom:-12px!important}
 @media(max-width:700px){.fbseg{top:calc(env(safe-area-inset-top) + 12px)!important}}
+
+/* v0.73 Datensicherung */
+.bkcard{border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin:0 0 14px;background:color-mix(in srgb,var(--card2) 40%,transparent)}
+.bkcard h4{margin:0 0 12px;font-size:17px}
+.bkcard .actions{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 10px}
+.bkcard .bklabel{display:block;margin:0 0 6px;font-size:14px;color:var(--mut)}
+.bkcard .bkline{margin:10px 0 0}
+.bkbar{height:8px;border-radius:99px;background:var(--card2);overflow:hidden;margin:4px 0 6px}.bkbar i{display:block;height:100%;background:var(--acc);border-radius:99px}
+.abrow .grow b{font-size:16px}
 `;

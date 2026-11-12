@@ -2,6 +2,20 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.73.1
+
+- Auto-Backup-Intervalle **Alle 5 / 10 / 30 Minuten** und **Stündlich** ergänzt.
+- Automatische Sicherungen werden nur angelegt, wenn sich die Daten seit der letzten Sicherung geändert haben (sonst würden 10 gleiche Kopien die älteren verdrängen). „Jetzt sichern“ sichert immer.
+- Prüfung läuft jede Minute, solange die App offen ist.
+
+## v0.73.0
+
+- **Datensicherung neu** in drei Karten: *Verschlüsseltes Backup* (Speichern/Wiederherstellen), *Automatische Backups*, *Speicherverbrauch*.
+- **Automatische Backups** im Browser (eigene IndexedDB), rotierend max. 10 Stück. Intervall: Aus, Bei jedem App-Start (max. alle 2 h), Täglich (Standard), Wöchentlich, Monatlich – Auswahlmenü im Stil der Fahrzeugauswahl im Fahrtenbuch.
+- „Jetzt sichern“, „Auto-Backups verwalten“ (herunterladen, wiederherstellen mit vorheriger Sicherheitskopie, löschen), Anzeige letztes Auto-/externes Backup mit Warnung.
+- Auto-Backups enthalten keine Originaldateien (PDFs/Fotos) und sind nicht verschlüsselt – die liegen nur im externen Backup.
+- Speicherverbrauch (IndexedDB) mit Balken und Option „Dauerhafter Speicher“.
+
 ## v0.72.5
 
 - Mahnungen: Suchleiste auch auf iPad und Desktop (über der Liste, filtert „Zu mahnen“ und Mahnverlauf, Anzahl in den Überschriften).
