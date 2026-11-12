@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.77.0
+
+- **Alle Auswahlfelder (53 `<select>`) im Fahrtenbuch-Stil**: neue Komponente `PSelect` – gleiche Optionen/Logik wie vorher, aber als Auswahlmenü mit Haken bei der aktuellen Wahl. Filter-Chips bleiben Chips, Formularfelder sehen aus wie Eingabefelder. Öffnet nach oben, wenn unten kein Platz ist.
+- **Alle Auswahlmenüs öffnen nur per Klick** (PickMenu standardmäßig `click`, Fahrzeugauswahl im Fahrtenbuch ebenso).
+- Menüs in Fenstern schließen das Fenster nicht mehr; Klicks im Menü lösen keine Zeilen-Klicks mehr aus.
+- **Dokumente-Liste wie Rechnungen** (ab iPad): Titel + Absender/Datum, Betrag, Kategorie-Etikett an der Status-Stelle, dann Bearbeiten/Drucken/Teilen/Löschen. Ohne Vorschaubild, kompakte Zeilen.
+
 ## v0.76.1
 
 - Rechnungen/Angebote: Reihenfolge rechts jetzt Status (Offen/Bezahlt …) → Auge → Teilen → ⋯. Bei Entwürfen bleiben die Plätze von Auge/Teilen frei, damit alle Status-Etiketten untereinander stehen.

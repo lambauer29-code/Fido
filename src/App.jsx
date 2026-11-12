@@ -888,9 +888,9 @@ function NewCategoryWin({ groups, defGroup, existing, onCreate, onClose }) {
       <label>Name<input autoFocus value={name} placeholder="z. B. KFZ, Haustier, Hobby" onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter" && n && !dup) { onCreate(n, gid, st); onClose(); } }} /></label>
       {dup && <p className="red small">Diese Kategorie gibt es schon.</p>}
-      <label>Gruppe<select value={gid} onChange={(e) => setGid(e.target.value)}>
+      <label>Gruppe<PSelect value={gid} onChange={(e) => setGid(e.target.value)}>
         {groups.map((g) => <option key={g.id} value={g.id}>{g.title || "(ohne Überschrift)"} · {AREAS[g.area]?.[1] || ""}</option>)}
-      </select></label>
+      </PSelect></label>
       <CatStylePicker icon={st.icon} color={st.color} img={st.img} onChange={setSt} />
       <div className="asfoot"><span className="aspreview"><span className="label" style={{ color: st.color, background: st.color + "22" }}>{st.img ? <img className="catimg" src={st.img} alt="" /> : st.icon} {n || "Vorschau"}</span></span></div>
       <p className="muted small">Später änderbar unter Einstellungen › Dokumente – Kategorien.</p>
@@ -948,10 +948,10 @@ function DocNavSettings({ part = "groups", nav, setNav, docs, renameCategory, de
             </div>
             <div className="areapick">
               <small className="muted">gehört zu</small>
-              <select className="chip" value={g.parent || ""} disabled={hasKids(g)} title={hasKids(g) ? "Hat selbst Untergruppen" : ""} onChange={(e) => patch(gi, { parent: e.target.value || undefined, ...(e.target.value ? { area: groups.find((x) => x.id === e.target.value)?.area || g.area } : {}) })}>
+              <PSelect className="chip" value={g.parent || ""} disabled={hasKids(g)} title={hasKids(g) ? "Hat selbst Untergruppen" : ""} onChange={(e) => patch(gi, { parent: e.target.value || undefined, ...(e.target.value ? { area: groups.find((x) => x.id === e.target.value)?.area || g.area } : {}) })}>
                 <option value="">– Hauptgruppe –</option>
                 {groups.filter((x) => !x.parent && x.id !== g.id).map((x) => <option key={x.id} value={x.id}>{x.title || "Ohne Überschrift"}</option>)}
-              </select>
+              </PSelect>
               {!g.parent && <button className="chip" onClick={() => addSub(g)}>＋ Untergruppe</button>}
             </div>
             <div className="areapick">
@@ -1050,10 +1050,10 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
                   <button className="ki catki" title="Symbol & Textfarbe" style={t.color ? { background: t.color + "22" } : undefined} onClick={() => setTabStyle(tabStyle === t.key ? null : t.key)}><TabIcon t={t} /></button>
                   <EditText className="grow" value={t.label || ""} placeholder={TAB_DEFS[t.key]?.[1]} onSave={(v) => patchTab(i, { label: v })} />
                   {(() => { const fixed = t.key === "settings" || t.key === "home" || nav.tabs.some((c) => c.parent === t.key); return (
-                  <select className="chip parentsel" title={fixed ? "Bleibt Hauptreiter (hat Unterreiter bzw. muss immer erreichbar sein)" : "Ebene"} disabled={fixed} value={fixed ? "" : t.parent || ""} onChange={(e) => patchTab(i, { parent: e.target.value || undefined })}>
+                  <PSelect className="chip parentsel" title={fixed ? "Bleibt Hauptreiter (hat Unterreiter bzw. muss immer erreichbar sein)" : "Ebene"} disabled={fixed} value={fixed ? "" : t.parent || ""} onChange={(e) => patchTab(i, { parent: e.target.value || undefined })}>
                     <option value="">Hauptreiter</option>
                     {!fixed && nav.tabs.filter((p) => !isNavDeco(p) && p.key !== t.key && !p.parent).map((p) => <option key={p.key} value={p.key}>unter {tabLabel(nav, p.key)}</option>)}
-                  </select>); })()}
+                  </PSelect>); })()}
                   <label className="mini"><input type="checkbox" checked={t.side} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { side: e.target.checked })} />Leiste</label>
                   <label className="mini"><input type="checkbox" checked={t.phone} disabled={t.key === "settings"} onChange={(e) => patchTab(i, { phone: e.target.checked })} />Handy</label>
                 </div>
@@ -1194,7 +1194,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
     let block = false;
     const down = (e) => {
       const el = rootRef.current; if (!el || el.contains(e.target)) return;
-      if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost,.sharepop,.sidetip")) return;
+      if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost,.sharepop,.sidetip,.pickmenu")) return;
       if (dirtyRef.current) block = true; // Klick nicht weiterreichen, sonst gehen Eingaben verloren
       reqRef.current();
     };
@@ -2356,7 +2356,7 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
         <div className="expitemshead"><b>Steuern</b><small className="muted">{taxRows.length ? `USt gesamt ${fmtMoney(vatSum)}` : "optional"}</small></div>
         {taxRows.map((t) => (
           <div key={t.id} className="exptaxrow">
-            <select aria-label="Steuersatz" value={t.rate} onChange={(e) => setTax(t.id, { rate: +e.target.value })}>{[20, 13, 10, 0].map((v) => <option key={v} value={v}>{v} %</option>)}</select>
+            <PSelect aria-label="Steuersatz" value={t.rate} onChange={(e) => setTax(t.id, { rate: +e.target.value })}>{[20, 13, 10, 0].map((v) => <option key={v} value={v}>{v} %</option>)}</PSelect>
             <input inputMode="decimal" aria-label="Brutto-Anteil" placeholder={f.taxes.length === 1 ? (total > 0 ? amtStr(total) : "ganzer Betrag") : "Brutto"} value={t.gross} onChange={(e) => setTax(t.id, { gross: e.target.value })} />
             <span className="muted small exptaxv">USt {fmtMoney(t.v)}</span>
             <button className="iconbtn" title="Steuersatz entfernen" aria-label="Steuersatz entfernen" onClick={() => setF((x) => ({ ...x, taxes: x.taxes.filter((y) => y.id !== t.id) }))}>✕</button>
@@ -2743,7 +2743,7 @@ function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onD
   return (
     <Win id={"fb-" + t} onClose={onClose} small>
       <div className="panelhead"><b>{t === "fuel" && elec ? "⚡" : FB_ICON[t]} {isNew ? title + " erfassen" : title}</b><XBtn /></div>
-      {vehicles.length > 1 && <label>Fahrzeug<select value={x.vid} onChange={(e) => set({ vid: e.target.value })}>{vehicles.map((y) => <option key={y.id} value={y.id}>{y.icon || "🚗"} {y.name}</option>)}</select></label>}
+      {vehicles.length > 1 && <label>Fahrzeug<PSelect value={x.vid} onChange={(e) => set({ vid: e.target.value })}>{vehicles.map((y) => <option key={y.id} value={y.id}>{y.icon || "🚗"} {y.name}</option>)}</PSelect></label>}
       {t === "trip" ? (<>
         <div className="seg">{[["business", "💼 Geschäftlich"], ["private", "🏠 Privat"], ["commute", "🏭 Arbeitsweg"]].map(([k, l]) => <button key={k} className={x.purpose === k ? "on" : ""} onClick={() => set({ purpose: k })}>{l}</button>)}</div>
         <div className="grid2">
@@ -2782,7 +2782,7 @@ function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onD
           <label>Kilometerstand<input inputMode="numeric" value={x.km ?? ""} placeholder={lastKm ? String(lastKm) : ""} onChange={(e) => set({ km: e.target.value })} /></label>
         </div>
         {t === "fuel" ? (<>
-          <label>{vehHasPlug(v) && vehHasFuel(v) ? "Kraftstoff / Strom" : "Kraftstoff"}<select value={x.fuel || vehDefFuel(v)} onChange={(e) => set({ fuel: e.target.value })}>{ENERGY.map((f) => <option key={f}>{f}</option>)}</select></label>
+          <label>{vehHasPlug(v) && vehHasFuel(v) ? "Kraftstoff / Strom" : "Kraftstoff"}<PSelect value={x.fuel || vehDefFuel(v)} onChange={(e) => set({ fuel: e.target.value })}>{ENERGY.map((f) => <option key={f}>{f}</option>)}</PSelect></label>
           <div className="grid3">
             <label>Preis/{elec ? "kWh" : "Liter"}<input inputMode="decimal" value={x.price ?? ""} placeholder={fuelPrice ? String(fuelPrice).replace(".", ",") : elec ? "0,49" : "1,659"} onChange={(e) => setX(calc({ price: e.target.value }))} /></label>
             <label>{elec ? "kWh" : "Liter"}<input inputMode="decimal" value={x.liters ?? ""} onChange={(e) => setX(calc({ liters: e.target.value }))} /></label>
@@ -2826,7 +2826,7 @@ function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onD
                 <b className="neg">{fmtMoney(linked.amount)}</b><button className="iconbtn" title="Verknüpfung lösen" aria-label="Verknüpfung lösen" onClick={() => set({ txId: null })}>✕</button></div>
             ) : (<>
               <div className="seg">{[["none", "Nicht buchen"], ["new", "Neu buchen"], ["link", "Vorhandene Buchung"]].map(([k, l]) => <button key={k} className={x.acct === k ? "on" : ""} onClick={() => set({ acct: k, bookAcc: x.bookAcc || ls.get("expAcc", "") || accounts[0].id })}>{l}</button>)}</div>
-              {x.acct === "new" && <select value={x.bookAcc} onChange={(e) => set({ bookAcc: e.target.value })}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}</select>}
+              {x.acct === "new" && <PSelect value={x.bookAcc} onChange={(e) => set({ bookAcc: e.target.value })}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}</PSelect>}
               {x.acct === "link" && (
                 <div className="fbtxpick">
                   <div className="searchbar"><span>🔍</span><input type="search" value={txQ} placeholder="Buchung suchen – Name oder Betrag" onChange={(e) => setTxQ(e.target.value)} /></div>
@@ -2889,9 +2889,9 @@ function VehicleWin({ init, onSave, onDelete, onClose }) {
         <label>Marke & Modell<input value={v.model || ""} placeholder="VW Golf 8" onChange={(e) => set({ model: e.target.value })} /></label>
         <label>Kennzeichen<input value={v.plate || ""} placeholder="L-12345X" onChange={(e) => set({ plate: e.target.value.toUpperCase() })} /></label>
         <label>Kilometerstand jetzt<input inputMode="numeric" value={v.startKm ?? ""} onChange={(e) => set({ startKm: e.target.value })} /></label>
-        <label>Nutzung<select value={v.use || "privat"} onChange={(e) => set({ use: e.target.value })}><option value="privat">Privat</option><option value="firma">Firma</option><option value="beides">Privat & Firma</option></select></label>
+        <label>Nutzung<PSelect value={v.use || "privat"} onChange={(e) => set({ use: e.target.value })}><option value="privat">Privat</option><option value="firma">Firma</option><option value="beides">Privat & Firma</option></PSelect></label>
       </div>
-      <label>Antrieb<select value={v.fuel} onChange={(e) => set({ fuel: e.target.value })}>{FUELS.map((f) => <option key={f}>{f}</option>)}</select></label>
+      <label>Antrieb<PSelect value={v.fuel} onChange={(e) => set({ fuel: e.target.value })}>{FUELS.map((f) => <option key={f}>{f}</option>)}</PSelect></label>
       <div className="grid2">
         {vehHasFuel(v) && <label>Tankvolumen (l)<input inputMode="decimal" value={v.tank ?? ""} placeholder="z. B. 45" onChange={(e) => set({ tank: e.target.value })} /></label>}
         {vehHasPlug(v) && <label>Akku nutzbar (kWh)<input inputMode="decimal" value={v.battery ?? ""} placeholder="z. B. 13,8" onChange={(e) => set({ battery: e.target.value })} /></label>}
@@ -2908,7 +2908,7 @@ function VehicleWin({ init, onSave, onDelete, onClose }) {
 }
 
 /* Fahrzeugauswahl als Dropdown: Maus darüber öffnet, Antippen/Klick schaltet um */
-function PickMenu({ label, icon, items, extra = [], title, wide = false, click = false }) {
+function PickMenu({ label, icon, items, extra = [], title, wide = false, click = true, btnClass = "chip", disabled = false, block = false }) {
   const [open, setOpen] = useState(false), [pos, setPos] = useState(null);
   const ref = useRef(null), t = useRef(null), lastPtr = useRef("mouse");
   const W = wide ? 320 : 292;
@@ -2927,20 +2927,44 @@ function PickMenu({ label, icon, items, extra = [], title, wide = false, click =
   // click = nur durch Anklicken öffnen (kein Aufklappen beim Drüberfahren)
   const hov = click ? {} : { onPointerEnter: (e) => { lastPtr.current = e.pointerType; if (e.pointerType === "mouse") show(); }, onPointerLeave: (e) => { if (e.pointerType === "mouse") hide(); } };
   return (
-    <span className="vehpick" ref={ref} {...hov}>
-      <button className={"chip vehpickbtn" + (open ? " on open" : "")} title={title} aria-haspopup="menu" aria-expanded={open}
+    <span className={"vehpick" + (block ? " block" : "")} ref={ref} {...hov}>
+      <button type="button" disabled={disabled} className={btnClass + " vehpickbtn" + (open ? " on open" : "")} title={title} aria-haspopup="menu" aria-expanded={open}
         onPointerDown={(e) => { lastPtr.current = e.pointerType; }}
-        onClick={() => { if (!click && lastPtr.current === "mouse" && open) return; open ? setOpen(false) : show(); }}>{icon ? <>{icon} </> : null}{label} <span className="caret">▾</span></button>
+        onClick={(e) => { e.stopPropagation(); if (!click && lastPtr.current === "mouse" && open) return; open ? setOpen(false) : show(); }}>{icon ? <>{icon} </> : null}{label} <span className="caret">▾</span></button>
       {open && pos && createPortal(
-        <div className="moremenu vehmenu pickmenu" role="menu" style={{ position: "fixed", top: pos.top ?? "auto", bottom: pos.bottom ?? "auto", left: pos.left, right: "auto", maxHeight: pos.maxH, overflowY: "auto" }} {...hov}>
+        <div className="moremenu vehmenu pickmenu" role="menu" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ position: "fixed", top: pos.top ?? "auto", bottom: pos.bottom ?? "auto", left: pos.left, right: "auto", maxHeight: pos.maxH, overflowY: "auto" }} {...hov}>
           {items.map((x, i) => x.head ? <small key={"h" + i} className="muted pickhead">{x.head}</small> : (
-            <button key={x.k} role="menuitemradio" aria-checked={!!x.on} className={x.on ? "on" : ""} onClick={() => { x.run(); setOpen(false); }}>
+            <button type="button" key={x.k} role="menuitemradio" aria-checked={!!x.on} disabled={!!x.disabled} className={x.on ? "on" : ""} onClick={() => { x.run(); setOpen(false); }}>
               {x.icon != null && <span className="vehmi">{x.icon}</span>}<span className="grow"><b>{x.title}</b>{x.sub && <small className="muted block">{x.sub}</small>}</span>{x.right && <span className="pickright">{x.right}</span>}{x.on && <span className="ok">✓</span>}
             </button>))}
           {!!extra.filter(Boolean).length && <div className="menusep" />}
           {extra.filter(Boolean).map((x, i) => <button key={"x" + i} onClick={() => { setOpen(false); x.run(); }}>{x.label}</button>)}
         </div>, document.querySelector(".app") || document.body)}
     </span>
+  );
+}
+// Ersatz für <select>: gleiches Auswahlmenü wie im Fahrtenbuch, öffnet nur per Klick.
+// Nimmt <option>/<optgroup>-Kinder und ruft onChange({ target: { value } }) wie ein echtes select.
+const optText = (c) => React.Children.toArray(c).map((x) => (typeof x === "string" || typeof x === "number" ? String(x) : x?.props ? optText(x.props.children) : "")).join("");
+function optList(children) {
+  const out = [];
+  const walk = (c) => React.Children.forEach(c, (x) => {
+    if (!x || typeof x !== "object") return;
+    if (x.type === React.Fragment) return walk(x.props.children);
+    if (x.type === "optgroup") { out.push({ head: x.props.label }); return walk(x.props.children); }
+    if (x.type === "option") { const t = optText(x.props.children); out.push({ value: x.props.value !== undefined ? String(x.props.value) : t, label: t, disabled: !!x.props.disabled }); }
+  });
+  walk(children);
+  return out;
+}
+function PSelect({ value, onChange, children, className = "", disabled, title, "aria-label": al, style }) {
+  const opts = optList(children), v = String(value ?? "");
+  const cur = opts.find((o) => !o.head && o.value === v) || opts.find((o) => !o.head);
+  const compact = /\b(chip|mmonth)\b/.test(className);
+  const fire = (val) => { const ev = { target: { value: val }, currentTarget: { value: val }, preventDefault() {}, stopPropagation() {} }; onChange?.(ev); };
+  return (
+    <PickMenu click block={!compact} disabled={disabled} title={title || al} btnClass={(compact ? className : "selbtn " + className).trim()} label={cur?.label ?? ""}
+      items={opts.map((o, i) => (o.head ? { head: o.head } : { k: o.value + "#" + i, title: o.label, on: o.value === v, disabled: o.disabled, run: () => o.value !== v && fire(o.value) }))} />
   );
 }
 function VehPicker({ vehicles, v, onPick, onEdit, onAdd }) {
@@ -2956,12 +2980,12 @@ function VehPicker({ vehicles, v, onPick, onEdit, onAdd }) {
     document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true);
     return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); };
   }, [open]);
-  const hov = { onPointerEnter: (e) => { lastPtr.current = e.pointerType; if (e.pointerType === "mouse") show(); }, onPointerLeave: (e) => { if (e.pointerType === "mouse") hide(); } };
+  const hov = {}; // nur per Klick öffnen
   return (
     <span className="vehpick" ref={ref} {...hov}>
       <button className={"chip on vehpickbtn" + (open ? " open" : "")} aria-haspopup="menu" aria-expanded={open}
         onPointerDown={(e) => { lastPtr.current = e.pointerType; }}
-        onClick={() => { if (lastPtr.current === "mouse" && open) return; open ? setOpen(false) : show(); }}><VehIcon v={v} /> {v.name} <span className="caret">▾</span></button>
+        onClick={() => { open ? setOpen(false) : show(); }}><VehIcon v={v} /> {v.name} <span className="caret">▾</span></button>
       {open && pos && createPortal(
         <div className="moremenu vehmenu" role="menu" style={{ position: "fixed", top: pos.top, left: pos.left, right: "auto" }} {...hov}>
           {vehicles.map((x) => (
@@ -3331,8 +3355,8 @@ function RangeCalendar({ from, to, max, onChange }) {
       </div>
       <div className="rcalhead">
         <button className="iconbtn" aria-label="Voriger Monat" onClick={() => go(-1)}>‹</button>
-        <select value={m} onChange={(e) => setView(`${y}-${String(e.target.value).padStart(2, "0")}`)}>{MONTHS_LONG.map((n, i) => <option key={n} value={i + 1}>{n}</option>)}</select>
-        <select value={y} onChange={(e) => setView(`${e.target.value}-${String(m).padStart(2, "0")}`)}>{years.map((yy) => <option key={yy}>{yy}</option>)}</select>
+        <PSelect value={m} onChange={(e) => setView(`${y}-${String(e.target.value).padStart(2, "0")}`)}>{MONTHS_LONG.map((n, i) => <option key={n} value={i + 1}>{n}</option>)}</PSelect>
+        <PSelect value={y} onChange={(e) => setView(`${e.target.value}-${String(m).padStart(2, "0")}`)}>{years.map((yy) => <option key={yy}>{yy}</option>)}</PSelect>
         <button className="iconbtn" aria-label="Nächster Monat" disabled={view >= max.slice(0, 7)} onClick={() => go(1)}>›</button>
       </div>
       <div className="rcalgrid" onMouseLeave={() => setHover(null)}>
@@ -3901,7 +3925,7 @@ function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () =
           <div className="assetedit">
             <div className="grid2">
               <label>Bezeichnung<input value={edit.name} autoFocus onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="z. B. Wohnung Linz" /></label>
-              <label>Art<select value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })}>{Object.entries(ASSET_KINDS).map(([k, [i, l]]) => <option key={k} value={k}>{i} {l}</option>)}</select></label>
+              <label>Art<PSelect value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })}>{Object.entries(ASSET_KINDS).map(([k, [i, l]]) => <option key={k} value={k}>{i} {l}</option>)}</PSelect></label>
               <label>{edit.kind === "kredit" ? "Offene Schuld" : "Aktueller Wert"}<input inputMode="decimal" value={edit.value} onChange={(e) => setEdit({ ...edit, value: e.target.value })} placeholder="0,00" /></label>
               <label>Seit<input type="date" value={edit.since} onChange={(e) => setEdit({ ...edit, since: e.target.value })} /></label>
             </div>
@@ -4501,10 +4525,10 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
         deadlineTab && { k: "frist", label: "⏰ " + deadlineTab.label, el: <button className="chip" onClick={deadlineTab.open}>⏰ {deadlineTab.label}</button> },
         { k: "steuer", label: "🧾 Steuerrelevant", el: <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button> },
         { k: "unbezahlt", label: "💶 Unbezahlt", el: <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button> },
-        { k: "monat", label: "Monat", el: <select className={"chip" + (month ? " on" : "")} value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{MONTHS_DE.map((m, i) => <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>)}</select> },
-        { k: "jahr", label: "Jahr", el: <select className={"chip" + (year ? " on" : "")} value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</select> },
-        { k: "tags", label: "Tags", el: <select className={"chip" + (tag ? " on" : "")} value={tag} onChange={(e) => setTag(e.target.value)}><option value="">Alle Tags</option>{tags.map((t) => <option key={t}>{t}</option>)}</select> },
-        { k: "sort", label: "Sortierung", el: <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></select> },
+        { k: "monat", label: "Monat", el: <PSelect className={"chip" + (month ? " on" : "")} value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{MONTHS_DE.map((m, i) => <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>)}</PSelect> },
+        { k: "jahr", label: "Jahr", el: <PSelect className={"chip" + (year ? " on" : "")} value={year} onChange={(e) => setYear(e.target.value)}><option value="">Alle Jahre</option>{years.map((y) => <option key={y}>{y}</option>)}</PSelect> },
+        { k: "tags", label: "Tags", el: <PSelect className={"chip" + (tag ? " on" : "")} value={tag} onChange={(e) => setTag(e.target.value)}><option value="">Alle Tags</option>{tags.map((t) => <option key={t}>{t}</option>)}</PSelect> },
+        { k: "sort", label: "Sortierung", el: <PSelect className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="date">Neueste</option><option value="amount">Betrag</option></PSelect> },
         { k: "pick", label: "☑︎ Auswählen", el: <button className={pick ? "chip on" : "chip"} disabled={!list.length} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑︎ Auswählen"}</button> },
         { k: "csv", label: "⬇︎ Export", el: <ExportMenu items={[{ head: pick?.size ? `${pick.size} ausgewählt` : `${list.length} Dokumente (aktueller Filter)` },
           { label: "🗂 Dateien als ZIP", sub: pick?.size ? "nur die ausgewählten Dokumente" : "alle Dokumente im aktuellen Filter, nach Kategorie sortiert", disabled: !list.length, run: async () => {
@@ -4576,6 +4600,7 @@ function DocList({ trashDoc, reanalyze, docs, categories, onOpen, area = "alle",
                 {status(d)}
               </div>
               <span className="damtcol">{amt(d)}</span>
+              <span className="dcatcol"><Label c={d.category} /></span>
               <DocActions d={d} prevOpen={prevId === d.id} onPreview={() => setPrevId(prevId === d.id ? null : d.id)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
             </div></SwipeRow>
             {prevId === d.id && <DocPreview d={d} onOpen={() => onOpen(d.id)} />}
@@ -5021,9 +5046,9 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
         <section className="tile subtile">
           <div className="tilehead"><b>Aus Kontoumsätzen</b>
             <span className="subctl">
-              <select className="chip" value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sortieren">
+              <PSelect className="chip" value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sortieren">
                 <option value="monat">nach Kosten</option><option value="name">nach Name</option><option value="zuletzt">zuletzt gebucht</option>
-              </select>
+              </PSelect>
               {!!stale.length && <button className={"chip" + (showStale ? " on" : "")} onClick={() => setShowStale(!showStale)}>{showStale ? "Inaktive ausblenden" : `+ ${stale.length} beendet / inaktiv`}</button>}
             </span>
           </div>
@@ -5255,9 +5280,9 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
         <input ref={fileRef} type="file" hidden multiple accept=".csv,.txt,.xml,.sta,.mt940,.940,.ofx,.qif,.pdf,.xlsx,.xls,.json" onChange={(e) => { const f = [...e.target.files]; e.target.value = ""; if (f.length) dropFiles(f); }} />
         {mSearch && <div className="searchbar"><span>🔍</span><input type="search" autoFocus placeholder="Buchungen durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>}
         <div className="mbalrow">
-          <select className="mmonth" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Heute</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
+          <PSelect className="mmonth" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Heute</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</PSelect>
           <Money v={month ? list.reduce((x, t) => x + t.amount, 0) : bal} cls="big" />
-          {cl.length ? <select className="mmonth r" value={coll} onChange={(e) => setColl(e.target.value)}><option value="">📁 Alle</option>{cl.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select> : <span />}
+          {cl.length ? <PSelect className="mmonth r" value={coll} onChange={(e) => setColl(e.target.value)}><option value="">📁 Alle</option>{cl.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</PSelect> : <span />}
         </div>
         {month && <small className="muted center-text block">Summe der Buchungen im {monthLabel(month)}</small>}
         <div className="mtxlist">
@@ -5341,10 +5366,10 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           {!allSel && <button className="chip" onClick={() => setSel([])}>✕ Alle anzeigen</button>}
           {selA && !peek && <button className="chip" onClick={() => setEditAcc(selA)}>✎ Konto bearbeiten</button>}
           <button className={"chip desktop-only" + (hiddenAccs.length ? " on" : "")} title="Konten aktivieren / deaktivieren" onClick={() => setAccVis(true)}>👁 Konten ein/aus{hiddenAccs.length ? ` (${hiddenAccs.length} aus)` : ""}</button>
-          <select className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</select>
+          <PSelect className="chip" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Alle Monate</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</PSelect>
           {(() => { const cl = ls.get("txColls", []); if (!cl.length) return null;
             return coll ? <button className="chip on" onClick={() => setColl("")} title="Sammlungsfilter aufheben">📁 {cl.find((c) => c.id === coll)?.name || "Sammlung"} · {fmtMoney(list.reduce((a, t) => a + t.amount, 0))} ✕</button>
-              : <select className="chip" value="" onChange={(e) => { setColl(e.target.value); setSel?.([]); }}><option value="">📁 Sammlungen</option>{cl.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>; })()}
+              : <PSelect className="chip" value="" onChange={(e) => { setColl(e.target.value); setSel?.([]); }}><option value="">📁 Sammlungen</option>{cl.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</PSelect>; })()}
           {!!txs.length && <button className="chip" onClick={() => setLogoOpen(true)} title="Firmenlogos für Empfänger laden">✨ Logos</button>}
           {(() => {
             const scopeName = allSel ? "alle-konten" : sel.length === 1 ? fileSafe(accName(sel[0])) : `${sel.length}-konten`;
@@ -5566,10 +5591,10 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
               <div className="grid2">
                 {Object.entries(FIELD_LABELS).map(([f, l]) => (
                   <label key={f}>{l}
-                    <select value={res.mapping.map[f] ?? ""} onChange={(e) => remap(f, e.target.value)}>
+                    <PSelect value={res.mapping.map[f] ?? ""} onChange={(e) => remap(f, e.target.value)}>
                       <option value="">–</option>
                       {res.mapping.headers.map((h, i) => <option key={i} value={i}>{h || `Spalte ${i + 1}`}</option>)}
-                    </select>
+                    </PSelect>
                   </label>
                 ))}
               </div>
@@ -5588,10 +5613,10 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
         {!!txs.length && !fileAccounts.length && (
           <fieldset>
             <legend>Konto</legend>
-            <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            <PSelect value={accountId} onChange={(e) => setAccountId(e.target.value)}>
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               <option value="new">＋ Neues Konto anlegen</option>
-            </select>
+            </PSelect>
             {accountId === "new" && <label>Name<input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="z. B. BAWAG Giro, Scalable Depot" /></label>}
             <p className="muted small">Doppelte Buchungen werden beim Import automatisch übersprungen.</p>
           </fieldset>
@@ -5876,7 +5901,7 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
         <label>Buchungsdatum<input type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} /></label>
         <label>Betrag{!t.manual && <small className="muted"> (aus Bankimport)</small>}<input inputMode="decimal" disabled={!t.manual} value={edit.amount} onChange={(e) => setEdit({ ...edit, amount: e.target.value })} /></label>
       </div>
-      {accounts.length > 1 && <label>Konto<select value={edit.accountId} onChange={(e) => setEdit({ ...edit, accountId: e.target.value })}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
+      {accounts.length > 1 && <label>Konto<PSelect value={edit.accountId} onChange={(e) => setEdit({ ...edit, accountId: e.target.value })}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</PSelect></label>}
       <label>Zweck<textarea rows={4} value={edit.purpose} onChange={(e) => setEdit({ ...edit, purpose: e.target.value })} /></label>
     </Win>
   );
@@ -5905,14 +5930,14 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
       )}
       {catOpen && (
         <div className="tile txpick">
-          <select value={cat} onChange={(e) => {
+          <PSelect value={cat} onChange={(e) => {
             if (e.target.value !== "__new") return setCat(e.target.value);
             const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return;
             addCategory?.(n); setExtraCats((x) => [...x, n]); setCat(n);
           }}>
             {[...new Set([...categories, ...extraCats, t.category])].map((c) => <option key={c}>{c}</option>)}
             <option value="__new">＋ Neue Kategorie …</option>
-          </select>
+          </PSelect>
           {t.counterparty && <label className="check"><input type="checkbox" checked={rule} onChange={(e) => setRule(e.target.checked)} /> Immer so für „{t.counterparty}“</label>}
           <button className="btn primary" disabled={cat === t.category && !rule} onClick={() => { save(withOrig({ ...t, category: cat }), rule); setCatOpen(false); }}>Übernehmen</button>
         </div>
@@ -6283,21 +6308,21 @@ function CashForm({ init, accounts, categories, onSave, onScan, addCategory, com
       <div className="grid2">
         <label>Datum<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
         <label>Konto
-          <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          <PSelect value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}
             {!cashAcc && <option value="new-cash">💶 Geldbörse (neu)</option>}
-          </select>
+          </PSelect>
         </label>
       </div>
       <label>Kategorie
-        <select value={category} onChange={(e) => {
+        <PSelect value={category} onChange={(e) => {
           if (e.target.value !== "__new") return setCategory(e.target.value);
           const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return;
           addCategory?.(n); setExtra((x) => [...x, n]); setCategory(n);
         }}>
           {cats.map((c) => <option key={c}>{c}</option>)}
           {addCategory && <option value="__new">＋ Neue Kategorie …</option>}
-        </select>
+        </PSelect>
       </label>
       <div className="cashatt">
         <small className="muted">Beleg (optional)</small>
@@ -6394,10 +6419,10 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         <label>Titel<input value={d.title || ""} onChange={(e) => set({ title: e.target.value })} /></label>
         <div className="grid2">
           <label>Kategorie
-            <select value={d.category} onChange={(e) => (e.target.value === "__new" ? setNewCat(true) : set({ category: e.target.value }))}>
+            <PSelect value={d.category} onChange={(e) => (e.target.value === "__new" ? setNewCat(true) : set({ category: e.target.value }))}>
               {[...new Set([...categories, d.category])].map((c) => <option key={c}>{c}</option>)}
               {addCategoryEx && <option value="__new">＋ Neue Kategorie …</option>}
-            </select>
+            </PSelect>
           </label>
           {newCat && createPortal(<NewCategoryWin groups={docGroups} existing={categories} defGroup={docGroups.find((g) => g.cats.includes(d.category))?.id}
             onClose={() => setNewCat(false)} onCreate={(n, gid, st) => { addCategoryEx(n, gid, st); set({ category: n }); }} />, document.querySelector(".app") || document.body)}
@@ -6494,9 +6519,9 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
               <label>Kundennr.<input value={d.contract.customerNumber || ""} onChange={(e) => setC({ customerNumber: e.target.value })} /></label>
               <label>Betrag<input inputMode="decimal" value={d.contract.amount ?? ""} onChange={(e) => setC({ amount: numIn(e.target.value) })} /></label>
               <label>Intervall
-                <select value={d.contract.interval || ""} onChange={(e) => setC({ interval: e.target.value })}>
+                <PSelect value={d.contract.interval || ""} onChange={(e) => setC({ interval: e.target.value })}>
                   <option value="">–</option>{Object.keys(INTERVAL_FACTOR).map((k) => <option key={k}>{k}</option>)}
-                </select>
+                </PSelect>
               </label>
               <label>Vertragsende<input type="date" value={d.contract.endDate || ""} onChange={(e) => setC({ endDate: e.target.value })} /></label>
               <label>Kündigen bis<input type="date" value={d.contract.cancelBy || ""} onChange={(e) => setC({ cancelBy: e.target.value })} /></label>
@@ -7535,7 +7560,7 @@ function UnitSelect({ value, onChange, className = "" }) {
   const [units, setUnits] = useUnits();
   const list = units.includes(value) || !value ? units : [...units, value];
   return (
-    <select className={className} value={value} onChange={(e) => {
+    <PSelect className={className} value={value} onChange={(e) => {
       if (e.target.value !== "__new") return onChange(e.target.value);
       const n = (prompt("Neue Einheit, z. B. „Paket“, „Lfm“, „Liter“:") || "").trim(); if (!n) return;
       if (!units.some((u) => u.toLowerCase() === n.toLowerCase())) setUnits([...units, n]);
@@ -7543,7 +7568,7 @@ function UnitSelect({ value, onChange, className = "" }) {
     }}>
       {list.map((u) => <option key={u}>{u}</option>)}
       <option value="__new">＋ Neue Einheit …</option>
-    </select>
+    </PSelect>
   );
 }
 function UnitsEditor() {
@@ -7573,7 +7598,7 @@ function InvoiceFieldsEditor() {
           <div className={"acccfg catrow" + (dnd.isDragging("ifld", "f", i) ? " dragging" : "")} data-ifld-item={`f|${i}`}>
             <Handle onDown={(e) => dnd.start(e, { kind: "ifld", list: "f", index: i, label: f.label })} />
             <EditText className="grow" value={f.label} onSave={(v) => v && patch(f.id, { label: v })} />
-            <select className="chip" value={f.scope} onChange={(e) => patch(f.id, { scope: e.target.value })}><option value="rechnung">Rechnung</option><option value="position">Position</option></select>
+            <PSelect className="chip" value={f.scope} onChange={(e) => patch(f.id, { scope: e.target.value })}><option value="rechnung">Rechnung</option><option value="position">Position</option></PSelect>
             <button className="iconbtn" title="Löschen" onClick={() => confirm(`Feld „${f.label}“ löschen? Bereits eingetragene Werte werden nicht mehr gedruckt.`) && setFields((l) => l.filter((x) => x.id !== f.id))}>🗑</button>
           </div>
         </React.Fragment>
@@ -7743,16 +7768,16 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
             </div>
             {paid && <div className="grid2">
               <label>Bezahlt am<input type="date" value={inv.paidAt || todayISO()} onChange={(e) => setPay({ paidAt: e.target.value })} /></label>
-              <label>Zahlungsart<select value={inv.payMethod || "Überweisung"} onChange={(e) => setPay({ payMethod: e.target.value })}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select></label>
+              <label>Zahlungsart<PSelect value={inv.payMethod || "Überweisung"} onChange={(e) => setPay({ payMethod: e.target.value })}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</PSelect></label>
             </div>}
             {paid && !locked && accounts.length > 0 && (
-              <label>Auf Konto buchen<select value={inv.prePaidAccount ?? (ls.get("payAccount", "") || accounts.find((x) => x.kind === "bank")?.id || "")} onChange={(e) => {
+              <label>Auf Konto buchen<PSelect value={inv.prePaidAccount ?? (ls.get("payAccount", "") || accounts.find((x) => x.kind === "bank")?.id || "")} onChange={(e) => {
                 const a = accounts.find((x) => x.id === e.target.value);
                 set({ prePaidAccount: e.target.value, ...(a?.kind === "cash" ? { payMethod: "Bar" } : inv.payMethod === "Bar" ? { payMethod: "Überweisung" } : {}) });
               }}>
                 <option value="">– ohne Buchung –</option>
                 {accounts.filter((a) => a.kind !== "broker").map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}
-              </select></label>)}
+              </PSelect></label>)}
             {paid && !locked && (inv.prePaidAccount ?? (ls.get("payAccount", "") || accounts.find((x) => x.kind === "bank")?.id || "")) && (() => {
               const accId = inv.prePaidAccount ?? (ls.get("payAccount", "") || accounts.find((x) => x.kind === "bank")?.id || "");
               return (<>
@@ -7779,7 +7804,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
         <fieldset>
           <legend>Wiederkehrend</legend>
           <label className="check"><input type="checkbox" checked={!!inv.repeat} onChange={(e) => set({ repeat: e.target.checked ? { interval: "monatlich" } : null })} /> Diese Rechnung regelmäßig neu als Entwurf vorbereiten</label>
-          {inv.repeat && <label>Intervall<select value={inv.repeat.interval} onChange={(e) => set({ repeat: { interval: e.target.value } })}>{Object.keys(INTERVALS).map((k) => <option key={k}>{k}</option>)}</select></label>}
+          {inv.repeat && <label>Intervall<PSelect value={inv.repeat.interval} onChange={(e) => set({ repeat: { interval: e.target.value } })}>{Object.keys(INTERVALS).map((k) => <option key={k}>{k}</option>)}</PSelect></label>}
         </fieldset>
       )}
       {!!warn.length && !locked && <div className="invwarn">{warn.map((w) => <div key={w}>⚠︎ {w}</div>)}</div>}
@@ -7885,10 +7910,10 @@ function PayWin({ inv, book, onDone, onClose }) {
       <div className="panelhead"><b>Zahlungseingang {inv.number}</b><button className="btn primary" disabled={mode === "link" && accountId ? !txId : false} onClick={() => done()}>{inv.status === "bezahlt" ? "Zuordnen" : "Als bezahlt buchen"}</button><XBtn /></div>
       <p className="small muted">{inv.customer?.name} · Rechnungsbetrag <b>{fmtMoney(total)}</b></p>
       {!accs.length ? <p className="small warn">Noch kein Konto angelegt – die Rechnung wird nur als bezahlt markiert. Konten legst du im Reiter „Konten“ an.</p> : <>
-        <label>Konto<select value={accountId} onChange={(e) => setAcc(e.target.value)}>
+        <label>Konto<PSelect value={accountId} onChange={(e) => setAcc(e.target.value)}>
           {accs.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}
           <option value="">– ohne Buchung (nur als bezahlt markieren) –</option>
-        </select></label>
+        </PSelect></label>
         {accountId && <div className="seg" style={{ marginTop: 10 }}>
           <button className={mode === "link" ? "on" : ""} onClick={() => setMode("link")}>🔗 Vorhandene Buchung{cands.length ? ` (${cands.length} passend)` : ""}</button>
           <button className={mode === "create" ? "on" : ""} onClick={() => setMode("create")}>＋ Neue Buchung</button>
@@ -7899,7 +7924,7 @@ function PayWin({ inv, book, onDone, onClose }) {
           <label>Betrag €<input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
         </div>}
       </>}
-      {(mode === "create" || !accountId || !accs.length) && <label>Zahlungsart<select value={method} onChange={(e) => setMethod(e.target.value)}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select></label>}
+      {(mode === "create" || !accountId || !accs.length) && <label>Zahlungsart<PSelect value={method} onChange={(e) => setMethod(e.target.value)}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</PSelect></label>}
       {(() => { const st = mode === "link" && accountId ? (book?.txs || []).find((x) => x.id === txId) : null; return (
         <div className="payfoot">
           {mode === "link" && accountId ? (st ? <span className="small"><b>✓ {st.counterparty || "Eingang"}</b> · {fmtDate(st.date)} · <b className="pos">{fmtMoney(st.amount)}</b></span> : <span className="small muted">Buchung oben antippen (Doppelklick bucht sofort)</span>) : <span />}
@@ -8098,7 +8123,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
             <div key={t.id} className="frow">
               <span className="caticon" style={{ width: 40, height: 40, background: "#0b63f622" }}>🔁</span>
               <div className="grow"><b>{t.name}</b><small className="muted block">{t.interval} · {fmtMoney(invTotal(t.inv))} · nächster Entwurf {fmtDate(t.next)}{t.active ? "" : " · pausiert"}</small></div>
-              <select className="chip" value={t.interval} onChange={(e) => setTemplates((l) => l.map((x) => (x.id === t.id ? { ...x, interval: e.target.value } : x)))}>{Object.keys(INTERVALS).map((k) => <option key={k}>{k}</option>)}</select>
+              <PSelect className="chip" value={t.interval} onChange={(e) => setTemplates((l) => l.map((x) => (x.id === t.id ? { ...x, interval: e.target.value } : x)))}>{Object.keys(INTERVALS).map((k) => <option key={k}>{k}</option>)}</PSelect>
               <button className="btn sm" onClick={() => setTemplates((l) => l.map((x) => (x.id === t.id ? { ...x, active: !x.active } : x)))}>{t.active ? "Pausieren" : "Fortsetzen"}</button>
               <button className="iconbtn" title="Löschen" onClick={() => confirm("Wiederkehrende Rechnung löschen? Bereits erstellte Rechnungen bleiben.") && setTemplates((l) => l.filter((x) => x.id !== t.id))}>🗑</button>
             </div>
@@ -8206,15 +8231,15 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
           <label>Bezeichnung<input value={c.name || ""} placeholder="z. B. Internet Zuhause" onChange={(e) => set({ name: e.target.value })} /></label>
           <label>Anbieter<input value={c.provider || ""} placeholder="z. B. Magenta, A1, Drei" onChange={(e) => set({ provider: e.target.value })} /></label>
         </div>
-        <label>Art<select value={c.cat || "Sonstiges"} onChange={(e) => {
+        <label>Art<PSelect value={c.cat || "Sonstiges"} onChange={(e) => {
           if (e.target.value !== "__new") return set({ cat: e.target.value });
           const n = (prompt("Neue Vertragsart, z. B. „Strom PV“, „Kfz-Versicherung“:") || "").trim(); if (!n) return;
           const em = (prompt("Symbol (Emoji) für „" + n + "“:", "📄") || "📄").trim().slice(0, 4);
           ls.set("ctCats", { ...ls.get("ctCats", {}), [n]: em }); set({ cat: n });
-        }}>{Object.entries(ctCats()).map(([k, i]) => <option key={k} value={k}>{i} {k}</option>)}<option value="__new">＋ Neue Art …</option></select></label>
+        }}>{Object.entries(ctCats()).map(([k, i]) => <option key={k} value={k}>{i} {k}</option>)}<option value="__new">＋ Neue Art …</option></PSelect></label>
         <div className="grid2">
           <label>Betrag €<input inputMode="decimal" value={c.amount ?? ""} onChange={(e) => set({ amount: e.target.value.replace(",", ".") })} /></label>
-          <label>Intervall<select value={c.interval || "monatlich"} onChange={(e) => set({ interval: e.target.value })}>{Object.keys(CT_FACTOR).map((k) => <option key={k}>{k}</option>)}</select></label>
+          <label>Intervall<PSelect value={c.interval || "monatlich"} onChange={(e) => set({ interval: e.target.value })}>{Object.keys(CT_FACTOR).map((k) => <option key={k}>{k}</option>)}</PSelect></label>
         </div>
         <div className="grid2">
           <label>Kundennummer<input value={c.customerNo || ""} onChange={(e) => set({ customerNo: e.target.value })} /></label>
@@ -8228,7 +8253,7 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
         </div>
         <div className="grid2">
           <label>Kündigungsfrist<div className="inrow"><input type="number" value={c.notice ?? ""} placeholder="z. B. 1" onChange={(e) => set({ notice: e.target.value })} />
-            <select value={c.noticeUnit || "Monate"} onChange={(e) => set({ noticeUnit: e.target.value })}><option>Monate</option><option>Wochen</option><option>Tage</option></select></div></label>
+            <PSelect value={c.noticeUnit || "Monate"} onChange={(e) => set({ noticeUnit: e.target.value })}><option>Monate</option><option>Wochen</option><option>Tage</option></PSelect></div></label>
           <label>Verlängert sich um (Monate)<input type="number" value={c.renewMonths ?? ""} placeholder="z. B. 12 oder 1" onChange={(e) => set({ renewMonths: e.target.value })} /></label>
         </div>
         <div className="ctcalc">
@@ -8246,10 +8271,10 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
       <fieldset><legend>Dokumente</legend>
         {linked.map((x) => <div key={x.id} className="frow"><Thumb d={x} /><div className="grow"><b>{x.title}</b><small className="muted block">{fmtDate(x.documentDate)}</small></div>
           <button className="iconbtn" title="Öffnen" onClick={() => openOriginal(x)}>↗</button><button className="iconbtn" title="Lösen" onClick={() => set({ docIds: c.docIds.filter((i) => i !== x.id) })}>✕</button></div>)}
-        <select value="" onChange={(e) => e.target.value && set({ docIds: [...(c.docIds || []), e.target.value] })}>
+        <PSelect value="" onChange={(e) => e.target.value && set({ docIds: [...(c.docIds || []), e.target.value] })}>
           <option value="">＋ Dokument verknüpfen (Vertrag, Rechnung …)</option>
           {cand.map((x) => <option key={x.id} value={x.id}>{x.title} · {fmtDate(x.documentDate)}</option>)}
-        </select>
+        </PSelect>
       </fieldset>
       <label>Notiz<textarea rows={2} value={c.note || ""} onChange={(e) => set({ note: e.target.value })} /></label>
       {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={() => confirm(`Vertrag „${c.name}“ löschen?`) && (onDelete(c), onClose())}>Vertrag löschen</button>}
@@ -8825,7 +8850,7 @@ function ArticleSettings() {
     <p className="muted small">Einstellungen für den Reiter „Artikel“. Eigene Felder je Position (z. B. Seriennr.) legst du unter Rechnungen › Eigene Felder an – sie erscheinen auch bei jedem Artikel.</p>
     <div className="grid2">
       <label>Kürzel Artikelnummer<input value={C.prefix} onChange={(e) => set({ prefix: e.target.value })} /></label>
-      <label>Standard-Einheit<select value={C.defUnit} onChange={(e) => set({ defUnit: e.target.value })}>{units.map((u) => <option key={u}>{u}</option>)}</select></label>
+      <label>Standard-Einheit<PSelect value={C.defUnit} onChange={(e) => set({ defUnit: e.target.value })}>{units.map((u) => <option key={u}>{u}</option>)}</PSelect></label>
     </div>
     <label className="check"><input type="checkbox" checked={!!C.autoNo} onChange={(e) => set({ autoNo: e.target.checked })} /> Artikelnummer automatisch vergeben ({C.prefix}001, {C.prefix}002 …)</label>
     <div className="unitsed"><small className="muted">Artikelgruppen</small>
@@ -8880,11 +8905,11 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
       <label>Bezeichnung<input value={a.text || ""} placeholder="z. B. Elektroinstallation, LED-Panel 60x60" onChange={(e) => set({ text: e.target.value })} /></label>
       <div className="grid2">
         <label>Artikelnummer<input value={a.number || ""} onChange={(e) => set({ number: e.target.value })} /></label>
-        <label>Gruppe<select value={a.group || ""} onChange={(e) => {
+        <label>Gruppe<PSelect value={a.group || ""} onChange={(e) => {
           if (e.target.value !== "__new") return set({ group: e.target.value });
           const n = (prompt("Neue Artikelgruppe:") || "").trim(); if (!n) return;
           if (!C.groups.includes(n)) ls.set("articleCfg", { ...ls.get("articleCfg", {}), groups: [...C.groups, n] }); set({ group: n });
-        }}><option value="">– keine –</option>{[...new Set([...C.groups, a.group].filter(Boolean))].map((g) => <option key={g}>{g}</option>)}<option value="__new">＋ Neue Gruppe …</option></select></label>
+        }}><option value="">– keine –</option>{[...new Set([...C.groups, a.group].filter(Boolean))].map((g) => <option key={g}>{g}</option>)}<option value="__new">＋ Neue Gruppe …</option></PSelect></label>
       </div>
       <div className="grid2">
         <label>Preis €<input inputMode="decimal" value={a.price ?? ""} onChange={(e) => set({ price: e.target.value.replace(",", ".") })} /></label>
@@ -8945,7 +8970,7 @@ function ArticlesPage({ setTab }) {
         <MBar q={q} setQ={setQ} placeholder="Bezeichnung, Nummer, Gruppe suchen"
           chips={[["alle", "Alle", list.length], ...groups.map((g) => [g, g, list.filter((a) => a.group === g).length]), ["ohne", "Ohne Gruppe", list.filter((a) => !a.group).length]]
             .filter(([k, , n]) => k === "alle" || n || C.groups.includes(k)).map(([k, l, n]) => [k, l, n, grp === k, () => setGrp(k)])}>
-          <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">↕ Name</option><option value="preis">↕ Preis</option><option value="umsatz">↕ Umsatz</option></select>
+          <PSelect className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">↕ Name</option><option value="preis">↕ Preis</option><option value="umsatz">↕ Umsatz</option></PSelect>
         </MBar>
         <MScroll>
           {!shown.length && <MEmpty>{list.length ? "Keine Treffer." : "Noch keine Artikel – mit „＋ Artikel“ anlegen."}</MEmpty>}
@@ -8976,7 +9001,7 @@ function ArticlesPage({ setTab }) {
               sections: Object.entries(by).map(([g, l]) => ({ heading: g, rows: l.map((a) => [a.number || "", a.text || "", a.unit || "", r2e(a.price)]) })) }), `preisliste-${isoToday()}.pdf`); } },
           { label: "📊 Excel (.xlsx)", sub: "mit Umsatz und Anzahl aus Rechnungen", run: () => downloadXlsx(`artikel-${isoToday()}.xlsx`, [{ name: "Artikel", head: ["Art.-Nr.", "Bezeichnung", "Gruppe", "Einheit", "Preis €", "EAN", "Aktiv", "Rechnungspositionen", "Umsatz €", "Notiz"], rows: shown.map(({ a, u }) => [a.number || "", a.text || "", a.group || "", a.unit || "", r2e(a.price), a.ean || "", a.inactive ? "nein" : "ja", u.n, r2e(u.sum), a.note || ""]) }]) },
           { label: "📄 CSV", run: () => downloadCsv(`artikel-${isoToday()}.csv`, ["Art.-Nr.", "Bezeichnung", "Gruppe", "Einheit", "Preis €", "EAN", "Aktiv"], shown.map(({ a }) => [a.number || "", a.text || "", a.group || "", a.unit || "", r2e(a.price), a.ean || "", a.inactive ? "nein" : "ja"])) }]} />
-        <select className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">Name</option><option value="preis">Preis</option><option value="umsatz">Umsatz</option></select>
+        <PSelect className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">Name</option><option value="preis">Preis</option><option value="umsatz">Umsatz</option></PSelect>
         {setTab && <button className="chip" onClick={() => setTab("inventur")}>📋 Lager</button>}
         {setTab && <button className="chip" title="Einstellungen" onClick={() => { ls.set("openSettingsSec", "artikel"); setTab("settings"); }}>⚙︎</button>}
       </div>
@@ -9091,7 +9116,7 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
         <input ref={photoRef} type="file" accept="image/*" hidden onChange={async (ev) => { const f = ev.target.files[0]; ev.target.value = ""; if (f) try { set({ photo: await resizeImg(f) }); } catch {} }} />
       </div>
       <div className="grid2">
-        <label>Kategorie<select value={a.cat || "Sonstiges"} onChange={(ev) => set({ cat: ev.target.value })}>{cats.map((c) => <option key={c}>{(ASSET_CATS[c] || "📦") + " " + c}</option>)}</select></label>
+        <label>Kategorie<PSelect value={a.cat || "Sonstiges"} onChange={(ev) => set({ cat: ev.target.value })}>{cats.map((c) => <option key={c}>{(ASSET_CATS[c] || "📦") + " " + c}</option>)}</PSelect></label>
         <label>Marke / Modell<input value={a.brand || ""} placeholder="z. B. Sony CFI-2016" onChange={(ev) => set({ brand: ev.target.value })} /></label>
       </div>
       <div className="grid2">
@@ -9321,14 +9346,14 @@ function KassaEntryWin({ init, kasse, entries, lastCount, docs, onUpload, onScan
       </div>
       <label>Buchungstext<input value={e.text} placeholder={e.kind === "ein" ? "z. B. Barverkauf Tagesumsatz" : "z. B. Briefmarken Post"} onChange={(ev) => tset({ text: ev.target.value })} /></label>
       <div className="grid2">
-        <label>Kategorie<select value={e.cat} onChange={(ev) => set({ cat: ev.target.value })}>{KB_CATS[e.kind].map((c) => <option key={c}>{c}</option>)}</select></label>
-        <label>USt-Satz<select value={e.vat ?? ""} onChange={(ev) => set({ vat: ev.target.value === "" ? null : Number(ev.target.value) })}><option value="">– keine –</option>{[20, 13, 10, 0].map((v) => <option key={v} value={v}>{v} %</option>)}</select></label>
+        <label>Kategorie<PSelect value={e.cat} onChange={(ev) => set({ cat: ev.target.value })}>{KB_CATS[e.kind].map((c) => <option key={c}>{c}</option>)}</PSelect></label>
+        <label>USt-Satz<PSelect value={e.vat ?? ""} onChange={(ev) => set({ vat: ev.target.value === "" ? null : Number(ev.target.value) })}><option value="">– keine –</option>{[20, 13, 10, 0].map((v) => <option key={v} value={v}>{v} %</option>)}</PSelect></label>
       </div>
       <div className="kbbeleg">
         <small className="muted">Beleg</small>
         <div className="grid2">
           <label>Belegnummer<input value={e.beleg || ""} placeholder="z. B. Rechnungs-Nr." onChange={(ev) => set({ beleg: ev.target.value })} /></label>
-          <label>Dokument verknüpfen<select value={e.docId || ""} onChange={(ev) => set({ docId: ev.target.value || null })}><option value="">– keines –</option>{receipts.map((d) => <option key={d.id} value={d.id}>{fmtDate(d.documentDate || d.created)} · {d.title || d.name}</option>)}</select></label>
+          <label>Dokument verknüpfen<PSelect value={e.docId || ""} onChange={(ev) => set({ docId: ev.target.value || null })}><option value="">– keines –</option>{receipts.map((d) => <option key={d.id} value={d.id}>{fmtDate(d.documentDate || d.created)} · {d.title || d.name}</option>)}</PSelect></label>
         </div>
         <div className="kbbelegrow">
           <label className="check"><input type="checkbox" checked={!!e.eigen} onChange={(ev) => set({ eigen: ev.target.checked })} /> Eigenbeleg (kein Fremdbeleg vorhanden)</label>
@@ -9703,7 +9728,7 @@ function StockReceiptWin({ arts, docs, onScan, onUpload, onOpen, onBook, onClose
               <input type="checkbox" checked={r.on} onChange={(e) => upd(r.id, { on: e.target.checked })} />
               <div className="grow srmain">
                 <input value={r.name} placeholder="Bezeichnung" onChange={(e) => upd(r.id, { name: e.target.value })} />
-                <select value={r.art} onChange={(e) => upd(r.id, { art: e.target.value })}><option value="__new">＋ Neuen Lagerartikel anlegen</option>{arts.filter((a) => !a.inactive).map((a) => <option key={a.id} value={a.id}>→ {a.text}{a.stock ? "" : " (noch kein Lagerartikel)"}</option>)}</select>
+                <PSelect value={r.art} onChange={(e) => upd(r.id, { art: e.target.value })}><option value="__new">＋ Neuen Lagerartikel anlegen</option>{arts.filter((a) => !a.inactive).map((a) => <option key={a.id} value={a.id}>→ {a.text}{a.stock ? "" : " (noch kein Lagerartikel)"}</option>)}</PSelect>
               </div>
               <label className="srnum">Menge<input inputMode="decimal" value={r.qty} onChange={(e) => upd(r.id, { qty: e.target.value })} /></label>
               <label className="srnum">Preis/Einh. €<input inputMode="decimal" value={r.ek} onChange={(e) => upd(r.id, { ek: e.target.value })} /></label>
@@ -9856,8 +9881,8 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
         onFinish={finish} onDelete={(c) => setCounts((l) => l.filter((x) => x.id !== c.id))} onClose={() => setCnt(null)} />}
       {newCnt && <Win id="newcount" onClose={() => setNewCnt(null)} small dirty={false}>
         <div className="panelhead"><b>Neue Inventur</b><button className="btn primary" onClick={() => startCount(newCnt)}>Zählung starten</button><XBtn /></div>
-        <label>Umfang – Lagerort<select value={newCnt.loc} onChange={(e) => setNewCnt({ ...newCnt, loc: e.target.value })}><option value="">Alle Lagerorte (Stichtagsinventur)</option>{locs.map((l) => <option key={l}>{l}</option>)}</select></label>
-        <label>Artikelgruppe<select value={newCnt.group} onChange={(e) => setNewCnt({ ...newCnt, group: e.target.value })}><option value="">Alle Gruppen</option>{[...new Set(stockArts.map((a) => a.group).filter(Boolean))].map((g) => <option key={g}>{g}</option>)}</select></label>
+        <label>Umfang – Lagerort<PSelect value={newCnt.loc} onChange={(e) => setNewCnt({ ...newCnt, loc: e.target.value })}><option value="">Alle Lagerorte (Stichtagsinventur)</option>{locs.map((l) => <option key={l}>{l}</option>)}</PSelect></label>
+        <label>Artikelgruppe<PSelect value={newCnt.group} onChange={(e) => setNewCnt({ ...newCnt, group: e.target.value })}><option value="">Alle Gruppen</option>{[...new Set(stockArts.map((a) => a.group).filter(Boolean))].map((g) => <option key={g}>{g}</option>)}</PSelect></label>
         <p className="muted small">Gezählt wird gegen den Sollbestand zum Stichtag. Beim Abschließen werden Differenzen als „Inventurdifferenz“ gebucht und eine Inventurliste mit Bewertung (Einstandspreis) erstellt.</p>
       </Win>}
     </div>
@@ -11965,4 +11990,29 @@ html.hdrmin .hdrcol{display:none!important}
 }
 
 .invacts .invph{visibility:hidden;pointer-events:none}
+
+/* v0.77 PSelect: Auswahlmenüs im Fahrtenbuch-Stil */
+.vehpick.block{display:block;width:100%}
+.vehpickbtn.selbtn{width:100%;display:flex;align-items:center;justify-content:flex-start;gap:6px;text-align:left;background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:12px;padding:11px 12px;font:inherit;font-size:16px;font-weight:400;min-height:44px;box-shadow:none}
+.vehpickbtn.selbtn .caret{margin-left:auto;opacity:.6}
+.vehpickbtn.selbtn.on{border-color:var(--acc);background:var(--card)}
+html.fg .vehpickbtn.selbtn{background:var(--card2);border-radius:16px;font-size:18px;border-color:transparent}
+html.fg .vehpickbtn.selbtn.on{border-color:var(--acc)}
+.vehpickbtn:disabled{opacity:.5;cursor:default}
+label>.vehpick.block{margin-top:6px}
+.pickmenu button:disabled{opacity:.4}
+
+/* v0.77 Dokumente-Zeilen wie Rechnungen (ab iPad) */
+.dcatcol{display:none}
+@media (min-width:701px){
+  .docbox .ditem>.thumb,.docbox .ditem>.dthumb,.docbox .ditem>img,.docbox .ditem .labels{display:none!important}
+  .docbox .ditem{padding:12px 16px!important;gap:14px}
+  .docbox .ditem .dtitle{font-size:16px!important;font-weight:600!important;-webkit-line-clamp:1}
+  .docbox .ditem small{font-size:14px!important}
+  .docbox .damtcol{min-width:110px;font-size:16px}
+  .docbox .damtcol .amt{font-size:16px!important;font-weight:600}
+  .docbox .dcatcol{display:flex;justify-content:center;flex:none;width:170px}
+  .docbox .dcatcol .label{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+  .docbox .ditem .dactions button{width:34px;height:34px}
+}
 `;
