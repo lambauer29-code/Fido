@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.75.0
+
+- **Ausgabe – Erfasste Ausgaben** mit Suchleiste (Firma, Notiz, Kategorie, Konto, Datum, Betrag).
+- Ab iPad quer / Desktop (≥ 1100 px): zweispaltig, rechts eine feste abgerundete Box bis 15 px über den Rand, nur der Inhalt scrollt. iPad hochkant: Box unter dem Formular mit eigener Scroll-Liste (ca. 60 % Bildschirmhöhe).
+- iPhone: unter dem Formular „Erfasste Ausgaben“, darunter die Suchleiste, die beim Scrollen oben stehen bleibt, und die Liste wie in den Kontodetails (nach Tagen gruppiert, Datum bleibt oben stehen, abgerundete Box).
+- Details einer Ausgabe zeigen jetzt die USt je Steuersatz.
+- Es werden die letzten 200 Ausgaben angezeigt (bei Suche bis 500 Treffer).
+
 ## v0.74.2
 
 - Ausgabe: „＋ Kategorie“ (neue Kategorie anlegen) steht jetzt ganz oben im Kategorie-Menü – vorher nur am Ende der langen Liste.

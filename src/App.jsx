@@ -2380,56 +2380,104 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
 }
 
 function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addCategory, suggestCat, docs, onOpen, openAccount, notify }) {
-  const [openId, setOpenId] = useState(null);
+  const [openId, setOpenId] = useState(null), [q, setQ] = useState("");
+  const mobile = useMobileBeta(), wide = useMedia("(min-width:1100px)");
   const month = todayISO().slice(0, 7);
-  const list = txs.filter((t) => t.manual).sort((a, b) => (b.date + (b.createdAt || "")).localeCompare(a.date + (a.createdAt || ""))).slice(0, 40);
+  const accOf = (id) => accounts.find((a) => a.id === id);
+  const all = txs.filter((t) => t.manual).sort((a, b) => (b.date + (b.createdAt || "")).localeCompare(a.date + (a.createdAt || "")));
+  const nq = norm(q.trim());
+  const hit = (t) => !nq || norm(`${t.counterparty || ""} ${t.purpose || ""} ${t.category || ""} ${accOf(t.accountId)?.name || ""} ${fmtDate(t.date)} ${amtStr(Math.abs(t.amount))}`).includes(nq);
+  const list = all.filter(hit).slice(0, nq ? 500 : 200);
   const monthOut = txs.filter((t) => t.manual && t.amount < 0 && t.date.startsWith(month)).reduce((s, t) => s - t.amount, 0);
   const cash = accounts.filter((a) => a.kind === "cash");
-  const accOf = (id) => accounts.find((a) => a.id === id);
+  const exportMenu = (() => { const allA = [...all].sort((a, b) => a.date.localeCompare(b.date)); const accN = (id) => accounts.find((a) => a.id === id)?.name || "";
+    const pos = allA.flatMap((t) => (t.items || []).map((i) => [t.date, t.counterparty || "", accN(t.accountId), i.name, i.qty, i.qty ? r2e(i.total / i.qty) : "", r2e(i.total), i.category || ""]));
+    const bons = allA.map((t) => [t.date, t.counterparty || "", accN(t.accountId), t.category || "", (t.items || []).length, -t.amount, t.vat?.length ? r2e(t.vat.reduce((a, v) => a + v.vat, 0)) : "", (t.vat || []).map((v) => v.rate + " %").join(" / "), t.purpose || "", t.receiptQr?.receiptNo || "", t.docId ? "ja" : ""]);
+    const PH = ["Datum", "Geschäft", "Konto", "Artikel", "Menge", "Einzelpreis €", "Gesamt €", "Warengruppe"], BH = ["Datum", "Geschäft", "Konto", "Kategorie", "Positionen", "Betrag €", "USt €", "Steuersätze", "Notizen", "Beleg-Nr.", "Beleg"];
+    return <ExportMenu items={[{ head: `${allA.length} Ausgaben · ${pos.length} Positionen` },
+      { label: "📊 Excel (.xlsx)", sub: "Blätter: Positionen, Einkäufe, Warengruppen", run: () => { const g = {}; pos.forEach((p) => { const o = g[p[7] || "Sonstiges"] || (g[p[7] || "Sonstiges"] = [0, 0]); o[0] += p[6]; o[1]++; });
+        downloadXlsx(`einkaeufe-${isoToday()}.xlsx`, [{ name: "Positionen", head: PH, rows: pos }, { name: "Einkäufe", head: BH, rows: bons }, { name: "Warengruppen", head: ["Warengruppe", "Summe €", "Positionen"], rows: Object.entries(g).sort((a, b) => b[1][0] - a[1][0]).map(([k, [v, n]]) => [k, r2e(v), n]) }]); } },
+      { label: "📄 Positionen CSV", run: () => downloadCsv(`einkauf-positionen-${isoToday()}.csv`, PH, pos) },
+      { label: "📄 Einkäufe CSV", run: () => downloadCsv(`einkaeufe-${isoToday()}.csv`, BH, bons) }]} />; })();
+  const cashRows = cash.map((a) => (
+    <div key={a.id} className="frow click expcash" onClick={() => openAccount(a.id)}>
+      <span className="caticon" style={{ width: 40, height: 40, background: "#16a34a22", fontSize: 20 }}><AccIcon a={a} className="acci" force /></span>
+      <div className="grow"><b style={accStyle(a)}>{a.name}</b><small className="muted block">Bargeld-Bestand</small></div>
+      <div className="right"><b className={cashBalance(a, txs) < 0 ? "neg" : "pos"}>{fmtMoney(cashBalance(a, txs))}</b></div>
+    </div>
+  ));
+  const detail = (t, d) => (
+    <div className="expdetail">
+      {t.vat?.length ? t.vat.map((v, i) => <div key={i} className="exprow"><span className="muted">USt {v.rate} %</span><span className="grow" /><span className="muted small">von {fmtMoney(v.gross)}</span><b>{fmtMoney(v.vat)}</b></div>) : null}
+      {t.items?.length ? t.items.map((it, i) => (
+        <div key={"i" + i} className="exprow"><span className="muted">{String(it.qty).replace(".", ",")}×</span><span className="grow">{it.name}</span><span className="chip sm">{it.category}</span><b>{fmtMoney(it.total)}</b></div>
+      )) : null}
+      {t.purpose && <p className="small">{t.purpose}</p>}
+      {!t.vat?.length && !t.items?.length && !t.purpose && !d && <p className="muted small">Keine weiteren Angaben.</p>}
+      {d && <button className="link" onClick={() => onOpen(d.id)}>📎 Beleg öffnen</button>}
+    </div>
+  );
+  const row = (t) => { const d = t.docId && docs.find((x) => x.id === t.docId), a = accOf(t.accountId), open = openId === t.id; return (
+    <div key={t.id} className="expentry">
+      <div className="frow click" onClick={() => setOpenId(open ? null : t.id)}>
+        <CatIcon c={t.category} size={36} />
+        <div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b>
+          <small className="muted block">{fmtDate(t.date)} · {t.category}{a ? " · " + a.name : ""}{t.vat?.length ? " · USt " + t.vat.map((v) => v.rate + " %").join("/") : ""}{d ? " · 📎" : ""}</small></div>
+        <div className="right"><b className={t.amount < 0 ? "neg" : "pos"}>{fmtMoney(t.amount)}</b></div>
+      </div>
+      {open && detail(t, d)}
+    </div>); };
+  const empty = !list.length && <p className="muted small expempty">{q ? "Keine Treffer." : "Noch keine Ausgaben erfasst. Scanne einen Kassenbon – Firma, Datum, Betrag und Steuern werden automatisch ausgefüllt."}</p>;
+  const form = (
+    <section className="tile">
+      <div className="tilehead"><b>Ausgabe erfassen</b></div>
+      <ExpenseForm accounts={accounts} txs={txs} docs={docs} categories={categories} onSave={onSave} onScan={onScan} onUpload={onUpload} addCategory={addCategory} suggestCat={suggestCat} notify={notify} />
+    </section>
+  );
+  if (mobile) {
+    // Handy: Formular oben, darunter Suchleiste (bleibt oben stehen) und die Liste wie in den Kontodetails
+    const dayL = (iso) => { const d = new Date(iso + "T12:00"); const r = relDay(iso); return r === "Heute" || r === "Gestern" ? r : `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}. ${["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][d.getDay()]}`; };
+    return (
+      <div className="exppage mpage">
+        {form}
+        <div className="exphead"><b>Erfasste Ausgaben</b><small className="muted">{monthLabel(month)}: {fmtMoney(monthOut)}</small>{exportMenu}</div>
+        {!!cash.length && <div className="tile expcashbox">{cashRows}</div>}
+        <MBar q={q} setQ={setQ} placeholder="Ausgaben durchsuchen" />
+        <MScroll>
+          {mGroup(list, (t) => t.date).map(([date, items]) => (
+            <React.Fragment key={date}>
+              <div className="mday">{dayL(date)}</div>
+              {items.map((t) => { const d = t.docId && docs.find((x) => x.id === t.docId), a = accOf(t.accountId), open = openId === t.id; return (
+                <div key={t.id}>
+                  <div className="mtx" onClick={() => setOpenId(open ? null : t.id)}>
+                    <CatIcon c={t.category} size={46} />
+                    <div className="grow"><b className="one">{t.counterparty || t.purpose || "Buchung"}</b>
+                      <div className="msub"><span className="one">{t.category}{a ? " · " + a.name : ""}</span>{d && <span title="Beleg">📎</span>}</div></div>
+                    <span className={"mamt" + (t.amount > 0 ? " in" : "")}>{fmtMoney(t.amount)}</span>
+                  </div>
+                  {open && detail(t, d)}
+                </div>); })}
+            </React.Fragment>
+          ))}
+          {empty}
+        </MScroll>
+      </div>
+    );
+  }
   return (
     <div className="exppage">
-      <section className="tile">
-        <div className="tilehead"><b>Ausgabe erfassen</b></div>
-        <ExpenseForm accounts={accounts} txs={txs} docs={docs} categories={categories} onSave={onSave} onScan={onScan} onUpload={onUpload} addCategory={addCategory} suggestCat={suggestCat} notify={notify} />
-      </section>
-      <section className="tile">
-        <div className="tilehead"><b>Erfasste Ausgaben</b><small>{monthLabel(month)}: {fmtMoney(monthOut)}</small>
-          {(() => { const all = txs.filter((t) => t.manual).sort((a, b) => a.date.localeCompare(b.date)); const accN = (id) => accounts.find((a) => a.id === id)?.name || "";
-            const pos = all.flatMap((t) => (t.items || []).map((i) => [t.date, t.counterparty || "", accN(t.accountId), i.name, i.qty, i.qty ? r2e(i.total / i.qty) : "", r2e(i.total), i.category || ""]));
-            const bons = all.map((t) => [t.date, t.counterparty || "", accN(t.accountId), t.category || "", (t.items || []).length, -t.amount, t.vat?.length ? r2e(t.vat.reduce((a, v) => a + v.vat, 0)) : "", (t.vat || []).map((v) => v.rate + " %").join(" / "), t.purpose || "", t.receiptQr?.receiptNo || "", t.docId ? "ja" : ""]);
-            const PH = ["Datum", "Geschäft", "Konto", "Artikel", "Menge", "Einzelpreis €", "Gesamt €", "Warengruppe"], BH = ["Datum", "Geschäft", "Konto", "Kategorie", "Positionen", "Betrag €", "USt €", "Steuersätze", "Notizen", "Beleg-Nr.", "Beleg"];
-            return <ExportMenu items={[{ head: `${all.length} Ausgaben · ${pos.length} Positionen` },
-              { label: "📊 Excel (.xlsx)", sub: "Blätter: Positionen, Einkäufe, Warengruppen", run: () => { const g = {}; pos.forEach((p) => { const o = g[p[7] || "Sonstiges"] || (g[p[7] || "Sonstiges"] = [0, 0]); o[0] += p[6]; o[1]++; });
-                downloadXlsx(`einkaeufe-${isoToday()}.xlsx`, [{ name: "Positionen", head: PH, rows: pos }, { name: "Einkäufe", head: BH, rows: bons }, { name: "Warengruppen", head: ["Warengruppe", "Summe €", "Positionen"], rows: Object.entries(g).sort((a, b) => b[1][0] - a[1][0]).map(([k, [v, n]]) => [k, r2e(v), n]) }]); } },
-              { label: "📄 Positionen CSV", run: () => downloadCsv(`einkauf-positionen-${isoToday()}.csv`, PH, pos) },
-              { label: "📄 Einkäufe CSV", run: () => downloadCsv(`einkaeufe-${isoToday()}.csv`, BH, bons) }]} />; })()}</div>
-        {cash.map((a) => (
-          <div key={a.id} className="frow click" onClick={() => openAccount(a.id)}>
-            <span className="caticon" style={{ width: 40, height: 40, background: "#16a34a22", fontSize: 20 }}><AccIcon a={a} className="acci" force /></span>
-            <div className="grow"><b style={accStyle(a)}>{a.name}</b><small className="muted block">Bargeld-Bestand</small></div>
-            <div className="right"><b className={cashBalance(a, txs) < 0 ? "neg" : "pos"}>{fmtMoney(cashBalance(a, txs))}</b></div>
+      {form}
+      <div className="expside">
+        <div className="exphead"><b>Erfasste Ausgaben</b><small className="muted">{monthLabel(month)}: {fmtMoney(monthOut)}</small>{exportMenu}</div>
+        <div className="searchbar"><span>🔍</span><input type="search" placeholder="Ausgaben durchsuchen" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <FitScroll card className="expbox" minH={wide ? 160 : Math.round(innerHeight * 0.62)}>
+          <div className="tile">
+            {!q && cashRows}
+            {list.map(row)}
+            {empty}
           </div>
-        ))}
-        {!list.length && <p className="muted small">Noch keine Ausgaben erfasst. Scanne einen Kassenbon – Firma, Datum, Betrag und Steuern werden automatisch ausgefüllt.</p>}
-        {list.map((t) => { const d = t.docId && docs.find((x) => x.id === t.docId), a = accOf(t.accountId), open = openId === t.id; return (
-          <div key={t.id} className="expentry">
-            <div className="frow click" onClick={() => setOpenId(open ? null : t.id)}>
-              <CatIcon c={t.category} size={36} />
-              <div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b>
-                <small className="muted block">{fmtDate(t.date)} · {t.category}{a ? " · " + a.name : ""}{t.items?.length ? ` · ${t.items.length} Pos.` : ""}{d ? " · 📎" : ""}</small></div>
-              <div className="right"><b className={t.amount < 0 ? "neg" : "pos"}>{fmtMoney(t.amount)}</b></div>
-            </div>
-            {open && (
-              <div className="expdetail">
-                {t.items?.length ? t.items.map((it, i) => (
-                  <div key={i} className="exprow"><span className="muted">{String(it.qty).replace(".", ",")}×</span><span className="grow">{it.name}</span><span className="chip sm">{it.category}</span><b>{fmtMoney(it.total)}</b></div>
-                )) : <p className="muted small">Keine Positionen erfasst.</p>}
-                {t.purpose && <p className="small">{t.purpose}</p>}
-                {d && <button className="link" onClick={() => onOpen(d.id)}>📎 Beleg öffnen</button>}
-              </div>
-            )}
-          </div>); })}
-      </section>
+        </FitScroll>
+      </div>
     </div>
   );
 }
@@ -7148,9 +7196,9 @@ function MScroll({ children, extra = "" }) {
     {cap && createPortal(<div className="mbotcap" aria-hidden="true" style={{ top: cap.top - 22 }}><i style={{ left: cap.left, right: cap.right }} /></div>, document.body)}
   </>);
 }
-function FitScroll({ children, className = "", cols, card = false }) {
+function FitScroll({ children, className = "", cols, card = false, minH }) {
   const ref = useRef(null);
-  const h = useFitHeight(ref, card ? 160 : 200, false, card, 0, card);
+  const h = useFitHeight(ref, minH || (card ? 160 : 200), false, card, 0, card);
   useHdrReset();
   useHdrCollapse(ref, card);
   const phoneW = useMedia("(max-width:700px)");
@@ -11323,7 +11371,7 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 
 /* v0.44: Ausgabe (Bonsy-Stil), Analyse, Vermögen */
 .exppage,.anapage,.wealthpage{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
-@media (min-width:1024px){.exppage{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start}}
+@media (min-width:1100px){.exppage{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start}}
 .expscan{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
 .expbig{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:14px 12px;border-radius:16px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font:inherit;cursor:pointer;min-width:0}
 .expbig:first-child{background:color-mix(in srgb,var(--acc) 18%,var(--card));border-color:color-mix(in srgb,var(--acc) 45%,transparent)}
@@ -11884,4 +11932,16 @@ html.hdrmin .hdrcol{display:none!important}
 @media(max-width:700px){.exptaxrow{grid-template-columns:84px minmax(70px,1fr) auto auto;gap:6px}.exptaxv{min-width:0}}
 
 .vehpickbtn .catimg,.pickmenu .vehmi .catimg{width:1.2em;height:1.2em;object-fit:contain;vertical-align:-.2em}
+
+
+.expside{display:flex;flex-direction:column;gap:10px;min-width:0}
+.exphead{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;min-width:0}
+.exphead>*{flex:none;width:auto!important;margin:0!important}.exphead>b{white-space:nowrap}.exphead>small{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.exphead>b{font-size:20px;font-weight:700}
+.exphead>small{margin-left:auto}
+.exppage .expbox>.tile{background:none;box-shadow:none;border:0;padding:6px 14px;margin:0}
+.expempty{padding:16px 4px}
+.exppage.mpage .exphead{margin-top:6px}
+.expcashbox{padding:6px 14px!important}
+.mtxlist .expdetail{padding:4px 16px 12px 74px}
 `;
