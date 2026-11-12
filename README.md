@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.70.1
+
+- Kassensturz-Protokolle: Anzeigen und Drucken als Symbol-Knöpfe (Auge, Drucker) wie in Rechnungen und Dokumenten.
+
 ## v0.70.0
 
 - Kassabuch: Kassenauswahl und Zeitraum als Auswahlmenü im Stil der Fahrzeugauswahl (Hover am Desktop, Tippen am Handy). Kassen mit Kassenstand und Anzahl Buchungen, dazu „bearbeiten“ und „Kasse hinzufügen“; Zeitraum nach Monat und Jahr mit Anzahl Buchungen und Einnahmen/Ausgaben.

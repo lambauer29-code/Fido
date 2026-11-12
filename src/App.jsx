@@ -9249,7 +9249,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
       {!kCounts.length && <p className="muted small">Noch kein Kassensturz. Empfehlung: mindestens wöchentlich, besser täglich zählen.</p>}
       {kCounts.map((c) => <div key={c.id} className="frow"><span className="grow"><b>{new Date(c.created).toLocaleString("de-AT", { dateStyle: "short", timeStyle: "short" })}</b><small className="muted block">Soll {fmtMoney(c.book)} · Ist {fmtMoney(c.counted)}{c.note ? " · " + c.note : ""}</small></span>
         <b className={c.diff < 0 ? "neg" : c.diff > 0 ? "pos" : ""}>{c.diff ? fmtMoney(c.diff) : "✓"}</b>
-        <button className="chip" title="Protokoll anzeigen" onClick={() => countShow(c)}>👁 Anzeigen</button><button className="chip" title="Drucken" onClick={() => countPrint(c)}>🖨</button></div>)}
+        <span className="invacts kbacts"><button className="iconbtn" title="Protokoll anzeigen" aria-label="Protokoll anzeigen" onClick={() => countShow(c)}><IcoEye /></button><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => countPrint(c)}><IcoPrint /></button></span></div>)}
     </section>
   );
   const modals = (<>
@@ -11700,4 +11700,5 @@ html:not(.fg) .fitscroll.fscard{border-radius:18px}
 .pickmenu .pickhead{display:block;padding:8px 12px 2px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .pickmenu .pickright{font-size:13px;color:var(--mut);white-space:nowrap}
 .pickmenu{scrollbar-width:thin}
+.kbacts{width:auto!important;flex:none;flex-wrap:nowrap;gap:4px;margin-left:6px}
 `;
