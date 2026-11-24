@@ -4,6 +4,8 @@ import QRCode from "qrcode";
 import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrinkPdf } from "./scan.js";
 import { parseReceiptQR, pastOrToday } from "./receipt.js";
 import { saveBlob, downloadCsv, downloadXlsx, tablePdf, zipBlob, vcardText, csvBlob, xlsxBlob } from "./exports.js";
+import { PROVIDERS, PROVIDER_LIST, syncCfg, setSyncCfg, syncOn, syncNow, oauthLogin, oauthConfig, setupKey, cloudState, disconnect, remoteDevices, defaultDeviceName, deviceId, kvGet } from "./sync.js";
+import { canUpdate, appVersion, checkUpdate, installUpdate } from "./platform.js";
 import { latestBalance, parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS, counterpartyKey } from "./importers.js";
 
 /* ============================================================
@@ -330,6 +332,7 @@ const db = {
   putTxs: (list) => idb("tx", "readwrite", (s) => { let r; for (const t of list) r = s.put(t); return r; }),
   delTxs: (ids) => idb("tx", "readwrite", (s) => { let r; for (const id of ids) r = s.delete(id); return r; })
 };
+export { db };
 
 /* ---------- Helfer ---------- */
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -1548,6 +1551,9 @@ function AppMain() {
   useEffect(() => ls.set("subs", subs), [subs]);
   useEffect(() => ls.set("nav", nav), [nav]);
   useAutoBackup();
+  const syncPending = useSyncAgent();
+  const appUpd = useAppUpdate();
+  useEffect(() => { if (localStorage.getItem("syncNext")) setTab("backup"); }, []);
   useEffect(() => ls.set("docArea", docAreaSel), [docAreaSel]);
   useEffect(() => { db.allTx().then(setTxs); }, []);
 
@@ -1617,7 +1623,9 @@ function AppMain() {
   const [pdfView, setPdfView] = useState(null);
   pdfUi = setPdfView;
   const impRef = useRef(null), vcfApp = useRef(null);
-  const [sideMini, setSideMiniRaw] = useState(() => ls.get("sideMini", false));
+  const [sideMiniSet, setSideMiniRaw] = useState(() => ls.get("sideMini", null));
+  const tabletAuto = useMedia("(min-width:701px) and (max-width:1180px) and (pointer:coarse)");
+  const sideMini = sideMiniSet === null ? tabletAuto : sideMiniSet; // iPad: automatisch nur Symbole, solange nicht selbst umgestellt
   const [sideTip, setSideTip] = useState(null);
   const setSideMini = (v) => { setSideMiniRaw(v); ls.set("sideMini", v); };
   useEffect(() => { document.documentElement.classList.toggle("side-mini", !!sideMini); }, [sideMini]);
@@ -2154,6 +2162,10 @@ function AppMain() {
       {shareData && <ShareWin data={shareData} onClose={() => setShareData(null)} />}
       {pdfView && <PdfViewWin data={pdfView} onClose={() => setPdfView(null)} />}
       {toast && <div className="toast">{toast}</div>}
+      {appUpd.update && !appUpd.dismissed && <div className="syncbanner updbanner">
+        {appUpd.pct != null ? <>⬇︎ Update wird installiert … {appUpd.pct}%</> : <>🎉 FinDocu {appUpd.update.version} ist da · <button className="link" onClick={appUpd.install}><b>Jetzt aktualisieren</b></button> <button className="link" aria-label="Später" onClick={appUpd.later}>✕</button></>}
+      </div>}
+      {syncPending > 0 && <button className="syncbanner" onClick={() => location.reload()}>☁️ Neue Daten von einem anderen Gerät · <b>Aktualisieren</b></button>}
     </div>
     </IconLibCtx.Provider>
   );
@@ -3944,6 +3956,7 @@ function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () =
   );
 }
 function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount, cashForm, uniDrop, editing = false, setEditing = () => {}, actions }) {
+  const touchHome = useMedia("(max-width:700px), (pointer:coarse) and (max-width:1366px)");
   const bankAccs = accounts.filter((a) => a.kind !== "cash");
   const bankBals = bankAccs.map((a) => accountBalance(a, txs)).filter((x) => x != null);
   const bankTotal = bankBals.length ? bankBals.reduce((x, y) => x + y, 0) : null;
@@ -4163,6 +4176,7 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
   const w_ablage = uniDrop ? <section className="tile uniwidget"><div className="tilehead"><b>Universal-Ablage</b><small>wird automatisch einsortiert</small></div>{uniDrop}</section> : null;
   const els = { ablage: w_ablage, barerfassung: w_barerfassung, hero: w_hero, alerts: w_alerts, konten: w_konten, bargeld: w_bargeld, kategorien: w_kategorien, verlauf: w_verlauf,
     budgets: w_budgets, fristen: w_fristen, docs: w_docs, contracts: w_contracts, tx: w_tx, tax: w_tax, quick: w_quick };
+  if (touchHome) return <HomeTiles {...{ docs, dlDocs, txs, budgets, onOpen, setTab, accounts, editing, setEditing, flows, thisMonth, monthName, bankAccs, bankTotal, fix, openInv, spentByCat, budgetRows, verlauf: w_verlauf, kategorien: w_kategorien }} />;
   return (
     <>
       <DashGrid storeKey="homeLayout" widgets={HOME_WIDGETS} migrate={migrateLayout} els={els} editing={editing} setEditing={setEditing} title="Übersicht" />
@@ -4171,6 +4185,120 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
   );
 }
 
+
+/* ======================= Übersicht als Kacheln (iPhone/iPad, v0.87) =======================
+   Umschalter Alle · Privat · Firma gilt für die ganze App (Dokumente, Verträge, Besitz übernehmen ihn). */
+const APP_SCOPES = [["alle", "Alle"], ["privat", "Privat"], ["firma", "Firma"]];
+const HOME_TILE_DEFAULT = {
+  alle: ["mahn", "invOpen", "saldo", "konten", "fristen", "zahlen", "fix", "kassa"],
+  firma: ["invOpen", "mahn", "umsatz", "gewinn", "ausgFirma", "kassa", "fristen", "ku"],
+  privat: ["saldo", "konten", "ausgaben", "fix", "fristen", "zahlen", "budget"]
+};
+function useAppScope() {
+  const [sc, setSc] = useLsState("appScope", "alle");
+  const set = (v) => { setSc(v); ls.set("docScope", v); ls.set("ctScope", v); ls.set("astScope", v); };
+  return [sc, set];
+}
+function HomeTiles({ docs, dlDocs, txs, onOpen, setTab, editing, setEditing, flows, thisMonth, monthName, bankAccs, bankTotal, fix, openInv, budgetRows, verlauf, kategorien }) {
+  const [scope, setScope] = useAppScope();
+  const [order, setOrder] = useLsState("homeTiles", HOME_TILE_DEFAULT);
+  const [list] = useLsState("invoices", []);
+  const [fb] = useLsState("fbook", FB_EMPTY);
+  const { kassen, entries } = useKassa();
+  const wide = useMedia("(min-width:701px)");
+  const inSc = (d) => scope === "alle" || docScope(d) === scope;
+  const year = thisMonth.slice(0, 4);
+  // Rechnungen & Mahnungen (immer Firma)
+  const inv = list.filter((x) => x.kind === "rechnung" && !["entwurf", "storniert"].includes(invState(x)));
+  const openL = inv.filter((x) => ["offen", "überfällig"].includes(invState(x)));
+  const dn = dunning();
+  const over = inv.filter((x) => invState(x) === "überfällig").map((x) => { const last = lastReminder(x), since = last ? -daysUntil(last.due) : -daysUntil(invDue(x)); return { x, since, ready: !last || since >= (dn.waitDays || 0) }; }).sort((a, b) => b.since - a.since);
+  const ready = over.filter((o) => o.ready);
+  const paidIn = (pre) => inv.filter((x) => invState(x) === "bezahlt" && (x.paidAt || x.date || "").startsWith(pre)).reduce((s, x) => s + invTotal(x), 0);
+  const bizExp = (pre) => docs.filter((d) => d.scope === "firma" && d.direction === "ausgabe" && d.amount?.total && (d.documentDate || d.createdAt || "").startsWith(pre)).reduce((s, d) => s + Math.abs(d.amount.total), 0);
+  const kuRev = inv.filter((x) => (x.date || "").startsWith(year)).reduce((s, x) => s + invTotal({ ...x, fee: 0 }), 0);
+  const kassaSum = kassen.reduce((s, k) => s + kbBalAt(entries, k, todayISO()), 0);
+  // Fristen, Zahlungen
+  const dl = (dlDocs || docs).filter(inSc).flatMap((doc) => (doc.deadlines || []).filter((x) => !x.done).map((x) => [x, doc])).sort((a, b) => a[0].date.localeCompare(b[0].date));
+  const dlSoon = dl.filter(([x]) => daysUntil(x.date) <= 7);
+  const pay = openInv.filter(inSc);
+  const privOut = docs.filter((d) => docScope(d) === "privat" && d.direction === "ausgabe" && d.amount?.total && isEUR(d) && monthKey(d) === thisMonth).reduce((s, d) => s + payAmt(d), 0);
+  const f = flows(thisMonth), saldo = f.inc - f.out;
+  const overBudget = budgetRows.filter((b) => b.budget && b.spent > b.budget);
+  const T = {
+    mahn: { l: "Mahnungen", v: String(ready.length), s: ready.length ? "jetzt fällig" : over.length ? `${over.length} überfällig, Wartezeit` : "nichts fällig", tone: ready.length ? "bad" : "", tab: "mahnungen" },
+    invOpen: { l: "Offene Rechnungen", v: fmtMoney(openL.reduce((s, x) => s + invTotal(x), 0)), s: `${openL.length} Stück${over.length ? ` · ${over.length} überfällig` : ""}`, tab: "invoices" },
+    saldo: { l: "Saldo " + monthName, v: (saldo >= 0 ? "+" : "") + fmtMoney(saldo), s: `↑ ${fmtMoney(f.inc)} · ↓ ${fmtMoney(f.out)}`, tone: saldo < 0 ? "neg" : "pos", tab: "analyse" },
+    konten: { l: "Konten", v: bankTotal != null ? fmtMoney(bankTotal) : "—", s: bankAccs.length === 1 ? "1 Konto" : `${bankAccs.length} Konten`, tab: "accounts" },
+    fristen: { l: "Fristen", v: String(dlSoon.length), s: dlSoon.length ? (dlSoon.some(([x]) => daysUntil(x.date) < 0) ? "überfällig oder in 7 Tagen" : "in 7 Tagen") : dl[0] ? "nächste " + fmtDate(dl[0][0].date) : "keine offen", tone: dlSoon.length ? "warn" : "", tab: "deadlines" },
+    zahlen: { l: "Zu bezahlen", v: fmtMoney(pay.reduce((s, d) => s + (d.amount?.total || 0), 0)), s: `${pay.length} Beleg${pay.length === 1 ? "" : "e"}`, tone: pay.length ? "warn" : "", tab: "deadlines" },
+    fix: { l: "Fixkosten", v: fmtMoney(fix), s: "pro Monat", tab: "contracts" },
+    kassa: { l: "Kassabuch", v: fmtMoney(kassaSum), s: `${kassen.length} Kassa${kassen.length === 1 ? "" : "en"}`, tab: "kassa" },
+    umsatz: { l: "Umsatz " + monthName, v: fmtMoney(paidIn(thisMonth)), s: "bezahlte Rechnungen", tone: "pos", tab: "firma" },
+    gewinn: { l: "Gewinn " + year, v: fmtMoney(paidIn(year) - bizExp(year)), s: "Einnahmen − Firmenausgaben", tab: "firma" },
+    ausgFirma: { l: "Firmenausgaben", v: fmtMoney(bizExp(thisMonth)), s: monthName, tab: "docs" },
+    ku: { l: "Umsatz " + year, v: fmtMoney(kuRev), s: `${Math.round((kuRev / KU_LIMIT) * 100)} % der Kleinunternehmergrenze`, tone: kuRev > KU_LIMIT * 0.85 ? "warn" : "", tab: "firma" },
+    ausgaben: { l: "Ausgaben " + monthName, v: fmtMoney(scope === "privat" ? privOut : f.out), s: scope === "privat" ? "private Belege" : "alle Konten", tab: "analyse" },
+    budget: { l: "Budgets", v: overBudget.length ? String(overBudget.length) : "✓", s: overBudget.length ? "überschritten" : budgetRows.some((b) => b.budget) ? "alle im Rahmen" : "noch keine", tone: overBudget.length ? "bad" : "", tab: "analyse" }
+  };
+  const keys = (order?.[scope] || HOME_TILE_DEFAULT[scope]).filter((k) => T[k]);
+  const hidden = Object.keys(T).filter((k) => !keys.includes(k));
+  const setKeys = (l) => setOrder({ ...HOME_TILE_DEFAULT, ...order, [scope]: l });
+  const move = (k, d) => { const l = [...keys], i = l.indexOf(k), j = i + d; if (j < 0 || j >= l.length) return; [l[i], l[j]] = [l[j], l[i]]; setKeys(l); };
+  // Zu erledigen
+  const todo = [];
+  if (scope !== "privat") {
+    ready.slice(0, 3).forEach(({ x, since }) => todo.push({ k: "m" + x.id, ico: "📮", t: `${x.customer?.name || "Ohne Kunde"} · ${x.number}`, s: `${since} Tage überfällig – Mahnung fällig`, v: fmtMoney(invTotal(x)), tone: "bad", run: () => setTab("mahnungen") }));
+    openL.filter((x) => invState(x) === "offen" && daysUntil(invDueEff(x)) <= 7).slice(0, 3).forEach((x) => todo.push({ k: "i" + x.id, ico: "🧾", t: `${x.customer?.name || "Ohne Kunde"} · ${x.number}`, s: "fällig " + fmtDate(invDueEff(x)), v: fmtMoney(invTotal(x)), run: () => setTab("invoices") }));
+  }
+  pay.slice(0, 3).forEach((d) => todo.push({ k: "p" + d.id, ico: "💳", t: d.sender || d.title, s: "bezahlen" + (docScope(d) === "firma" ? " · Firma" : ""), v: fmtMoney(d.amount.total), tone: "warn", run: () => onOpen(d.id) }));
+  dl.filter(([x]) => daysUntil(x.date) <= 14).slice(0, 4).forEach(([x, d]) => { const n = daysUntil(x.date); todo.push({ k: "d" + x.id, ico: "⏰", t: x.label, s: `${d.title}${scope === "alle" && docScope(d) === "firma" ? " · Firma" : ""}`, v: n < 0 ? `${-n} T. über` : n === 0 ? "heute" : `in ${n} T.`, tone: n <= 3 ? "bad" : "warn", run: () => onOpen(d.id) }); });
+  const todoEl = (<section className="tile httodo">
+    <div className="tilehead"><b>Zu erledigen</b><small>{todo.length || ""}</small></div>
+    {!todo.length && <p className="muted small">Alles erledigt 🎉</p>}
+    {todo.map((t) => <div key={t.k} className={"frow click htrow " + (t.tone || "")} onClick={t.run}><span className="htico" aria-hidden="true">{t.ico}</span><div className="grow"><b className="clamp">{t.t}</b><small className="muted block">{t.s}</small></div><b className="htv">{t.v}</b></div>)}
+  </section>);
+  // Bericht für die Firma
+  const years = [...new Set([year, ...list.map((x) => (x.date || "").slice(0, 4)).filter(Boolean)])].sort().reverse().slice(0, 4);
+  const [ry, setRy] = useState(year);
+  const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
+  const reportEl = scope !== "privat" ? (<section className="tile htreport">
+    <div className="tilehead"><b>Bericht für die Firma</b><div className="seg htyears">{years.map((y) => <button key={y} className={ry === y ? "on" : ""} onClick={() => setRy(y)}>{y}</button>)}</div></div>
+    <div className="htrbtns">
+      <button className="btn" onClick={async () => saveBlob(await earPdf(ry, earData(ry, list, docs, fb), co.name), `EAR-${ry}.pdf`)}><IcoPdf /> Einnahmen-Ausgaben</button>
+      <button className="btn" onClick={() => downloadXlsx(`EAR-${ry}.xlsx`, earSheets(ry, earData(ry, list, docs, fb)))}><IcoXls /> Excel</button>
+      <button className="btn" onClick={async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`)}>📮 Offene Posten</button>
+      <button className="btn" onClick={async () => saveBlob(await steuerberaterZip(ry, list, docs, fb, co), `Steuerberater-${ry}.zip`)}>📦 Steuerberater-Paket</button>
+    </div>
+    <small className="muted">Firmenausgaben = Belege mit „Firma“ · Einnahmen = bezahlte Rechnungen · inkl. Kilometergeld</small>
+  </section>) : null;
+  const tilesEl = (<div className={"httiles" + (editing ? " editing" : "")}>
+    {keys.map((k, i) => { const t = T[k]; return (
+      <div key={k} className={"httile " + (t.tone || "")} role="button" tabIndex={0} onClick={() => !editing && setTab(t.tab)} onKeyDown={(e) => e.key === "Enter" && !editing && setTab(t.tab)}>
+        <small>{t.l}</small><b>{t.v}</b><span>{t.s}</span>
+        {editing && <div className="htedit" onClick={(e) => e.stopPropagation()}>
+          <button aria-label="nach vorne" disabled={!i} onClick={() => move(k, -1)}>◀</button>
+          <button aria-label="ausblenden" onClick={() => setKeys(keys.filter((x) => x !== k))}>✕</button>
+          <button aria-label="nach hinten" disabled={i === keys.length - 1} onClick={() => move(k, 1)}>▶</button>
+        </div>}
+      </div>); })}
+  </div>);
+  const editBar = editing && (<div className="htaddbar">
+    {hidden.map((k) => <button key={k} className="chip" onClick={() => setKeys([...keys, k])}>＋ {T[k].l}</button>)}
+    <button className="chip" onClick={() => setKeys(HOME_TILE_DEFAULT[scope])}>↺ Standard</button>
+    <button className="btn primary" onClick={() => setEditing(false)}>Fertig</button>
+  </div>);
+  const seg = (<div className="seg htscope" role="tablist" aria-label="Bereich">{APP_SCOPES.map(([k, l]) => <button key={k} role="tab" aria-selected={scope === k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{l}</button>)}</div>);
+  return (<div className={"hometiles" + (wide ? " htwide" : "")}>
+    {seg}
+    {editBar}
+    {wide ? (<div className="htcols">
+      <div className="htleft">{todoEl}{reportEl}</div>
+      <div className="htright">{tilesEl}{verlauf}{scope !== "firma" && kategorien}</div>
+    </div>) : (<>{tilesEl}{reportEl}{todoEl}{verlauf}{scope !== "firma" && kategorien}</>)}
+    {editing && <p className="muted small">Kacheln mit ◀ ▶ verschieben, mit ✕ ausblenden. Gilt getrennt für Alle, Privat und Firma.</p>}
+  </div>);
+}
 /* Widget-Raster (Übersicht, Analyse, Vermögen, Firmenauswertung): frei platzierbar, Breite/Höhe ziehbar, ein-/ausblendbar */
 function DashGrid({ storeKey, widgets, migrate, els, editing = false, setEditing = () => {}, title = "Übersicht" }) {
   const [layout, setLayoutRaw] = useState(() => migrate(ls.get(storeKey, null)));
@@ -6921,6 +7049,194 @@ async function bkKey(pw, salt, iter) {
   const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
+
+
+/* ---------- App-Update (Mac/Windows-App, v0.86) ---------- */
+let updState = { update: null, pct: null, dismissed: false, err: "" };
+const updSubs = new Set();
+const setUpd = (p) => { updState = { ...updState, ...p }; updSubs.forEach((f) => f(updState)); };
+async function runUpdateCheck() {
+  try { const u = await checkUpdate(); setUpd({ update: u || null, err: "", checked: new Date().toISOString() }); return u; }
+  catch (e) { setUpd({ err: e.message || String(e) }); return null; }
+}
+function useAppUpdate() {
+  const [st, setSt] = useState(updState);
+  useEffect(() => {
+    updSubs.add(setSt);
+    let iv;
+    if (canUpdate) { const t = setTimeout(runUpdateCheck, 6000); iv = setInterval(runUpdateCheck, 6 * 3600e3); return () => { updSubs.delete(setSt); clearTimeout(t); clearInterval(iv); }; }
+    return () => updSubs.delete(setSt);
+  }, []);
+  const install = async () => { if (!updState.update) return; try { setUpd({ pct: 0 }); await installUpdate(updState.update, (p) => setUpd({ pct: p ?? 0 })); } catch (e) { setUpd({ pct: null, err: "Update fehlgeschlagen: " + (e.message || e) }); alert("Update fehlgeschlagen: " + (e.message || e)); } };
+  return { ...st, install, later: () => setUpd({ dismissed: true }) };
+}
+function AppUpdateCard() {
+  const u = useAppUpdate(), [ver, setVer] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
+  useEffect(() => { appVersion().then((v) => setVer(v || "")); }, []);
+  if (!canUpdate) return null;
+  const check = async () => { setBusy(true); setMsg(""); const r = await runUpdateCheck(); setBusy(false); setMsg(r ? "" : updState.err ? "" : "Du hast die neueste Version."); };
+  return (<div className="updcard">
+    <b>App-Version {ver}</b>
+    {u.update ? <p className="small">Neue Version <b>{u.update.version}</b> verfügbar{u.update.body ? " – " + u.update.body.slice(0, 160) : ""}</p> : msg && <p className="muted small">✓ {msg}</p>}
+    {u.err && <p className="red small">✕ {u.err}</p>}
+    <div className="actions">
+      {u.update ? <button className="btn primary" disabled={u.pct != null} onClick={u.install}>{u.pct != null ? `Installiere … ${u.pct}%` : "Jetzt aktualisieren"}</button>
+        : <button className="btn" disabled={busy} onClick={check}>{busy ? "Suche …" : "Nach Updates suchen"}</button>}
+    </div>
+    <small className="muted block">Die App sucht beim Start und alle 6 Stunden selbst nach Updates.</small>
+  </div>);
+}
+/* ---------- Cloud-Synchronisierung: Hintergrund + Einstellungen (v0.84) ---------- */
+function useSyncAgent() {
+  const [pending, setPending] = useState(0);
+  useEffect(() => {
+    if (!syncOn()) return;
+    let dead = false;
+    const run = async () => {
+      if (dead || !syncOn() || document.hidden && !run.force) return;
+      try { const r = await syncNow(db, { mode: "push" }); if (!dead) setPending(r.pending); }
+      catch (e) { setSyncCfg({ lastError: e.message, needsAuth: !!e.auth }); }
+    };
+    const vis = async () => {
+      if (document.hidden) { run.force = true; await run(); run.force = false; return; }
+      // zurück in der App: liegen neue Daten bereit und ist nichts offen → gleich übernehmen
+      await run();
+      if (syncCfg().pending > 0 && !document.querySelector(".win, .modal, .sheet") && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) location.reload();
+    };
+    const t0 = setTimeout(run, 20000), iv = setInterval(run, 90e3);
+    document.addEventListener("visibilitychange", vis);
+    return () => { dead = true; clearTimeout(t0); clearInterval(iv); document.removeEventListener("visibilitychange", vis); };
+  }, []);
+  return pending;
+}
+const PROV_ICON = { onedrive: "🟦", gdrive: "🟩", dropbox: "🔷", mega: "🟥", test: "🧪" };
+// Original-Logos der Anbieter: Dateien von den offiziellen Marken-Seiten in public/brand/ legen
+// (onedrive.svg|png, gdrive.svg|png, dropbox.svg|png, mega.svg|png). Fehlt eine Datei, erscheint ein neutrales Symbol.
+function ProvIcon({ id, size = 26 }) {
+  const [ext, setExt] = useState("svg");
+  if (!ext) return <span className="syncpico" aria-hidden="true">{PROV_ICON[id]}</span>;
+  return <img className="syncpico syncplogo" src={`/brand/${id}.${ext}`} width={size} height={size} alt="" aria-hidden="true" onError={() => setExt(ext === "svg" ? "png" : "")} />;
+}
+function SyncSettings({ notify }) {
+  const [cfg, setCfg] = useState(syncCfg), [conf, setConf] = useState(null), [busy, setBusy] = useState(""), [err, setErr] = useState("");
+  const [step, setStep] = useState(() => { const n = localStorage.getItem("syncNext") || ""; localStorage.removeItem("syncNext"); return n; });
+  const [cloud, setCloud] = useState(null), [pw, setPw] = useState(""), [pw2, setPw2] = useState(""), [show, setShow] = useState(false), [others, setOthers] = useState(0);
+  const [mega, setMega] = useState(null), [devs, setDevs] = useState(null), [help, setHelp] = useState(false);
+  useEffect(() => { const f = () => setCfg(syncCfg()); addEventListener("findocu-sync", f); return () => removeEventListener("findocu-sync", f); }, []);
+  useEffect(() => { oauthConfig().then(setConf); deviceId(); }, []);
+  useEffect(() => { if (step.startsWith("error:")) { setErr(step.slice(6)); setStep(""); } }, [step]);
+  const P = cfg.provider && PROVIDERS[cfg.provider];
+  const needPw = cfg.provider && !cfg.ready;
+  useEffect(() => { if (!needPw) return; setCloud(null); cloudState().then(setCloud).catch((e) => setErr(e.message)); }, [needPw, cfg.provider]);
+  useEffect(() => { if (cfg.ready) remoteDevices().then(setDevs).catch(() => setDevs([])); }, [cfg.ready, cfg.lastSync]);
+  const connect = async (id) => {
+    setErr("");
+    if (id === "mega") { setMega({ email: "", pw: "", code: "" }); return; }
+    setBusy("Anmeldung bei " + PROVIDERS[id].name + " …");
+    try { await oauthLogin(id); setCfg(syncCfg()); } catch (e) { setErr(e.message); } finally { setBusy(""); }
+  };
+  const megaLogin = async () => {
+    setBusy("Anmeldung bei MEGA …"); setErr("");
+    try { await PROVIDERS.mega.login(mega.email.trim(), mega.pw, mega.code.trim()); setSyncCfg({ provider: "mega", ready: false, account: mega.email.trim() }); setMega(null); setCfg(syncCfg()); }
+    catch (e) { setErr(/mfa|EMFAREQUIRED|-26/i.test(String(e.message)) ? "Bei diesem MEGA-Konto ist die Zwei-Faktor-Anmeldung aktiv – bitte den 6-stelligen Code aus der Authenticator-App eintragen." : "MEGA-Anmeldung fehlgeschlagen: " + e.message); }
+    finally { setBusy(""); }
+  };
+  const doKey = async () => {
+    setBusy("Prüfe Sync-Passwort …"); setErr("");
+    try { const r = await setupKey(pw); setOthers(r.others); setPw(""); setPw2(""); if (r.others) setStep("first"); else await firstSync("local"); }
+    catch (e) { setErr(e.message); } finally { setBusy(""); }
+  };
+  const firstSync = async (first) => {
+    setErr("");
+    try {
+      await syncNow(db, { mode: "pull", first, onStep: setBusy });
+      setSyncCfg({ ready: true, lastError: "", needsAuth: false }); notify?.("Synchronisierung eingerichtet – App wird neu geladen");
+      setTimeout(() => location.reload(), 900);
+    } catch (e) { setErr(e.message); setBusy(""); }
+  };
+  const now = async () => {
+    setErr("");
+    try { const r = await syncNow(db, { mode: "push", onStep: setBusy }); setBusy("");
+      if (r.pending) { notify?.("Neue Daten gefunden – App wird neu geladen"); setTimeout(() => location.reload(), 700); }
+      else notify?.(r.uploaded ? "Änderungen hochgeladen" + (r.up ? ` (${r.up} Dateien)` : "") : "Alles aktuell");
+    } catch (e) { setErr(e.message); setSyncCfg({ lastError: e.message, needsAuth: !!e.auth }); setBusy(""); }
+  };
+  const off = async () => { if (!confirm("Synchronisierung auf diesem Gerät beenden?\n\nDeine Daten bleiben auf diesem Gerät und in der Cloud erhalten.")) return; await disconnect(); setCfg(syncCfg()); setStep(""); setDevs(null); notify?.("Synchronisierung beendet"); };
+  const missing = (id) => id !== "mega" && conf && !conf[id];
+  return (
+    <section className="bkcard synccard">
+      <h4>☁️ Cloud-Synchronisierung</h4>
+      <p className="muted small">Gleicht alle Daten samt PDFs und Fotos zwischen deinen Geräten ab (Mac, iPhone, iPad …). Alles wird <b>vor dem Hochladen mit deinem Sync-Passwort verschlüsselt</b> – der Cloud-Anbieter sieht nur unlesbare Dateien.</p>
+      <label className="bklabel">Name dieses Geräts</label>
+      <input className="syncname" value={cfg.deviceName ?? defaultDeviceName()} onChange={(e) => setCfg(setSyncCfg({ deviceName: e.target.value }))} placeholder={defaultDeviceName()} />
+      {busy && <p className="syncbusy">⏳ {busy}</p>}
+      {err && <p className="red small syncerr">✕ {err}</p>}
+
+      {!cfg.provider && !mega && <>
+        <label className="bklabel">Anbieter wählen</label>
+        <div className="syncprov">
+          {PROVIDER_LIST.map(([id, l, sub]) => (
+            <button key={id} className="syncpbtn" disabled={!!busy} onClick={() => connect(id)}>
+              <ProvIcon id={id} /><b>{l}</b><small>{sub}</small>
+              {missing(id) && <em className="syncwarn">in Vercel noch nicht eingerichtet</em>}
+            </button>))}
+        </div>
+        {conf && Object.keys(conf).length === 0 && <p className="muted small">Hinweis: Die Anbieter-Liste vom Server konnte nicht geladen werden – ist das App-Token unter Einstellungen → Verbindung eingetragen?</p>}
+      </>}
+
+      {mega && <div className="syncform">
+        <b className="synchd"><ProvIcon id="mega" size={22} /> Mit MEGA verbinden</b>
+        <label>E-Mail<input type="email" autoComplete="username" value={mega.email} onChange={(e) => setMega({ ...mega, email: e.target.value })} /></label>
+        <label>MEGA-Passwort<PwInput show={show} setShow={setShow} autoComplete="current-password" value={mega.pw} onChange={(e) => setMega({ ...mega, pw: e.target.value })} /></label>
+        <label>Zwei-Faktor-Code (falls aktiviert)<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={mega.code} onChange={(e) => setMega({ ...mega, code: e.target.value.replace(/\D/g, "") })} placeholder="123456" /></label>
+        <small className="muted block">Das MEGA-Passwort wird nicht gespeichert – nur die Sitzung, und die bleibt auf diesem Gerät. FinDocu legt in deinem MEGA den Ordner „FinDocu Sync“ an.</small>
+        <div className="actions"><button className="btn primary" disabled={!!busy || !mega.email || !mega.pw} onClick={megaLogin}>Anmelden</button><button className="link" onClick={() => setMega(null)}>Abbrechen</button></div>
+      </div>}
+
+      {needPw && step !== "first" && <div className="syncform">
+        <b className="synchd"><ProvIcon id={cfg.provider} size={22} /> {P?.name} verbunden – Sync-Passwort</b>
+        {!cloud ? <p className="muted small">Prüfe Cloud …</p> : cloud.hasMeta
+          ? <p className="muted small">In der Cloud gibt es schon FinDocu-Daten{cloud.devices ? ` von ${cloud.devices} Gerät${cloud.devices === 1 ? "" : "en"}` : ""}. Gib <b>dasselbe Sync-Passwort</b> ein wie auf dem anderen Gerät.</p>
+          : <p className="muted small">Erstes Gerät: Lege ein Sync-Passwort fest (mind. 8 Zeichen). Du brauchst es auf jedem weiteren Gerät. <b>Ohne Passwort kann niemand die Daten öffnen – auch du nicht.</b></p>}
+        <label>Sync-Passwort<PwInput show={show} setShow={setShow} autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && cloud?.hasMeta && pw && doKey()} /></label>
+        {cloud && !cloud.hasMeta && <label>Passwort wiederholen<PwInput show={show} setShow={setShow} autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} /></label>}
+        {cloud && !cloud.hasMeta && pw2 && pw !== pw2 && <small className="red block">Passwörter stimmen nicht überein</small>}
+        <div className="actions"><button className="btn primary" disabled={!!busy || !cloud || !pw || (!cloud.hasMeta && (pw.length < 8 || pw !== pw2))} onClick={doKey}>Weiter</button><button className="link" onClick={off}>Anderen Anbieter wählen</button></div>
+      </div>}
+
+      {needPw && step === "first" && <div className="syncform">
+        <b>Erster Abgleich mit {others} anderen Gerät{others === 1 ? "" : "en"}</b>
+        <p className="muted small">Was soll gelten, wenn derselbe Eintrag auf beiden Seiten unterschiedlich ist? Einträge, die es nur auf einer Seite gibt, bleiben immer erhalten.</p>
+        <div className="syncprov">
+          <button className="syncpbtn" disabled={!!busy} onClick={() => firstSync("remote")}><span className="syncpico">☁️</span><b>Cloud hat Vorrang</b><small>empfohlen für ein neues Gerät</small></button>
+          <button className="syncpbtn" disabled={!!busy} onClick={() => firstSync("local")}><span className="syncpico">📱</span><b>Dieses Gerät hat Vorrang</b><small>wenn hier der aktuellste Stand ist</small></button>
+        </div>
+      </div>}
+
+      {cfg.ready && <div className="syncstatus">
+        <div className="frow"><ProvIcon id={cfg.provider} size={32} /><div className="grow"><b>{P?.name}{cfg.account ? " · " + cfg.account : ""}</b><small className="muted block">Ablage: {P?.where}</small></div></div>
+        <p className="muted small bkline">Letzter Abgleich: <b>{fmtStamp(cfg.lastSync)}</b>{cfg.pending > 0 ? <> · <b className="warnc">neue Daten bereit</b></> : ""}</p>
+        {cfg.lastError && <p className="red small">✕ {cfg.lastError}{cfg.needsAuth && <> · <button className="link" onClick={() => (cfg.provider === "mega" ? setMega({ email: cfg.account || "", pw: "", code: "" }) : connect(cfg.provider))}>neu anmelden</button></>}</p>}
+        {devs && devs.length > 0 && <ul className="syncdevs">{devs.map((d) => <li key={d.file}>{d.me ? "📍" : "💻"} <b>{d.name}</b>{d.me ? " (dieses Gerät)" : ""} <small className="muted">· {fmtStamp(d.at)}</small></li>)}</ul>}
+        <div className="actions">
+          <button className="btn bkpress" disabled={!!busy} onClick={now}>🔄 Jetzt synchronisieren</button>
+          <button className="btn" disabled={!!busy} onClick={off}>Trennen</button>
+        </div>
+        <p className="muted small">Automatisch: beim Öffnen der App, alle 90 Sekunden und beim Wechsel in eine andere App. Änderungen anderer Geräte werden beim nächsten Öffnen übernommen. Gilt bei einem Eintrag auf zwei Geräten etwas anderes, gewinnt die neuere Änderung.</p>
+      </div>}
+
+      <button className="link synchelp" onClick={() => setHelp(!help)}>{help ? "▾" : "▸"} Einrichtung der Anbieter (einmalig in Vercel)</button>
+      {help && <div className="muted small synchelpbody">
+        <p><b>Weiterleitungs-Adresse</b> für alle Anbieter: <code>{location.origin}/oauth-callback.html</code></p>
+        <p><b>OneDrive:</b> portal.azure.com → „App-Registrierungen“ → Neue Registrierung · Kontotypen „Konten in einem beliebigen Organisationsverzeichnis und persönliche Microsoft-Konten“ · Plattform „Web“ mit obiger Adresse · unter „Zertifikate &amp; Geheimnisse“ ein Geheimnis anlegen · API-Berechtigungen: Microsoft Graph → Delegiert → <code>Files.ReadWrite.AppFolder</code>, <code>offline_access</code>. In Vercel: <code>MS_CLIENT_ID</code> (Anwendungs-ID) und <code>MS_CLIENT_SECRET</code>.</p>
+        <p><b>Google Drive:</b> console.cloud.google.com → neues Projekt → „Google Drive API“ aktivieren → OAuth-Zustimmungsbildschirm (extern, Bereich <code>…/auth/drive.appdata</code>, danach „App veröffentlichen“, sonst läuft die Anmeldung nach 7 Tagen ab) → Anmeldedaten → OAuth-Client „Webanwendung“ mit obiger Weiterleitungs-Adresse. In Vercel: <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>.</p>
+        <p><b>Dropbox:</b> dropbox.com/developers/apps → Create app → „Scoped access“ + „App folder“ → Permissions: <code>files.content.write</code>, <code>files.content.read</code> → Redirect URI eintragen. In Vercel: <code>DROPBOX_APP_KEY</code> (kein Secret nötig).</p>
+        <p><b>MEGA:</b> nichts einzurichten – Anmeldung mit E-Mail und Passwort direkt hier.</p>
+        <p>Danach in Vercel unter Deployments → ⋯ → Redeploy, damit die neuen Variablen gelten.</p>
+      </div>}
+    </section>
+  );
+}
 /* ---------- Automatische Backups (im Browser, rotierend max. 10) ---------- */
 const AB_INTERVALS = [["aus", "Aus", "keine automatischen Sicherungen"], ["5min", "Alle 5 Minuten", "nur wenn sich etwas geändert hat"], ["10min", "Alle 10 Minuten", "nur wenn sich etwas geändert hat"], ["30min", "Alle 30 Minuten", "nur wenn sich etwas geändert hat"], ["stuendlich", "Stündlich", "nur wenn sich etwas geändert hat"], ["start", "Bei jedem App-Start", "höchstens alle 2 Stunden"], ["taeglich", "Täglich", "einmal pro Tag"], ["woechentlich", "Wöchentlich", "einmal pro Woche"], ["monatlich", "Monatlich", "einmal pro Monat"]];
 const AB_MS = { "5min": 5 * 60e3, "10min": 10 * 60e3, "30min": 30 * 60e3, stuendlich: 3600e3, start: 2 * 3600e3, taeglich: 24 * 3600e3, woechentlich: 7 * 24 * 3600e3, monatlich: 30 * 24 * 3600e3 };
@@ -7161,6 +7477,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         </ul>
       </SetSec></>,
     "backup": <><SetSec id="backup" title="Datensicherung">
+        <SyncSettings notify={notify} />
         <section className="bkcard">
           <h4>Verschlüsseltes Backup</h4>
           <div className="actions">
@@ -7212,6 +7529,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         {abOpen && <AutoBackupWin notify={notify} onClose={() => setAbOpen(false)} onRestore={(f) => { setAbOpen(false); importBackup(f); }} />}
       </SetSec></>,
     "verbindung": <><SetSec id="verbindung" title="Verbindung">
+        <AppUpdateCard />
         <label>App-Token (wie APP_TOKEN in Vercel)
           <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="geheimes Passwort" />
         </label>
@@ -12477,4 +12795,66 @@ label>.vehpick.block{margin-top:6px}
 @media (max-width:700px){.pickbar.ltbulk{gap:5px;padding:8px 10px}.pickbar.ltbulk .ltcount{font-size:17px;min-width:22px;text-align:center}.pickbar.ltbulk .btn{padding:8px 10px;min-width:40px}.pickbar.ltbulk .btn.primary{padding:8px 14px}}
 .docbar{margin-bottom:8px}
 .ctrow.picked{background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:12px}
+
+/* v0.84 Cloud-Synchronisierung */
+.syncprov{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:6px 0 10px}
+.syncpbtn{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:10px;align-items:center;text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card2);color:var(--txt);cursor:pointer;font:inherit}
+.syncpbtn:hover:not(:disabled){border-color:var(--acc)}
+.syncpbtn .syncpico{grid-row:1/3;font-size:22px}
+.syncpbtn small{color:var(--mut);font-size:12.5px}
+.syncpbtn .syncwarn{grid-column:2;font-style:normal;font-size:12px;color:#d97706}
+.syncform{display:grid;gap:10px;padding:12px;border:1px solid var(--line);border-radius:14px;margin:8px 0}
+.syncform label{display:grid;gap:4px}
+.syncname{max-width:320px}
+.syncbusy{font-weight:600;color:var(--acc)}
+.syncstatus .frow{align-items:center;gap:12px}
+.syncstatus .syncpico{font-size:26px}
+.syncdevs{list-style:none;padding:0;margin:6px 0 10px;display:grid;gap:4px}
+.synchelp{margin-top:6px}
+.synchelpbody p{margin:6px 0}
+.synchelpbody code{font-size:12px;word-break:break-all}
+.syncbanner{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 10px);z-index:500;border:0;border-radius:999px;padding:10px 18px;background:var(--acc);color:#fff;font:inherit;font-size:15px;box-shadow:0 8px 24px rgba(0,0,0,.2);cursor:pointer;max-width:calc(100vw - 24px)}
+
+.syncplogo{object-fit:contain;display:block}
+.syncpbtn .syncplogo{grid-row:1/3}
+.synchd{display:flex;align-items:center;gap:8px}
+
+/* v0.86 App-Update */
+.updbanner{display:flex;align-items:center;gap:8px;cursor:default}
+.updbanner .link{color:#fff;text-decoration:underline;font:inherit}
+.updcard{display:grid;gap:6px;padding:12px;border:1px solid var(--line);border-radius:14px;margin-bottom:12px}
+
+/* v0.87 Übersicht als Kacheln (iPhone/iPad) */
+.hometiles{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.htaddbar .chip{font-size:13px;padding:6px 10px}
+.htscope{width:100%;max-width:420px}
+.htscope button{flex:1}
+.httiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.httile{position:relative;display:flex;flex-direction:column;gap:2px;padding:14px;border-radius:18px;background:var(--card);border:1px solid var(--line);cursor:pointer;min-height:96px;text-align:left}
+.httile small{color:var(--mut);font-size:13px}
+.httile b{font-size:22px;letter-spacing:-.01em;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.httile span{color:var(--mut);font-size:12.5px;line-height:1.3}
+.httile.bad{background:color-mix(in srgb,var(--red) 10%,var(--card));border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.httile.bad b,.httile.bad small{color:var(--red)}
+.httile.warn b{color:var(--warn)}
+.httile.pos b{color:var(--ok)}.httile.neg b{color:var(--red)}
+.httiles.editing .httile{border-style:dashed;border-color:var(--acc);padding-top:40px}
+.htleft>*,.htright>*{min-width:0;max-width:100%;box-sizing:border-box}
+.httodo{overflow:hidden}
+.htrow{min-width:0}.htrow .grow{min-width:0}
+.htedit{position:absolute;top:6px;right:6px;display:flex;gap:4px}
+.htedit button{width:28px;height:28px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-size:12px;cursor:pointer}
+.htedit button:disabled{opacity:.35}
+.htaddbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.htaddbar .btn.primary{margin-left:auto}
+.htrow .htico{font-size:20px;width:34px;text-align:center;flex:none}
+.htrow.bad .htv{color:var(--red)}.htrow.warn .htv{color:var(--warn)}
+.htrow .htv{white-space:nowrap}
+.htreport .tilehead{flex-wrap:wrap;gap:8px}
+.htyears button{padding:4px 10px;font-size:13px}
+.htrbtns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:6px 0 8px}
+.htrbtns .btn{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;font-size:14px}
+.htcols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px;align-items:start}
+.htleft,.htright{display:grid;gap:14px;min-width:0}
+@media (min-width:1000px){.htwide .httiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
 `;

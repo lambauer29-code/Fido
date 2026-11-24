@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FinDocu – Anmeldung</title>
+<style>body{font:16px -apple-system,system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;color:#334;text-align:center}a{display:inline-block;margin-top:14px;padding:12px 20px;border-radius:12px;background:#0f9d8a;color:#fff;text-decoration:none;font-weight:600}</style></head>
+<body><div><p id="t">Anmeldung abgeschlossen – zurück zu FinDocu …</p><a id="b" href="#" hidden>FinDocu öffnen</a></div>
+<script>
+  // Rückkehr von OneDrive / Google / Dropbox: Code an FinDocu weitergeben
+  var q = location.search, st = new URLSearchParams(q).get("state") || "";
+  if (st.indexOf("app.") === 0) {
+    // native FinDocu-App (Mac/iPhone/Windows): über findocu:// zurück in die App
+    var u = "findocu://oauth" + q, b = document.getElementById("b");
+    b.href = u; b.hidden = false;
+    document.getElementById("t").textContent = "Anmeldung abgeschlossen. Falls FinDocu nicht von selbst aufgeht:";
+    location.href = u;
+  } else {
+    try {
+      if (window.opener && window.opener.location.origin === location.origin) {
+        window.opener.postMessage({ type: "findocu-oauth", query: q }, location.origin);
+        window.close();
+      } else throw 0;
+    } catch (e) {
+      localStorage.setItem("oauthReturn", q);
+      location.replace("/");
+    }
+  }
+</script>
+</body>
+</html>

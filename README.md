@@ -2,6 +2,60 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.87.0
+- **Neue Übersicht für iPhone und iPad (Variante B, Kacheln)**:
+  - Umschalter **Alle · Privat · Firma** oben. Die Wahl gilt auch für Dokumente, Verträge und Besitz & Garantie.
+  - Kacheln mit den wichtigsten Zahlen, je nach Bereich:
+    - **Firma:** offene Rechnungen, Mahnungen, Umsatz, Gewinn, Firmenausgaben, Kassabuch, Fristen, Kleinunternehmergrenze
+    - **Privat:** Saldo, Konten, Ausgaben, Fixkosten, Fristen, Zu bezahlen, Budgets
+    - **Alle:** gemischt
+  - Kacheln mit Handlungsbedarf sind farbig hinterlegt. Ein Tipp öffnet den passenden Reiter.
+  - „Zu erledigen“: fällige Mahnungen, bald fällige Rechnungen, zu bezahlende Belege, Fristen der nächsten 14 Tage.
+  - **„Bericht für die Firma“**: Jahr wählen, dann Einnahmen-Ausgaben-Rechnung (PDF/Excel), Offene Posten oder Steuerberater-Paket mit einem Tipp.
+  - Anpassen über das Layout-Symbol oben: Kacheln verschieben (◀ ▶), ausblenden (✕), wieder hinzufügen. Gilt getrennt für Alle, Privat und Firma.
+- **iPad**:
+  - Zwei Spalten, links „Zu erledigen“ und der Bericht, rechts Kacheln, Verlauf und Kategorien.
+  - Die Seitenleiste zeigt am iPad automatisch nur Symbole, mehr Platz für den Inhalt. Mit dem Seitenleisten-Knopf lässt sie sich wie gewohnt umstellen.
+- Am Desktop bleibt die Übersicht wie bisher.
+
+## v0.86.1
+- **Nur noch die Mac-App wird gebaut.** Windows ist im GitHub-Ablauf auskommentiert und lässt sich bei Bedarf wieder einschalten. Am Handy bleibt die Browser-Version.
+- **Gerätenamen beim Sync** sind jetzt eindeutig: „Mac-App“, „Mac (Safari)“, „iPhone (Safari)“, „Mac (Chrome)“ usw. So sieht man in der Geräteliste, welcher Stand von wo kommt.
+
+## v0.86.0
+- **Auto-Update für die Mac- und Windows-App** (Tauri-Updater):
+  - Bei jeder neuen Version baut GitHub automatisch die Apps und veröffentlicht sie als Release mit `latest.json`. Gibt es das Release zur Version schon, wird nichts gebaut.
+  - Die App sucht beim Start und alle 6 Stunden nach Updates und zeigt dann das Banner „FinDocu X.Y.Z ist da · Jetzt aktualisieren“. Ein Klick lädt das Update, installiert es und startet die App neu.
+  - Unter Einstellungen → Verbindung steht die App-Version, dazu „Nach Updates suchen“.
+  - Updates sind signiert. Einmalig nötig: GitHub-Secret `TAURI_SIGNING_PRIVATE_KEY` (siehe `APP-BAUEN.md`).
+  - Am iPhone gibt es keinen Selbst-Update, das erlaubt Apple nicht.
+
+## v0.85.0
+- **App-Bau mit Tauri 2 vorbereitet** (Mac, iPhone/iPad, Windows). Die Anleitung steht in `APP-BAUEN.md`.
+  - `src-tauri/`: App-Projekt mit Fenster, Icons, Rechten, Deep-Link `findocu://` und Kamera-/Standort-Hinweisen für macOS/iOS. Der Rust-Teil kompiliert (unter Linux geprüft).
+  - `src/platform.js`: In der App gehen `/api/…`-Aufrufe an Vercel. Downloads laufen über „Sichern unter …“. PDFs öffnen sich im Standardprogramm, Webseiten im System-Browser. Die Cloud-Anmeldung läuft im Browser mit Rückkehr in die App.
+  - `.github/workflows/app-build.yml`: Mac- (.dmg) und Windows-App direkt auf GitHub bauen (Actions → „FinDocu App bauen“).
+  - Neue npm-Befehle: `app:dev`, `app:build`, `app:build:mac`, `ios:init`, `ios:dev`, `ios:build`.
+- Die Web-Version (PWA) bleibt unverändert.
+
+## v0.84.1
+- **Logos der Cloud-Anbieter**: FinDocu zeigt die Original-Logos, sobald sie im Ordner `public/brand/` liegen (`onedrive`, `gdrive`, `dropbox`, `mega`, jeweils `.svg` oder `.png`). Fehlt eine Datei, erscheint wie bisher ein neutrales Symbol. Mehr dazu in `public/brand/README.txt`.
+
+## v0.84.0
+- **Cloud-Synchronisierung** (Backup-Reiter → „☁️ Cloud-Synchronisierung“) mit **OneDrive, Google Drive, Dropbox und MEGA**:
+  - Gleicht alle Daten zwischen Geräten ab: Dokumente samt PDFs/Fotos, Umsätze, Konten, Rechnungen, Kunden, Verträge, Kassabuch, Einstellungen.
+  - **Ende-zu-Ende-verschlüsselt** mit eigenem Sync-Passwort (AES-256-GCM, PBKDF2 310.000×). Der Anbieter sieht nur unlesbare Dateien.
+  - Jedes Gerät schreibt nur seine eigene Datei, dadurch entstehen keine Konfliktkopien. Zusammengeführt wird pro Eintrag, die neuere Änderung gewinnt. Löschungen werden mit übertragen.
+  - Abgleich beim Öffnen der App, alle 90 Sekunden und beim Wechsel in eine andere App. Neue Daten anderer Geräte werden beim nächsten Öffnen übernommen, sonst über das Banner „Aktualisieren“.
+  - Ablage:
+    - OneDrive: „Apps/FinDocu“
+    - Dropbox: „Apps/FinDocu“
+    - Google Drive: versteckter App-Datenordner
+    - MEGA: Ordner „FinDocu Sync“
+- Neue Vercel-Funktion `api/oauth.js` (Anmeldung OneDrive/Google, Secret bleibt am Server) und Seite `public/oauth-callback.html`.
+- **Neue Env-Variablen in Vercel** (nur für genutzte Anbieter): `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DROPBOX_APP_KEY`. MEGA braucht nichts. Die Schritt-für-Schritt-Anleitung steht in der App unter „Einrichtung der Anbieter“.
+- Neue Abhängigkeit: `megajs` (wird nur geladen, wenn MEGA genutzt wird).
+
 ## v0.83.0
 - **Listen-Aufbau wie Rechnungen** jetzt auch in Dokumente, Fixkosten & Abos, Verträge und Mahnungen:
   - Oben: Hauptaktion, „☑ Auswählen“ und „Mehr“ (Export, Ablagefeld, Sprünge in andere Reiter).

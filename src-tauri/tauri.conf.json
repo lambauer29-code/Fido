@@ -1,0 +1,79 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "FinDocu",
+  "version": "../package.json",
+  "identifier": "at.findocu.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "FinDocu",
+        "width": 1320,
+        "height": 880,
+        "minWidth": 380,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "findocu"
+        ]
+      },
+      "mobile": [
+        {
+          "scheme": [
+            "findocu"
+          ],
+          "appLink": false
+        }
+      ]
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYxMDY3MEE1NEQ1QTFGRTgKUldUb0gxcE5wWEFHWWVWMDZ3cnpNcnozTG8xNWxGQ0IvT09tWVhNVkxYMEJCeHh4UDNCMDdoK0oK",
+      "endpoints": [
+        "https://github.com/lambauer29-code/Fido/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Finance",
+    "shortDescription": "Finanzen & Dokumente",
+    "longDescription": "FinDocu – Dokumente, Konten, Rechnungen, Verträge und Kassabuch an einem Ort.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "iOS": {
+      "minimumSystemVersion": "15.0"
+    },
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    },
+    "createUpdaterArtifacts": true
+  }
+}

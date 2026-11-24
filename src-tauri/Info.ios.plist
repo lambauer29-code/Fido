@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSCameraUsageDescription</key>
+  <string>FinDocu nutzt die Kamera zum Scannen von Belegen, Dokumenten und Barcodes.</string>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>FinDocu lädt Fotos von Belegen und Dokumenten aus deiner Mediathek.</string>
+  <key>NSPhotoLibraryAddUsageDescription</key>
+  <string>FinDocu speichert exportierte Bilder in deiner Mediathek.</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>FinDocu nutzt den Standort für Fahrtenbuch und Geschäfte in der Nähe.</string>
+</dict>
+</plist>
