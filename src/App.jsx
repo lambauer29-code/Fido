@@ -503,11 +503,11 @@ function AccIcon({ a, className = "ki", force = false }) {
 const accStyle = (a) => (a.color ? { color: a.color } : undefined);
 const ACC_COLORS = ["#4f8cff", "#0b63f6", "#00b3a4", "#16a34a", "#84cc16", "#eab308", "#f59e0b", "#ef4444", "#e8384f", "#ec4899", "#a855f7", "#64748b"];
 const ACC_EMOJIS = ["🏦", "💳", "💶", "🐷", "📈", "🌐", "🏠", "🚗", "💼", "🏢", "🎓", "💰", "🪙", "💎", "🧾", "🛒", "✈️", "❤️", "⭐", "🔒", "🅿️", "📱", "⚡", "🍀"];
-async function iconFromFile(file) {
+async function iconFromFile(file, px = 64, contain = false) {
   const bmp = await createImageBitmap(file);
-  const c = document.createElement("canvas"); c.width = c.height = 64;
-  const s = Math.max(64 / bmp.width, 64 / bmp.height), w = bmp.width * s, h = bmp.height * s;
-  c.getContext("2d").drawImage(bmp, (64 - w) / 2, (64 - h) / 2, w, h);
+  const c = document.createElement("canvas"); c.width = c.height = px;
+  const s = (contain ? Math.min : Math.max)(px / bmp.width, px / bmp.height), w = bmp.width * s, h = bmp.height * s;
+  c.getContext("2d").drawImage(bmp, (px - w) / 2, (px - h) / 2, w, h);
   return c.toDataURL("image/png");
 }
 function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
@@ -3245,11 +3245,11 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
           <div><small className="muted">{new Date(month + "-15").toLocaleDateString("de-AT", { month: "long" })}</small><b>{fmtMoney(monthCost)}</b><small className="muted">Kosten</small></div>
         </div>
         <div className="fbquick">
-          {vehHasFuel(v) && <button onClick={() => newEntry("fuel")}><span>⛽</span>Tanken</button>}
-          {vehHasPlug(v) && <button onClick={newCharge}><span>⚡</span>Laden</button>}
-          <button onClick={() => newEntry("trip")}><span>🛣️</span>Fahrt</button>
-          <button onClick={() => newEntry("expense")}><span>🧾</span>Ausgabe</button>
-          <button onClick={() => setRemEdit({ vid: v.id })}><span>⏰</span>Erinnerung</button>
+          {vehHasFuel(v) && <button onClick={() => newEntry("fuel")}><span><FbIco k="fuel" /></span>Tanken</button>}
+          {vehHasPlug(v) && <button onClick={newCharge}><span><FbIco k="elec" /></span>Laden</button>}
+          <button onClick={() => newEntry("trip")}><span><FbIco k="trip" /></span>Fahrt</button>
+          <button onClick={() => newEntry("expense")}><span><FbIco k="exp" /></span>Ausgabe</button>
+          <button onClick={() => setRemEdit({ vid: v.id })}><span><FbIco k="rem" /></span>Erinnerung</button>
         </div>
       </section>
       <ChipBar seg storeKey="fbViews" cfg={viewCfg} setCfg={setViewCfg} className="fbseg" items={VIEWS.map(([k, l]) => ({ k, label: l, el: <button className={view === k ? "on" : ""} onClick={() => setView(k)}>{l}</button> }))} />
@@ -7168,12 +7168,12 @@ function SetSec({ id, title, children }) {
   );
 }
 
-const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung"]], ["Daten & Ablage", ["import", "docgroups", "doccats", "rules", "kontaktarten", "trash"]],
+const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung"]], ["Daten & Ablage", ["import", "docgroups", "doccats", "rules", "kontaktarten", "fbicons", "trash"]],
   ["Navigation & Budgets", ["nav-tabs", "nav-accounts", "budgets"]], ["Firma", ["meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel"]]];
 const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-accounts": "Konten & Gruppen" };
-const SET_ICONS = { darstellung: "🌓", design: "🎨", applock: "🔒", datenschutz: "🛡️", verbindung: "🔌", import: "📥", docgroups: "🗂️", doccats: "🏷️", rules: "⚙️", kontaktarten: "👥", trash: "🗑️",
+const SET_ICONS = { fbicons: "🚗", darstellung: "🌓", design: "🎨", applock: "🔒", datenschutz: "🛡️", verbindung: "🔌", import: "📥", docgroups: "🗂️", doccats: "🏷️", rules: "⚙️", kontaktarten: "👥", trash: "🗑️",
   "nav-tabs": "📑", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
-const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"];
+const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -7220,6 +7220,7 @@ function applyDesign(design, theme) {
   set("--pos", design.pos ? (dark ? mixWhite(design.pos, 0.18) : design.pos) : null);
   set("--neg", design.neg ? (dark ? mixWhite(design.neg, 0.18) : design.neg) : null);
   document.body.classList.toggle("outneg", !!design.outNeg);
+  applyUiStyle(design.style || "klassisch");
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = surf.bg || (dark ? "#0d1117" : "#f3f5f9");
 }
 /* Farbwähler-Kreis: live Vorschau beim Ziehen, „change“ (Picker geschlossen) = übernehmen */
@@ -7305,6 +7306,10 @@ function DesignSettings({ design, setDesign, theme }) {
   const bgKey = theme === "dark" ? "bgDark" : "bgLight";
   return (
     <>
+      <h4 className="subhead">Stil</h4>
+      <p className="muted small">Ändert Schriftart, Ecken, Schatten, Kartenform, Dichte und Grundfarben der ganzen App. „Aurora“, „Kompakt Pro“ und „Großer Kontrast“ bringen eigene Farben mit; bei den anderen gilt zusätzlich der Farbstil darunter.</p>
+      <StylePicker value={design.style} onPick={(k) => pick("style", k)} />
+      <h4 className="subhead">Farbstil</h4>
       <p className="muted small">Farbstil der App – Voreinstellungen angelehnt an bekannte Finanz- und Dokumenten-Apps. Auf die Kreise tippen, um einzelne Farben anzupassen (Akzent · Zweitfarbe · Hintergrund {theme === "dark" ? "Nacht" : "Tag"}).</p>
       <div className="presets">
         {DESIGN_PRESETS.map((pr) => {
@@ -7447,7 +7452,9 @@ const PROV_ICON = { onedrive: "🟦", gdrive: "🟩", dropbox: "🔷", mega: "�
 // Original-Logos der Anbieter: Dateien von den offiziellen Marken-Seiten in public/brand/ legen
 // (onedrive.svg|png, gdrive.svg|png, dropbox.svg|png, mega.svg|png). Fehlt eine Datei, erscheint ein neutrales Symbol.
 function ProvIcon({ id, size = 26 }) {
-  const [ext, setExt] = useState("svg");
+  const [ext, setExt] = useState("svg"), [own] = useIconStore("provIcons");
+  if (own[id]?.img) return <img className="syncpico syncplogo" src={own[id].img} width={size} height={size} alt="" aria-hidden="true" />;
+  if (own[id]?.emoji) return <span className="syncpico" aria-hidden="true">{own[id].emoji}</span>;
   if (!ext) return <span className="syncpico" aria-hidden="true">{PROV_ICON[id]}</span>;
   return <img className="syncpico syncplogo" src={`/brand/${id}.${ext}`} width={size} height={size} alt="" aria-hidden="true" onError={() => setExt(ext === "svg" ? "png" : "")} />;
 }
@@ -7582,6 +7589,9 @@ function SyncSettings({ notify }) {
         <p className="muted small">Automatisch: beim Öffnen der App, alle 90 Sekunden und beim Wechsel in eine andere App. Änderungen anderer Geräte werden beim nächsten Öffnen übernommen. Gilt bei einem Eintrag auf zwei Geräten etwas anderes, gewinnt die neuere Änderung.</p>
       </div>}
 
+      <details className="syncicons"><summary className="link">🎨 Eigene Symbole für die Anbieter</summary>
+        <IconSlotEditor storeKey="provIcons" round={false} slots={PROVIDER_LIST.map(([id, l]) => [id, l, <ProvIcon id={id} size={30} />, null])} hint="Eigenes Bild (PNG, JPG, SVG) oder Emoji je Anbieter – ersetzt das Standard-Symbol überall in der App." />
+      </details>
       <button className="link synchelp" onClick={() => setHelp(!help)}>{help ? "▾" : "▸"} Einrichtung der Anbieter (einmalig in Vercel)</button>
       {help && <div className="muted small synchelpbody">
         <p><b>Weiterleitungs-Adresse</b> für alle Anbieter: <code>{location.origin}/oauth-callback.html</code></p>
@@ -7890,6 +7900,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         </Win>}
         {abOpen && <AutoBackupWin notify={notify} onClose={() => setAbOpen(false)} onRestore={(f) => { setAbOpen(false); importBackup(f); }} />}
       </SetSec></>,
+    "fbicons": <><SetSec id="fbicons" title="Fahrtenbuch – Symbole"><FbIconSettings /></SetSec></>,
     "verbindung": <><SetSec id="verbindung" title="Verbindung">
         <AppUpdateCard />
         <label>App-Token (wie APP_TOKEN in Vercel)
@@ -9636,6 +9647,74 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
 
 
 
+
+
+/* ======================= Design-Stile (v0.96): mehr als Farben – Schrift, Ecken, Schatten, Dichte, Kartenform ======================= */
+const STYLE_FONTS = { inter: "Inter:wght@400;500;600;700;800", fraunces: "Fraunces:wght@500;600;700", grotesk: "Space+Grotesk:wght@500;600;700", mono: "JetBrains+Mono:wght@400;600;700", nunito: "Nunito:wght@500;700;800", archivo: "Archivo+Black" };
+const UI_STYLES = [
+  ["klassisch", "Klassisch", "aktuelles FinDocu-Design", [], { bg: "#f3f5f9", card: "#fff", txt: "#111", acc: "#14b8a6", r: 14, font: "-apple-system,system-ui,sans-serif" }],
+  ["glas", "Glas", "Milchglas-Karten auf Farbverlauf", ["inter"], { bg: "linear-gradient(140deg,#3a7bd5,#9b5de5 60%,#f15bb5)", card: "#ffffff38", txt: "#fff", acc: "#fff", r: 18, font: "Inter" }],
+  ["soft", "Soft UI", "geprägte Flächen, Licht & Schatten", ["nunito"], { bg: "#e6e9ef", card: "#e6e9ef", txt: "#3b4252", acc: "#5b7bd5", r: 18, font: "Nunito", sh: "5px 5px 10px #c5c9d3,-5px -5px 10px #fff" }],
+  ["bento", "Bento", "Kachel-Raster, kräftige Flächen", ["grotesk"], { bg: "#0f0f10", card: "#c6f432", txt: "#111", acc: "#7c5cff", r: 14, font: "Space Grotesk" }],
+  ["brutal", "Neo-Brutal", "dicke Rahmen, harte Schatten", ["archivo", "inter"], { bg: "#fff4d6", card: "#ffde59", txt: "#111", acc: "#ff6b6b", r: 4, font: "Archivo Black", bd: "2px solid #111", sh: "3px 3px 0 #111" }],
+  ["editorial", "Editorial", "Zeitungsstil, Serifen, Haarlinien", ["fraunces", "inter"], { bg: "#fbf8f2", card: "transparent", txt: "#1d1b16", acc: "#1d1b16", r: 0, font: "Fraunces", bt: "1px solid #1d1b16" }],
+  ["kompakt", "Kompakt Pro", "dicht, Mono-Zahlen, kleine Ecken", ["inter", "mono"], { bg: "#0b0e14", card: "#11161f", txt: "#c9d1d9", acc: "#3fb950", r: 4, font: "JetBrains Mono", bd: "1px solid #30363d" }],
+  ["clay", "Clay", "Pastell, weiche Knete-Optik", ["nunito"], { bg: "#fde8ef", card: "#ffb4c8", txt: "#4a2f39", acc: "#ff7aa2", r: 22, font: "Nunito", sh: "inset -3px -4px 8px #e98fa7,inset 3px 3px 8px #ffd6e2" }],
+  ["aurora", "Aurora", "dunkel mit leuchtenden Farbschleiern", ["inter"], { bg: "radial-gradient(circle at 20% 10%,#2b5cff88,transparent 60%),radial-gradient(circle at 90% 80%,#14f1c177,transparent 55%),#070a1a", card: "#ffffff12", txt: "#eef", acc: "#5ef0d0", r: 16, font: "Inter", bd: "1px solid #ffffff22" }],
+  ["express", "Expressiv", "große Formen, dicke Knöpfe", ["grotesk"], { bg: "#f7f2fa", card: "#e8def8", txt: "#1d1b20", acc: "#6750a4", r: "22px 22px 22px 6px", font: "Space Grotesk" }],
+  ["kontrast", "Großer Kontrast", "große Schrift, maximaler Kontrast", [], { bg: "#000", card: "#fff", txt: "#000", acc: "#ffd400", r: 10, font: "system-ui", bd: "2px solid #fff", big: true }],
+];
+function applyUiStyle(id) {
+  const c = document.documentElement.classList; UI_STYLES.forEach(([k]) => c.remove("sty-" + k)); if (id && id !== "klassisch") c.add("sty-" + id);
+  const st = UI_STYLES.find((x) => x[0] === id); const fam = (st?.[3] || []).map((f) => "family=" + STYLE_FONTS[f]).join("&");
+  let l = document.getElementById("sty-fonts");
+  if (fam) { if (!l) { l = document.createElement("link"); l.id = "sty-fonts"; l.rel = "stylesheet"; document.head.appendChild(l); } const href = `https://fonts.googleapis.com/css2?${fam}&display=swap`; if (l.href !== href) l.href = href; }
+}
+function StylePicker({ value, onPick }) {
+  return (<div className="stylegrid">{UI_STYLES.map(([k, name, sub, , p]) => (
+    <button key={k} type="button" className={"stylecard" + ((value || "klassisch") === k ? " on" : "")} onClick={() => onPick(k)} aria-pressed={(value || "klassisch") === k}>
+      <span className="stylepv" style={{ background: p.bg, fontFamily: p.font + ",system-ui,sans-serif" }}>
+        <span className="stylepvt" style={{ color: p.big ? "#fff" : p.bg.startsWith("#0") || p.bg.includes("070a1a") || p.bg.includes("gradient(140") ? "#fff" : p.txt, fontSize: p.big ? 15 : 13 }}>Konten</span>
+        <span className="stylepvc" style={{ background: p.card, color: p.txt, borderRadius: p.r, border: p.bd || "0", borderTop: p.bt || p.bd || "0", boxShadow: p.sh || "none", backdropFilter: k === "glas" ? "blur(6px)" : undefined }}>
+          <small style={{ opacity: .7 }}>Gesamt</small><b>€ 84.883</b></span>
+        <span className="stylepvchip" style={{ background: p.acc, color: k === "glas" ? "#7b3fe4" : k === "kontrast" ? "#000" : "#fff", borderRadius: typeof p.r === "number" ? Math.max(4, p.r) : 12, border: k === "brutal" ? "2px solid #111" : 0 }}>Alle</span>
+      </span>
+      <b>{name}</b><small className="muted">{sub}</small>
+    </button>))}</div>);
+}
+/* ======================= Eigene Symbole: Fahrtenbuch & Sync-Anbieter (v0.96) ======================= */
+function useIconStore(key) {
+  const [v, setV] = useState(() => ls.get(key, {}));
+  useEffect(() => { const f = () => setV(ls.get(key, {})); addEventListener("findocu-icons", f); return () => removeEventListener("findocu-icons", f); }, [key]);
+  return [v, (n) => { ls.set(key, n); dispatchEvent(new Event("findocu-icons")); }];
+}
+const FB_SLOTS = () => [["fuel", "Tanken", "⛽", FB_COL.fuel], ["elec", "Laden", "⚡", FB_COL.elec], ["trip", "Fahrt", "🛣️", FB_COL.trip], ["exp", "Ausgabe (allgemein)", "🧾", FB_COL.expense], ["rem", "Erinnerung", "⏰", "#f59e0b"],
+  ...FB_EXP.map(([c, e]) => ["x:" + c, c, e, FB_COL.expense])];
+const fbSlot = (k) => FB_SLOTS().find((x) => x[0] === k) || [k, k, "•", FB_COL.expense];
+function FbIco({ k, set }) { const [st] = useIconStore("fbIcons"); const o = st[k] || {}, d = fbSlot(k);
+  return o.img ? <img className="fbicoimg" src={o.img} alt="" /> : <>{o.emoji || d[2]}</>; }
+const fbCol = (st, k) => st[k]?.color || fbSlot(k)[3];
+function IconSlotEditor({ storeKey, slots, round = true, hint }) {
+  const [st, setSt] = useIconStore(storeKey);
+  const set = (k, p) => { const n = { ...st, [k]: { ...(st[k] || {}), ...p } }; Object.keys(n[k]).forEach((x) => n[k][x] == null && delete n[k][x]); if (!Object.keys(n[k]).length) delete n[k]; setSt(n); };
+  const up = (k) => { const i = document.createElement("input"); i.type = "file"; i.accept = "image/png,image/jpeg,image/svg+xml,image/webp,image/gif";
+    i.onchange = async () => { const f = i.files?.[0]; if (!f) return; try { set(k, { img: await iconFromFile(f, 128, !round) }); } catch { alert("Bild konnte nicht gelesen werden"); } }; i.click(); };
+  return (<>{hint && <p className="muted small">{hint}</p>}
+    <div className="icslots">{slots.map(([k, label, def, col]) => { const o = st[k] || {}; return (
+      <div key={k} className="icslot">
+        <span className={"icprev" + (round ? " round" : "")} style={col ? { background: o.color || col } : undefined}>{o.img ? <img src={o.img} alt="" /> : (o.emoji || def)}</span>
+        <div className="grow"><b className="clamp">{label}</b>
+          <div className="icctl">
+            {def != null && <input className="icemoji" value={o.emoji ?? ""} placeholder={typeof def === "string" ? def : ""} maxLength={4} aria-label={label + ": Emoji oder Zeichen"} onChange={(e) => set(k, { emoji: e.target.value || null, img: e.target.value ? null : o.img })} />}
+            {col && <input type="color" className="iccolor" value={o.color || col} aria-label={label + ": Farbe"} onChange={(e) => set(k, { color: e.target.value })} />}
+            <button className="btn sm" onClick={() => up(k)}>📷 Bild</button>
+            {(o.img || o.emoji || o.color) && <button className="link small" onClick={() => setSt(Object.fromEntries(Object.entries(st).filter(([x]) => x !== k)))}>↺ Standard</button>}
+          </div></div>
+      </div>); })}</div></>);
+}
+function FbIconSettings() {
+  return <IconSlotEditor storeKey="fbIcons" slots={FB_SLOTS()} hint="Eigenes Symbol je Eintragsart: Emoji/Zeichen eintippen, Kreisfarbe wählen oder ein eigenes Bild hochladen (PNG, JPG, SVG – wird auf 128 px verkleinert). Gilt für Verlauf, Schnellknöpfe und Erinnerungen und wird mitgesynct." />;
+}
 /* ======================= Fahrtenbuch-Verlauf als Zeitleiste (v0.94) ======================= */
 const FB_COL = { fuel: "#f59e0b", elec: "#14b8a6", expense: "#8d6e63", trip: "#3b82f6" };
 const fbDay = (d) => new Date(d + "T12:00:00").toLocaleDateString("de-AT", { day: "2-digit", month: "short" });
@@ -9643,12 +9722,13 @@ function FbRemStrip({ rems, remState, onOpen }) {
   const l = [...rems].map((r) => [r, remState(r)]).sort((a, b) => (a[1].dd ?? 9e9) - (b[1].dd ?? 9e9));
   return (<div className="fbrems"><h4 className="fbtlh">Erinnerungen</h4><div className="fbremrow">
     {l.map(([r, x]) => (<button key={r.id} className={"fbremcard " + x.cls} onClick={() => onOpen(r)}>
-      <span className="fbremtop"><span className="fbremic" aria-hidden="true">⏰</span><b className="clamp">{r.title}</b></span>
+      <span className="fbremtop"><span className="fbremic" aria-hidden="true"><FbIco k="rem" /></span><b className="clamp">{r.title}</b></span>
       <small className="muted">{[r.km && kmFmt(r.km), r.date && fmtDate(r.date)].filter(Boolean).join(" · ")}</small>
       <small className="fbremwhen">{[x.dk != null && (x.dk <= 0 ? `${kmFmt(-x.dk)} überzogen` : `in ${kmFmt(x.dk)}`), x.dd != null && (x.dd < 0 ? `seit ${-x.dd} Tagen fällig` : x.dd === 0 ? "heute" : `in ${x.dd} Tagen`)].filter(Boolean).join(" · ")}</small>
     </button>))}</div></div>);
 }
 function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, preview }) {
+  const [ics] = useIconStore("fbIcons");
   const consAt = new Map([...(st.cons || []), ...(st.consE || [])].map((c) => [c.date + ":" + c.km, c.v]));
   const kmOf = (x) => +(x.type === "trip" ? x.endKm : x.km) || 0;
   const allSorted = [...all].sort((a, b) => a.date.localeCompare(b.date) || kmOf(a) - kmOf(b));
@@ -9672,8 +9752,9 @@ function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, previ
         <div className="fbmline">{[sm.cost ? fmtMoney(sm.cost) : null, sm.km ? kmFmt(sm.km) : null, sm.l != null ? `${sm.l.toFixed(2).replace(".", ",")} l/100 km` : null, sm.e != null ? `${sm.e.toFixed(1).replace(".", ",")} kWh/100 km` : null].filter(Boolean).join(" · ") || "keine Kosten"}</div>
         {sm.every && <div className="fbmnote"><span className="muted">Zeit zwischen Tankvorgängen:</span> alle {sm.every[0]} Tage{sm.every[1] ? `, etwa ${kmFmt(sm.every[1])}` : ""}</div>}
       </div></div>
-    {l.map((x) => { const el = x.type === "fuel" && isElec(x.fuel), col = x.type === "fuel" ? (el ? FB_COL.elec : FB_COL.fuel) : FB_COL[x.type] || FB_COL.expense;
-      const icon = x.type === "fuel" ? (el ? "⚡" : "⛽") : x.type === "trip" ? "🛣️" : (FB_EXP.find((c) => c[0] === x.cat)?.[1] || "🧾");
+    {l.map((x) => { const el = x.type === "fuel" && isElec(x.fuel);
+      const ik = x.type === "fuel" ? (el ? "elec" : "fuel") : x.type === "trip" ? "trip" : FB_EXP.some((c) => c[0] === x.cat) ? "x:" + x.cat : "exp";
+      const col = ics[ik]?.color || (ik.startsWith("x:") && !ics[ik]?.color && ics.exp?.color) || fbSlot(ik)[3], icon = <FbIco k={ik} />;
       const cons = x.type === "fuel" ? consAt.get(x.date + ":" + x.km) : null;
       const title = x.type === "fuel" ? (el ? "Laden" : x.fuel || "Tanken") : x.type === "trip" ? `${x.from || "?"} → ${x.to || "?"}` : x.cat || "Ausgabe";
       const sub = x.type === "fuel" ? [x.km && kmFmt(x.km), cons != null && `${cons.toFixed(2).replace(".", ",")} ${el ? "kWh" : "l"}/100 km`, x.liters && `${amtStr(x.liters).replace(",00", "")} ${unitOf(x.fuel)}`].filter(Boolean)
@@ -13618,4 +13699,137 @@ html.setdrill-on header.top{min-height:0}
 html .caticon.avatar,html.fg .caticon.avatar{background:color-mix(in srgb,var(--acc) 88%,#000)!important;color:#fff!important;border-radius:50%!important}
 .custwinbody{padding:4px 16px 16px;overflow:auto;flex:1;min-height:0}
 .win.custwin:not(.small){width:min(720px,60vw)}
+
+/* v0.96 eigene Symbole */
+.icslots{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-top:8px}
+.icslot{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:14px;padding:8px 10px;background:var(--card)}
+.icprev{width:44px;height:44px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:21px;flex:none;background:var(--card2);overflow:hidden}
+.icprev.round{border-radius:50%}.icprev img{width:100%;height:100%;object-fit:cover}.icprev:not(.round) img{object-fit:contain;padding:4px}
+.icctl{display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap}
+.icemoji{width:58px!important;text-align:center;font-size:16px;padding:4px!important;min-height:34px!important}
+.iccolor{width:34px;height:34px;padding:0;border:1px solid var(--line);border-radius:8px;background:none}
+.fbicoimg{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.fbquick .fbicoimg{width:28px;height:28px}
+.syncicons{margin:10px 0 4px}.syncicons summary{cursor:pointer;list-style:none;font-weight:600}
+
+/* ===== v0.96 Design-Stile ===== */
+.stylegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:8px 0 14px}
+.stylecard{display:flex;flex-direction:column;gap:3px;align-items:flex-start;text-align:left;border:2px solid transparent;border-radius:18px;padding:6px 6px 9px;background:var(--card);color:var(--txt);font:inherit;cursor:pointer}
+.stylecard.on{border-color:var(--acc)}.stylecard>b{font-size:14.5px;padding:0 4px}.stylecard>small{font-size:12px;padding:0 4px;line-height:1.3}
+.stylepv{display:flex;flex-direction:column;gap:6px;width:100%;height:112px;border-radius:13px;padding:9px;overflow:hidden}
+.stylepvt{font-weight:800}.stylepvc{display:flex;flex-direction:column;padding:7px 9px;font-size:11px}.stylepvc b{font-size:15px}
+.stylepvchip{align-self:flex-start;font-size:10.5px;font-weight:700;padding:3px 10px}
+
+/* gemeinsame Ziele */
+html[class*="sty-"] body{font-feature-settings:"tnum" 1}
+
+/* 2 Glas */
+html.sty-glas{--bg:rgba(30,20,80,.18)!important;--card:rgba(255,255,255,.2)!important;--card2:rgba(255,255,255,.14)!important;--line:rgba(255,255,255,.32)!important;--txt:#fff!important;--mut:rgba(255,255,255,.78)!important;--acc:#fff!important;--ios-glass:rgba(60,40,120,.45)!important}
+html.sty-glas body{background:linear-gradient(140deg,#3a7bd5,#9b5de5 55%,#f15bb5) fixed!important;font-family:Inter,system-ui,sans-serif!important}
+html.sty-glas[data-theme=dark] body{background:linear-gradient(140deg,#14245c,#3b1866 55%,#5c1546) fixed!important}
+html.sty-glas .tile,html.sty-glas .hero,html.sty-glas .khero,html.sty-glas .mscard,html.sty-glas .fscard,html.sty-glas .lbar,html.sty-glas nav.bottom,html.sty-glas .sbx{backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%)}
+html.sty-glas .tile,html.sty-glas .hero,html.sty-glas .khero{border:1px solid rgba(255,255,255,.35)!important;border-radius:22px!important;background:rgba(255,255,255,.18)!important;box-shadow:0 8px 30px rgba(20,10,60,.18)!important}
+html.sty-glas .win,html.sty-glas .lbsheet,html.sty-glas .pickmenu,html.sty-glas .sugmenu{background:rgba(40,28,100,.82)!important;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}
+html.sty-glas .btn.primary,html.sty-glas .lbtab.on,html.sty-glas .seg>button.on{background:#fff!important;color:#6d32d9!important}
+html.sty-glas .neg,html.sty-glas .red{color:#ffd0d8!important}html.sty-glas .pos,html.sty-glas .ok{color:#c9ffe9!important}
+
+/* 3 Soft UI */
+html.sty-soft{--bg:#e6e9ef!important;--card:#e6e9ef!important;--card2:#e6e9ef!important;--line:transparent!important;--txt:#3b4252!important;--mut:#7a8191!important;--sl:#ffffff;--sd:#c3c8d2}
+html.sty-soft[data-theme=dark]{--bg:#2a2e35!important;--card:#2a2e35!important;--card2:#2a2e35!important;--txt:#e5e9f0!important;--mut:#9aa3b2!important;--sl:#353a43;--sd:#1f2227}
+html.sty-soft body{font-family:Nunito,system-ui,sans-serif!important;background:var(--bg)!important}
+html.sty-soft .tile,html.sty-soft .hero,html.sty-soft .khero,html.sty-soft .mscard,html.sty-soft .fscard,html.sty-soft .win,html.sty-soft nav.bottom.mtabbar{border:0!important;border-radius:22px!important;box-shadow:7px 7px 14px var(--sd),-7px -7px 14px var(--sl)!important}
+html.sty-soft .btn,html.sty-soft .chip,html.sty-soft .lbtab,html.sty-soft .iconbtn{border:0!important;background:var(--bg)!important;box-shadow:4px 4px 8px var(--sd),-4px -4px 8px var(--sl)!important}
+html.sty-soft .btn.on,html.sty-soft .chip.on,html.sty-soft .lbtab.on,html.sty-soft .seg>button.on,html.sty-soft .btn:active{box-shadow:inset 3px 3px 7px var(--sd),inset -3px -3px 7px var(--sl)!important;color:var(--acc)!important;background:var(--bg)!important}
+html.sty-soft .sbx,html.sty-soft input,html.sty-soft select,html.sty-soft textarea,html.sty-soft .seg{border:0!important;background:var(--bg)!important;box-shadow:inset 3px 3px 7px var(--sd),inset -3px -3px 7px var(--sl)!important}
+html.sty-soft .btn.primary{color:var(--acc)!important;font-weight:800}
+
+/* 4 Bento */
+html.sty-bento{--bg:#f4f4ee!important;--card:#ffffff!important;--card2:#ebebe3!important;--line:#e0e0d6!important;--txt:#111!important;--mut:#666!important;--acc:#7c5cff!important;--lime:#c6f432;--lav:#7c5cff}
+html.sty-bento[data-theme=dark]{--bg:#0f0f10!important;--card:#1c1c1f!important;--card2:#26262a!important;--line:#2c2c30!important;--txt:#f5f5f5!important;--mut:#9a9aa0!important}
+html.sty-bento body{font-family:"Space Grotesk",system-ui,sans-serif!important}
+html.sty-bento .tile,html.sty-bento .hero,html.sty-bento .khero,html.sty-bento .mscard,html.sty-bento .fscard{border:0!important;border-radius:20px!important;box-shadow:none!important}
+html.sty-bento .hero,html.sty-bento .khero,html.sty-bento .invstats>.tile:first-child,html.sty-bento .kbstats>.tile:first-child,html.sty-bento .cdkpis>div:first-child,html.sty-bento .fbstats>div:first-child{background:var(--lime)!important;color:#111!important}
+html.sty-bento .hero *,html.sty-bento .khero *,html.sty-bento .invstats>.tile:first-child *,html.sty-bento .cdkpis>div:first-child *,html.sty-bento .fbstats>div:first-child *{color:#111!important}
+html.sty-bento .invstats>.tile:nth-child(2),html.sty-bento .cdkpis>div:nth-child(2),html.sty-bento .fbstats>div:nth-child(2){background:var(--lav)!important;color:#fff!important}
+html.sty-bento .invstats>.tile:nth-child(2) *,html.sty-bento .cdkpis>div:nth-child(2) *,html.sty-bento .fbstats>div:nth-child(2) *{color:#fff!important}
+html.sty-bento .invstats,html.sty-bento .kbstats{gap:10px!important}
+html.sty-bento header.top h1,html.sty-bento .hero-v,html.sty-bento .tile b{letter-spacing:-.02em}
+html.sty-bento .btn.primary,html.sty-bento .lbtab.on{background:var(--lime)!important;color:#111!important;border-color:var(--lime)!important}
+
+/* 5 Neo-Brutal */
+html.sty-brutal{--bg:#fff4d6!important;--card:#ffffff!important;--card2:#fff0bf!important;--line:#111!important;--txt:#111!important;--mut:#4a4a4a!important;--acc:#ff5c5c!important;--bk:#111}
+html.sty-brutal[data-theme=dark]{--bg:#1a1a1a!important;--card:#262626!important;--card2:#333!important;--line:#f5f5f5!important;--txt:#f5f5f5!important;--mut:#c8c8c8!important;--bk:#f5f5f5}
+html.sty-brutal body{font-family:Inter,system-ui,sans-serif!important;font-weight:500}
+html.sty-brutal header.top h1,html.sty-brutal .tilehead b,html.sty-brutal .hero-v,html.sty-brutal .panelhead>b{font-family:"Archivo Black",Inter,sans-serif!important;font-weight:400!important;text-transform:uppercase;letter-spacing:0}
+html.sty-brutal .tile,html.sty-brutal .hero,html.sty-brutal .khero,html.sty-brutal .mscard,html.sty-brutal .fscard,html.sty-brutal .win,html.sty-brutal .sbx,html.sty-brutal nav.bottom.mtabbar{border:2.5px solid var(--bk)!important;border-radius:6px!important;box-shadow:5px 5px 0 var(--bk)!important}
+html.sty-brutal .btn,html.sty-brutal .chip,html.sty-brutal .lbtab,html.sty-brutal .iconbtn,html.sty-brutal input,html.sty-brutal select{border:2px solid var(--bk)!important;border-radius:4px!important;box-shadow:2px 2px 0 var(--bk)!important;font-weight:700}
+html.sty-brutal .hero,html.sty-brutal .khero{background:#ffde59!important;color:#111!important}html.sty-brutal .hero *,html.sty-brutal .khero *{color:#111!important}
+html.sty-brutal .btn.primary,html.sty-brutal .lbtab.on,html.sty-brutal .chip.on,html.sty-brutal .seg>button.on{background:#ff5c5c!important;color:#111!important}
+html.sty-brutal .btn:active{transform:translate(2px,2px);box-shadow:0 0 0 var(--bk)!important}
+
+/* 6 Editorial */
+html.sty-editorial{--bg:#fbf8f2!important;--card:#fbf8f2!important;--card2:#f1ece1!important;--line:#ddd5c4!important;--txt:#1d1b16!important;--mut:#7a7364!important;--acc:#9a3412!important}
+html.sty-editorial[data-theme=dark]{--bg:#16140f!important;--card:#16140f!important;--card2:#211e17!important;--line:#3a352a!important;--txt:#f1ebdd!important;--mut:#a89f8a!important;--acc:#f0a46b!important}
+html.sty-editorial body{font-family:Inter,system-ui,sans-serif!important}
+html.sty-editorial header.top h1,html.sty-editorial .tilehead b,html.sty-editorial .hero-v,html.sty-editorial .panelhead>b,html.sty-editorial .kpiv,html.sty-editorial .cdname{font-family:Fraunces,Georgia,serif!important;font-weight:600!important;letter-spacing:-.02em}
+html.sty-editorial .tile,html.sty-editorial .hero,html.sty-editorial .khero,html.sty-editorial .mscard,html.sty-editorial .fscard{background:transparent!important;border:0!important;border-top:1.5px solid var(--txt)!important;border-radius:0!important;box-shadow:none!important}
+html.sty-editorial .btn,html.sty-editorial .chip,html.sty-editorial .lbtab{border-radius:2px!important;background:transparent!important;border:1px solid var(--line)!important}
+html.sty-editorial .btn.primary,html.sty-editorial .lbtab.on,html.sty-editorial .chip.on{background:var(--txt)!important;color:var(--bg)!important;border-color:var(--txt)!important}
+html.sty-editorial .tilehead small,html.sty-editorial .subhead,html.sty-editorial .lbh{text-transform:uppercase;letter-spacing:.12em}
+
+/* 7 Kompakt Pro */
+html.sty-kompakt{--bg:#f6f8fa!important;--card:#ffffff!important;--card2:#f0f3f6!important;--line:#d0d7de!important;--txt:#1f2328!important;--mut:#656d76!important;--acc:#1a7f37!important}
+html.sty-kompakt[data-theme=dark]{--bg:#0b0e14!important;--card:#11161f!important;--card2:#161b22!important;--line:#30363d!important;--txt:#c9d1d9!important;--mut:#7d8590!important;--acc:#3fb950!important}
+html.sty-kompakt body{font-family:Inter,system-ui,sans-serif!important;font-size:14px!important}
+html.sty-kompakt .amt,html.sty-kompakt .invamt,html.sty-kompakt .mamt,html.sty-kompakt .hero-v,html.sty-kompakt .kpiv,html.sty-kompakt .tile>b,html.sty-kompakt .cdamt,html.sty-kompakt .fbtlright b,html.sty-kompakt .cmpmain b{font-family:"JetBrains Mono",ui-monospace,monospace!important;letter-spacing:-.02em}
+html.sty-kompakt .tile,html.sty-kompakt .hero,html.sty-kompakt .khero,html.sty-kompakt .mscard,html.sty-kompakt .fscard,html.sty-kompakt .win{border:1px solid var(--line)!important;border-radius:6px!important;box-shadow:none!important}
+html.sty-kompakt .btn,html.sty-kompakt .chip,html.sty-kompakt .lbtab,html.sty-kompakt .iconbtn,html.sty-kompakt .sbx,html.sty-kompakt input,html.sty-kompakt select{border-radius:5px!important;min-height:34px!important}
+html.sty-kompakt .frow,html.sty-kompakt .mtx,html.sty-kompakt .ditem,html.sty-kompakt .invrow,html.sty-kompakt .fbtlitem{padding-top:5px!important;padding-bottom:5px!important}
+html.sty-kompakt header.top h1{font-size:24px!important}
+html.sty-kompakt .hero,html.sty-kompakt .khero{padding:12px 14px!important}html.sty-kompakt .hero-v{font-size:28px!important}
+
+/* 8 Clay */
+html.sty-clay{--bg:#fde8ef!important;--card:#fff5f8!important;--card2:#ffe1ea!important;--line:#f6cbd8!important;--txt:#4a2f39!important;--mut:#8a6774!important;--acc:#ff5f8f!important;--c1:#ffb4c8;--c2:#c8f0e0;--c3:#d9d1ff;--c4:#fff3b0}
+html.sty-clay[data-theme=dark]{--bg:#2b1f2a!important;--card:#3a2a38!important;--card2:#47333f!important;--line:#5a4050!important;--txt:#ffe9f1!important;--mut:#d3b2c0!important;--c1:#8f4e66;--c2:#3f7a66;--c3:#5a4e99;--c4:#8a7a2e}
+html.sty-clay body{font-family:Nunito,system-ui,sans-serif!important;font-weight:600}
+html.sty-clay header.top h1,html.sty-clay .tilehead b,html.sty-clay .hero-v{font-weight:800!important}
+html.sty-clay .tile,html.sty-clay .hero,html.sty-clay .khero,html.sty-clay .mscard,html.sty-clay .fscard,html.sty-clay .win{border:0!important;border-radius:28px!important;box-shadow:inset -4px -6px 12px rgba(0,0,0,.08),inset 4px 4px 12px rgba(255,255,255,.55),0 10px 22px rgba(160,60,90,.15)!important}
+html.sty-clay .hero,html.sty-clay .khero{background:var(--c1)!important}
+html.sty-clay .invstats>.tile:nth-child(4n+1),html.sty-clay .cdkpis>div:nth-child(4n+1),html.sty-clay .fbstats>div:nth-child(4n+1){background:var(--c2)!important}
+html.sty-clay .invstats>.tile:nth-child(4n+2),html.sty-clay .cdkpis>div:nth-child(4n+2),html.sty-clay .fbstats>div:nth-child(4n+2){background:var(--c3)!important}
+html.sty-clay .invstats>.tile:nth-child(4n+3),html.sty-clay .cdkpis>div:nth-child(4n+3),html.sty-clay .fbstats>div:nth-child(4n+3){background:var(--c4)!important}
+html.sty-clay .btn,html.sty-clay .chip,html.sty-clay .lbtab,html.sty-clay .iconbtn{border:0!important;border-radius:999px!important;box-shadow:inset -2px -3px 6px rgba(0,0,0,.08),inset 2px 2px 6px rgba(255,255,255,.6)!important;font-weight:800}
+html.sty-clay .btn.primary,html.sty-clay .lbtab.on{background:var(--acc)!important;color:#fff!important}
+
+/* 9 Aurora (immer dunkel) */
+html.sty-aurora{color-scheme:dark;--bg:#070a1a!important;--card:rgba(255,255,255,.055)!important;--card2:rgba(255,255,255,.09)!important;--line:rgba(255,255,255,.13)!important;--txt:#eef0ff!important;--mut:#9aa3c7!important;--acc:#5ef0d0!important;--red:#ff8fa3!important;--ok:#5ef0d0!important;--ios-glass:rgba(10,14,36,.78)!important}
+html.sty-aurora body{font-family:Inter,system-ui,sans-serif!important;background:radial-gradient(1200px 700px at 15% 0%,rgba(43,92,255,.42),transparent 60%),radial-gradient(900px 600px at 95% 85%,rgba(20,241,193,.30),transparent 60%),radial-gradient(700px 500px at 60% 40%,rgba(164,80,255,.18),transparent 60%),#070a1a fixed!important;color:#eef0ff}
+html.sty-aurora .tile,html.sty-aurora .hero,html.sty-aurora .khero,html.sty-aurora .mscard,html.sty-aurora .fscard{border:1px solid rgba(255,255,255,.13)!important;border-radius:18px!important;background:rgba(255,255,255,.05)!important;box-shadow:0 10px 40px rgba(0,0,0,.35)!important;backdrop-filter:blur(10px)}
+html.sty-aurora .win,html.sty-aurora .lbsheet,html.sty-aurora .pickmenu,html.sty-aurora .sugmenu{background:#0d1230f2!important}
+html.sty-aurora .hero-v,html.sty-aurora .kpiv.big,html.sty-aurora .cmpmain b{background:linear-gradient(90deg,#8fb3ff,#5ef0d0);-webkit-background-clip:text;background-clip:text;color:transparent!important}
+html.sty-aurora .btn.primary,html.sty-aurora .lbtab.on{background:linear-gradient(90deg,#2b5cff,#14c9a1)!important;color:#fff!important;border:0!important}
+
+/* 10 Expressiv */
+html.sty-express{--bg:#f7f2fa!important;--card:#ffffff!important;--card2:#e8def8!important;--line:#e0d6ec!important;--txt:#1d1b20!important;--mut:#625b71!important;--acc:#6750a4!important}
+html.sty-express[data-theme=dark]{--bg:#141218!important;--card:#211f26!important;--card2:#4a4458!important;--line:#36343b!important;--txt:#e6e0e9!important;--mut:#cac4d0!important;--acc:#d0bcff!important}
+html.sty-express body{font-family:"Space Grotesk",system-ui,sans-serif!important}
+html.sty-express header.top h1{font-weight:700!important;letter-spacing:-.03em}
+html.sty-express .tile,html.sty-express .mscard,html.sty-express .fscard{border:0!important;border-radius:28px 28px 28px 10px!important;box-shadow:none!important}
+html.sty-express .hero,html.sty-express .khero{background:var(--card2)!important;border:0!important;border-radius:36px 36px 36px 12px!important;box-shadow:none!important}
+html.sty-express .btn,html.sty-express .iconbtn{border-radius:16px!important;min-height:46px!important;font-weight:700}
+html.sty-express .chip,html.sty-express .lbtab{border-radius:12px!important;min-height:38px;font-weight:600}
+html.sty-express .btn.primary,html.sty-express .lbtab.on,html.sty-express .chip.on{background:var(--acc)!important;color:var(--bg)!important;border-color:var(--acc)!important}
+
+/* 12 Großer Kontrast */
+html.sty-kontrast{--bg:#ffffff!important;--card:#ffffff!important;--card2:#f0f0f0!important;--line:#000!important;--txt:#000!important;--mut:#2a2a2a!important;--acc:#0040ff!important;--red:#c00000!important;--ok:#006b2e!important}
+html.sty-kontrast[data-theme=dark]{--bg:#000!important;--card:#000!important;--card2:#141414!important;--line:#fff!important;--txt:#fff!important;--mut:#e0e0e0!important;--acc:#ffd400!important;--red:#ff6b6b!important;--ok:#5cff8f!important}
+html.sty-kontrast body{font-size:17.5px!important;font-weight:500}
+html.sty-kontrast header.top h1{font-size:36px!important;font-weight:800!important}
+html.sty-kontrast .tile,html.sty-kontrast .hero,html.sty-kontrast .khero,html.sty-kontrast .mscard,html.sty-kontrast .fscard,html.sty-kontrast .win,html.sty-kontrast .sbx{border:2px solid var(--line)!important;box-shadow:none!important;border-radius:12px!important}
+html.sty-kontrast .btn,html.sty-kontrast .chip,html.sty-kontrast .lbtab,html.sty-kontrast input,html.sty-kontrast select{border:2px solid var(--line)!important;font-weight:700;min-height:44px}
+html.sty-kontrast .btn.primary,html.sty-kontrast .lbtab.on,html.sty-kontrast .chip.on,html.sty-kontrast .seg>button.on{background:var(--acc)!important;color:var(--bg)!important;border-color:var(--acc)!important}
+html.sty-kontrast .muted,html.sty-kontrast small{color:var(--mut)!important}
+html.sty-kontrast *:focus-visible{outline:3px solid var(--acc)!important;outline-offset:2px}
+
+html.sty-kontrast .lbtab.on small,html.sty-kontrast .chip.on small,html.sty-kontrast .btn.primary small{color:inherit!important;opacity:.8}
 `;
