@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.98.3 – Dropdown-Menüs in den Zeilen
+
+- **Steuerberater (Prüfen, Kontoauszug):** statt der drei Knöpfe Firma/Privat/Unklar ein farbiges Dropdown mit der aktuellen Zuordnung (inkl. „Aufteilen …“); „Buchung öffnen“, „Frage an den Steuerberater“ und „Im PDF zeigen“ im „⋯“-Menü.
+- **Verträge (Laptop/iPad quer):** Status „Aktiv/Inaktiv“ als Dropdown, 👁 bleibt sichtbar, Bearbeiten/Drucken/Teilen/Tags im „⋯“-Menü.
+- Menüs funktionieren mit Maus und Touch und öffnen nach oben, wenn unten zu wenig Platz ist.
+
 ## v0.98.2 – Vorschau nur über das Auge, Buchung im Steuerberater als Popup
 
 - **Rechnungen, Mahnungen, Verträge:** Klick auf Titel/Zeile öffnet die Details (Popup), nicht mehr die Vorschau. Vorschau nur über das 👁 rechts (jetzt auch am Handy in jeder Zeile) oder im Popup über „Vorschau“. Mahnungen: 👁 auch bei offenen Rechnungen; Verlaufszeilen öffnen beim Antippen nichts mehr. Vertrags-Popup hat neu den Knopf „👁 Vorschau“ für die verknüpften Dokumente.

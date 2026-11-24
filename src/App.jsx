@@ -7112,6 +7112,19 @@ function stmtRows(doc, txs, accounts, docs) {
   });
 }
 /* Kontoauszug ansehen: PDF mit Markierungen + Zeilenliste */
+/* Dropdowns für Zeilen (v0.98.3): Zuordnung Firma/Privat/Unklar und „⋯“-Aktionen */
+function ScopePick({ scope, onPick, onSplit }) {
+  const cur = TX_SCOPES.find((x) => x[0] === scope) || TX_SCOPES[1];
+  return <span className={"scpick sc-" + cur[0]} onClick={(e) => e.stopPropagation()}>
+    <PickMenu btnClass="chip scpickbtn" icon={cur[1]} label={cur[2]} title="Zuordnung ändern"
+      items={[{ head: "Zuordnung" }, ...TX_SCOPES.map(([k, ic, lb]) => ({ k, icon: ic, title: lb, sub: { firma: "Betriebsausgabe/-einnahme", privat: "nicht für die Firma", unklar: "Steuerberater fragen" }[k], on: scope === k, run: () => onPick(k) })),
+        ...(onSplit ? [{ k: "split", icon: "✂️", title: "Aufteilen …", sub: "z. B. 60 % Firma / 40 % privat", run: onSplit }] : [])]} /></span>;
+}
+function MoreMenu({ items, title = "Mehr" }) {
+  const l = items.filter(Boolean); if (!l.length) return null;
+  return <span className="rowmore" onClick={(e) => e.stopPropagation()}><PickMenu btnClass="iconbtn morebtn rowmorebtn" label={<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>} title={title}
+    items={l.map((x, i) => ({ k: x.k || "m" + i, icon: x.icon, title: x.title, sub: x.sub, disabled: x.disabled, run: x.run }))} /></span>;
+}
 function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openTx, notify, token, onClose }) {
   const [pages, setPages] = useState(null), [view, setView] = useState("beides"), [hi, setHi] = useState(null), [busy, setBusy] = useState(false);
   const mob = useMobileBeta();
@@ -7172,8 +7185,8 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
           </div>
           <div className="stmtright">
             <b className={r.amount > 0 ? "pos" : ""}>{fmtMoney(r.amount)}</b>
-            <div className="seg stmtseg" onClick={(e) => e.stopPropagation()}>{TX_SCOPES.map(([k, ic, lb]) => <button key={k} className={(r.scope === k ? "on " : "") + "sc-" + k} title={lb} aria-label={lb} onClick={() => setScope(r, k)}>{ic}<span> {lb}</span></button>)}</div>
-            {r.t && <button className="link small" onClick={(e) => { e.stopPropagation(); openTx(r.t); }}>Buchung öffnen ›</button>}
+            <div className="row stmtctl"><ScopePick scope={r.scope} onPick={(k) => setScope(r, k)} onSplit={r.t ? () => openTx(r.t) : null} />
+              <MoreMenu items={[r.t && { icon: "↗", title: "Buchung öffnen", run: () => openTx(r.t) }, r.box && { icon: "📍", title: "Im PDF zeigen", run: () => { setHi(r.i); document.getElementById(`stmtbox-${doc.id}-${r.i}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); } }]} /></div>
           </div>
         </div>
       ))}
@@ -7447,11 +7460,8 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
             </div>
             <div className="stmtright">
               <b className={r.t.amount > 0 ? "pos" : ""}>{fmtMoney(r.t.amount)}</b>
-              <div className="seg stmtseg">{TX_SCOPES.map(([k, ic, lb]) => <button key={k} className={(r.scope === k ? "on " : "") + "sc-" + k} title={lb} aria-label={lb} onClick={() => setSc(r, k)}>{ic}<span> {lb}</span></button>)}</div>
-              <div className="row">
-                {!r.t.ask && <button className="link small" onClick={() => { setAskFor(r.t); setAskTxt(""); }}>❓ Frage</button>}
-                <button className="link small" onClick={() => openTx(r.t)}>Öffnen ›</button>
-              </div>
+              <div className="row stmtctl"><ScopePick scope={r.scope} onPick={(k) => setSc(r, k)} onSplit={() => openTx(r.t)} />
+                <MoreMenu items={[{ icon: "↗", title: "Buchung öffnen", run: () => openTx(r.t) }, { icon: "❓", title: r.t.ask ? "Frage ansehen" : "Frage an den Steuerberater", run: () => (r.t.ask ? openTx(r.t) : (setAskFor(r.t), setAskTxt(""))) }]} /></div>
             </div>
           </div>
         ))}
@@ -10400,10 +10410,10 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
             </div>
             <b className="invamt ctamt">{c.amount ? fmtMoney(Number(c.amount)) : "—"}</b>
             <div className="ctacts" onClick={(e) => e.stopPropagation()}>
-              <button className={"stpill ctstate " + (c.inactive ? "st-draft" : "st-paid")} title={c.inactive ? "Inaktiv – zählt nicht zu den Kosten. Antippen = aktiv" : "Aktiv – antippen = inaktiv"} onClick={() => save({ ...c, inactive: !c.inactive })}>{c.inactive ? "Inaktiv" : "Aktiv"}</button>
+              {c.cancelledAt ? <span className="stpill ctstate st-void">Gekündigt</span> : <span className={"ctstatepick " + (c.inactive ? "off" : "on")}><PickMenu btnClass={"stpill ctstate " + (c.inactive ? "st-draft" : "st-paid")} label={c.inactive ? "Inaktiv" : "Aktiv"} title="Status ändern"
+                items={[{ head: "Status" }, { k: "a", icon: "●", title: "Aktiv", sub: "zählt zu den laufenden Kosten", on: !c.inactive, run: () => save({ ...c, inactive: false }) }, { k: "i", icon: "⏸", title: "Inaktiv", sub: "pausiert – zählt nicht zu den Kosten", on: !!c.inactive, run: () => save({ ...c, inactive: true }) }]} /></span>}
               <button className={"iconbtn" + (open ? " on" : "")} disabled={!cdocs.length} title={cdocs.length ? "Vorschau öffnen" : "Kein Dokument verknüpft"} onClick={() => setPrevCt(open ? null : c.id)}>{open ? <IcoEyeOff /> : <IcoEye />}</button>
-              {cdocs[0] ? <button className="iconbtn" title="Drucken" onClick={() => printDoc(cdocs[0])}><IcoPrint /></button> : <span className="iconbtn invph" aria-hidden="true" />}
-              <button className="iconbtn" title="Tags bearbeiten" aria-label="Tags bearbeiten" onClick={() => tagCts([c])}>#</button>
+              <MoreMenu items={[{ icon: "✎", title: "Bearbeiten", run: () => setEdit(c) }, cdocs[0] && { icon: <IcoPrint />, title: "Dokument drucken", run: () => printDoc(cdocs[0]) }, cdocs[0] && { icon: <IcoShare />, title: "Dokument teilen", run: () => shareDocs(cdocs) }, { icon: "#", title: "Tags bearbeiten", run: () => tagCts([c]) }]} />
             </div>
           </div>
           </div>); })}
@@ -15207,4 +15217,18 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
 .mieye{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;border:0;background:var(--card2);color:var(--acc);padding:0;margin-left:6px;cursor:pointer;flex:none;vertical-align:middle}
 .mieye svg{width:18px;height:18px}
 .mpillrow{display:inline-flex;align-items:center;gap:4px;justify-content:flex-end}
+
+/* v0.98.3: Dropdowns in Zeilen */
+.stmtctl{display:flex;align-items:center;gap:6px;justify-content:flex-end;flex-wrap:nowrap}
+.scpick .scpickbtn{min-height:34px;padding:5px 12px;font-size:14px;font-weight:600;border-radius:999px;white-space:nowrap;border:1px solid transparent}
+.scpick.sc-firma .scpickbtn{background:#f59e0b2e!important;color:#b45309!important;border-color:#f59e0b55}
+.scpick.sc-privat .scpickbtn{background:#3b82f622!important;color:#2563eb!important;border-color:#3b82f655}
+.scpick.sc-unklar .scpickbtn{background:#e5737333!important;color:#c0392b!important;border-color:#e5737366}
+html.dark .scpick.sc-firma .scpickbtn{color:#fbbf24!important}html.dark .scpick.sc-privat .scpickbtn{color:#93c5fd!important}html.dark .scpick.sc-unklar .scpickbtn{color:#fca5a5!important}
+.scpick .caret,.ctstatepick .caret{font-size:10px;opacity:.7;margin-left:2px}
+.rowmore .rowmorebtn{width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.rowmore .rowmorebtn .caret{display:none}
+.ctstatepick .ctstate{cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.ctacts{display:flex;align-items:center;gap:6px}
+@media (max-width:700px){.scpick .scpickbtn{min-height:32px;padding:4px 10px;font-size:13px}.stmtctl{gap:4px}}
 `;
