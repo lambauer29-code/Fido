@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.3 – Journal: Monate als Baum
+
+Die Monate stehen im Journal eingerückt unter ihrem Jahr und sind mit Baumlinien verbunden; beim gewählten Monat ist die Linie farbig.
+
+## v0.99.2 – Journal: Abschnitte einklappbar
+
+In der Journal-Seitenleiste lassen sich Kontakte, Kategorien und Schlagwörter per Klick auf die Überschrift ein- und ausklappen. Eingeklappt zeigt die Überschrift die Anzahl; der Zustand bleibt gespeichert.
+
 ## v0.99.1 – Volle Fensterbreite am Desktop
 
 Der Inhaltsbereich war am Desktop auf 1240 px Breite begrenzt. Jetzt wächst er mit dem Browserfenster mit (Dokumente, Übersicht, Rechnungen, Journal usw.).

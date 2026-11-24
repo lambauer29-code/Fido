@@ -5244,6 +5244,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   const monthsOf = (y) => [...new Set(base.filter((d) => jDate(d).startsWith(y)).map((d) => jMonth(d).slice(5, 7)))].sort();
   const pickYM = (y, m = "") => { setSel({ y, m }); setFacet(null); if (mode === "monate" && m) setMode("journal"); setSide(false); };
 
+  const [fold, setFold] = useLsState("jFold", {});
+  const sh = (k, l, n) => <button type="button" className={"jsh" + (fold[k] ? " shut" : "")} onClick={() => setFold({ ...fold, [k]: !fold[k] })} aria-expanded={!fold[k]}><span className="grow">{l}</span>{fold[k] && n > 0 && <span className="jcnt">{n}</span>}<span className="jchev">▾</span></button>;
   const modeBar = (
     <div className="jmodes">
       <div className="seg">{[["journal", "📓 Journal"], ["pruefen", `✓ Prüfen${cnt("unbest") ? " (" + cnt("unbest") + ")" : ""}`], ["monate", "🗓 Monate"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); if (k === "pruefen") { const f = base.filter(jUnconf).sort((a, b) => jDate(b).localeCompare(jDate(a)))[0]; setCur(f?.id || null); if (mob && f) setPhoneOpen(true); } }}>{l}</button>)}</div>
@@ -5261,13 +5263,13 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
       </React.Fragment>))}
       {base.some((d) => !jDate(d)) && <button className={"jsi" + (sel.y === "ohne" ? " on" : "")} onClick={() => pickYM("ohne")}><span className="jic">📁</span><span className="grow">Ohne Datum</span></button>}
       <button className={"jsi" + (!sel.y ? " on" : "")} onClick={() => pickYM("")}><span className="jic">∞</span><span className="grow">Alle Jahre</span></button>
-      <h5>Kontakte</h5>
-      <button className={"jsi" + (facet?.k === "contact" && !facet.v ? " on" : "")} onClick={() => setFacet(facet?.k === "contact" && !facet.v ? null : { k: "contact", v: "" })}><span className="jic">🏢</span><span className="grow">Nicht zugewiesen</span></button>
-      {senders.slice(0, 12).map((s) => <button key={s} className={"jsi" + (facet?.k === "contact" && facet.v === s ? " on" : "")} onClick={() => setFacet(facet?.v === s ? null : { k: "contact", v: s })}><span className="jic">·</span><span className="grow one">{s}</span></button>)}
-      <h5>Kategorien</h5>
-      {categories.filter((c) => catCnt[c]).map((c) => <button key={c} className={"jsi" + (facet?.k === "cat" && facet.v === c ? " on" : "")} onClick={() => setFacet(facet?.v === c && facet.k === "cat" ? null : { k: "cat", v: c })}><span className="jic"><CatGlyph c={c} /></span><span className="grow one">{c}</span><span className="jcnt">{catCnt[c]}</span></button>)}
-      {!!tagCnt.length && <h5>Schlagwörter</h5>}
-      {tagCnt.map(([t, n]) => <button key={t} className={"jsi" + (facet?.k === "tag" && facet.v === t ? " on" : "")} onClick={() => setFacet(facet?.v === t && facet.k === "tag" ? null : { k: "tag", v: t })}><span className="jic">#</span><span className="grow one">{t}</span><span className="jcnt">{n}</span></button>)}
+      {sh("contact", "Kontakte", senders.length)}
+      {!fold.contact && <button className={"jsi" + (facet?.k === "contact" && !facet.v ? " on" : "")} onClick={() => setFacet(facet?.k === "contact" && !facet.v ? null : { k: "contact", v: "" })}><span className="jic">🏢</span><span className="grow">Nicht zugewiesen</span></button>}
+      {!fold.contact && senders.slice(0, 12).map((s) => <button key={s} className={"jsi" + (facet?.k === "contact" && facet.v === s ? " on" : "")} onClick={() => setFacet(facet?.v === s ? null : { k: "contact", v: s })}><span className="jic">·</span><span className="grow one">{s}</span></button>)}
+      {sh("cat", "Kategorien", categories.filter((c) => catCnt[c]).length)}
+      {!fold.cat && categories.filter((c) => catCnt[c]).map((c) => <button key={c} className={"jsi" + (facet?.k === "cat" && facet.v === c ? " on" : "")} onClick={() => setFacet(facet?.v === c && facet.k === "cat" ? null : { k: "cat", v: c })}><span className="jic"><CatGlyph c={c} /></span><span className="grow one">{c}</span><span className="jcnt">{catCnt[c]}</span></button>)}
+      {!!tagCnt.length && sh("tag", "Schlagwörter", tagCnt.length)}
+      {!fold.tag && tagCnt.map(([t, n]) => <button key={t} className={"jsi" + (facet?.k === "tag" && facet.v === t ? " on" : "")} onClick={() => setFacet(facet?.v === t && facet.k === "tag" ? null : { k: "tag", v: t })}><span className="jic">#</span><span className="grow one">{t}</span><span className="jcnt">{n}</span></button>)}
     </nav>
   );
   const row = (d) => { const v = jSigned(d); return (
@@ -15493,7 +15495,7 @@ html.dark .scpick.sc-firma .scpickbtn{color:#fbbf24!important}html.dark .scpick.
 .jside h5{margin:12px 8px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
 .jsi{display:flex;align-items:center;gap:8px;padding:6px 8px;border:0;background:none;color:var(--txt);font:inherit;font-size:14px;border-radius:9px;cursor:pointer;text-align:left;min-width:0}
 .jsi:hover{background:var(--card2)}.jsi.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);font-weight:600}
-.jsi.jsub{padding-left:30px}.jsi .jic{width:18px;text-align:center;flex:none;display:inline-flex;justify-content:center}.jsi .jic .catimg{width:16px;height:16px}
+.jside .jsi.jsub{margin-left:30px;padding-left:22px;position:relative;width:calc(100% - 30px)}.jside .jsi.jsub::before{content:'';position:absolute;left:1px;top:-1px;bottom:0;border-left:2px solid color-mix(in srgb,var(--mut) 35%,transparent)}.jside .jsi.jsub.on::before{border-left-color:var(--acc,var(--accent))}.jside .jsi.jsub::after{content:'';position:absolute;left:1px;top:50%;width:12px;border-top:2px solid color-mix(in srgb,var(--mut) 35%,transparent)}.jsi .jic{width:18px;text-align:center;flex:none;display:inline-flex;justify-content:center}.jsi .jic .catimg{width:16px;height:16px}
 .jcnt{font-size:11px;background:var(--card2);color:var(--mut);border-radius:9px;padding:1px 7px;flex:none}
 .jlist{display:flex;flex-direction:column;padding:0}
 .jlhead{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
@@ -15548,4 +15550,6 @@ html.dark .scpick.sc-firma .scpickbtn{color:#fbbf24!important}html.dark .scpick.
 .jpsbody{overflow:auto;padding:4px 14px calc(env(safe-area-inset-bottom) + 12px)}
 .jpsheet:not(.open) .jx,.jpsheet:not(.open) .jfields .jbtns .row{display:none!important}
 .jpsheet .jbtns{position:static;padding:4px 0 0}
+
+.jsh{display:flex;align-items:center;gap:6px;width:100%;margin:12px 0 4px;padding:4px 8px;border:0;background:none;cursor:pointer;font:inherit;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);border-radius:8px;text-align:left}.jsh:hover{background:var(--soft,#0000000d);color:var(--txt)}.jsh .jchev{font-size:11px;transition:transform .15s}.jsh.shut .jchev{transform:rotate(-90deg)}
 `;
