@@ -5526,7 +5526,8 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const [limit, setLimit] = useState(150);
   // Kopfbereich bleibt stehen, nur die Umsatzliste scrollt (wenn genug Platz ist)
   const scrollRef = useRef(null);
-  const fitH = useFitHeight(scrollRef);
+  const wideFit = useMedia("(min-width:701px)");
+  const fitH = useFitHeight(scrollRef, 200, false, false, 0, wideFit, 10, true); // Mac/iPad: Box reicht bis 10 px über den Fensterrand
   const onListScroll = (e) => { const el = e.currentTarget; if (el.scrollTop + el.clientHeight > el.scrollHeight - 400 && list.length > limit) setLimit((n) => n + 300); };
   const fileRef = useRef();
 
@@ -8067,7 +8068,7 @@ function FitScroll({ children, className = "", cols, card = false, minH }) {
   return <div ref={ref} className={"fitscroll" + (card ? " fscard" : "") + (h ? " fit" : "") + (className ? " " + className : "")} style={h ? { maxHeight: h } : undefined} onScroll={card ? hdrScroll : undefined}>
     {children}</div>;
 }
-function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0, lock = false) {
+function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0, lock = false, gap = 15, freeIfNot = false) {
   const [h, setH] = useState(null);
   useEffect(() => {
     let raf = 0;
@@ -8078,11 +8079,13 @@ function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0
       if (lock) {
         // Box fest bis 15 px über den unteren Rand (am Handy: über die Leiste unten), nur der Inhalt scrollt
         const nb = [...document.querySelectorAll("nav.bottom")].find((b) => { const r = b.getBoundingClientRect(); return getComputedStyle(b).position === "fixed" && r.width >= innerWidth * 0.6 && r.top > innerHeight / 2; });
-        const limit = (nb ? nb.getBoundingClientRect().top : innerHeight) - 15;
+        // Abstand unten: Box plus alles, was im selben Kasten darunter noch kommt (Rand/Polster)
+        const card = el.closest(".tile,.txcard,.fscard") || el; const below = card === el ? 0 : Math.max(0, card.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom);
+        const limit = (nb ? nb.getBoundingClientRect().top : innerHeight) - gap - below;
         const fits = Math.floor(limit - top) >= min;
         // Seite nur sperren, wenn die Box ganz hineinpasst – sonst normal scrollen, damit nichts hinter der Leiste verschwindet
         document.documentElement.classList.toggle("fitlock", fits);
-        const n = fits ? Math.floor(limit - top) : min;
+        const n = fits ? Math.floor(limit - top) : freeIfNot ? null : min;
         return setH((o) => (o === n ? o : n));
       }
       const bar = [...document.querySelectorAll("nav.bottom")].find((b) => b.offsetParent && b.getBoundingClientRect().top < innerHeight - 1);
@@ -8513,7 +8516,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
   if (inv.kind !== "angebot" && !co.iban) warn.push("IBAN fehlt in den Firmendaten (kein Zahlen-QR-Code)");
   const blocking = warn.filter((w) => !/IBAN|UID/.test(w));
   const isA = inv.kind === "angebot";
-  const pick = (name) => { const c = customers.find((x) => x.name === name); if (c) { setC({ name: c.name, address: c.address, uid: c.uid, email: c.email, number: c.number }); setSaveCust(false); } else setC({ name }); };
+  const pick = (name) => { const c = customers.find((x) => x.name === name); if (c) { setC({ id: c.id, name: c.name, address: c.address, uid: c.uid, email: c.email, number: c.number }); setSaveCust(false); } else setC({ name, id: undefined }); };
   const pickArt = (i, text) => { const a = articles.find((x) => x.text === text); setIt(i, a ? { text, unit: a.unit, price: a.price, artNo: a.number || "", ...(a.extra ? { extra: { ...a.extra } } : {}) } : { text, artNo: "" }); };
   const doSave = (final) => {
     const out = { ...inv, items: inv.items.filter((it) => it.text || it.price), updatedAt: new Date().toISOString() };
@@ -8833,10 +8836,13 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
     newDoc(pc.kind || "rechnung", pc.customer);
   }, [req]);
   const newDoc = (kind, cust) => setEdit({ id: uid(), kind, status: "entwurf", number: "", date: todayISO(), serviceFrom: todayISO(), dueDays: co.dueDays, validDays: co.validDays,
-    customer: cust ? { name: cust.name, address: cust.address || "", uid: cust.uid || "", email: cust.email || "", number: cust.number || "", contact: cust.contact || "" } : { name: "", address: "" }, items: [{ text: "", qty: 1, unit: kind === "angebot" ? "Pausch." : "Std", price: "" }], reminders: [], createdAt: new Date().toISOString() });
-  const save = (inv, saveCust) => {
+    customer: cust ? { id: cust.id, name: cust.name, address: cust.address || "", uid: cust.uid || "", email: cust.email || "", number: cust.number || "", contact: cust.contact || "" } : { name: "", address: "" }, items: [{ text: "", qty: 1, unit: kind === "angebot" ? "Pausch." : "Std", price: "" }], reminders: [], createdAt: new Date().toISOString() });
+  const save = (inv0, saveCust) => {
+    // Kunde fest verknüpfen (Kunden-ID in der Rechnung) – neu angelegte Kunden bekommen sofort eine ID
+    let inv = inv0;
+    if (inv.customer?.name && !inv.customer.id) { const ex = customers.find((c) => custMatch(c, inv)); const cid = ex?.id || (saveCust ? uid() : null); if (cid) inv = { ...inv, customer: { ...inv.customer, id: cid } }; }
     setList((l) => (l.some((x) => x.id === inv.id) ? l.map((x) => (x.id === inv.id ? inv : x)) : [inv, ...l]));
-    if (saveCust && inv.customer?.name) setCustomers((l) => (l.some((c) => c.name === inv.customer.name) ? l : [...l, { id: uid(), ...inv.customer }]));
+    if (saveCust && inv.customer?.name) setCustomers((l) => (l.some((c) => c.id === inv.customer.id || c.name === inv.customer.name) ? l : [...l, { ...inv.customer, id: inv.customer.id || uid() }]));
     if (inv.repeat && !inv.fromTemplate) {
       const t = { id: uid(), name: inv.customer?.name || "Wiederkehrend", interval: inv.repeat.interval, next: addMonths(inv.serviceFrom || inv.date, INTERVALS[inv.repeat.interval]), active: true,
         inv: { ...inv, repeat: null, number: "", status: "entwurf", reminders: [] } };
@@ -9494,11 +9500,17 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
     if (out === null) return vcfRef.current.click();
     if (out.length) setPicked(out.map((c) => ({ ...c, on: true })));
   };
-  const invoices = ls.get("invoices", []);
+  const [invoices, setInvoices] = useLsState("invoices", []);
   const [edit, setEdit] = useState(null), [q, setQ] = useState(""), [type, setType] = useState("alle");
+  const [selId, setSelId] = useState(null), [assignOpen, setAssignOpen] = useState(false);
+  const wide = useMedia("(min-width:1100px)");
+  const selC = list.find((c) => c.id === selId) || null;
+  useEdgeBack(() => setSelId(null), !!selC && !wide);
+  const unmatched = invoices.filter((i) => i.customer?.name?.trim() && !list.some((c) => custMatch(c, i)));
+  const assign = (invId, c) => setInvoices((l) => l.map((x) => (x.id === invId ? { ...x, customer: { ...(x.customer || {}), id: c.id } } : x)));
   const save = (c) => setList((l) => (l.some((x) => x.id === c.id) ? l.map((x) => (x.id === c.id ? c : x)) : [...l, c]));
   const nextNo = () => "K-" + String(list.reduce((m, c) => Math.max(m, parseInt(String(c.number || "").replace(/\D/g, ""), 10) || 0), 0) + 1).padStart(3, "0");
-  const invOf = (c) => invoices.filter((i) => i.kind === "rechnung" && i.customer?.name === c.name && !["entwurf", "storniert"].includes(i.status));
+  const invOf = (c) => invoices.filter((i) => i.kind === "rechnung" && custMatch(c, i) && !["entwurf", "storniert"].includes(i.status));
   const shown = list.filter((c) => type === "alle" || (c.type || "Kunde") === type)
     .filter((c) => !q || norm(`${c.name} ${c.contact} ${c.email} ${c.phone} ${c.address} ${c.number}`).includes(norm(q)))
     .sort((a, b) => (a.name || "").localeCompare(b.name || "", "de"));
@@ -9507,11 +9519,12 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       c.address && `ADR;TYPE=WORK:;;${c.address.replace(/\n/g, ";")};;;;`, c.web && `URL:${c.web}`, "END:VCARD"].filter(Boolean).join("\r\n");
     downloadFiles([new File([v], safeName(c.name) + ".vcf", { type: "text/vcard" })]);
   };
+  const detail = selC && <CustomerDetail c={selC} invoices={invoices} typeOf={typeOf} back={!wide} onBack={() => setSelId(null)} onEdit={() => setEdit(selC)} setTab={setTab} vcard={vcard} />;
   return (
     <div className="ctpage">
-      {mob ? (
+      {mob && selC ? <div className="mpage custpage">{detail}</div> : mob ? (
       <div className="mpage">
-        <MActs items={[{ label: "＋ Kontakt", primary: true, run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) }, { label: "📱 Aus Handy", run: fromPhone }, { label: "📇 .vcf", run: () => vcfRef.current?.click() }]} />
+        <MActs items={[{ label: "＋ Kontakt", primary: true, run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) }, unmatched.length > 0 && { label: `🔗 Zuordnen (${unmatched.length})`, run: () => setAssignOpen(true) }, { label: "📱 Aus Handy", run: fromPhone }, { label: "📇 .vcf", run: () => vcfRef.current?.click() }]} />
         <input ref={vcfRef} type="file" accept=".vcf,text/vcard,text/x-vcard" multiple hidden onChange={async (e) => {
           const files = [...e.target.files]; e.target.value = ""; let all = [];
           for (const f of files) all = all.concat(parseVcf(await f.text()));
@@ -9530,14 +9543,14 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
                 <MItem key={c.id} icon={<MAvatar text={c.name} color={tp.color} />} title={c.name || "Ohne Name"} tags={[{ label: <><TypeGlyph t={tp} /> {tp.name}</>, color: tp.color }]}
                   sub={[c.contact, cityOf(c.address), c.number].filter(Boolean).join(" · ")}
                   amount={inv.length ? fmtMoney(inv.reduce((s, i) => s + invTotal(i), 0)) : null} amountSub={inv.length ? `${inv.length} Rechn.${open.length ? " · " + open.length + " offen" : ""}` : null}
-                  onClick={() => setEdit(c)}
+                  onClick={() => setSelId(c.id)}
                   swipe={{ left: [setTab && { icon: "🧾", label: "Rechnung", bg: "#0ea5e9", run: () => { ls.set("pendingInvoice", { kind: "rechnung", customer: c }); setTab("invoices"); } }, { icon: "📇", label: "vCard", bg: "#8b5cf6", run: () => vcard(c) }],
                     right: [tel && { icon: "📞", label: "Anrufen", bg: "#16a34a", run: () => (location.href = "tel:" + tel) }, c.email && { icon: "✉️", label: "Mail", bg: "#3b82f6", run: () => (location.href = "mailto:" + c.email) }] }} />); })}
             </React.Fragment>
           ))}
         </MScroll>
       </div>
-      ) : (<>
+      ) : !wide && selC ? <div className="custpage">{detail}</div> : (<div className={"custsplit" + (wide ? " on" : "")}><div className="custlist">
       <div className="invbar lbhidden">
         <input ref={vcfRef} type="file" accept=".vcf,text/vcard,text/x-vcard" multiple hidden onChange={async (e) => {
           const files = [...e.target.files]; e.target.value = ""; let all = [];
@@ -9549,7 +9562,8 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       {false && !("contacts" in navigator && "select" in (navigator.contacts || {})) && <p className="muted small hint">📱 <b>iPhone – direkt aus dem Adressbuch:</b> Einstellungen → Apps → Safari → Erweitert → Feature Flags → „Contact Picker API“ einschalten, dann FinDocu neu öffnen. Danach öffnet „Aus Handy-Kontakten“ die Kontaktauswahl des iPhones. <b>Ohne diese Einstellung:</b> Kontakte-App → Kontakte markieren → Teilen → „In Dateien sichern“ und die .vcf-Datei hier wählen. <b>Mac:</b> Kontakte → Ablage → Exportieren → vCard. <b>Android/Chrome:</b> funktioniert direkt.</p>}
       <ListBar q={q} setQ={setQ} placeholder="Name, E-Mail, Telefon, Ort suchen" id="kunden" hits={shown.length}
         tabs={[["alle", "Alle", list.length], ...types.map((t) => [t.name, t.name, list.filter((c) => (c.type || "Kunde") === t.name).length])]} tab={type} setTab={setType}
-        actions={[{ k: "new", icon: "＋", title: "Neuer Kontakt", run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) }, { k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }, { k: "phone", icon: "📱", title: "Aus Handy-Kontakten", run: fromPhone },
+        actions={[{ k: "new", icon: "＋", title: "Neuer Kontakt", run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) },
+          unmatched.length > 0 && { k: "assign", icon: "🔗", title: `Rechnungen zuordnen (${unmatched.length})`, sub: "Rechnungen ohne passenden Kunden", run: () => setAssignOpen(true) }, { k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }, { k: "phone", icon: "📱", title: "Aus Handy-Kontakten", run: fromPhone },
           setTab && { k: "set", icon: "⚙︎", title: "Kontaktarten bearbeiten", run: () => { ls.set("openSettingsSec", "kontaktarten"); setTab("settings"); } }, { head: "Export" }, ...exp2pick([{ head: `${shown.length} Kontakte (aktueller Filter)` },
           { label: "📇 vCard (.vcf)", sub: "für Handy, Outlook, iCloud", run: () => saveBlob(new Blob([vcardText(shown)], { type: "text/vcard" }), `kontakte-${isoToday()}.vcf`) },
           { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`kontakte-${isoToday()}.xlsx`, [{ name: "Kontakte", head: ["Nr.", "Art", "Name", "Ansprechperson", "Anschrift", "E-Mail", "Telefon", "Mobil", "Web", "UID", "Notiz"], rows: shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.web || "", c.uid || "", c.note || ""]) }]) },
@@ -9562,7 +9576,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📱 Aus Handy-Kontakten“ übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
         {shown.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
-          <div key={c.id} className="frow click contactrow" onClick={() => setEdit(c)}>
+          <div key={c.id} className={"frow click contactrow" + (selId === c.id && wide ? " sel" : "")} onClick={() => setSelId(c.id)}>
             <span className="caticon avatar" style={{ width: 42, height: 42 }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>
             <div className="grow">
               <b>{c.name}</b> <small style={{ color: typeOf(c).color }}><TypeGlyph t={typeOf(c)} /> {typeOf(c).name}</small> <small className="muted">{c.number || ""}</small>
@@ -9578,7 +9592,8 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
           </div>); })}
       </section>
       </FitScroll>
-      </>)}
+      </div>{wide && <div className="custdetail">{detail || <div className="custempty"><div style={{ fontSize: 42 }}>👥</div><p className="muted">Kunden links auswählen – Rechnungen, Angebote, Mahnungen und Kundenkonto erscheinen hier.</p></div>}</div>}</div>)}
+      {assignOpen && <AssignWin items={unmatched} customers={list} onAssign={assign} onNew={(i) => { const c = { id: uid(), type: "Kunde", number: nextNo(), ...i.customer }; c.id = c.id && !list.some((x) => x.id === c.id) ? c.id : uid(); setList((l) => [...l, c]); assign(i.id, c); }} onClose={() => setAssignOpen(false)} />}
       {picked && <ContactImportWin items={picked} existing={list} onClose={() => setPicked(null)} onImport={(sel) => {
         let n = list.reduce((m, c) => Math.max(m, parseInt(String(c.number || "").replace(/\D/g, ""), 10) || 0), 0);
         setList((l) => [...l, ...sel.map((c) => { const { on, ...rest } = c; return { id: uid(), type: "Kunde", number: "K-" + String(++n).padStart(3, "0"), ...rest }; })]);
@@ -9589,6 +9604,120 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
   );
 }
 
+
+/* ======================= Kundendatei (v0.93): Übersicht · Rechnungen · Angebote · Mahnungen · Konto ======================= */
+// Rechnung gehört zum Kunden: feste ID, sonst Kundennummer, sonst Name
+const custMatch = (c, inv) => { const k = inv?.customer; if (!k || !c) return false; if (k.id) return k.id === c.id;
+  return !!(c.number && k.number && String(c.number).trim() === String(k.number).trim()) || (!!c.name && norm(k.name || "") === norm(c.name)); };
+function custLedger(invs) {
+  const ev = [];
+  for (const x of invs.filter((i) => i.kind === "rechnung" && i.number && !["entwurf", "storniert"].includes(i.status))) {
+    ev.push({ d: x.date, t: "Rechnung " + x.number, amt: invTotal(x), x });
+    (x.reminders || []).forEach((r, i) => { if (Number(r.fee)) ev.push({ d: r.date, t: `${remindName(r.level)} ${x.number}`, amt: Number(r.fee), x, ri: i }); });
+    if (x.status === "bezahlt") ev.push({ d: x.paidAt || x.date, t: "Zahlung " + x.number, amt: -(invTotal(x) + (x.reminders || []).reduce((s, r) => s + (Number(r.fee) || 0), 0)), x, pay: true });
+  }
+  ev.sort((a, b) => (a.d || "").localeCompare(b.d || "") || (a.pay ? 1 : 0) - (b.pay ? 1 : 0));
+  let bal = 0; for (const e of ev) { bal = r2(bal + e.amt); e.bal = bal; }
+  return ev;
+}
+function CustomerDetail({ c, invoices, typeOf, back, onBack, onEdit, setTab, vcard }) {
+  const [sub, setSub] = useState("uebersicht");
+  useEffect(() => setSub("uebersicht"), [c.id]);
+  const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
+  const mine = invoices.filter((i) => custMatch(c, i)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const rech = mine.filter((i) => i.kind === "rechnung"), ang = mine.filter((i) => i.kind === "angebot");
+  const valid = rech.filter((i) => !["entwurf", "storniert"].includes(i.status));
+  const open = valid.filter((i) => ["offen", "überfällig"].includes(invState(i))), over = open.filter((i) => invState(i) === "überfällig");
+  const yr = todayISO().slice(0, 4), revYear = valid.filter((i) => (i.date || "").startsWith(yr)).reduce((s, i) => s + invTotal(i), 0);
+  const paid = valid.filter((i) => i.status === "bezahlt" && i.paidAt && i.date);
+  const avgDays = paid.length ? Math.round(paid.reduce((s, i) => s + Math.max(0, (new Date(i.paidAt) - new Date(i.date)) / 864e5), 0) / paid.length) : null;
+  const rems = rech.flatMap((x) => (x.reminders || []).map((r, i) => ({ x, r, i }))).sort((a, b) => (b.r.date || "").localeCompare(a.r.date || ""));
+  const led = custLedger(rech), saldo = led.length ? led[led.length - 1].bal : 0;
+  const tp = typeOf(c), tel = (c.mobile || c.phone || "").replace(/\s/g, "");
+  const pdf = async (x, i) => { const r = i != null ? x.reminders[i] : null; openPdf(await buildInvoicePdf(i != null ? { ...x, reminders: x.reminders.slice(0, i + 1) } : x, co, r), invFileName(x, r), "", c.email || x.customer?.email); };
+  const newInv = (kind) => { ls.set("pendingInvoice", { kind, customer: c }); setTab?.("invoices"); };
+  const topArt = (() => { const m = {}; valid.forEach((i) => (i.items || []).forEach((it) => { if (it.text) m[it.text] = (m[it.text] || 0) + 1; })); return Object.entries(m).sort((a, b) => b[1] - a[1])[0]?.[0]; })();
+  const nextDue = open.map((i) => invDueEff(i)).filter(Boolean).sort()[0];
+  const ledPdf = async () => saveBlob(await tablePdf({ title: `Kundenkonto ${c.name}`, subtitle: `${c.number ? "Kundennr. " + c.number + " · " : ""}Stand ${fmtDate(isoToday())}`,
+    kpis: [["Saldo", fmtMoney(saldo)], ["Offen", fmtMoney(open.reduce((s, i) => s + invTotal(i), 0))], ["Rechnungen", String(valid.length)]],
+    columns: [{ label: "Datum", w: 1.2 }, { label: "Buchung", w: 4 }, { label: "Soll €", w: 1.3, align: "right" }, { label: "Haben €", w: 1.3, align: "right" }, { label: "Saldo €", w: 1.3, align: "right" }],
+    rows: led.map((e) => [fmtDate(e.d), e.t, e.amt > 0 ? r2e(e.amt) : "", e.amt < 0 ? r2e(-e.amt) : "", r2e(e.bal)]) }), `Kundenkonto-${safeName(c.name)}-${isoToday()}.pdf`);
+  const invRow = (x) => { const s = invState(x), ui = STATE_UI[s] || [s, ""]; return (
+    <div key={x.id} className="frow click cdrow" onClick={() => pdf(x)}>
+      <div className="grow"><b>{x.number || (x.kind === "angebot" ? "Angebot (Entwurf)" : "Entwurf")}</b><small className="muted block">{fmtDate(x.date)}{x.kind === "rechnung" && ["offen", "überfällig"].includes(s) ? " · fällig " + fmtDate(invDueEff(x)) : x.paidAt ? " · bezahlt " + fmtDate(x.paidAt) : ""}{(x.items || [])[0]?.text ? " · " + x.items[0].text : ""}</small></div>
+      <div className="right"><b>{fmtMoney(invTotal(x))}</b><span className={"stpill " + ui[1]}>{ui[0]}</span></div>
+    </div>); };
+  const tabs = [["uebersicht", "Übersicht"], ["rechnungen", "Rechnungen", rech.length], ["angebote", "Angebote", ang.length], ["mahnungen", "Mahnungen", rems.length], ["konto", "Konto"]];
+  return (<div className="custdet">
+    {back && <div className="docsubbar"><button className="navback" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>Kunden</span></button></div>}
+    <div className="cdhead">
+      <span className="caticon avatar cdav" style={{ color: tp.color }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>
+      <div className="grow"><b className="cdname">{c.name}</b><small className="muted block"><span style={{ color: tp.color }}><TypeGlyph t={tp} /> {tp.name}</span>{c.number ? " · " + c.number : ""}{cityOf(c.address) ? " · " + cityOf(c.address) : ""}</small></div>
+      <div className="cdacts">
+        {c.email && <a className="iconbtn" href={`mailto:${c.email}`} title={c.email} aria-label="E-Mail">✉︎</a>}
+        {tel && <a className="iconbtn" href={`tel:${tel}`} title={c.mobile || c.phone} aria-label="Anrufen">☎︎</a>}
+        <button className="iconbtn" title="Kontakt bearbeiten" aria-label="Kontakt bearbeiten" onClick={onEdit}><IcoEdit /></button>
+        <PickMenu btnClass="btn lbmore" label="⋯" title="Kunde" items={[setTab && { k: "r", icon: "🧾", title: "Neue Rechnung", run: () => newInv("rechnung") }, setTab && { k: "a", icon: "📝", title: "Neues Angebot", run: () => newInv("angebot") },
+          { k: "k", icon: "📒", title: "Kundenkonto als PDF", run: ledPdf }, open.length > 0 && { k: "op", icon: "📮", title: "Offene Posten als PDF", run: async () => saveBlob(await openItemsPdf(rech), `Offene-Posten-${safeName(c.name)}.pdf`) }, vcard && { k: "v", icon: "📇", title: "vCard", run: () => vcard(c) }].filter(Boolean)} />
+      </div>
+    </div>
+    <div className="cdkpis">
+      <div><small>Umsatz {yr}</small><b>{fmtMoney(revYear)}</b><small>gesamt {fmtMoney(valid.reduce((s, i) => s + invTotal(i), 0))}</small></div>
+      <div className={open.length ? "warn" : ""}><small>Offen</small><b className={over.length ? "neg" : ""}>{fmtMoney(open.reduce((s, i) => s + invTotal(i), 0))}</b><small>{open.length ? `${open.length} Rechn.${over.length ? " · " + over.length + " überfällig" : ""}` : "alles bezahlt"}</small></div>
+      <div><small>Rechnungen</small><b>{valid.length}</b><small>{ang.length ? ang.length + (ang.length === 1 ? " Angebot" : " Angebote") : " "}</small></div>
+      <div><small>Ø Zahlungsdauer</small><b>{avgDays != null ? avgDays + " Tage" : "–"}</b></div>
+    </div>
+    <div className="lbtabs cdtabs" role="tablist">{tabs.map(([k, l, n]) => <button key={k} role="tab" aria-selected={sub === k} className={"lbtab" + (sub === k ? " on" : "")} onClick={() => setSub(k)}>{l}{n != null && <small>{n}</small>}</button>)}</div>
+    <div className="cdbody">
+      {sub === "uebersicht" && <section className="tile cdlist">
+        {over.length > 0 ? <div className="frow"><span className="grow">Überfällig</span><b className="neg">{over.length} Rechnung{over.length === 1 ? "" : "en"} · {fmtMoney(over.reduce((s, i) => s + invTotal(i), 0))}</b></div>
+          : nextDue ? <div className="frow"><span className="grow">Nächste Fälligkeit</span><b>{fmtDate(nextDue)}</b></div> : null}
+        {rech[0] && <div className="frow click" onClick={() => pdf(rech[0])}><span className="grow">Letzte Rechnung</span><b>{rech[0].number || "Entwurf"} · {fmtDate(rech[0].date)}</b></div>}
+        {paid[0] && <div className="frow"><span className="grow">Letzte Zahlung</span><b>{fmtDate([...paid].sort((a, b) => b.paidAt.localeCompare(a.paidAt))[0].paidAt)}</b></div>}
+        {topArt && <div className="frow"><span className="grow">Häufigste Leistung</span><b className="clamp">{topArt}</b></div>}
+        {c.contact && <div className="frow"><span className="grow">Ansprechperson</span><b>{c.contact}</b></div>}
+        {c.email && <div className="frow"><span className="grow">E-Mail</span><a href={`mailto:${c.email}`}>{c.email}</a></div>}
+        {(c.phone || c.mobile) && <div className="frow"><span className="grow">Telefon</span><a href={`tel:${tel}`}>{c.mobile || c.phone}</a></div>}
+        {c.address && <div className="frow"><span className="grow">Anschrift</span><b style={{ whiteSpace: "pre-line", textAlign: "right" }}>{c.address}</b></div>}
+        {c.uid && <div className="frow"><span className="grow">UID</span><b>{c.uid}</b></div>}
+        {c.note && <div className="frow"><span className="grow">Notiz</span><span style={{ whiteSpace: "pre-line", textAlign: "right" }}>{c.note}</span></div>}
+        {!mine.length && <p className="muted small">Noch keine Rechnungen oder Angebote für diesen Kunden.</p>}
+        {setTab && <div className="actions"><button className="btn primary" onClick={() => newInv("rechnung")}>＋ Rechnung</button><button className="btn" onClick={() => newInv("angebot")}>＋ Angebot</button></div>}
+      </section>}
+      {sub === "rechnungen" && <section className="tile cdlist">{rech.length ? rech.map(invRow) : <p className="muted small">Noch keine Rechnungen.</p>}
+        {setTab && <div className="actions"><button className="btn primary" onClick={() => newInv("rechnung")}>＋ Rechnung</button></div>}</section>}
+      {sub === "angebote" && <section className="tile cdlist">{ang.length ? ang.map(invRow) : <p className="muted small">Noch keine Angebote.</p>}
+        {setTab && <div className="actions"><button className="btn primary" onClick={() => newInv("angebot")}>＋ Angebot</button></div>}</section>}
+      {sub === "mahnungen" && <section className="tile cdlist">{rems.length ? rems.map(({ x, r, i }) => (
+        <div key={x.id + ":" + i} className="frow click cdrow" onClick={() => pdf(x, i)}>
+          <div className="grow"><b>{remindName(r.level)}</b><small className="muted block">{x.number} · {fmtDate(r.date)}{r.due ? " · Frist " + fmtDate(r.due) : ""}</small></div>
+          <div className="right"><b>{fmtMoney(invTotal(x))}</b>{Number(r.fee) ? <small className="muted block">+ {fmtMoney(Number(r.fee))} Spesen</small> : null}</div>
+        </div>)) : <p className="muted small">Keine Mahnungen – dieser Kunde zahlt pünktlich.</p>}</section>}
+      {sub === "konto" && <section className="tile cdlist cdledger">
+        <div className="frow cdsaldo"><span className="grow">Saldo{saldo > 0 ? " (Kunde schuldet)" : ""}</span><b className={saldo > 0 ? "neg" : "pos"}>{fmtMoney(saldo)}</b></div>
+        {!led.length && <p className="muted small">Noch keine Buchungen – ausgestellte Rechnungen, Mahnspesen und Zahlungen erscheinen hier.</p>}
+        {[...led].reverse().map((e, k) => (
+          <div key={k} className="frow click cdrow" onClick={() => pdf(e.x, e.ri)}>
+            <span className="cddate">{fmtDate(e.d)}</span><div className="grow"><b>{e.t}</b></div>
+            <span className={"cdamt " + (e.amt < 0 ? "pos" : "")}>{e.amt < 0 ? "− " + fmtMoney(-e.amt) : "+ " + fmtMoney(e.amt)}</span><span className="cdbal">{fmtMoney(e.bal)}</span>
+          </div>))}
+        {!!led.length && <div className="actions"><button className="btn" onClick={ledPdf}>📒 Kundenkonto PDF</button>{open.length > 0 && <button className="btn" onClick={async () => saveBlob(await openItemsPdf(rech), `Offene-Posten-${safeName(c.name)}.pdf`)}>📮 Offene Posten PDF</button>}</div>}
+      </section>}
+    </div>
+  </div>);
+}
+function AssignWin({ items, customers, onAssign, onNew, onClose }) {
+  const sorted = [...customers].sort((a, b) => (a.name || "").localeCompare(b.name || "", "de"));
+  return (<Win id="assign" onClose={onClose} dirty={false} small>
+    <div className="panelhead"><b>Rechnungen zuordnen</b><XBtn /></div>
+    <p className="muted small" style={{ margin: "0 16px 8px" }}>Diese Rechnungen passen zu keinem Kontakt (Name oder Kundennummer weichen ab). Kunden wählen oder als neuen Kunden anlegen – der Name auf der Rechnung bleibt unverändert.</p>
+    <div className="assignlist">{!items.length && <p className="muted" style={{ margin: 16 }}>Alles zugeordnet ✓</p>}
+      {items.map((i) => <div key={i.id} className="frow"><div className="grow"><b>{i.customer.name}</b><small className="muted block">{i.number || (i.kind === "angebot" ? "Angebot" : "Entwurf")} · {fmtDate(i.date)} · {fmtMoney(invTotal(i))}</small></div>
+        <PSelect value="" onChange={(e) => { const c = customers.find((x) => x.id === e.target.value); if (c) onAssign(i.id, c); }}><option value="">Kunde wählen …</option>{sorted.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</PSelect>
+        <button className="btn sm" onClick={() => onNew(i)}>＋ Neu</button></div>)}
+    </div>
+  </Win>);
+}
 /* ======================= Rechnungsdesign (Einstellungen) ======================= */
 const SAMPLE_INV = () => ({ kind: "rechnung", number: "RE-2026-001", status: "offen", date: todayISO(), serviceFrom: todayISO(), dueDays: 14,
   customer: { name: "Muster GmbH", address: "Hauptplatz 1\n4020 Linz", number: "K-001" },
@@ -13334,4 +13463,44 @@ html.setdrill-on header.top{min-height:0}
 .invbar.lbhidden{display:none}
 
 .ctprevdocs{display:flex;flex-direction:column;gap:12px;overflow:auto;flex:1;min-height:0}
+
+/* v0.93 Kundendatei */
+.custsplit.on{display:grid;grid-template-columns:minmax(320px,40%) minmax(0,1fr);gap:16px;align-items:start}
+.custlist{min-width:0;display:flex;flex-direction:column;gap:12px}
+.custdetail{position:sticky;top:12px;min-width:0;max-height:calc(100vh - 24px);overflow:auto;border:1px solid var(--line);border-radius:20px;background:var(--card);padding:16px}
+.custempty{text-align:center;padding:60px 20px}
+.contactrow.sel{background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:12px}
+.custdet{display:flex;flex-direction:column;gap:12px}
+.cdhead{display:flex;align-items:center;gap:12px}
+.cdav{width:52px!important;height:52px!important;font-size:22px;flex:none}
+.cdname{font-size:21px;display:block;line-height:1.2}
+.cdacts{display:flex;gap:6px;align-items:center;flex:none}
+.cdacts a.iconbtn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:inherit}
+.cdkpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.cdkpis>div{background:var(--card2);border-radius:14px;padding:9px 11px;min-width:0}
+.cdkpis small{display:block;color:var(--mut);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cdkpis b{display:block;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cdtabs{margin:0}
+.cdlist{display:flex;flex-direction:column;gap:0;padding:6px 14px}
+.cdlist .frow{padding:10px 0;border-bottom:1px solid var(--line);gap:10px}.cdlist .frow:last-of-type{border-bottom:0}
+.cdlist .right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;text-align:right}
+.cdlist .actions{margin:10px 0 6px;display:flex;gap:8px;flex-wrap:wrap}
+.cddate{color:var(--mut);font-size:13px;width:78px;flex:none}
+.cdamt{font-weight:600;white-space:nowrap;width:110px;text-align:right}.cdamt.pos{color:var(--pos)}
+.cdbal{color:var(--mut);white-space:nowrap;width:100px;text-align:right;font-size:13.5px}
+.cdsaldo b{font-size:19px}
+.assignlist{padding:0 16px 16px;display:flex;flex-direction:column}.assignlist .frow{gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding:10px 0}
+.assignlist select,.assignlist .pselect{max-width:200px}
+@media (max-width:700px){
+  .cdkpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cdname{font-size:19px}
+  .cdledger .cddate{width:64px;font-size:12px}.cdamt{width:auto}.cdbal{display:none}
+  .custpage .cdlist{padding:4px 12px}
+}
+
+.custsplit.on .cactions,.custsplit.on .docdrop{display:none!important}
+.custsplit.on .contactrow{padding-top:10px;padding-bottom:10px}
+
+.cdav{background:color-mix(in srgb,currentColor 14%,var(--card2))!important;border-radius:50%!important;display:inline-flex!important;align-items:center;justify-content:center;font-weight:700}
+@media (max-width:700px){.cdacts a.iconbtn{display:none!important}.cdhead{align-items:flex-start}.cdav{width:46px!important;height:46px!important}}
 `;

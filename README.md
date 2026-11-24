@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.93.1
+- Konten (Mac/iPad): die Buchungsliste reicht jetzt bis ca. 10 px über den unteren Fensterrand (vorher ~50 px Lücke); passt sie nicht ganz hinein, scrollt die Seite wie bisher.
+
+## v0.93.0 – Kundendatei (Varianten 2 + 3 + 4)
+- **Kundenseite:** Klick auf einen Kunden öffnet seine Datei: Kopf (Art, Kundennr., Ort, ✉︎ ☎︎ ✎ ⋯), Kennzahlen (Umsatz Jahr/gesamt, Offen/Überfällig, Rechnungen, Ø Zahlungsdauer) und Reiter **Übersicht · Rechnungen · Angebote · Mahnungen · Konto**. Klick auf Rechnung/Mahnung öffnet das PDF-Fenster.
+- **Konto:** Rechnungen, Mahnspesen und Zahlungen chronologisch mit laufendem Saldo; „Kundenkonto PDF“ und „Offene Posten PDF“ nur für diesen Kunden.
+- **iPad quer / Mac:** Kundenliste links, Kundendatei rechts. Handy und schmale Fenster: eigene Seite mit „‹ Kunden“ und Rand-Wischen zurück.
+- **Feste Zuordnung:** neue Rechnungen/Angebote speichern die Kunden-ID; bestehende werden über ID, sonst Kundennummer, sonst Name zugeordnet. „🔗 Rechnungen zuordnen“ (⋯) zeigt Rechnungen ohne passenden Kunden – Kunde wählen oder neu anlegen (Name auf der Rechnung bleibt unverändert).
+
 ## v0.92.4
 - Filter-Blatt (alle Listen): „x Treffer anzeigen“ steht jetzt ganz oben unter „Zurücksetzen · Filter · Fertig“ und bleibt beim Scrollen im Blatt sichtbar.
 
