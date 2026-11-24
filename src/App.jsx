@@ -1,4 +1,16 @@
 import { createPortal } from "react-dom";
+// v0.98.1: Intl-Formatierer wiederverwenden – jeder toLocale…-Aufruf legt sonst einen neuen an (am Handy sehr teuer)
+if (typeof Intl !== "undefined" && !Number.prototype.__fdFast) {
+  const nfC = new Map(), dfC = new Map(), key = (l, o) => l + "|" + (o ? JSON.stringify(o) : "");
+  const nOrig = Number.prototype.toLocaleString, dOrig = Date.prototype.toLocaleDateString, dsOrig = Date.prototype.toLocaleString, tOrig = Date.prototype.toLocaleTimeString;
+  const get = (m, k, mk) => { let f = m.get(k); if (!f) { if (m.size > 200) m.clear(); f = mk(); m.set(k, f); } return f; };
+  Number.prototype.toLocaleString = function (l, o) { if (typeof l !== "string") return nOrig.call(this, l, o); try { return get(nfC, key(l, o), () => new Intl.NumberFormat(l, o)).format(this); } catch { return nOrig.call(this, l, o); } };
+  const dWrap = (orig, defs) => function (l, o) { if (typeof l !== "string" || isNaN(this)) return orig.call(this, l, o); try { const opt = o && Object.keys(o).length ? o : defs; return get(dfC, key(l, opt) + "|" + orig.name, () => new Intl.DateTimeFormat(l, opt)).format(this); } catch { return orig.call(this, l, o); } };
+  Date.prototype.toLocaleDateString = dWrap(dOrig, { year: "numeric", month: "numeric", day: "numeric" });
+  Date.prototype.toLocaleTimeString = dWrap(tOrig, { hour: "numeric", minute: "numeric", second: "numeric" });
+  Date.prototype.toLocaleString = dWrap(dsOrig, { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
+  Number.prototype.__fdFast = true;
+}
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrinkPdf } from "./scan.js";
@@ -324,14 +336,14 @@ const db = {
   putLogo: (k, v) => idb("logos", "readwrite", (s) => s.put(v, k)),
   delLogo: (k) => idb("logos", "readwrite", (s) => s.delete(k)),
   allDocs: () => idb("docs", "readonly", (s) => s.getAll()),
-  putDoc: (d) => idb("docs", "readwrite", (s) => s.put(d)),
-  delDoc: (id) => idb("docs", "readwrite", (s) => s.delete(id)),
+  putDoc: (d) => (ACT.dirty = true, idb("docs", "readwrite", (s) => s.put(d))),
+  delDoc: (id) => (ACT.dirty = true, idb("docs", "readwrite", (s) => s.delete(id))),
   getFile: (id) => idb("files", "readonly", (s) => s.get(id)),
-  putFile: (id, blob) => idb("files", "readwrite", (s) => s.put(blob, id)),
-  delFile: (id) => idb("files", "readwrite", (s) => s.delete(id)),
+  putFile: (id, blob) => (ACT.dirty = true, idb("files", "readwrite", (s) => s.put(blob, id))),
+  delFile: (id) => (ACT.dirty = true, idb("files", "readwrite", (s) => s.delete(id))),
   allTx: () => idb("tx", "readonly", (s) => s.getAll()),
-  putTxs: (list) => idb("tx", "readwrite", (s) => { let r; for (const t of list) r = s.put(t); return r; }),
-  delTxs: (ids) => idb("tx", "readwrite", (s) => { let r; for (const id of ids) r = s.delete(id); return r; })
+  putTxs: (list) => (ACT.dirty = true, idb("tx", "readwrite", (s) => { let r; for (const t of list) r = s.put(t); return r; })),
+  delTxs: (ids) => (ACT.dirty = true, idb("tx", "readwrite", (s) => { let r; for (const id of ids) r = s.delete(id); return r; }))
 };
 export { db };
 
@@ -339,14 +351,19 @@ export { db };
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 const todayISO = () => new Date().toLocaleDateString("sv-SE");
 // einheitlich TT.MM.JJJJ (mit führender Null)
-const fmtDate = (iso) => (iso ? new Date(iso.slice(0, 10) + "T12:00:00").toLocaleDateString("de-AT", { day: "2-digit", month: "2-digit", year: "numeric" }) : "–");
+// v0.98.1: Formatierer zwischengespeichert – toLocaleDateString/Intl.NumberFormat pro Aufruf waren am Handy der größte Bremsklotz
+const fmtDate = (iso) => { if (!iso) return "–"; const s = String(iso), m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? `${m[3]}.${m[2]}.${m[1]}` : new Date(s).toLocaleDateString("de-AT", { day: "2-digit", month: "2-digit", year: "numeric" }); };
+const NF = {}, nfOf = (cur) => NF[cur] || (NF[cur] = new Intl.NumberFormat("de-AT", { style: "currency", currency: cur }));
+const MONEY_CACHE = new Map();
+const fmtMoneyRaw = (v, cur) => { const k = cur + "|" + v; let r = MONEY_CACHE.get(k); if (r === undefined) { if (MONEY_CACHE.size > 5000) MONEY_CACHE.clear(); r = nfOf(cur).format(v); MONEY_CACHE.set(k, r); } return r; };
 let HIDE_AMOUNTS = false; // Einstellungen → Datenschutz
 const fmtMoney = (v, cur = "EUR") => HIDE_AMOUNTS && v != null && !isNaN(v) ? "€ •••" :
-  v == null || isNaN(v) ? "" : new Intl.NumberFormat("de-AT", { style: "currency", currency: cur || "EUR" }).format(v);
+  v == null || isNaN(v) ? "" : fmtMoneyRaw(v, cur || "EUR");
 const daysUntil = (iso) => Math.round((new Date(iso + "T12:00:00") - new Date(todayISO() + "T12:00:00")) / 864e5);
 const MONTHS_DE = ["Jänner", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 const monthKey = (d) => (d.documentDate || d.createdAt || "").slice(0, 7);
-const monthLabel = (k) => new Date(k + "-15").toLocaleDateString("de-AT", { month: "short", year: "2-digit" });
+const ML_CACHE = {}, ML_FMT = typeof Intl !== "undefined" ? new Intl.DateTimeFormat("de-AT", { month: "short", year: "2-digit" }) : null;
+const monthLabel = (k) => ML_CACHE[k] || (ML_CACHE[k] = ML_FMT.format(new Date(k + "-15")));
 const norm = (s) => String(s || "").toLowerCase();
 const isEUR = (d) => (d.amount?.currency || "EUR") === "EUR";
 // tatsächlich überwiesener Betrag: bei Lohn/Gehalt die Netto-Auszahlung, sonst die Endsumme
@@ -383,9 +400,13 @@ function applyTheme(t) {
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = t === "dark" ? "#0d1117" : "#f3f5f9";
 }
 
+// v0.98.1: merkt lokale Änderungen und die letzte Bedienung – der Sync läuft dann nur, wenn nötig und nicht mitten im Scrollen/Tippen
+const ACT = { dirty: true, lastInput: 0, lastSync: 0 };
+if (typeof window !== "undefined") for (const ev of ["pointerdown", "touchstart", "keydown", "wheel", "scroll"]) addEventListener(ev, () => { ACT.lastInput = Date.now(); }, { passive: true, capture: true });
+const LS_QUIET = /^(win:|srch:|lastAuto|syncCfg|dev:|openSettingsSec|txOpenReq|invOpenReq|ctOpenReq|stbSec|txHistOpen)/;
 const ls = {
   get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); if (!LS_QUIET.test(k)) ACT.dirty = true; } catch {} }
 };
 
 if (typeof document !== "undefined" && ls.get("tabbarIcons", false)) document.documentElement.classList.add("tbicons");
@@ -1306,13 +1327,13 @@ function MHero({ icon, title, sub, value, valueCls = "", pills = [] }) {
 /* Schwebendes Fenster. Klick daneben / Esc / ✕ schließt – bei ungespeicherten Änderungen wird erst nachgefragt.
    dirty: true/false erzwingt, undefined = automatisch (sobald im Fenster etwas eingegeben wurde) */
 let detailOpen = 0, sheetDepth = 0, sheetScrollY = 0, lastListY = 0;
-if (typeof window !== "undefined") addEventListener("scroll", () => { if (!sheetDepth && !document.querySelector(".sheet")) lastListY = scrollY; }, { passive: true });
+if (typeof window !== "undefined") addEventListener("scroll", () => { if (!sheetDepth) lastListY = scrollY; }, { passive: true });
 function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern" }) {
   const wide = useMedia("(min-width:768px)");
   useEdgeBack(() => reqRef.current?.(), !wide);
   // iPad: Liste rückt zur Seite, solange ein Detail rechts offen ist (Split View)
   // Handy: Scrollposition der Liste merken und nach dem Schließen wiederherstellen (v0.97.7)
-  useEffect(() => { if (wide) return; if (sheetDepth++ === 0) sheetScrollY = lastListY;
+  useLayoutEffect(() => { if (wide) return; if (sheetDepth++ === 0) sheetScrollY = lastListY;
     return () => { if (--sheetDepth <= 0) { sheetDepth = 0; const y = sheetScrollY; requestAnimationFrame(() => requestAnimationFrame(() => scrollTo(0, y))); setTimeout(() => { if (sheetDepth === 0 && Math.abs(scrollY - y) > 4) scrollTo(0, y); }, 120); } }; }, []);
   useEffect(() => { if (small) return; detailOpen++; document.documentElement.classList.add("hasdetail"); return () => { if (--detailOpen <= 0) { detailOpen = 0; document.documentElement.classList.remove("hasdetail"); } }; }, []);
   useScrollLock();
@@ -3297,8 +3318,10 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
   const [fbCal, setFbCal] = useLsState("fbCalSync", { on: false, key: "", at: "" });
   const [calOpen, setCalOpen] = useState(false);
   useEffect(() => {
-    const f = () => { const el = document.querySelector(".fbseg"); if (!el) return; const top = parseFloat(getComputedStyle(el).top) || 0; el.classList.toggle("stuck", el.getBoundingClientRect().top <= top + 0.5 && scrollY > 0); };
-    f(); addEventListener("scroll", f, { passive: true }); addEventListener("resize", f); return () => { removeEventListener("scroll", f); removeEventListener("resize", f); };
+    let top = null, raf = 0;
+    const f0 = () => { raf = 0; const el = document.querySelector(".fbseg"); if (!el) return; if (top == null) top = parseFloat(getComputedStyle(el).top) || 0; el.classList.toggle("stuck", scrollY > 0 && el.getBoundingClientRect().top <= top + 0.5); };
+    const f = () => { if (!raf) raf = requestAnimationFrame(f0); }, fr = () => { top = null; f(); };
+    f(); addEventListener("scroll", f, { passive: true }); addEventListener("resize", fr); return () => { cancelAnimationFrame(raf); removeEventListener("scroll", f); removeEventListener("resize", fr); };
   }, []);
   const remSig = JSON.stringify(reminders.map((r) => [r.id, r.date, r.title, r.done, r.km]));
   useEffect(() => {
@@ -5035,6 +5058,67 @@ function ChipBar({ storeKey, items, lead = null, className = "", cfg: extCfg, se
   );
 }
 
+/* Lange Listen schrittweise rendern: erst die ersten n Einträge, beim Scrollen nach unten automatisch mehr (v0.98.1) */
+function useProgressive(list, step = 60) {
+  const [n, setN] = useState(step);
+  const sig = list.length + ":" + (list[0]?.id || "");
+  useEffect(() => { setN(step); }, [sig]);
+  const more = n < list.length;
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current; if (!el || !more) return;
+    const io = new IntersectionObserver((e) => { if (e[0].isIntersecting) setN((x) => x + step); }, { rootMargin: "1200px 0px" });
+    io.observe(el); return () => io.disconnect();
+  }, [more, n]);
+  const sentinel = more ? <div ref={ref} className="progsent" aria-hidden="true" /> : null;
+  return [list.length > n ? list.slice(0, n) : list, sentinel];
+}
+/* wie useProgressive, aber ohne Markierungselement: wächst, sobald irgendeine Scrollfläche (Seite oder Liste) unten ankommt */
+function useProgressiveAuto(list, step = 60) {
+  const [n, setN] = useState(step);
+  const sig = list.length + ":" + (list[0]?.id || "");
+  useEffect(() => { setN(step); }, [sig]);
+  const more = n < list.length;
+  useEffect(() => {
+    if (!more) return;
+    let raf = 0;
+    const chk = (t) => { raf = 0; const el = !t || t === document || t === window ? document.scrollingElement || document.documentElement : t;
+      if (!el || !el.scrollHeight) return; if (el.scrollHeight - el.scrollTop - el.clientHeight < 1600) setN((x) => x + step); };
+    const on = (e) => { if (!raf) { const t = e.target; raf = requestAnimationFrame(() => chk(t)); } };
+    addEventListener("scroll", on, { passive: true, capture: true });
+    const t0 = setTimeout(() => chk(null), 400);
+    return () => { removeEventListener("scroll", on, { capture: true }); cancelAnimationFrame(raf); clearTimeout(t0); };
+  }, [more, n]);
+  return list.length > n ? list.slice(0, n) : list;
+}
+/* Zeile der Dokumentenliste – nur neu zeichnen, wenn sich das Dokument selbst ändert (v0.98.1) */
+const DocListRow = React.memo(function DocListRow({ d, pickMode, picked, prevOpen, h }) {
+  const H = h.current;
+  return (
+    <div className="dwrap">
+    <SwipeRow left={pickMode ? [] : [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => h.current.setWinPrev(d) }, { icon: "📤", label: "Teilen", bg: "#8b5cf6", run: () => shareDocs([d]) }]}
+      right={pickMode ? [] : [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: () => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && h.current.trashDoc(d) }, { icon: "✎", label: "Bearbeiten", bg: "#3b82f6", run: () => h.current.onOpen(d.id) }]}>
+    <div className={"ditem" + (picked ? " picked" : "")} onClick={() => (pickMode ? h.current.togglePick(d.id) : h.current.onOpen(d.id))}>
+      {pickMode && <span className={"pickbox inline" + (picked ? " on" : "")}>✓</span>}
+      <Thumb d={d} />
+      <div className="grow">
+        <div className="row1"><b className="clamp dtitle">{d.title}</b><span className="damtin">{H.amt(d)}</span></div>
+        <small className="muted block">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
+        <div className="labels">
+          <Label c={d.category} />
+          {d.taxRelevant && <span className="label tax">Steuer</span>}
+          {d.contract && <span className="label">Vertrag</span>}
+          {(d.tags || []).slice(0, 2).map((t) => <span key={t} className="label tag">#{t}</span>)}
+        </div>
+        {H.status(d)}
+      </div>
+      <span className="damtcol">{H.amt(d)}</span>
+      <span className="dcatcol"><Label c={d.category} /></span>
+      {!pickMode && <button className="deyem" title="Vorschau" aria-label="Vorschau" onClick={(e) => { e.stopPropagation(); h.current.setWinPrev(d); }}><IcoEye /></button>}
+      <DocActions d={d} prevOpen={prevOpen} onPreview={() => h.current.setWinPrev(d)} onEdit={() => h.current.onOpen(d.id)} onTrash={(x) => h.current.trashDoc(x)} />
+    </div></SwipeRow>
+    </div>);
+}, (a, b) => a.d === b.d && a.pickMode === b.pickMode && a.picked === b.picked && a.prevOpen === b.prevOpen && a.cats === b.cats);
 function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, onFiles, docBusy }) {
   const [showDrop, setShowDrop] = useLsState("docDrop", true);
   const [chipCfg, setChipCfg] = useLsState("docChips", { order: [], hidden: [] });
@@ -5069,16 +5153,19 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
   const tags = useMemo(() => [...new Set(docs.flatMap((d) => d.tags || []))].sort(), [docs]);
   const years = useMemo(() => [...new Set(docs.map((d) => monthKey(d).slice(0, 4)).filter(Boolean))].sort().reverse(), [docs]);
 
+  const qDef = React.useDeferredValue(q);
   const list = useMemo(() => {
-    const terms = norm(q).split(/\s+/).filter(Boolean);
+    const terms = norm(qDef).split(/\s+/).filter(Boolean);
     return docs
       .filter((d) => (scope === "alle" || docScope(d) === scope) && (area === "alle" || docArea(d) === area) && (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) && (!month || monthKey(d).slice(5, 7) === month) &&
         (!taxOnly || d.taxRelevant) && (!unpaid || (d.direction === "ausgabe" && d.amount?.total && !d.paid)))
       .filter((d) => { if (!terms.length) return true; const h = haystack(d); return terms.every((t) => h.includes(t)); })
       .filter((d) => !akte || (akteMatch(akte, d) && (akteSub === "alle" || (akteSub === "vertraege" ? !!d.contract : akteSub === "fristen" ? (d.deadlines || []).some((x) => !x.done && x.date && daysUntil(x.date) >= -60) : d.direction === "ausgabe" && d.amount?.total && !d.paid))))
       .sort(kit.sorts[sort]?.[2] || kit.sorts.date[2]);
-  }, [docs, q, cat, tag, year, month, sort, taxOnly, unpaid, area, scope, akte, akteSub]);
+  }, [docs, qDef, cat, tag, year, month, sort, taxOnly, unpaid, area, scope, akte, akteSub]);
 
+  const rowH = useRef({});
+  const [visList, docSent] = useProgressive(list);
   const counts = useMemo(() => Object.fromEntries(categories.map((c) => [c, docs.filter((d) => d.category === c).length])), [docs, categories]);
   const amt = (d) => d.amount?.total != null && (
     <span className={"amt" + (d.direction === "einnahme" ? " ok" : d.paid ? " paid" : "")} title={payAmt(d) !== d.amount.total ? `Brutto ${fmtMoney(d.amount.total)} · ausbezahlt ${fmtMoney(payAmt(d))}` : undefined}>{d.direction === "einnahme" ? "+" : ""}{fmtMoney(payAmt(d), d.amount.currency)}</span>);
@@ -5122,6 +5209,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
   const tagDocs = async (sel) => { const f = kitTagPrompt(sel); if (!f || !saveDoc) return; for (const d of sel) await saveDoc({ ...d, tags: f(d) }); };
   const status = (d) => d.status === "processing" ? <span className="muted small">⏳ wird analysiert …</span> : d.status === "error" ? <span className="err">⚠️ {d.error}{reanalyze && <button className="retry" onClick={(e) => { e.stopPropagation(); reanalyze(d); }}>↻ Neu analysieren</button>}</span> : null;
 
+  rowH.current = { onOpen, setWinPrev, trashDoc, togglePick, amt, status };
   return (
     <>
       {docBar}
@@ -5156,7 +5244,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
         <AktenGrid akten={akten} docs={docs.filter((d) => scope === "alle" || docScope(d) === scope)} onOpen={(id) => { setAkteId(id); setAkteSub("alle"); }} onNew={() => setAkteEdit({ id: uid(), name: "", icon: "🗂️", cats: [], scope: "alle", tax: false, year: "" })} />
       ) : view === "grid" ? (
         <div className="grid">
-          {list.map((d) => (
+          {visList.map((d) => (
             <div key={d.id} className={"gcard" + (pick?.has(d.id) ? " picked" : "")} onClick={() => (pick ? togglePick(d.id) : onOpen(d.id))}>
               {pick && <span className={"pickbox" + (pick.has(d.id) ? " on" : "")}>✓</span>}
               <div className="gthumbwrap">
@@ -5171,34 +5259,12 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
               </div>
             </div>
           ))}
+          {docSent}
         </div>
       ) : (
         <div className="dlist">
-          {list.map((d) => (
-            <div key={d.id} className="dwrap">
-            <SwipeRow left={pick ? [] : [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setWinPrev(d) }, { icon: "📤", label: "Teilen", bg: "#8b5cf6", run: () => shareDocs([d]) }]}
-              right={pick ? [] : [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: () => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && trashDoc(d) }, { icon: "✎", label: "Bearbeiten", bg: "#3b82f6", run: () => onOpen(d.id) }]}>
-            <div className={"ditem" + (pick?.has(d.id) ? " picked" : "")} onClick={() => (pick ? togglePick(d.id) : onOpen(d.id))}>
-              {pick && <span className={"pickbox inline" + (pick.has(d.id) ? " on" : "")}>✓</span>}
-              <Thumb d={d} />
-              <div className="grow">
-                <div className="row1"><b className="clamp dtitle">{d.title}</b><span className="damtin">{amt(d)}</span></div>
-                <small className="muted block">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
-                <div className="labels">
-                  <Label c={d.category} />
-                  {d.taxRelevant && <span className="label tax">Steuer</span>}
-                  {d.contract && <span className="label">Vertrag</span>}
-                  {(d.tags || []).slice(0, 2).map((t) => <span key={t} className="label tag">#{t}</span>)}
-                </div>
-                {status(d)}
-              </div>
-              <span className="damtcol">{amt(d)}</span>
-              <span className="dcatcol"><Label c={d.category} /></span>
-              {!pick && <button className="deyem" title="Vorschau" aria-label="Vorschau" onClick={(e) => { e.stopPropagation(); setWinPrev(d); }}><IcoEye /></button>}
-              <DocActions d={d} prevOpen={winPrev?.id === d.id} onPreview={() => setWinPrev(d)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
-            </div></SwipeRow>
-            </div>
-          ))}
+          {visList.map((d) => <DocListRow key={d.id} d={d} pickMode={!!pick} picked={!!pick?.has(d.id)} prevOpen={winPrev?.id === d.id} cats={categories} h={rowH} />)}
+          {docSent}
         </div>
       )}
       </FitScroll>
@@ -6473,7 +6539,7 @@ function SwipeRow({ left = [], right = [], children, className = "" }) {
     <div className={"swrow " + className}>
       {maxL > 0 && x > 0 && <div className="swacts l" style={{ width: x }}>{left.map(Btn)}</div>}
       {maxR > 0 && x < 0 && <div className="swacts r" style={{ width: -x }}>{[...right].reverse().map(Btn)}</div>}
-      <div className="swfront" style={{ transform: x ? `translateX(${x}px)` : undefined, transition: drag ? "none" : "transform .22s ease" }}
+      <div className="swfront" style={x || drag ? { transform: x ? `translateX(${x}px)` : undefined, transition: drag ? "none" : "transform .22s ease", willChange: "transform" } : undefined}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
         onClickCapture={(e) => { if (swallow.current || x) { e.stopPropagation(); e.preventDefault(); if (x && !swallow.current) setX(0); } }}>{children}</div>
     </div>
@@ -8380,8 +8446,14 @@ function useSyncAgent() {
   useEffect(() => {
     if (!syncOn()) return;
     let dead = false;
+    let retry = 0;
     const run = async () => {
       if (dead || !syncOn() || document.hidden && !run.force) return;
+      if (!run.force) {
+        if (!ACT.dirty && Date.now() - ACT.lastSync < 5 * 60e3) return;                 // nichts geändert → nur alle 5 Minuten nach fremden Änderungen schauen
+        if (Date.now() - ACT.lastInput < 4000) { clearTimeout(retry); retry = setTimeout(run, 5000); return; } // nicht während Scrollen/Tippen
+      }
+      ACT.dirty = false; ACT.lastSync = Date.now();
       try { const r = await syncNow(db, { mode: "push" }); if (!dead) setPending(r.pending); }
       catch (e) { setSyncCfg({ lastError: e.message, needsAuth: !!e.auth }); }
     };
@@ -8393,7 +8465,7 @@ function useSyncAgent() {
     };
     const t0 = setTimeout(run, 20000), iv = setInterval(run, 90e3);
     document.addEventListener("visibilitychange", vis);
-    return () => { dead = true; clearTimeout(t0); clearInterval(iv); document.removeEventListener("visibilitychange", vis); };
+    return () => { dead = true; clearTimeout(t0); clearTimeout(retry); clearInterval(iv); document.removeEventListener("visibilitychange", vis); };
   }, []);
   return pending;
 }
@@ -9061,8 +9133,10 @@ function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0
   useEffect(() => {
     let raf = 0;
 
+    const idle = () => !lock && !phone && innerWidth < 700;
     const calc = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
       const el = ref.current; if (!el) return setH(null);
+      if (idle()) return setH(null);
       const top = el.getBoundingClientRect().top + window.scrollY;
       if (lock) {
         // Box fest bis 15 px über den unteren Rand (am Handy: über die Leiste unten), nur der Inhalt scrollt
@@ -9091,7 +9165,7 @@ function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0
     const ro2 = new ResizeObserver(calc);
     const watch = () => { ro2.disconnect(); for (let el = ref.current; el && el !== document.body; el = el.parentElement) for (let x = el.previousElementSibling; x; x = x.previousElementSibling) ro2.observe(x); };
     watch();
-    let mt = 0; const mo = new MutationObserver(() => { clearTimeout(mt); mt = setTimeout(() => { watch(); calc(); }, 60); });
+    let mt = 0; const mo = new MutationObserver(() => { if (idle()) return; clearTimeout(mt); mt = setTimeout(() => { watch(); calc(); }, 120); });
     mo.observe(root, { childList: true, subtree: true });
     addEventListener("transitionend", calc);
     return () => { cancelAnimationFrame(raf); clearTimeout(mt); removeEventListener("resize", calc); removeEventListener("transitionend", calc); ro.disconnect(); ro2.disconnect(); mo.disconnect(); if (lock) document.documentElement.classList.remove("fitlock"); };
@@ -9891,6 +9965,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
     .filter((x) => !q || norm(`${x.number} ${x.customer?.name} ${(x.items || []).map((i) => i.text).join(" ")} ${(x.tags || []).join(" ")}`).includes(norm(q)))
     .filter((x) => !lt || ((!yr || (x.date || "").startsWith(yr)) && (!tagF || (x.tags || []).includes(tagF))))
     .sort(lt ? SORTS[sortBy] || SORTS.datum : SORTS.datum);
+  const shownV = useProgressiveAuto(shown);
   const expItems = [
           { head: `${inv.length} Rechnungen · ${list.length - inv.length} Angebote` },
           { label: "📒 Rechnungsausgangsbuch Excel", sub: "alle Rechnungen und Angebote mit Status", run: () => downloadXlsx(`Rechnungsausgangsbuch-${isoToday()}.xlsx`, [{ name: "Rechnungen", head: INV_HEAD, rows: list.filter((x) => x.kind === "rechnung").map(invRow) }, { name: "Angebote", head: INV_HEAD, rows: list.filter((x) => x.kind === "angebot").map(invRow) }]) },
@@ -9950,7 +10025,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
               pill={<button className={"stpill " + (t.active ? "st-paid" : "st-draft")} onClick={(e) => { e.stopPropagation(); setTemplates((l) => l.map((y) => (y.id === t.id ? { ...y, active: !y.active } : y))); }}>{t.active ? "aktiv" : "pausiert"}</button>} />)}
           </>) : (<>
             {!shown.length && <MEmpty>{list.length ? "Keine Treffer." : "Noch keine Rechnungen – mit „＋ Rechnung“ starten."}</MEmpty>}
-            {mGroup(shown, (x) => (x.date || "").slice(0, 7)).map(([m, l]) => (
+            {mGroup(shownV, (x) => (x.date || "").slice(0, 7)).map(([m, l]) => (
               <React.Fragment key={m}>
                 <MHead right={fmtMoney(sumOf(l))}>{m ? monthLabel(m) : "Ohne Datum"}</MHead>
                 {l.map((x) => { const sx = x.kind === "angebot" ? (x.status || "offen") : st(x), ui = STATE_UI[sx] || [sx, ""]; const payable = x.kind === "rechnung" && ["offen", "überfällig"].includes(sx); return (
@@ -10011,7 +10086,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
         <section className={"tile invlist" + (lt ? " ltlist" : "")}>
           {lt && !!shown.length && <div className={"lthead" + (pick ? " pk" : "")}>{pick && <span />}<span>Kunde · Nummer · Datum</span><span className="r">Betrag</span><span className="c">Status · Aktionen</span></div>}
           {!shown.length && <p className="muted small">{list.length ? "Keine Einträge für diesen Filter." : "Noch keine Rechnungen. Mit „＋ Rechnung“ legst du die erste an – die Nummer wird beim Ausstellen fortlaufend vergeben."}</p>}
-          {shown.map((x) => {
+          {shownV.map((x) => {
             const s = st(x), [label, cls] = STATE_UI[s] || [s, ""], pay = payFor(x);
             return (<React.Fragment key={x.id}>
               <div className={"invrow" + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setEdit(x))}>
@@ -10499,14 +10574,16 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
   const wide = false; // v0.94: Kundendatei am Desktop als schwebendes Fenster
   const selC = list.find((c) => c.id === selId) || null;
   useEdgeBack(() => setSelId(null), !!selC && mob);
-  const unmatched = invoices.filter((i) => i.customer?.name?.trim() && !custOf(i, list));
+  const unmatched = useMemo(() => invoices.filter((i) => i.customer?.name?.trim() && !custOf(i, list)), [invoices, list]);
   const assign = (invId, c) => setInvoices((l) => l.map((x) => (x.id === invId ? { ...x, customer: { ...(x.customer || {}), id: c.id } } : x)));
   const save = (c) => setList((l) => (l.some((x) => x.id === c.id) ? l.map((x) => (x.id === c.id ? c : x)) : [...l, c]));
   const nextNo = () => "K-" + String(list.reduce((m, c) => Math.max(m, parseInt(String(c.number || "").replace(/\D/g, ""), 10) || 0), 0) + 1).padStart(3, "0");
-  const invOf = (c) => invoices.filter((i) => i.kind === "rechnung" && custOf(i, list)?.id === c.id && !["entwurf", "storniert"].includes(i.status));
+  const invMap = useMemo(() => { const m = new Map(); for (const i of invoices) { if (i.kind !== "rechnung" || ["entwurf", "storniert"].includes(i.status)) continue; const c = custOf(i, list); if (c) (m.get(c.id) || m.set(c.id, []).get(c.id)).push(i); } return m; }, [invoices, list]);
+  const invOf = (c) => invMap.get(c.id) || [];
   const shown = list.filter((c) => type === "alle" || (c.type || "Kunde") === type)
     .filter((c) => !q || norm(`${c.name} ${c.contact} ${c.email} ${c.phone} ${c.address} ${c.number}`).includes(norm(q)))
     .sort((a, b) => (a.name || "").localeCompare(b.name || "", "de"));
+  const shownV = useProgressiveAuto(shown);
   const vcard = (c) => {
     const v = ["BEGIN:VCARD", "VERSION:3.0", `FN:${c.name}`, c.contact && `NOTE:Ansprechperson ${c.contact}`, c.email && `EMAIL:${c.email}`, c.phone && `TEL;TYPE=WORK:${c.phone}`, c.mobile && `TEL;TYPE=CELL:${c.mobile}`,
       c.address && `ADR;TYPE=WORK:;;${c.address.replace(/\n/g, ";")};;;;`, c.web && `URL:${c.web}`, "END:VCARD"].filter(Boolean).join("\r\n");
@@ -10529,7 +10606,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         {busy && <ImportBar {...busy} />}
         <MScroll>
           {!shown.length && <MEmpty>{list.length ? "Keine Treffer." : "Noch keine Kontakte – mit „＋ Kontakt“ anlegen oder aus dem Handy übernehmen."}</MEmpty>}
-          {mGroup(shown, (c) => ((c.name || "#").trim()[0] || "#").toUpperCase()).map(([L, l]) => (
+          {mGroup(shownV, (c) => ((c.name || "#").trim()[0] || "#").toUpperCase()).map(([L, l]) => (
             <React.Fragment key={L}>
               <MHead right={l.length}>{L}</MHead>
               {l.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"), tp = typeOf(c), tel = (c.mobile || c.phone || "").replace(/\s/g, ""); return (
@@ -10568,7 +10645,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       <FitScroll card cols={["Name", "Art · Ort", "Offen"]}>
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📱 Aus Handy-Kontakten“ übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
-        {shown.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
+        {shownV.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
           <div key={c.id} className={"frow click contactrow" + (selId === c.id && !mob ? " sel" : "")} onClick={() => setSelId(c.id)}>
             <span className="caticon avatar" style={{ width: 42, height: 42 }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>
             <div className="grow">
@@ -10737,7 +10814,7 @@ function FbIconSettings() {
 }
 /* ======================= Fahrtenbuch-Verlauf als Zeitleiste (v0.94) ======================= */
 const FB_COL = { fuel: "#f59e0b", elec: "#14b8a6", expense: "#8d6e63", trip: "#3b82f6" };
-const fbDay = (d) => new Date(d + "T12:00:00").toLocaleDateString("de-AT", { day: "2-digit", month: "short" });
+const FBDAY = {}, fbDay = (d) => FBDAY[d] || (FBDAY[d] = new Date(d + "T12:00:00").toLocaleDateString("de-AT", { day: "2-digit", month: "short" }));
 function FbRemStrip({ rems, remState, onOpen }) {
   const l = [...rems].map((r) => [r, remState(r)]).sort((a, b) => (a[1].dd ?? 9e9) - (b[1].dd ?? 9e9));
   return (<div className="fbrems"><h4 className="fbtlh">Erinnerungen</h4><div className="fbremrow">
@@ -10751,8 +10828,9 @@ function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, previ
   const [ics] = useIconStore("fbIcons");
   const consAt = new Map([...(st.cons || []), ...(st.consE || [])].map((c) => [c.date + ":" + c.km, c.v]));
   const kmOf = (x) => +(x.type === "trip" ? x.endKm : x.km) || 0;
-  const allSorted = [...all].sort((a, b) => a.date.localeCompare(b.date) || kmOf(a) - kmOf(b));
-  const groups = mGroup(list, (x) => x.date.slice(0, 7));
+  const allSorted = useMemo(() => [...all].sort((a, b) => a.date.localeCompare(b.date) || kmOf(a) - kmOf(b)), [all]);
+  const listV = useProgressiveAuto(list, 50);
+  const groups = mGroup(listV, (x) => x.date.slice(0, 7));
   const sumMonth = (m) => {
     const inM = all.filter((x) => x.date.startsWith(m)), before = allSorted.filter((x) => x.date < m + "-01" && kmOf(x));
     const kmEnd = Math.max(0, ...inM.map(kmOf)), kmStart = before.length ? Math.max(...before.map(kmOf)) : Math.min(...inM.map(kmOf).filter(Boolean));
@@ -10794,10 +10872,13 @@ function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, previ
 /* ======================= Kundendatei (v0.93): Übersicht · Rechnungen · Angebote · Mahnungen · Konto ======================= */
 // Rechnung gehört zum Kunden: feste ID, sonst Kundennummer, sonst Name
 // Eindeutige Zuordnung Rechnung → Kunde: 1. feste ID (wenn der Kunde noch existiert) · 2. Kundennummer · 3. Name (bei Namensgleichheit der erste)
+const custIdx = new WeakMap();
 function custOf(inv, list) { const k = inv?.customer; if (!k || !list?.length) return null;
-  if (k.id) { const c = list.find((x) => x.id === k.id); if (c) return c; }
-  const no = String(k.number || "").trim(); if (no) { const c = list.find((x) => String(x.number || "").trim() === no); if (c) return c; }
-  const n = norm(k.name || ""); return n ? list.find((x) => norm(x.name || "") === n) || null : null; }
+  let ix = custIdx.get(list);
+  if (!ix) { ix = { id: new Map(), no: new Map(), name: new Map() }; for (const x of list) { ix.id.set(x.id, x); const no = String(x.number || "").trim(); if (no && !ix.no.has(no)) ix.no.set(no, x); const n = norm(x.name || ""); if (n && !ix.name.has(n)) ix.name.set(n, x); } custIdx.set(list, ix); }
+  if (k.id && ix.id.has(k.id)) return ix.id.get(k.id);
+  const no = String(k.number || "").trim(); if (no && ix.no.has(no)) return ix.no.get(no);
+  const n = norm(k.name || ""); return n ? ix.name.get(n) || null : null; }
 const custMatch = (c, inv) => { const k = inv?.customer; if (!k || !c) return false; if (k.id) return k.id === c.id;
   return !!(c.number && k.number && String(c.number).trim() === String(k.number).trim()) || (!!c.name && norm(k.name || "") === norm(c.name)); };
 function custLedger(invs) {
@@ -11374,6 +11455,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
   const shown = inScope.filter((a) => (filter === "alle" ? !astOut(a) : filter === "aus" ? astOut(a) : astState(a) === filter))
     .filter((a) => !q || norm(`${a.name} ${a.brand} ${a.serial} ${a.dealer} ${a.cat} ${a.note}`).includes(norm(q)))
     .sort((x, y) => (astEndAll(x) || "9999").localeCompare(astEndAll(y) || "9999") || (x.name || "").localeCompare(y.name || "", "de"));
+  const shownV = useProgressiveAuto(shown);
   const value = inScope.filter((a) => !astOut(a)).reduce((s, a) => s + (Number(a.price) || 0), 0);
   const dlDocsA = useMemo(() => assetDlDocs(inScope), [inScope]);
   const calItems = dlDocsA.flatMap((d) => d.deadlines.map((dl) => [dl, d]));
@@ -11415,7 +11497,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
         {mode === "cal" ? cal : (
           <MScroll>
             {!shown.length && empty}
-            {shown.map((a) => (
+            {shownV.map((a) => (
               <MItem key={a.id} icon={<AstIco a={a} />} title={a.name} dim={astOut(a)} tags={[(a.scope || "privat") === "firma" && "Firma", a.docId && "📎"]}
                 sub={sub(a)} amount={a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"} pill={pill(a)} onClick={() => setEdit(a)}
                 swipe={{ left: [a.docId && { icon: <IcoEye />, label: "Beleg", bg: "#0ea5e9", run: () => onOpen(a.docId) }],
@@ -11441,7 +11523,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
         <FitScroll card cols={["Gerät", "Marke · Kauf · Garantie", "Kaufpreis"]}>
           <section className="tile ctlist">
             {!shown.length && empty}
-            {shown.map((a) => (
+            {shownV.map((a) => (
               <div key={a.id} className={"frow click" + (astOut(a) ? " ended" : "")} onClick={() => setEdit(a)}>
                 <AstIco a={a} size={42} />
                 <div className="grow"><b>{a.name}</b>{(a.scope || "privat") === "firma" && <span className="stpill st-draft" style={{ marginLeft: 8 }}>🏢 Firma</span>}{pill(a) && <span style={{ marginLeft: 8 }}>{pill(a)}</span>}
@@ -12142,6 +12224,7 @@ function DunningPage({ setTab, book }) {
   const MF = [["alle", "Alle", over.length + history.length], ["jetzt", "Jetzt mahnen", over.filter((o) => o.ready).length], ["warten", "Wartezeit", over.filter((o) => !o.ready).length], ["verlauf", "Verlauf", history.length]];
   const overS = mf === "verlauf" ? [] : kit.apply(over.filter((o) => mqHit(o.x) && (mf === "jetzt" ? o.ready : mf === "warten" ? !o.ready : true)));
   const histS = mf === "alle" || mf === "verlauf" ? kit.apply(history.filter(({ x, r }) => mqHit(x, r))) : [];
+  const overV = useProgressiveAuto(overS.map((o) => ({ ...o, id: o.x.id }))), histV = useProgressiveAuto(histS.map((h) => ({ ...h, id: h.x.id + ":" + h.i })));
   const tagInv = (xs) => { const f = kitTagPrompt(xs); if (!f) return; const ids = new Set(xs.map((x) => x.id)); setList((l) => l.map((y) => (ids.has(y.id) ? { ...y, tags: f(y) } : y))); };
   const printInvs = async (items) => { const imgs = []; for (const [x, i] of items) imgs.push(...(await blobToImages(await (i == null ? buildInvoicePdf(x, co) : pdfOf(x, i))))); if (imgs.length) await printImages(imgs, items.length === 1 ? invFileName(items[0][0], items[0][1] == null ? undefined : items[0][0].reminders[items[0][1]]) : `${items.length} Belege`); };
   const mnHead = ["Kunde", "Rechnung", "Fällig", "Tage überfällig", "Letzte Stufe", "Betrag €", "Tags"];
@@ -12167,7 +12250,7 @@ function DunningPage({ setTab, book }) {
         <MScroll>
           {mf !== "verlauf" && <MHead right={overS.length}>Zu mahnen</MHead>}
           {mf !== "verlauf" && !overS.length && <MEmpty>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</MEmpty>}
-          {overS.map(({ x, last, since, ready, next }) => (
+          {overV.map(({ x, last, since, ready, next }) => (
             <MItem key={x.id} icon={<MAvatar text={x.customer?.name} color="#ef4444" />} title={x.customer?.name || "Ohne Kunde"} tags={[pick && (pick.has(x.id) ? "☑ gewählt" : "☐"), ...(x.tags || []).map((t) => "#" + t)]}
               sub={`${x.number} · ${since} T. überfällig${last ? " · zuletzt " + remindName(last.level) : ""}`} amount={fmtMoney(invTotal(x))} amountCls="neg"
               pill={<span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? remindName(next) : `in ${(dn.waitDays || 0) - since} T.`}</span>}
@@ -12177,7 +12260,7 @@ function DunningPage({ setTab, book }) {
           ))}
           {(mf === "alle" || mf === "verlauf") && <MHead right={histS.length}>Mahnverlauf</MHead>}
           {(mf === "alle" || mf === "verlauf") && !histS.length && <MEmpty>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</MEmpty>}
-          {histS.map(({ x, r, i }) => { const s = invState(x); return (
+          {histV.map(({ x, r, i }) => { const s = invState(x); return (
             <MItem key={x.id + i} icon={<MIco e="📮" />} title={`${remindName(r.level)} · ${x.customer?.name || ""}`} sub={`${fmtDate(r.date)} · ${x.number} · Frist ${fmtDate(r.due)}`}
               amount={fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))} amountCls={s === "bezahlt" ? "in" : ""}
               pill={i === x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
@@ -12213,7 +12296,7 @@ function DunningPage({ setTab, book }) {
       {mf !== "verlauf" && <section className="tile invlist ltlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b><small>{overS.length}</small></div>
         {!overS.length && <p className="muted small" style={{ padding: "0 14px" }}>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</p>}
-        {overS.map(({ x, last, since, ready, next }) => (<React.Fragment key={x.id}>
+        {overV.map(({ x, last, since, ready, next }) => (<React.Fragment key={x.id}>
           <div className={"invrow" + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setRemind(x))}>
             {pick && <KitPickBox on={pick.has(x.id)} />}
             <div className="invmain">
@@ -12234,7 +12317,7 @@ function DunningPage({ setTab, book }) {
       {(mf === "alle" || mf === "verlauf") && <section className="tile invlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Mahnverlauf</b><small>{histS.length}</small></div>
         {!histS.length && <p className="muted small" style={{ padding: "0 14px" }}>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</p>}
-        {histS.map(({ x, r, i }) => { const s = invState(x); return (
+        {histV.map(({ x, r, i }) => { const s = invState(x); return (
           <React.Fragment key={x.id + i}>
           <div className={"invrow"} onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>
             <div className="invmain">
@@ -13974,7 +14057,7 @@ html,body{min-height:100%}
 /* Wischgesten */
 .swrow{position:relative;overflow:hidden;--swbg:var(--bg)}
 .tile .swrow,.txtable .swrow,.dlist .swrow{--swbg:var(--card)}
-.swfront{position:relative;z-index:1;background:var(--swbg);touch-action:pan-y;will-change:transform}
+.swfront{position:relative;z-index:1;background:var(--swbg);touch-action:pan-y}
 .swacts{position:absolute;top:0;bottom:0;display:flex;overflow:hidden;z-index:0}
 .swacts.l{left:0;justify-content:flex-start}.swacts.r{right:0;justify-content:flex-end}
 .swbtn{flex:1 0 78px;min-width:78px;border:0;color:#fff;font:inherit;font-size:12px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer}
@@ -15030,6 +15113,8 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
   .fbcompact .fbquick button{padding:7px 2px}
 }
 
+/* v0.98.1 */
+.progsent{height:1px;width:100%;grid-column:1/-1}
 /* v0.97.7: Dokumente – Titel öffnet Details, Auge öffnet Vorschau */
 .deyem{display:none}
 @media (max-width:700px){.deyem{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;border-radius:50%;border:0;background:var(--card2);color:var(--acc);padding:0;margin-left:4px;cursor:pointer}.deyem svg{width:19px;height:19px}}
@@ -15095,4 +15180,14 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
 .msheet .kbrow{background:var(--card);margin:0;padding:11px 14px;border-bottom:.5px solid var(--line)}
 .msheet .kbrow:first-of-type{border-radius:14px 14px 0 0}
 .msheet .txhero{background:color-mix(in srgb,var(--acc) 10%,var(--card));border-radius:18px;padding:16px 12px;margin:4px 0 12px}
+
+/* v0.98.1: Handy-Leistung – kein Weichzeichner hinter festen Leisten (außer Stil „Glas“), keine Dauer-Animationen */
+@media (max-width:767px),(pointer:coarse){
+  html:not(.sty-glas) :is(nav.bottom,.topactions,.pickbar,.dprevbar.float,.msheet .panelhead,.msheetbar,.msheet .panel>.actions,.wbar.overlay){backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+  html:not(.sty-glas) nav.bottom{background:color-mix(in srgb,var(--card) 97%,transparent)!important}
+  html:not(.sty-glas) .topactions{background:color-mix(in srgb,var(--card) 96%,transparent)!important}
+  html:not(.sty-glas) :is(.msheet .panelhead,.msheetbar,.msheet .panel>.actions){background:var(--bg)!important}
+}
+
+@media (max-width:767px){.mtx,.dlist>.dwrap{content-visibility:auto;contain-intrinsic-size:auto 68px}}
 `;

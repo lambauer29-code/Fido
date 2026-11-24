@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.98.1 – Leistung am Handy (Ruckler beseitigt)
+
+- **Datum/Betrag formatieren:** `fmtDate`, `fmtMoney`, `monthLabel` und alle `toLocale…`-Aufrufe verwenden zwischengespeicherte Intl-Formatierer (war der größte Bremsklotz beim Öffnen von Listen).
+- **Lange Listen schrittweise:** Dokumente, Rechnungen, Mahnungen, Kunden, Besitz und Fahrtenbuch-Verlauf zeigen zuerst 50–60 Einträge und laden beim Scrollen automatisch nach; Dokument-Zeilen werden nur neu gezeichnet, wenn sich das Dokument ändert; Handy-Listenzeilen außerhalb des Bildschirms werden vom Browser übersprungen (`content-visibility`).
+- **Suche:** Eingabe reagiert sofort, gefiltert wird im Hintergrund (`useDeferredValue`).
+- **Kunden:** Rechnungen werden einmal pro Kunde zugeordnet statt für jeden Kunden alle Rechnungen zu durchsuchen.
+- **Scrollen:** keine eigene Grafikebene mehr für jede Listenzeile (nur beim Wischen), kein Weichzeichner hinter Tab-Leiste/Kopf-Knöpfen/Fenster-Leisten am Handy (außer Stil „Glas“), Fahrtenbuch-Leiste ohne Layout-Abfrage bei jedem Scroll-Ereignis, Listenhöhen-Berechnung am Handy ruht, wo sie nicht gebraucht wird.
+- **Cloud-Sync:** läuft nur noch, wenn sich lokal etwas geändert hat (sonst alle 5 Min.), und wartet, bis 4 Sekunden nicht gescrollt/getippt wurde – keine Aussetzer mehr alle 90 Sekunden.
+
 ## v0.98.0 – Handy-Popups neu gestaltet
 
 Alle Popup-Fenster am iPhone (und iPad hochkant) nach den fünf Vorschlägen:
