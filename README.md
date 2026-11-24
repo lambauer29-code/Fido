@@ -2,6 +2,18 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.92.0 – neuer Listen-Kopf (Vorschläge 1 + 2 + 4 + 5 + 6)
+- **Eine Zeile oben:** Suchfeld · ⚙︎ Filter (mit Zähler) · ⋯ (Neu, Auswählen, Export, Einstellungen). Gilt für Dokumente, Rechnungen, Mahnungen, Verträge, Fixkosten & Abos, Kunden, Artikel, Besitz & Garantie, Lager & Inventur, Kassabuch und alle Handy-Listen.
+- **Filter-Blatt:** am Handy von unten, ab iPad quer/Mac als Fenster rechts oben – Ansicht, Privat/Firma, Kategorie, Status, Jahr, Monat, Sortierung, Tags, gespeicherte Reiter löschen; Knopf „x Treffer anzeigen“.
+- **Wischbare Reiter** mit Zähler (Alle, Firma, Privat, Unbezahlt, Steuerrelevant, Bereiche … bzw. Status je Liste) + eigene Reiter: „＋ Ansicht“ speichert die aktuelle Filterkombination.
+- **Smarte Suche:** „firma“, „2026“, „#tag“, „unbezahlt“, Kategorie- oder Monatsnamen tippen → Vorschlag „Als Filter übernehmen“ → wird zum Stichwort im Suchfeld (✕ oder Löschtaste entfernt es).
+- **Titel klappt ein:** Handy – kleiner Titel in der fixierten Suchleiste; iPad/Mac – Kopf und Kennzahlen klappen beim Scrollen in der Liste ein.
+- Dokumente: Ablage (Liste/Ordner/Akten) und Darstellung (Zeilen/Galerie) jetzt im Filter-Blatt; Ablagefeld am Handy ausgeblendet (＋ unten nutzen).
+
+## v0.91.0
+- **Einstellungen → Design → Schriftgrößen:** 9 Bereiche einzeln in 5-%-Schritten (70–170 %): Seitentitel, Karten-/Bereichsüberschriften, Gruppen-Titel, Listen-Titel, Beträge & Kennzahlen, Text & Eingabefelder, Buttons/Filter/Reiter, Kleintext, Seitenleiste. Schnellwahl Kompakt / Standard / Groß / Sehr groß, Tippen auf den %-Wert = zurück auf Standard, Live-Vorschau je Zeile.
+- Gilt **pro Gerät** (iPad, Mac, Handy getrennt) – Schlüssel `dev:` werden nicht gesynct und nicht ins Backup geschrieben.
+
 ## v0.90.1
 - Handy-Check aller Unterseiten (Privat: 8, Firma: 8, Mehr: 2) inkl. Bearbeitungsfenster: Alle passen in die Breite, nichts läuft seitlich über.
 - Lange Seitentitel (z. B. „Firmenauswertung“) werden am Handy kleiner gesetzt statt abgeschnitten.

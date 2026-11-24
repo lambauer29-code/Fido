@@ -9,7 +9,7 @@
 
 import { isTauri, API_BASE, openExternal } from "./platform.js";
 
-const SKIP = /^(appToken|appLock|srch:|pending|openSettingsSec|win:|scanFilter|lastAutoBackup|lastAutoCheck|lastAutoHash|lastExtBackup|sync|oauth)/;
+const SKIP = /^(dev:|appToken|appLock|srch:|pending|openSettingsSec|win:|scanFilter|lastAutoBackup|lastAutoCheck|lastAutoHash|lastExtBackup|sync|oauth)/;
 const ITER = 310000;
 const enc = new TextEncoder(), dec = new TextDecoder();
 

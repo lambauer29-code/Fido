@@ -388,7 +388,7 @@ const ls = {
 };
 
 if (typeof document !== "undefined" && ls.get("tabbarIcons", false)) document.documentElement.classList.add("tbicons");
-const BACKUP_SKIP = /^(appToken|appLock|srch:|pending|openSettingsSec|win:|scanFilter)/;
+const BACKUP_SKIP = /^(dev:|appToken|appLock|srch:|pending|openSettingsSec|win:|scanFilter)/;
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -4234,6 +4234,83 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
 
 
 
+
+/* ======================= Listen-Kopf (v0.92): Suche + Stichwörter + Filter-Blatt + Reiter ======================= */
+// lk = { yr, setYr, years, sortBy, setSortBy, sorts:{k:[Titel, Untertitel]}, tagF, setTagF, tags, views, setViews }
+function ListBar({ q, setQ, placeholder, id, tabs, tab, setTab, lk, tokens = [], smart = [], sheet = null, actions = null, hits, words, phoneTabs = true }) {
+  const [open, setOpen] = useState(false);
+  const tk = [...tokens.filter(Boolean), lk?.yr && ["📅 " + lk.yr, () => lk.setYr("")], lk?.tagF && ["#" + lk.tagF, () => lk.setTagF("")]].filter(Boolean);
+  const t0 = tabs?.[0]?.[0];
+  const sm = [...smart.filter(Boolean), ...(tabs || []).filter(([k, l]) => k !== t0 && typeof l === "string").map(([k, l]) => ({ label: l, kind: "Ansicht", run: () => setTab(k) })),
+    ...(lk?.years || []).map((y) => ({ label: y, kind: "Jahr", run: () => lk.setYr(y) })), ...(lk?.tags || []).map((t) => ({ label: "#" + t, kind: "Tag", words: [t], run: () => lk.setTagF(t) }))].filter((x, i, a) => a.findIndex((y) => String(y.label).replace(/^[^\p{L}\p{N}#]+/u, "").toLowerCase() === String(x.label).replace(/^[^\p{L}\p{N}#]+/u, "").toLowerCase()) === i);
+  const views = lk?.views || [];
+  const viewOn = (v) => (v.filter ?? tab) === tab && (v.q || "") === (q || "") && (v.yr || "") === (lk?.yr || "") && (v.tagF || "") === (lk?.tagF || "");
+  const anyView = views.some(viewOn);
+  const applyV = (v) => { if (setTab && v.filter != null) setTab(v.filter); setQ?.(v.q || ""); lk?.setYr?.(v.yr || ""); lk?.setTagF?.(v.tagF || ""); if (v.sortBy && lk?.setSortBy) lk.setSortBy(v.sortBy); };
+  const dirty = (tabs && tab !== t0) || (q || "").trim() || lk?.yr || lk?.tagF;
+  const tabLabel = tabs?.find(([k]) => k === tab)?.[1];
+  const saveV = () => { const n = prompt("Name für den neuen Reiter:", [tab !== t0 && tabLabel, lk?.yr, lk?.tagF && "#" + lk.tagF, (q || "").trim() && "„" + q.trim() + "“"].filter(Boolean).join(" · ")); if (!n || !lk?.setViews) return;
+    lk.setViews((l) => [...l, { id: uid(), n, filter: tab, q: (q || "").trim(), yr: lk.yr || "", tagF: lk.tagF || "", sortBy: lk.sortBy }]); };
+  const reset = () => { if (setTab && t0 != null) setTab(t0); lk?.setYr?.(""); lk?.setTagF?.(""); tokens.filter(Boolean).forEach(([, clr]) => clr()); };
+  const nBadge = tk.length + (tabs && tab !== t0 ? 1 : 0);
+  const hasSheet = !!(sheet || lk || tabs);
+  const moreItems = [...(actions || []).filter(Boolean), ...(lk?.setViews && dirty && !anyView ? [{ head: "Ansicht" }, { k: "lbsave", icon: "☆", title: "Als Reiter speichern", sub: "aktuelle Filter mit einem Tipp wieder aufrufen", run: saveV }] : [])];
+  return (<div className="lbar msticky">
+    <div className="lbmini" aria-hidden="true">{typeof document !== "undefined" ? document.querySelector("header.top h1")?.textContent : ""}</div>
+    <div className="lbrow">
+      <SearchBox id={id} words={words} placeholder={placeholder} value={q} onChange={setQ} smart={sm}
+        lead={tk.length ? <span className="lbtoks">{tk.map(([l, clr], i) => <span key={i} className="lbtok">{l}<button type="button" aria-label={l + " entfernen"} onMouseDown={(e) => e.preventDefault()} onClick={clr}>✕</button></span>)}</span> : null}
+        onBackEmpty={tk.length ? () => tk[tk.length - 1][1]() : undefined} />
+      {hasSheet && <button type="button" className={"btn lbfilter" + (nBadge ? " on" : "")} aria-label="Filter" onClick={() => setOpen(true)}><span aria-hidden="true">⚙︎</span><span className="lbl"> Filter</span>{!!nBadge && <span className="lbbadge">{nBadge}</span>}</button>}
+      {!!moreItems.length && <PickMenu btnClass="btn lbmore" label="⋯" title="Weitere Aktionen" wide items={moreItems} />}
+    </div>
+    {(tabs || views.length > 0) && <div className={"lbtabs" + (phoneTabs ? "" : " nophone")} role="tablist">
+      {(tabs || []).map(([k, l, n]) => <button key={k} role="tab" aria-selected={tab === k && !anyView} className={"lbtab" + (tab === k && !anyView && !(k === t0 && dirty) ? " on" : "")} onClick={() => { if (k === t0) reset(); else setTab(k); }}>{l}{n != null && <small>{n}</small>}</button>)}
+      {views.map((v) => <button key={v.id} role="tab" aria-selected={viewOn(v)} className={"lbtab lbview" + (viewOn(v) ? " on" : "")} onClick={() => (viewOn(v) ? reset() : applyV(v))}>☆ {v.n}</button>)}
+      {lk?.setViews && dirty && !anyView && <button className="lbtab lbadd" onClick={saveV}>＋ Ansicht</button>}
+    </div>}
+    {open && <LbSheet onClose={() => setOpen(false)} onReset={reset} hits={hits}>
+      {sheet}
+      {tabs && <><h4 className="lbh">Ansicht</h4><div className="lbchips">{tabs.map(([k, l, n]) => <button key={k} className={"chip" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>{l}{n != null && <small> {n}</small>}</button>)}</div></>}
+      {lk?.years?.length > 0 && <><h4 className="lbh">Jahr</h4><div className="lbchips">{["", ...lk.years].map((y) => <button key={y || "alle"} className={"chip" + ((lk.yr || "") === y ? " on" : "")} onClick={() => lk.setYr(y)}>{y || "Alle Jahre"}</button>)}</div></>}
+      {lk?.sorts && <><h4 className="lbh">Sortierung</h4><div className="lbchips">{Object.entries(lk.sorts).map(([k, [t, sub]]) => <button key={k} title={sub} className={"chip" + (lk.sortBy === k ? " on" : "")} onClick={() => lk.setSortBy(k)}>{t}</button>)}</div></>}
+      {lk?.tags?.length > 0 && <><h4 className="lbh">Tags</h4><div className="lbchips">{lk.tags.map((t) => <button key={t} className={"chip" + (lk.tagF === t ? " on" : "")} onClick={() => lk.setTagF(lk.tagF === t ? "" : t)}>#{t}</button>)}</div></>}
+      {views.length > 0 && <><h4 className="lbh">Gespeicherte Reiter</h4><div className="lbviews">{views.map((v) => <div key={v.id} className="lbvrow"><span className="grow">☆ {v.n}</span>
+        <button className="iconbtn" aria-label={"„" + v.n + "“ löschen"} onClick={() => confirm(`Reiter „${v.n}“ löschen?`) && lk.setViews((l) => l.filter((x) => x.id !== v.id))}>✕</button></div>)}</div></>}
+    </LbSheet>}
+  </div>);
+}
+function LbSheet({ children, onClose, onReset, hits }) {
+  useEdgeBack(onClose, true);
+  useEffect(() => { const k = (e) => e.key === "Escape" && onClose(); addEventListener("keydown", k); return () => removeEventListener("keydown", k); }, []);
+  return createPortal(<>
+    <div className="lbscrim" onClick={onClose} />
+    <div className="lbsheet" role="dialog" aria-label="Filter">
+      <div className="lbgrab" />
+      <div className="lbshead"><button className="link" onClick={onReset}>Zurücksetzen</button><b>Filter</b><button className="link" onClick={onClose}>Fertig</button></div>
+      <div className="lbsbody">{children}</div>
+      <button className="btn primary lbapply" onClick={onClose}>{hits != null ? `${hits} Treffer anzeigen` : "Anzeigen"}</button>
+    </div></>, document.body);
+}
+// Privat/Firma als Stichwort, Vorschlag und Blatt-Abschnitt
+function scopeBits(scope, setScope, count) {
+  const lab = { privat: "👤 Privat", firma: "🏢 Firma" };
+  return { token: scope && scope !== "alle" ? [lab[scope], () => setScope("alle")] : null,
+    smart: [{ label: "🏢 Firma", kind: "Bereich", words: ["firma", "geschäftlich"], run: () => setScope("firma") }, { label: "👤 Privat", kind: "Bereich", words: ["privat"], run: () => setScope("privat") }],
+    sheet: <><h4 className="lbh">Bereich</h4><div className="seg">{[["alle", "Privat & Firma"], ["privat", "👤 Privat"], ["firma", "🏢 Firma"]].map(([k, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{l}{count && <small className="cnt"> {count(k)}</small>}</button>)}</div></> };
+}
+// Handy: beim Scrollen kleiner Titel in der fixierten Suchleiste
+if (typeof window !== "undefined" && !window.__lbScroll) { window.__lbScroll = true;
+  addEventListener("scroll", () => { const c = document.documentElement.classList, on = c.contains("lbscrolled"); if (!on && scrollY > 90) c.add("lbscrolled"); else if (on && scrollY < 40) c.remove("lbscrolled"); }, { passive: true }); }
+// Liste mit useListKit: Reiter = Filter, Jahr/Sortierung/Tags ins Blatt
+function KitBar({ kit, all, filters, filter, setFilter, q, setQ, placeholder, actions, hits, tokens, smart, sheet, noYear, noTags }) {
+  const years = noYear ? [] : [...new Set(all.map((x) => String(kit.dateOf(x) || "").slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort().reverse();
+  const tags = noTags ? [] : [...new Set(all.flatMap(kit.tagsOf))].sort((a, b) => a.localeCompare(b, "de"));
+  const lk = { ...kit, years, tags, sorts: Object.fromEntries(Object.entries(kit.sorts).map(([k, [t, sub]]) => [k, [t, sub]])) };
+  const pickAct = { k: "pick", icon: "☑", title: kit.pick ? "Auswahl beenden" : "Auswählen", sub: "mehrere Einträge drucken, exportieren, taggen", run: () => kit.setPick(kit.pick ? null : new Set()) };
+  return <ListBar q={q} setQ={setQ} placeholder={placeholder} id={"kit:" + kit.key} tabs={filters} tab={filter} setTab={setFilter} lk={lk} hits={hits} tokens={tokens} smart={smart} sheet={sheet}
+    actions={[pickAct, ...(actions || [])]} />;
+}
 /* ======================= Ablage: Ordner & Akten (v0.90) ======================= */
 const akteMatch = (a, d) => {
   if (!(a.cats?.length || a.scope !== "alle" || a.tax || a.year || a.tags?.length)) return false;
@@ -4835,62 +4912,44 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
   const docExp = [{ head: `${list.length} Dokumente (aktueller Filter)` },
     { label: "🗂 Dateien als ZIP", sub: "alle Dokumente im aktuellen Filter, nach Kategorie sortiert", disabled: !list.length, run: () => zipOf(list, `dokumente-${[year, month, taxOnly && "steuer", cat && fileSafe(cat)].filter(Boolean).join("-") || "alle"}.zip`) },
     { label: "📄 Liste als CSV", disabled: !list.length, run: () => exportCsv(list, `dokumente${year ? "-" + year : ""}${month ? "-" + month : ""}${taxOnly ? "-steuer" : ""}.csv`) }];
+  // Kopf (v0.92): Suche mit Stichwörtern, Filter-Blatt, Reiter
+  const D0 = { cat: "", taxOnly: false, unpaid: false, month: "", area: "alle", scope: "alle" };
+  const dPre = (o) => JSON.stringify({ ...D0, ...o });
+  const docTabs = [[dPre({}), "Alle", docs.length], [dPre({ scope: "firma" }), "🏢 Firma", docs.filter((d) => docScope(d) === "firma").length], [dPre({ scope: "privat" }), "👤 Privat", docs.filter((d) => docScope(d) === "privat").length],
+    [dPre({ unpaid: true }), "💶 Unbezahlt", docs.filter((d) => d.direction === "ausgabe" && d.amount?.total && !d.paid).length], [dPre({ taxOnly: true }), "🧾 Steuerrelevant", docs.filter((d) => d.taxRelevant).length],
+    ...Object.entries(AREAS).map(([k, [ic, l]]) => [dPre({ area: k }), `${ic} ${l}`, docs.filter((d) => docArea(d) === k).length])];
+  const dSc = scopeBits(scope, setScope, (k) => (k === "alle" ? docs.length : docs.filter((d) => docScope(d) === k).length));
+  const docBar = <ListBar q={q} setQ={setQ} placeholder="Dokumente durchsuchen oder „firma 2026“" id="kit:docs" tabs={docTabs} tab={fState} setTab={setFState} hits={list.length}
+    lk={{ ...kit, yr: year, setYr: setYear, years, sortBy: sort, tagF: tag, setTagF: setTag, tags, sorts: Object.fromEntries(Object.entries(kit.sorts).map(([k, [t, sub]]) => [k, [t, sub]])) }}
+    tokens={[mode === "liste" && cat && [cat, () => setCat("")], dSc.token, area !== "alle" && [AREAS[area]?.[1] || area, () => setArea("alle")], unpaid && ["💶 Unbezahlt", () => setUnpaid(false)], taxOnly && ["🧾 Steuer", () => setTaxOnly(false)], month && ["🗓 " + MONTHS_DE[Number(month) - 1], () => setMonth("")]]}
+    smart={[...dSc.smart, { label: "💶 Unbezahlt", kind: "Status", words: ["unbezahlt", "offen"], run: () => setUnpaid(true) }, { label: "🧾 Steuerrelevant", kind: "Status", words: ["steuer"], run: () => setTaxOnly(true) },
+      ...categories.map((c) => ({ label: c, kind: "Kategorie", run: () => { if (mode !== "liste") setMode("liste"); setCat(c); } })), ...MONTHS_DE.map((m, i) => ({ label: m, kind: "Monat", run: () => setMonth(String(i + 1).padStart(2, "0")) }))]}
+    sheet={<>
+      <h4 className="lbh">Ablage</h4>
+      <div className="seg">{[["liste", "☰ Liste"], ["ordner", "📁 Ordner"], ["akten", "🗂️ Akten"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); setAkteId(""); if (k !== "liste") setCat(""); }}>{l}</button>)}</div>
+      <div className="seg" style={{ marginTop: 6 }}>{[["list", "Zeilen"], ["grid", "Galerie"]].map(([k, l]) => <button key={k} className={view === k ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div>
+      {dSc.sheet}
+      <h4 className="lbh">Status</h4>
+      <div className="lbchips"><button className={"chip" + (unpaid ? " on" : "")} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button><button className={"chip" + (taxOnly ? " on" : "")} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button></div>
+      {mode === "liste" && <><h4 className="lbh">Kategorie</h4><div className="lbchips">{categories.filter((c) => counts[c]).map((c) => <button key={c} className={"chip" + (cat === c ? " on" : "")} onClick={() => setCat(cat === c ? "" : c)}><CatGlyph c={c} /> {c} <small>{counts[c]}</small></button>)}</div></>}
+      <h4 className="lbh">Monat</h4>
+      <div className="lbchips">{["", ...MONTHS_DE.map((_, i) => String(i + 1).padStart(2, "0"))].map((m) => <button key={m || "alle"} className={"chip" + (month === m ? " on" : "")} onClick={() => setMonth(m)}>{m ? MONTHS_DE[Number(m) - 1].slice(0, 3) : "Alle"}</button>)}</div>
+    </>}
+    actions={[{ k: "pick", icon: "☑", title: pick ? "Auswahl beenden" : "Auswählen", sub: "mehrere exportieren, taggen, löschen", run: () => setPick(pick ? null : new Set()) },
+      deadlineTab && { k: "frist", icon: "⏰", title: deadlineTab.label, run: deadlineTab.open }, ...[...(onFiles ? [{ k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }] : []), { head: "Export" }, ...exp2pick(docExp.slice(1))]]} />;
   const tagDocs = async (sel) => { const f = kitTagPrompt(sel); if (!f || !saveDoc) return; for (const d of sel) await saveDoc({ ...d, tags: f(d) }); };
   const status = (d) => d.status === "processing" ? <span className="muted small">⏳ wird analysiert …</span> : d.status === "error" ? <span className="err">⚠️ {d.error}{reanalyze && <button className="retry" onClick={(e) => { e.stopPropagation(); reanalyze(d); }}>↻ Neu analysieren</button>}</span> : null;
 
   return (
     <>
-      <div className="invbar ltbar docbar">
-        <span className="grow" />
-        <button className={"btn" + (pick ? " on" : "")} disabled={!list.length && !pick} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
-        <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[...(onFiles ? [{ k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }] : []), { head: "Export" }, ...exp2pick(docExp.slice(1))]} />
-      </div>
-      <SearchBox placeholder="Dokumente durchsuchen" value={q} onChange={setQ} />
-
-      <div className="docmodes">
-        <div className="seg docmodeseg" role="tablist" aria-label="Ablage">
-          {[["liste", "☰", "Liste"], ["ordner", "📁", "Ordner"], ["akten", "🗂️", "Akten"]].map(([k, i, l]) => <button key={k} role="tab" aria-selected={mode === k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); setAkteId(""); if (k !== "liste") setCat(""); }}>{i} {l}</button>)}
-        </div>
-        <div className="seg docviewseg" role="group" aria-label="Darstellung">
-          <button className={view === "list" ? "on" : ""} onClick={() => setView("list")} aria-label="Als Liste" title="Als Liste">☰</button>
-          <button className={view === "grid" ? "on" : ""} onClick={() => setView("grid")} aria-label="Als Galerie" title="Als Galerie">▦</button>
-        </div>
-      </div>
+      {docBar}
       {subOpen && <div className="docsubbar">
         <button className="navback" onClick={closeSub}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>{akte ? "Akten" : "Ordner"}</span></button>
         <b className="docsubtitle">{akte ? <>{akte.icon} {akte.name}</> : <><CatGlyph c={cat} /> {cat}</>}</b>
         {akte && <button className="iconbtn" title="Akte bearbeiten" aria-label="Akte bearbeiten" onClick={() => setAkteEdit(akte)}><IcoEdit /></button>}
       </div>}
       {akte && <AkteHead akte={akte} docs={docs} sub={akteSub} setSub={setAkteSub} />}
-      {!chipCfg.hidden.includes("scopebar") && !subOpen && <div className="seg scopeseg" role="group" aria-label="Privat oder Firma">
-        {[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => (
-          <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small className="cnt">({k === "alle" ? docs.length : docs.filter((d) => docScope(d) === k).length})</small></button>
-        ))}
-      </div>}
-      {!chipCfg.hidden.includes("areabar") && mode === "liste" && <div className="seg areaseg">
-        {[["alle", "Alle", docs.length], ...Object.entries(AREAS).map(([k, [i, l]]) => [k, `${i} ${l}`, docs.filter((d) => docArea(d) === k).length])].map(([k, l, n]) => (
-          <button key={k} className={area === k ? "on" : ""} onClick={() => setArea(k)}>{l} <small className="cnt">({n})</small></button>
-        ))}
-      </div>}
       {area === "sonstiges" && <p className="muted small" style={{ margin: "4px 2px 8px" }}>Dokumente in „Sonstiges“ zählen nicht in Übersicht, Budgets und Auswertungen.</p>}
-      {!!docs.length && mode === "liste" && (
-        <div className="tile mobile-only accphone">
-          <DocTree docGroups={docGroups} docs={docs} selected={cat} onSelect={setCat} onToggleGroup={toggleDocGroup} variant="card" />
-        </div>
-      )}
-      {!overview && <ChipBar storeKey="docChips" cfg={chipCfg} setCfg={setChipCfg} className={"ltfilter" + (subOpen ? " chiprow" : "")} lead={<>{cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>}
-        {kit.views.map((v) => <span key={v.id} className="ltview"><button className={"chip" + (viewOn(v) ? " on" : "")} onClick={() => { setFState(v.filter); setQ(v.q || ""); setYear(v.yr || ""); setTag(v.tagF || ""); kit.setSortBy(v.sortBy || "date"); }}>☆ {v.n}</button><button className="ltx" title="Ansicht löschen" aria-label="Ansicht löschen" onClick={() => confirm(`Ansicht „${v.n}“ löschen?`) && kit.setViews((l) => l.filter((y) => y.id !== v.id))}>✕</button></span>)}</>} items={[
-        deadlineTab && { k: "frist", label: "⏰ " + deadlineTab.label, el: <button className="chip" onClick={deadlineTab.open}>⏰ {deadlineTab.label}</button> },
-        { k: "steuer", label: "🧾 Steuerrelevant", el: <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button> },
-        { k: "unbezahlt", label: "💶 Unbezahlt", el: <button className={unpaid ? "chip on" : "chip"} onClick={() => setUnpaid(!unpaid)}>💶 Unbezahlt</button> },
-        { k: "monat", label: "Monat", el: <PickMenu icon="🗓" label={month ? MONTHS_DE[Number(month) - 1] : "Alle Monate"} title="Monat" items={[{ k: "", title: "Alle Monate", on: !month, run: () => setMonth("") }, ...MONTHS_DE.map((m, i) => { const v = String(i + 1).padStart(2, "0"); return { k: v, title: m, on: month === v, run: () => setMonth(v) }; })]} /> },
-        { k: "jahr", label: "Jahr", el: <PickMenu icon="📅" label={year || "Alle Jahre"} title="Jahr" items={[{ k: "", title: "Alle Jahre", on: !year, run: () => setYear("") }, ...years.map((y) => ({ k: y, title: y, on: year === y, run: () => setYear(y) }))]} /> },
-        { k: "sort", label: "Sortierung", el: <PickMenu icon="↕" label={kit.sorts[sort]?.[0]} title="Sortierung" items={Object.entries(kit.sorts).map(([k, [t, sub]]) => ({ k, title: t, sub, on: sort === k, run: () => kit.setSortBy(k) }))} /> },
-        { k: "tags", label: "Tags", el: <PickMenu icon="#" label={tag || "Tags"} title="Tags" items={[{ k: "", title: "Alle Tags", on: !tag, run: () => setTag("") }, ...tags.map((t) => ({ k: t, title: "#" + t, sub: `${docs.filter((d) => (d.tags || []).includes(t)).length} Dokumente`, on: tag === t, run: () => setTag(t) }))]} extra={[{ label: "Tags vergeben: „Auswählen“ → # Tag", run: () => {} }]} /> },
-        { k: "view", label: "☆ Ansicht merken", el: anyF ? <button className="chip" onClick={saveView}>☆ Ansicht merken</button> : null },
-        { k: "scopebar", label: "👤 Leiste Privat / Firma", el: null },
-        { k: "areabar", label: "🗂️ Leiste Bereiche", el: null },
-      ]} />}
       {onFiles && showDrop && !overview && !subOpen && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} />}
       {docBusy && <ImportBar {...docBusy} />}
       {!overview && <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>}
@@ -5380,13 +5439,8 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
         </div>
       </div>
 
-      <div className="invbar ltbar">
-        <span className="grow" />
-        <button className={"btn" + (pick ? " on" : "")} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
-        <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[{ head: "Export" }, ...exp2pick(fkExp)]} />
-      </div>
-      <SearchBox placeholder="Anbieter, Kategorie, Kundennummer, Tag suchen" value={cq} onChange={setCq} />
-      <div className="chips invfilter ltfilter"><KitFilters kit={kit} all={items} filters={CT_FILTERS.map(([k, l]) => [k, l, items.filter(ctF[k]).length])} filter={cf} setFilter={setCf} q={cq} setQ={setCq} /></div>
+      <KitBar kit={kit} all={items} filters={CT_FILTERS.map(([k, l]) => [k, l, items.filter(ctF[k]).length])} filter={cf} setFilter={setCf} q={cq} setQ={setCq}
+        placeholder="Anbieter, Kategorie, Kundennummer suchen" hits={shown.length} actions={[{ head: "Export" }, ...exp2pick(fkExp)]} />
 
       <FitScroll card>
         <section className="tile invlist ctlist ltlist">
@@ -6057,7 +6111,7 @@ function sugCollect(el, key) {
     }
   }
 }
-function SearchBox({ value, onChange, placeholder, id, words, className = "searchbar", icon = true, autoFocus, children }) {
+function SearchBox({ value, onChange, placeholder, id, words, className = "searchbar", icon = true, autoFocus, children, lead = null, smart = null, onBackEmpty }) {
   const ref = useRef(null), inp = useRef(null), [open, setOpen] = useState(false), [act, setAct] = useState(-1), [pos, setPos] = useState(null), [, bump] = useState(0);
   const key = "srch:" + (id || placeholder || "x"), lid = useMemo(() => "sug" + Math.random().toString(36).slice(2, 8), []);
   const phone = useMedia("(max-width:700px)");
@@ -6069,8 +6123,13 @@ function SearchBox({ value, onChange, placeholder, id, words, className = "searc
       const out = []; for (const [l, w] of pool) { if (l === ql) continue; const i = l.indexOf(ql); if (i < 0) continue; out.push([i === 0 ? 0 : /[\s\-/(.,#]/.test(l[i - 1]) ? 1 : 2, recent.includes(w) ? 0 : 1, w.length, w]); }
       out.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]); list = out.map((x) => x[3]); }
   }
-  list = list.slice(0, Math.min(phone ? 8 : 10, pos?.fit ?? 10));
-  const show = open && list.length > 0;
+  // Filter-Vorschläge zum zuletzt getippten Wort („firma“, „2026“, „#tag“ …)
+  const lastW = String(value || "").split(/\s+/).pop().toLowerCase();
+  const smartL = open && smart && lastW ? smart.filter((x) => x.label && String(x.label).toLowerCase().replace(/^[^\p{L}\p{N}#]+/u, "").split(/[\s·&/,-]+/).concat([String(x.label).toLowerCase()], (x.words || [])).some((w) => w && w.startsWith(lastW))).slice(0, 5) : [];
+  list = list.slice(0, Math.max(0, Math.min(phone ? 8 : 10, pos?.fit ?? 10) - smartL.length));
+  const show = open && (list.length > 0 || smartL.length > 0);
+  const nAll = smartL.length + list.length;
+  const takeSmart = (x) => { x.run(); const w = String(value || "").split(/\s+/); w.pop(); const v = w.join(" ").trim(); onChange(v ? v + " " : ""); setOpen(false); setAct(-1); inp.current?.focus(); };
   const place = () => { const el = ref.current; if (!el) return; const r0 = el.getBoundingClientRect(), row = phone && el.closest(".cmprow"), r = row ? row.getBoundingClientRect() : r0; const vv = window.visualViewport, bottom = vv ? vv.offsetTop + vv.height : innerHeight;
     setPos({ top: r0.bottom + 4, left: r.left, width: Math.max(r.width, 220), fit: Math.max(3, Math.floor((bottom - r0.bottom - 40) / 44)) }); };
   useEffect(() => { if (!open) return;
@@ -6089,12 +6148,14 @@ function SearchBox({ value, onChange, placeholder, id, words, className = "searc
   const pick = (w) => { keepView(w); onChange(w); remember(w); setOpen(false); setAct(-1); if (phone) setTimeout(() => inp.current?.blur(), 0); };
   const hl = (w) => { const i = ql ? w.toLowerCase().indexOf(ql) : -1; return i < 0 ? w : <>{w.slice(0, i)}<mark>{w.slice(i, i + ql.length)}</mark>{w.slice(i + ql.length)}</>; };
   const key2 = (e) => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); if (!open) { place(); setOpen(true); return; } const n = list.length; if (!n) return; setAct((a) => e.key === "ArrowDown" ? (a + 1) % n : (a <= 0 ? n - 1 : a - 1)); }
-    else if (e.key === "Enter") { e.preventDefault(); if (show && act >= 0 && list[act]) pick(list[act]); else { remember(q); setOpen(false); if (phone) inp.current?.blur(); } }
+    if (e.key === "Backspace" && !value && onBackEmpty) { onBackEmpty(); return; }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); if (!open) { place(); setOpen(true); return; } const n = nAll; if (!n) return; setAct((a) => e.key === "ArrowDown" ? (a + 1) % n : (a <= 0 ? n - 1 : a - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (show && act >= 0 && act < smartL.length) takeSmart(smartL[act]); else if (show && act >= 0 && list[act - smartL.length]) pick(list[act - smartL.length]); else { remember(q); setOpen(false); if (phone) inp.current?.blur(); } }
     else if (e.key === "Escape") { if (show) { e.preventDefault(); e.stopPropagation(); setOpen(false); setAct(-1); } else if (value) { e.preventDefault(); e.stopPropagation(); onChange(""); } }
   };
-  return (<div ref={ref} className={className + " sbx"}>
+  return (<div ref={ref} className={className + " sbx" + (lead ? " sbtoks" : "")}>
     {icon && <span>🔍</span>}
+    {lead}
     <input ref={inp} type="search" role="combobox" aria-expanded={show} aria-controls={lid} aria-autocomplete="list" aria-activedescendant={show && act >= 0 ? lid + "-" + act : undefined}
       enterKeyHint="search" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} autoFocus={autoFocus}
       placeholder={placeholder} value={value ?? ""}
@@ -6105,11 +6166,15 @@ function SearchBox({ value, onChange, placeholder, id, words, className = "searc
     {children}
     {show && pos && createPortal(<ul id={lid} role="listbox" aria-label={mode === "recent" ? "Zuletzt gesucht" : "Vorschläge"} className="sugmenu" style={{ top: pos.top, left: pos.left, width: pos.width }}
       onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onMouseDown={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()}>
-      {mode === "recent" && <li className="sughead" role="presentation">Zuletzt gesucht</li>}
-      {list.map((w, i) => <li key={w} id={lid + "-" + i} role="option" aria-selected={i === act} className={i === act ? "on" : ""} onClick={() => pick(w)} onMouseEnter={() => setAct(i)}>
+      {!!smartL.length && <li className="sughead" role="presentation">Als Filter übernehmen</li>}
+      {smartL.map((x, i) => <li key={"s" + i} id={lid + "-" + i} role="option" aria-selected={i === act} className={"sugsmart" + (i === act ? " on" : "")} onClick={() => takeSmart(x)} onMouseEnter={() => setAct(i)}>
+        <span className="sugico" aria-hidden="true">⚑</span><span className="sugt">{x.label}</span><small className="sugkind">{x.kind}</small></li>)}
+      {mode === "recent" && !!list.length && <li className="sughead" role="presentation">Zuletzt gesucht</li>}
+      {!!smartL.length && mode === "sug" && !!list.length && <li className="sughead" role="presentation">Im Text suchen</li>}
+      {list.map((w, j) => { const i = j + smartL.length; return <li key={w} id={lid + "-" + i} role="option" aria-selected={i === act} className={i === act ? "on" : ""} onClick={() => pick(w)} onMouseEnter={() => setAct(i)}>
         <span className="sugico" aria-hidden="true">{mode === "recent" ? "🕘" : "🔍"}</span><span className="sugt">{hl(w)}</span>
         {mode === "recent" && <button type="button" className="sugx" aria-label={"„" + w + "“ aus dem Verlauf entfernen"} onClick={(e) => { e.stopPropagation(); ls.set(key, recent.filter((x) => x !== w)); bump((x) => x + 1); }}>✕</button>}
-      </li>)}
+      </li>; })}
     </ul>, document.body)}
   </div>);
 }
@@ -6148,7 +6213,12 @@ const MActs = ({ items }) => { const cm = useCmp(), l = items.filter(Boolean);
     return <div className="mactions cmpacts"><button className={"btn sm" + (main.primary ? " primary" : "")} onClick={main.run}>{main.label}</button>
       {!!rest.length && <PickMenu btnClass="btn sm cmpmore" label="⋯" title="Weitere Aktionen" items={rest.map((a, i) => ({ k: "a" + i, title: a.label, run: a.run }))} />}</div>; }
   return <div className="mactions">{l.map((a, i) => <button key={i} className={"btn" + (a.primary ? " primary" : "")} onClick={a.run}>{a.label}</button>)}</div>; };
-const MBar = ({ q, setQ, placeholder, chips, children, inline }) => { const cm = useCmp(), cl = (chips || []).filter(Boolean);
+// v0.92: Handy-Listen nutzen den neuen Listen-Kopf (Reiter = Chips, Zusatzfilter ins Filter-Blatt)
+const MBar = ({ q, setQ, placeholder, chips, children }) => { const cl = (chips || []).filter(Boolean), on = cl.find((c) => c[3]);
+  const kids = React.Children.toArray(children).filter(Boolean);
+  return <ListBar q={q} setQ={setQ} placeholder={placeholder} tabs={cl.length ? cl.map(([k, l, n]) => [k, l, n]) : null} tab={on?.[0] ?? cl[0]?.[0]} setTab={(k) => cl.find((c) => c[0] === k)?.[4]?.()}
+    sheet={kids.length ? <div className="lbchips lbextra">{kids}</div> : null} />; };
+const MBarOld = ({ q, setQ, placeholder, chips, children, inline }) => { const cm = useCmp(), cl = (chips || []).filter(Boolean);
   if (cm !== "aus") { const on = cl.find((c) => c[3]) || cl[0], inl = inline ?? cl.length > 0;
     return (<div className={"msticky cmpbar" + (inl && children ? " cmpone" : "")}><div className="cmprow">
       {!!cl.length && <PickMenu label={on ? `${on[1]}${on[2] != null ? " " + on[2] : ""}` : "Filter"} title="Filter" items={cl.map(([k, l, n, o, click]) => ({ k, title: l, right: n != null ? String(n) : undefined, on: !!o, run: click }))} />}
@@ -7179,6 +7249,46 @@ function Swatches({ value, list, custom = [], def, onPick, onAdd, onRemove }) {
     </div>
   );
 }
+/* ---------- Schriftgrößen (v0.91) – pro Gerät, relativ zur Standardgröße ---------- */
+const FS_CATS = [
+  ["title", "Seitentitel", "header.top h1", "Dokumente", "fsx-title"],
+  ["head", "Karten- & Bereichsüberschriften", ".tilehead b, .panelhead > b, .ssectitle, .docsubtitle, .setdrilltitle, .app h2, .subhead, .hubtile b, .akte b, .aktehead b", "Nächste Fristen", "fsx-head"],
+  ["group", "Gruppen-Titel (GROSSBUCHSTABEN)", ".app h3, .foldersec, .setgrouph, .tbsethead, .mgrouphead, .side h4", "FINANZEN", "fsx-group"],
+  ["row", "Listen-Titel (Zeilen)", ".dtitle, .mtitle, .grow > b.one, .invname, .gbody > b, .folder > b, .setrow > .grow, .ditem .grow > b", "Rechnung Rexel Austria", "fsx-row"],
+  ["num", "Beträge & Kennzahlen", ".amt, .invamt, .cmpmain b, .tile > b, .aktekpis b, .kpi b", "€ 1.234,56", "fsx-num"],
+  ["text", "Text & Eingabefelder", ".app p, .app input, .app select, .app textarea, .win input, .win select, .win textarea", "Normaler Text in Beschreibungen", "fsx-text"],
+  ["btn", "Buttons, Filter & Reiter", ".app .btn, .app .chip, .app .seg > button, .navback, .win .btn", "Steuerrelevant", "fsx-btn"],
+  ["small", "Kleintext (Datum, Hinweise)", ".app small:not(.btn small):not(.chip small):not(.seg small), .win small", "Finanzamt · 08.07.2026", "fsx-small"],
+  ["nav", "Seitenleiste & Leiste unten", "nav.bottom:not(.mtabbar) > button", "Übersicht", "fsx-nav"]
+];
+const FS_PRESETS = [["Kompakt", 90], ["Standard", 100], ["Groß", 115], ["Sehr groß", 130]];
+function applyFontSizes(fs) {
+  let el = document.getElementById("fs-style");
+  if (!el) { el = document.createElement("style"); el.id = "fs-style"; document.head.appendChild(el); }
+  el.textContent = FS_CATS.filter(([k]) => fs?.[k] && fs[k] !== 100).map(([k, , sel]) => `${sel}{zoom:${fs[k] / 100}}`).join("\n");
+}
+if (typeof window !== "undefined") try { applyFontSizes(JSON.parse(localStorage.getItem("dev:fontSizes") || "{}")); } catch {}
+function FontSizeSettings() {
+  const [fs, setFs] = useLsState("dev:fontSizes", {});
+  useEffect(() => applyFontSizes(fs), [fs]);
+  const v = (k) => fs[k] || 100, set = (k, n) => setFs({ ...fs, [k]: Math.max(70, Math.min(170, n)) });
+  const all = FS_CATS.every(([k]) => v(k) === v(FS_CATS[0][0])) ? v(FS_CATS[0][0]) : null;
+  return (<>
+    <h4 className="subhead">Schriftgrößen</h4>
+    <p className="muted small">Gilt nur für dieses Gerät (iPad, Mac und Handy getrennt) – in % der Standardgröße.</p>
+    <div className="seg fspreset">{FS_PRESETS.map(([l, n]) => <button key={n} className={all === n ? "on" : ""} onClick={() => setFs(Object.fromEntries(FS_CATS.map(([k]) => [k, n])))}>{l}</button>)}</div>
+    <div className="fslist">{FS_CATS.map(([k, label, , sample, cls]) => (
+      <div key={k} className="fsrow">
+        <div className="grow"><small className="muted block">{label}</small><span className={"fssample " + cls} style={{ zoom: v(k) / 100 }}>{sample}</span></div>
+        <div className="fsctl">
+          <button className="iconbtn" aria-label={label + " kleiner"} onClick={() => set(k, v(k) - 5)}>A−</button>
+          <button className={"fsval" + (v(k) !== 100 ? " on" : "")} title="Auf Standard zurücksetzen" onClick={() => set(k, 100)}>{v(k)} %</button>
+          <button className="iconbtn" aria-label={label + " größer"} onClick={() => set(k, v(k) + 5)}>A+</button>
+        </div>
+      </div>))}
+    </div>
+  </>);
+}
 function DesignSettings({ design, setDesign, theme }) {
   const pick = (k, v) => setDesign({ ...design, [k]: v });
   const cur = design.preset || "fido";
@@ -7222,6 +7332,7 @@ function DesignSettings({ design, setDesign, theme }) {
         <span><b>Ausgaben in Schulden-Farbe</b><small className="muted block">Auch einzelne Abbuchungen in Listen einfärben (sonst neutral)</small></span>
         <input type="checkbox" className="switch" checked={!!design.outNeg} onChange={(e) => pick("outNeg", e.target.checked)} />
       </label>
+      <FontSizeSettings />
     </>
   );
 }
@@ -7868,9 +7979,9 @@ function nextInvNumber(list, kind, co, date) {
 // Ein-/Ausklappen in einem Schritt: Box wächst bzw. schrumpft oben, der Inhalt bleibt an derselben Stelle stehen (kein Springen)
 const fineMouse = typeof matchMedia !== "undefined" && matchMedia("(hover:hover) and (pointer:fine)").matches;
 // v0.80.1: Einklappen des Kopfbereichs beim Scrollen abgeschaltet (auf Wunsch entfernt)
-const HDR_COLLAPSE = false;
+const HDR_COLLAPSE = true; // v0.92: wieder aktiv (Vorschlag 4) – auch auf iPad/Touch
 const hdrScroll = (e) => {
-  if (!HDR_COLLAPSE || !fineMouse) return;
+  if (!HDR_COLLAPSE) return;
   const el = e.currentTarget; if (el._hdrBusy) return;
   const c = document.documentElement.classList, on = c.contains("hdrmin"), t = el.scrollTop;
   const apply = (want) => {
@@ -7899,7 +8010,7 @@ function useHdrReset() { useEffect(() => () => document.documentElement.classLis
 const HDR_COL = ".docdrop,.hint,.hero,.khero,.mstats,.invstats,.kbstats,.fbcar,.fbstats,.fbspecs";
 function useHdrCollapse(ref, on) {
   useEffect(() => {
-    if (!HDR_COLLAPSE || !on || !fineMouse) return;
+    if (!HDR_COLLAPSE || !on) return;
     const el = ref.current; if (!el?.parentElement) return;
     const mark = () => { for (let n = el.previousElementSibling; n; n = n.previousElementSibling) if (n.matches(HDR_COL) && !n.classList.contains("hdrcol")) n.classList.add("hdrcol"); };
     mark();
@@ -8821,6 +8932,10 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
       extra={[{ label: "Tags vergeben: ⋯ in einer Zeile oder „Auswählen“", run: () => {} }]} />
     {(filter !== "alle" || q || yr || tagF) && <button className="chip" onClick={saveView}>☆ Ansicht merken</button>}
   </>);
+  const invBar = <ListBar q={q} setQ={setQ} placeholder="Nummer, Kunde, Leistung suchen" id="kit:invoices" tabs={FILTERS.map(([k, l]) => [k, l, cnt(k)])} tab={filter} setTab={setFilter} hits={shown.length}
+    lk={{ yr, setYr, years, sortBy, setSortBy, sorts: { datum: ["Datum", "neueste zuerst"], betrag: ["Betrag", "höchste zuerst"], kunde: ["Kunde", "A–Z"], faellig: ["Fälligkeit", "früheste zuerst"] }, tagF, setTagF, tags: allTags, views, setViews }}
+    actions={[{ k: "newr", icon: "＋", title: "Neue Rechnung", run: () => newDoc("rechnung") }, { k: "newa", icon: "📝", title: "Neues Angebot", run: () => newDoc("angebot") },
+      { k: "pick", icon: "☑", title: pick ? "Auswahl beenden" : "Auswählen", sub: "mehrere drucken, exportieren, taggen", run: () => setPick(pick ? null : new Set()) }, ...ltMore]} />;
   const bulkBar = pick && (
     <div className="pickbar ltbulk">
       <b>{pick.size} ausgewählt</b>
@@ -8840,11 +8955,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
         <MStats items={[{ label: "Offen", value: fmtMoney(sumOf(openL)), sub: `${openL.length} Rechnung${openL.length === 1 ? "" : "en"}`, onClick: () => setFilter("offen") },
           { label: "Überfällig", value: fmtMoney(sumOf(overL)), vcls: overL.length ? "neg" : "", alert: !!overL.length, sub: `${overL.length} Rechnung${overL.length === 1 ? "" : "en"}`, onClick: () => setFilter("überfällig") },
           { label: `Bezahlt ${year}`, value: fmtMoney(paidYear), vcls: "pos", onClick: () => setFilter("bezahlt") }, { label: `Umsatz ${year}`, value: fmtMoney(yearRev) }]} />
-        {lt ? <div className="mactions ltmacts"><button className="btn primary" onClick={() => newDoc("rechnung")}>＋ Rechnung</button><button className="btn" onClick={() => newDoc("angebot")}>＋ Angebot</button>
-          <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[{ k: "pick", icon: "☑", title: pick ? "Auswahl beenden" : "Auswählen", run: () => setPick(pick ? null : new Set()) }, ...ltMore]} /></div>
-        : <MActs items={[{ label: "＋ Rechnung", primary: true, run: () => newDoc("rechnung") }, { label: "＋ Angebot", run: () => newDoc("angebot") }, { label: "🏢 Firma", run: () => setCoOpen(true) }, setTab && { label: "📮 Mahnungen", run: () => setTab("mahnungen") }]} />}
-        {lt ? <div className="ltmbar"><MBar q={q} setQ={setQ} placeholder="Nummer, Kunde, Tag suchen" chips={[]}>{ltFilterRow}</MBar></div>
-        : <MBar q={q} setQ={setQ} placeholder="Nummer, Kunde, Leistung suchen" chips={FILTERS.map(([k, l]) => [k, l, cnt(k), filter === k, () => setFilter(k)])} />}
+        {invBar}
         <MScroll>
           {filter === "wiederkehrend" ? (<>
             {!templates.length && <MEmpty>Keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „wiederkehrend“ wählen.</MEmpty>}
@@ -8880,15 +8991,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           <small className="muted">{Math.round((yearRev / KU_LIMIT) * 100)} % von € 55.000 (netto/Jahr)</small></div>
       </div>
       {lt ? (<>
-      <div className="invbar ltbar">
-        <button className="btn primary" onClick={() => newDoc("rechnung")}>＋ Rechnung</button>
-        <button className="btn" onClick={() => newDoc("angebot")}>＋ Angebot</button>
-        <span className="grow" />
-        <button className={"btn" + (pick ? " on" : "")} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
-        <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={ltMore} />
-      </div>
-      <SearchBox placeholder="Nummer, Kunde, Leistung, Tag suchen" value={q} onChange={setQ} />
-      <div className="chips invfilter ltfilter">{ltFilterRow}</div>
+      {invBar}
       </>) : (<>
       <div className="invbar">
         <button className="btn primary" onClick={() => newDoc("rechnung")}>＋ Rechnung</button>
@@ -9110,6 +9213,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
   const shown = kit.apply(list.filter(inScope).filter(showOld && cf === "alle" ? () => true : ctF[cf]).filter((c) => !nq || norm(`${c.name} ${c.provider} ${c.customerNo} ${c.cat} ${(c.tags || []).join(" ")}`).includes(nq)))
     .map((c) => ({ c, d: ctDates(c) }));
   const { pick, togglePick, setPick } = kit;
+  const newCtRef = useRef(null);
   const ctHead = ["Vertrag", "Anbieter", "Kategorie", "Bereich", "Betrag €", "Intervall", "pro Monat €", "Kundennr.", "Beginn", "Ende", "Kündigen bis", "Status", "Tags"];
   const ctRow = ({ c, d }) => [c.name || "", c.provider || "", c.cat || "", c.scope === "firma" ? "Firma" : "privat", r2e(c.amount), c.interval || "monatlich", r2e(monthly(c)), c.customerNo || "", c.start || "", d.end || "", d.cancelBy || "", c.cancelledAt ? "gekündigt" : c.inactive ? "inaktiv" : "aktiv", (c.tags || []).join(", ")];
   const tagCts = (cs) => { const f = kitTagPrompt(cs); if (!f) return; const ids = new Set(cs.map((c) => c.id)); setList((l) => l.map((x) => (ids.has(x.id) ? { ...x, tags: f(x) } : x))); };
@@ -9146,25 +9250,26 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
     { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`vertraege-${isoToday()}.xlsx`, [{ name: "Verträge", head: ctHead, rows: shown.map(ctRow) }]) },
     { label: "📄 CSV", run: () => downloadCsv(`vertraege-${isoToday()}.csv`, ctHead, shown.map(ctRow)) },
     { label: "📅 Kündigungstermine (.ics)", sub: "in den Kalender, mit Erinnerung 2 Tage vorher", run: ctIcs }];
-  const ctFilters = <KitFilters kit={kit} all={list.filter(inScope)} filters={CT_F} filter={cf} setFilter={setCf} q={cq} setQ={setCq} />;
+  const ctSc = scopeBits(scope, setScope, (k) => (k === "alle" ? active.length : active.filter((c) => (c.scope || "privat") === k).length));
+  const ctBar = <KitBar kit={kit} all={list.filter(inScope)} filters={CT_F} filter={cf} setFilter={setCf} q={cq} setQ={setCq} placeholder="Vertrag, Anbieter, Kundennr. suchen" hits={shown.length}
+    tokens={[ctSc.token]} smart={ctSc.smart} sheet={ctSc.sheet}
+    actions={[{ k: "new", icon: "＋", title: "Neuer Vertrag", run: newCtRef.current }, ...(docCands.length ? [{ k: "imp", icon: "📄", title: `Aus Dokumenten (${docCands.length})`, run: () => setImp((v) => !v) }] : []),
+      ...(onFiles ? [{ k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }] : []), { head: "Export" }, ...exp2pick(ctExp.slice(1))]} />;
   const ctBulk = <KitBulk kit={kit} shown={shown} idOf={(o) => o.c.id} actions={[
     { icon: "⬇", label: "Excel", run: (sel) => downloadXlsx(`Vertraege-Auswahl-${isoToday()}.xlsx`, [{ name: "Auswahl", head: ctHead, rows: sel.map(ctRow) }]) },
     { icon: "#", label: "Tag", run: (sel) => tagCts(sel.map((o) => o.c)) },
     { icon: "⏸", label: "Aktiv/Inaktiv", run: (sel) => { const ids = new Set(sel.map((o) => o.c.id)), allOff = sel.every((o) => o.c.inactive); setList((l) => l.map((x) => (ids.has(x.id) ? { ...x, inactive: !allOff } : x))); } }]} />;
   const newCt = () => setEdit({ id: uid(), scope: scope === "firma" ? "firma" : "privat", interval: "monatlich", noticeUnit: "Monate", cat: "Internet", docIds: [] });
+  newCtRef.current = newCt;
   const dropCt = async (files) => { const ids = await onFiles(files, { stay: true }); setWaitIds((w) => [...w, ...(ids || [])]); };
   return (
     <div className="ctpage">
       {mob ? (
       <div className="mpage">
-        <div className="seg scopeseg">{[["alle", "", "Alle"], ...SCOPES].map(([k, i, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l}</button>)}</div>
         <MStats items={[{ label: "Kosten pro Monat", value: fmtMoney(sum(scope)), sub: `${fmtMoney(sum(scope) * 12)} im Jahr` },
           { label: "Kündbar in 60 Tagen", value: soon.length, vcls: soon.length ? "neg" : "", alert: !!soon.length, sub: soon[0] ? `${soon[0].c.name} bis ${fmtDate(soon[0].d.cancelBy)}` : "nichts dringend" },
           scope === "alle" && { label: "👤 Privat / 🏢 Firma", value: fmtMoney(sum("privat")), sub: `Firma ${fmtMoney(sum("firma"))} / Monat` }]} />
-        <div className="mactions ltmacts"><button className="btn primary" onClick={newCt}>＋ Vertrag</button>
-          <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[{ k: "pick", icon: "☑", title: pick ? "Auswahl beenden" : "Auswählen", run: () => setPick(pick ? null : new Set()) },
-            ...(docCands.length ? [{ k: "imp", icon: "📄", title: `Aus Dokumenten (${docCands.length})`, run: () => setImp(!imp) }] : []), { head: "Export" }, ...exp2pick(ctExp.slice(1))]} /></div>
-        <div className="ltmbar"><MBar q={cq} setQ={setCq} placeholder="Vertrag, Anbieter, Tag suchen" chips={[]}>{ctFilters}</MBar></div>
+{ctBar}
         {imp && <section className="tile">
           {docCands.map((d) => <div key={d.id} className="frow"><Thumb d={d} /><div className="grow"><b>{d.contract.provider}</b><small className="muted block">{d.title}</small></div><button className="btn sm" onClick={() => setEdit(fromDoc(d))}>Übernehmen</button></div>)}
         </section>}
@@ -9188,22 +9293,13 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
         </MScroll>
       </div>
       ) : (<>
-      <div className="seg scopeseg">{[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small className="cnt">({k === "alle" ? active.length : active.filter((c) => (c.scope || "privat") === k).length})</small></button>)}</div>
       <div className="invstats">
         <div className="tile"><small className="muted">Kosten pro Monat</small><b>{fmtMoney(sum(scope))}</b><small className="muted">{fmtMoney(sum(scope) * 12)} im Jahr</small></div>
         {scope === "alle" && <><div className="tile"><small className="muted">👤 Privat</small><b>{fmtMoney(sum("privat"))}</b><small className="muted">pro Monat</small></div>
           <div className="tile"><small className="muted">🏢 Firma</small><b>{fmtMoney(sum("firma"))}</b><small className="muted">pro Monat</small></div></>}
         <div className={"tile" + (soon.length ? " alert" : "")}><small className="muted">Kündbar in 60 Tagen</small><b className={soon.length ? "neg" : ""}>{soon.length}</b><small className="muted">{soon[0] ? `${soon[0].c.name} bis ${fmtDate(soon[0].d.cancelBy)}` : "nichts dringend"}</small></div>
       </div>
-      <div className="invbar ltbar">
-        <button className="btn primary" onClick={newCt}>＋ Vertrag</button>
-        {!!docCands.length && <button className="btn" onClick={() => setImp(!imp)}>📄 Aus Dokumenten ({docCands.length})</button>}
-        <span className="grow" />
-        <button className={"btn" + (pick ? " on" : "")} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
-        <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[...(onFiles ? [{ k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }] : []), { head: "Export" }, ...exp2pick(ctExp.slice(1))]} />
-      </div>
-      <SearchBox placeholder="Vertrag, Anbieter, Kundennr., Tag suchen" value={cq} onChange={setCq} />
-      <div className="chips invfilter ltfilter">{ctFilters}</div>
+      {ctBar}
       {onFiles && showDrop && <DropField onFiles={dropCt} onHide={() => setShowDrop(false)} busy={!!docBusy} title="Verträge oder Ordner hierher ziehen" what="PDF & Fotos · Vertrag wird automatisch angelegt" />}
       {docBusy && waitIds.length > 0 && <ImportBar {...docBusy} />}
       <FitScroll card cols={["Vertrag", "Details", "Kosten · Kündigung"]}>
@@ -9449,30 +9545,22 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         </MScroll>
       </div>
       ) : (<>
-      <div className="invbar">
-        <button className="btn primary" onClick={() => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() })}>＋ Kontakt</button>
-        <button className="btn" onClick={fromPhone}>📱 Aus Handy-Kontakten</button>
+      <div className="invbar lbhidden">
         <input ref={vcfRef} type="file" accept=".vcf,text/vcard,text/x-vcard" multiple hidden onChange={async (e) => {
           const files = [...e.target.files]; e.target.value = ""; let all = [];
           for (const f of files) all = all.concat(parseVcf(await f.text()));
           if (!all.length) return alert("Keine Kontakte in der Datei gefunden.");
           setPicked(all.map((c) => ({ ...c, on: true })));
         }} />
-        <span className="grow" />
-        <small className="muted">{list.length} Kontakt{list.length === 1 ? "" : "e"}</small>
       </div>
-      {!("contacts" in navigator && "select" in (navigator.contacts || {})) && <p className="muted small hint">📱 <b>iPhone – direkt aus dem Adressbuch:</b> Einstellungen → Apps → Safari → Erweitert → Feature Flags → „Contact Picker API“ einschalten, dann FinDocu neu öffnen. Danach öffnet „Aus Handy-Kontakten“ die Kontaktauswahl des iPhones. <b>Ohne diese Einstellung:</b> Kontakte-App → Kontakte markieren → Teilen → „In Dateien sichern“ und die .vcf-Datei hier wählen. <b>Mac:</b> Kontakte → Ablage → Exportieren → vCard. <b>Android/Chrome:</b> funktioniert direkt.</p>}
-      <SearchBox placeholder="Name, E-Mail, Telefon, Ort suchen" value={q} onChange={setQ} />
-      <ChipBar storeKey="ctChips" className="invfilter" items={[
-        { k: "drop", label: "📥 Ablagefeld", el: <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button> },
-        { k: "alle", label: "Alle", el: <button className={"chip" + (type === "alle" ? " on" : "")} onClick={() => setType("alle")}>Alle <small>({list.length})</small></button> },
-        ...types.map((t) => ({ k: "t:" + t.id, label: <><TypeGlyph t={t} /> {t.name}</>, el: <button className={"chip" + (type === t.name ? " on" : "")} style={type === t.name ? undefined : { color: t.color }} onClick={() => setType(t.name)}><TypeGlyph t={t} /> {t.name} <small>({list.filter((c) => (c.type || "Kunde") === t.name).length})</small></button> })),
-        { k: "export", label: "⬇︎ Export", el: <ExportMenu items={[{ head: `${shown.length} Kontakte (aktueller Filter)` },
+      {false && !("contacts" in navigator && "select" in (navigator.contacts || {})) && <p className="muted small hint">📱 <b>iPhone – direkt aus dem Adressbuch:</b> Einstellungen → Apps → Safari → Erweitert → Feature Flags → „Contact Picker API“ einschalten, dann FinDocu neu öffnen. Danach öffnet „Aus Handy-Kontakten“ die Kontaktauswahl des iPhones. <b>Ohne diese Einstellung:</b> Kontakte-App → Kontakte markieren → Teilen → „In Dateien sichern“ und die .vcf-Datei hier wählen. <b>Mac:</b> Kontakte → Ablage → Exportieren → vCard. <b>Android/Chrome:</b> funktioniert direkt.</p>}
+      <ListBar q={q} setQ={setQ} placeholder="Name, E-Mail, Telefon, Ort suchen" id="kunden" hits={shown.length}
+        tabs={[["alle", "Alle", list.length], ...types.map((t) => [t.name, t.name, list.filter((c) => (c.type || "Kunde") === t.name).length])]} tab={type} setTab={setType}
+        actions={[{ k: "new", icon: "＋", title: "Neuer Kontakt", run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) }, { k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }, { k: "phone", icon: "📱", title: "Aus Handy-Kontakten", run: fromPhone },
+          setTab && { k: "set", icon: "⚙︎", title: "Kontaktarten bearbeiten", run: () => { ls.set("openSettingsSec", "kontaktarten"); setTab("settings"); } }, { head: "Export" }, ...exp2pick([{ head: `${shown.length} Kontakte (aktueller Filter)` },
           { label: "📇 vCard (.vcf)", sub: "für Handy, Outlook, iCloud", run: () => saveBlob(new Blob([vcardText(shown)], { type: "text/vcard" }), `kontakte-${isoToday()}.vcf`) },
           { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`kontakte-${isoToday()}.xlsx`, [{ name: "Kontakte", head: ["Nr.", "Art", "Name", "Ansprechperson", "Anschrift", "E-Mail", "Telefon", "Mobil", "Web", "UID", "Notiz"], rows: shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.web || "", c.uid || "", c.note || ""]) }]) },
-          { label: "📄 CSV", run: () => downloadCsv(`kontakte-${isoToday()}.csv`, ["Nr.", "Art", "Name", "Ansprechperson", "Anschrift", "E-Mail", "Telefon", "Mobil", "Web", "UID"], shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.web || "", c.uid || ""])) }]} /> },
-        setTab && { k: "set", label: "⚙︎ Arten bearbeiten", el: <button className="chip" title="Kontaktarten bearbeiten" onClick={() => { ls.set("openSettingsSec", "kontaktarten"); setTab("settings"); }}>⚙︎</button> },
-      ]} />
+          { label: "📄 CSV", run: () => downloadCsv(`kontakte-${isoToday()}.csv`, ["Nr.", "Art", "Name", "Ansprechperson", "Anschrift", "E-Mail", "Telefon", "Mobil", "Web", "UID"], shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.web || "", c.uid || ""])) }].filter((x) => !x.head))]} />
       {showDrop ? <DropField onFiles={dropVcf} onHide={() => setShowDrop(false)} busy={!!busy} title="Kontaktdateien (.vcf) oder Ordner hierher ziehen" what="vCard (.vcf)"
         accept=".vcf,text/vcard,text/x-vcard" isOk={(f) => /\.vcf$/i.test(f.name) || /vcard/i.test(f.type)} emptyMsg="Keine .vcf-Kontaktdateien gefunden." />
         : null}
@@ -9806,27 +9894,19 @@ function ArticlesPage({ setTab }) {
         </MScroll>
       </div>
       ) : (<>
-      <div className="invbar">
-        <button className="btn primary" onClick={() => setEdit({ id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: grp !== "alle" && grp !== "ohne" ? grp : "" })}>＋ Artikel</button>
-        <button className="btn" onClick={() => setScan(true)}>📷 Artikel scannen</button>
-        <span className="grow" />
-        <ExportMenu items={[{ head: `${shown.length} Artikel (aktueller Filter)` },
+      <ListBar q={q} setQ={setQ} placeholder="Bezeichnung, Nummer, Gruppe suchen" id="artikel" hits={shown.length}
+        tabs={[["alle", "Alle", list.length], ...groups.map((g) => [g, g, list.filter((a) => a.group === g).length]), ["ohne", "Ohne Gruppe", list.filter((a) => !a.group).length]].filter(([k, , n]) => k === "alle" || n || C.groups.includes(k))} tab={grp} setTab={setGrp}
+        lk={{ sortBy: sort, setSortBy: setSort, sorts: { name: ["Name", "A–Z"], preis: ["Preis", "höchster zuerst"], umsatz: ["Umsatz", "meist verrechnet zuerst"] } }}
+        actions={[{ k: "new", icon: "＋", title: "Neuer Artikel", run: () => setEdit({ id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: grp !== "alle" && grp !== "ohne" ? grp : "" }) }, { k: "scan", icon: "📷", title: "Artikel scannen", run: () => setScan(true) },
+          setTab && { k: "lager", icon: "📋", title: "Lager & Inventur", run: () => setTab("inventur") }, setTab && { k: "set", icon: "⚙︎", title: "Artikel-Einstellungen", run: () => { ls.set("openSettingsSec", "artikel"); setTab("settings"); } },
+          { head: "Export" }, ...exp2pick([{ head: `${shown.length} Artikel (aktueller Filter)` },
           { label: "🖨 Preisliste PDF", run: async () => { const by = {}; shown.filter(({ a }) => !a.inactive).forEach(({ a }) => (by[a.group || "Ohne Gruppe"] = by[a.group || "Ohne Gruppe"] || []).push(a));
             const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
             saveBlob(await tablePdf({ title: "Preisliste", subtitle: `${co.name || ""} · gültig ab ${fmtDate(isoToday())}${co.uid ? "" : " · Kleinunternehmer, Preise ohne USt"}`,
               columns: [{ label: "Art.-Nr.", w: 1.2 }, { label: "Bezeichnung", w: 5 }, { label: "Einheit", w: 1 }, { label: "Preis €", w: 1.3, align: "right" }],
               sections: Object.entries(by).map(([g, l]) => ({ heading: g, rows: l.map((a) => [a.number || "", a.text || "", a.unit || "", r2e(a.price)]) })) }), `preisliste-${isoToday()}.pdf`); } },
           { label: "📊 Excel (.xlsx)", sub: "mit Umsatz und Anzahl aus Rechnungen", run: () => downloadXlsx(`artikel-${isoToday()}.xlsx`, [{ name: "Artikel", head: ["Art.-Nr.", "Bezeichnung", "Gruppe", "Einheit", "Preis €", "EAN", "Aktiv", "Rechnungspositionen", "Umsatz €", "Notiz"], rows: shown.map(({ a, u }) => [a.number || "", a.text || "", a.group || "", a.unit || "", r2e(a.price), a.ean || "", a.inactive ? "nein" : "ja", u.n, r2e(u.sum), a.note || ""]) }]) },
-          { label: "📄 CSV", run: () => downloadCsv(`artikel-${isoToday()}.csv`, ["Art.-Nr.", "Bezeichnung", "Gruppe", "Einheit", "Preis €", "EAN", "Aktiv"], shown.map(({ a }) => [a.number || "", a.text || "", a.group || "", a.unit || "", r2e(a.price), a.ean || "", a.inactive ? "nein" : "ja"])) }]} />
-        <PSelect className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">Name</option><option value="preis">Preis</option><option value="umsatz">Umsatz</option></PSelect>
-        {setTab && <button className="chip" onClick={() => setTab("inventur")}>📋 Lager</button>}
-        {setTab && <button className="chip" title="Einstellungen" onClick={() => { ls.set("openSettingsSec", "artikel"); setTab("settings"); }}>⚙︎</button>}
-      </div>
-      <SearchBox placeholder="Bezeichnung, Nummer, Gruppe suchen" value={q} onChange={setQ} />
-      <div className="chips invfilter">
-        {[["alle", "Alle", list.length], ...groups.map((g) => [g, g, list.filter((a) => a.group === g).length]), ["ohne", "Ohne Gruppe", list.filter((a) => !a.group).length]]
-          .filter(([k, , n]) => k === "alle" || n || C.groups.includes(k)).map(([k, l, n]) => <button key={k} className={"chip" + (grp === k ? " on" : "")} onClick={() => setGrp(k)}>{l} <small>({n})</small></button>)}
-      </div>
+          { label: "📄 CSV", run: () => downloadCsv(`artikel-${isoToday()}.csv`, ["Art.-Nr.", "Bezeichnung", "Gruppe", "Einheit", "Preis €", "EAN", "Aktiv"], shown.map(({ a }) => [a.number || "", a.text || "", a.group || "", a.unit || "", r2e(a.price), a.ean || "", a.inactive ? "nein" : "ja"])) }].filter((x) => !x.head))]} />
       <FitScroll card cols={["Bezeichnung", "Nummer · Gruppe", "Preis"]}>
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Artikel. Mit „＋ Artikel“ anlegen oder beim Schreiben einer Rechnung mit ☆ merken – beim Tippen der Bezeichnung werden sie vorgeschlagen."}</p>}
@@ -10041,8 +10121,8 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
         <ExportMenu items={exportItems} />
       </div>
       {mode === "cal" ? cal : (<>
-        <SearchBox placeholder="Gerät, Marke, Seriennummer, Händler suchen" value={q} onChange={setQ} />
-        <div className="chips invfilter">{chips.filter(([k, , n]) => n || k === "alle").map(([k, l, n]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({n})</small></button>)}</div>
+        <ListBar q={q} setQ={setQ} placeholder="Gerät, Marke, Seriennummer, Händler suchen" id="besitz" hits={shown.length}
+          tabs={chips.filter(([k, , n]) => n || k === "alle").map(([k, l, n]) => [k, l, n])} tab={filter} setTab={setFilter} />
         <FitScroll card cols={["Gerät", "Marke · Kauf · Garantie", "Kaufpreis"]}>
           <section className="tile ctlist">
             {!shown.length && empty}
@@ -10346,7 +10426,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
         <button className={"chip" + (showCounts ? " on" : "")} onClick={() => setShowCounts(!showCounts)}>Protokolle ({kCounts.length})</button>
         <button className="chip" title="Kassen verwalten" onClick={() => setSetup(true)}>⚙︎</button>
       </div>
-      <SearchBox placeholder="Text, Kategorie, Beleg, Nummer suchen" value={q} onChange={setQ} />
+      <ListBar q={q} setQ={setQ} placeholder="Text, Kategorie, Beleg, Nummer suchen" id="kassa" hits={shown.length} />
       {showCounts && countsList}
       <FitScroll card>
       <section className="tile kbtable">
@@ -10696,9 +10776,9 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
         <ExportMenu items={exportItems} />
         {setTab && <button className="chip" onClick={() => setTab("artikel")}>📦 Artikel</button>}
       </div>
-      <div className="chips invfilter">{viewChips}</div>
-      <SearchBox placeholder="Artikel, Nummer, Lagerort, Lieferant suchen" value={q} onChange={setQ} />
-      {!!locChips.length && (view === "bestand" || view === "nachbestellen") && <div className="chips invfilter">{locChips.map(([k, l]) => <button key={k} className={"chip" + (loc === k ? " on" : "")} onClick={() => setLoc(k)}>{l}</button>)}</div>}
+      <ListBar q={q} setQ={setQ} placeholder="Artikel, Nummer, Lagerort, Lieferant suchen" id="inventur" tabs={VIEWS.map(([k, l, n]) => [k, l, n || null])} tab={view} setTab={setView}
+        tokens={[loc !== "alle" && [loc === "ohne" ? "📍 ohne Ort" : "📍 " + loc, () => setLoc("alle")]]} smart={locs.map((l) => ({ label: "📍 " + l, kind: "Lagerort", words: [l.toLowerCase()], run: () => setLoc(l) }))}
+        sheet={!!locChips.length && <><h4 className="lbh">Lagerort</h4><div className="lbchips">{locChips.map(([k, l]) => <button key={k} className={"chip" + (loc === k ? " on" : "")} onClick={() => setLoc(k)}>{l}</button>)}</div></>} />
       <FitScroll card cols={view === "inventur" ? ["Inventur", "Stichtag · Umfang", "Status"] : view === "bewegungen" ? ["Artikel", "Datum · Art", "Menge"] : ["Artikel", "Lagerort · Lieferant", "Bestand"]}><section className="tile ctlist">{body}</section></FitScroll>
       </>)}
       {mv && <StockMoveWin a={mv.a} type={mv.type} st={st(mv.a)} onSave={addMove} onClose={() => setMv(null)} />}
@@ -10755,7 +10835,8 @@ function DunningPage({ setTab, book }) {
     { label: "📄 Offene Posten CSV", run: () => downloadCsv(`Offene-Posten-${isoToday()}.csv`, OP_HEAD, openList(list).map(opRow)) },
     { label: "📒 Mahnverlauf CSV", run: () => downloadCsv(`Mahnverlauf-${isoToday()}.csv`, ["Datum", "Stufe", "Rechnung", "Kunde", "Frist", "Gebühr €", "Rechnungsbetrag €"], history.map(({ x, r }) => [r.date, remindName(r.level), x.number, x.customer?.name || "", r.due, r2e(r.fee), r2e(invTotal({ ...x, fee: 0 }))])) }];
   const mnMore = [setTab && { k: "inv", icon: "🧾", title: "Rechnungen", run: () => setTab("invoices") }, setTab && { k: "set", icon: "⚙︎", title: "Mahnwesen einstellen", run: () => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); } }, { head: "Export" }, ...exp2pick(mnExp)].filter(Boolean);
-  const mnFilters = <KitFilters kit={kit} all={[...over, ...history]} filters={MF} filter={mf} setFilter={setMf} q={mq} setQ={setMq} />;
+  const mnBar = <KitBar kit={kit} all={[...over, ...history]} filters={MF} filter={mf} setFilter={setMf} q={mq} setQ={setMq} placeholder="Kunde, Rechnungsnummer, Mahnstufe suchen"
+    actions={[{ k: "newdun", icon: "📮", title: "Mahnung erstellen", run: () => setPickOpen(true) }, ...mnMore.filter(Boolean)]} />;
   const mnBulk = <KitBulk kit={kit} shown={overS} idOf={(o) => o.x.id} actions={[
     { icon: <IcoPrint />, label: "Drucken", run: (sel) => printInvs(sel.map((o) => [o.x, null])) },
     { icon: "⬇", label: "Excel", run: (sel) => downloadXlsx(`Mahnungen-Auswahl-${isoToday()}.xlsx`, [{ name: "Auswahl", head: mnHead, rows: sel.map(mnRow) }]) },
@@ -10767,9 +10848,7 @@ function DunningPage({ setTab, book }) {
         <MStats items={[{ label: "Überfällig", value: fmtMoney(over.reduce((s, o) => s + invTotal(o.x), 0)), vcls: over.length ? "neg" : "", alert: !!over.length, sub: `${over.length} Rechnung${over.length === 1 ? "" : "en"}` },
           { label: "Jetzt mahnen", value: over.filter((o) => o.ready).length, sub: `Wartezeit ${dn.waitDays} Tage` },
           { label: `Mahnungen ${year}`, value: history.filter((h) => (h.r.date || "").startsWith(year)).length, sub: "versendet" }]} />
-        <div className="mactions ltmacts"><button className="btn primary" onClick={() => setPickOpen(true)}>📮 Mahnung erstellen</button>
-          <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[{ k: "pick", icon: "☑", title: pick ? "Auswahl beenden" : "Auswählen", run: () => setPick(pick ? null : new Set()) }, ...mnMore]} /></div>
-        <div className="ltmbar"><MBar q={mq} setQ={setMq} placeholder="Kunde, Rechnungsnummer, Tag suchen" chips={[]}>{mnFilters}</MBar></div>
+        {mnBar}
         <MScroll>
           {mf !== "verlauf" && <MHead right={overS.length}>Zu mahnen</MHead>}
           {mf !== "verlauf" && !overS.length && <MEmpty>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</MEmpty>}
@@ -10808,21 +10887,15 @@ function DunningPage({ setTab, book }) {
         <div className="tile"><small className="muted">Mahnungen {year}</small><b>{history.filter((h) => (h.r.date || "").startsWith(year)).length}</b><small className="muted">versendet</small></div>
         <div className="tile"><small className="muted">Mahnspesen {year}</small><b>{fmtMoney(history.filter((h) => (h.r.date || "").startsWith(year)).reduce((s, h) => s + (Number(h.r.fee) || 0), 0))}</b><small className="muted">verrechnet</small></div>
       </div>
-      <div className="invbar ltbar">
-        {(() => { const cand = [...over.map((o) => o.x), ...openNotOver]; return (
-          <details className="more newdun">
-            <summary className="btn">📮 Mahnung erstellen</summary>
-            <div className="moremenu" onClick={(e) => { if (e.target.closest("button")) e.currentTarget.closest("details").open = false; }}>
-              {!cand.length && <p className="muted small" style={{ margin: 8 }}>Keine offenen Rechnungen – alles bezahlt 🎉</p>}
-              {cand.map((x) => <button key={x.id} onClick={() => setRemind(x)}><b>{x.number}</b> · {x.customer?.name || "Ohne Kunde"} <span className="muted">· {fmtMoney(invTotal(x))}{invState(x) === "überfällig" ? " · überfällig" : ""}</span></button>)}
-            </div>
-          </details>); })()}
-        <span className="grow" />
-        <button className={"btn" + (pick ? " on" : "")} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
-        <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={mnMore} />
-      </div>
-      <SearchBox placeholder="Kunde, Rechnungsnummer, Mahnstufe, Tag suchen" value={mq} onChange={setMq} />
-      <div className="chips invfilter ltfilter">{mnFilters}</div>
+      {mnBar}
+      {pickOpen && (
+          <Win id="dunpick" onClose={() => setPickOpen(false)} dirty={false} small>
+            <div className="panelhead"><b>Mahnung für …</b><XBtn /></div>
+            {(() => { const cand = [...over.map((o) => o.x), ...openNotOver]; return !cand.length ? <p className="muted">Keine offenen Rechnungen – alles bezahlt 🎉</p>
+              : cand.map((x) => <div key={x.id} className="frow click" onClick={() => { setPickOpen(false); setRemind(x); }}><MAvatar text={x.customer?.name} /><div className="grow"><b>{x.customer?.name || "Ohne Kunde"}</b><small className="muted block">{x.number} · {fmtMoney(invTotal(x))}{invState(x) === "überfällig" ? " · überfällig" : ""}</small></div><span className="muted">›</span></div>); })()}
+          </Win>
+        )}
+
       <FitScroll card className="kinv" cols={["Kunde", "Rechnung · Fälligkeit", "Betrag · Stufe"]}>
       {mf !== "verlauf" && <section className="tile invlist ltlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b><small>{overS.length}</small></div>
@@ -13206,4 +13279,68 @@ html.setdrill-on header.top{min-height:0}
 @media (max-width:700px){header.top h1{overflow-wrap:break-word}header.top h1.longh1{font-size:30px!important;line-height:1.15!important}}
 
 .inrow{display:flex;gap:6px;align-items:stretch}.inrow>input{flex:1 1 56px;min-width:56px}.inrow>select,.inrow>.pselect{flex:0 1 auto;min-width:0}
+
+/* v0.91 Schriftgrößen */
+.fspreset{margin:6px 0 10px}.fspreset button{flex:1}
+.fslist{display:grid;gap:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
+.fsrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:10px 12px;min-height:56px}.fsrow>.grow{flex:1 1 170px;min-width:0}
+.fsrow+.fsrow{border-top:1px solid var(--line)}
+.fssample{display:inline-block;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.fsx-title{font-size:30px;font-weight:700;letter-spacing:-.02em}.fsx-head{font-size:18px;font-weight:600}
+.fsx-group{font-size:12px;font-weight:600;color:var(--mut);letter-spacing:.05em}.fsx-row{font-size:16px;font-weight:600}
+.fsx-num{font-size:20px;font-weight:700}.fsx-text{font-size:15px}.fsx-btn{font-size:14px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--card2,rgba(127,127,127,.12))}
+.fsx-small{font-size:12.5px;color:var(--mut)}.fsx-nav{font-size:15px;font-weight:500}
+.fsctl{display:flex;align-items:center;gap:4px;flex:none;margin-left:auto}
+.fsctl .iconbtn{width:40px;height:36px;font-weight:700;font-size:14px}
+.fsval{min-width:62px;height:36px;border:0;border-radius:10px;background:none;color:var(--mut);font:inherit;font-size:14px;cursor:pointer}
+.fsval.on{color:var(--acc);font-weight:700}
+
+/* v0.92 Listen-Kopf */
+.lbar{display:flex;flex-direction:column;gap:8px;margin:0 0 10px}
+.lbar.msticky{position:sticky;z-index:6}
+.lbrow{display:flex;gap:8px;align-items:center;min-width:0}
+.lbrow>.sbx{flex:1;min-width:0;margin:0!important}
+.lbfilter,.lbmore{flex:none;min-height:44px;border-radius:14px}
+.lbmore{min-width:44px;padding:0 12px;font-size:20px;line-height:1}
+.lbfilter.on{color:var(--acc)}
+.lbbadge{background:var(--acc);color:#fff;border-radius:999px;font-size:12px;min-width:20px;height:20px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;margin-left:6px;font-weight:700}
+.sbtoks{overflow-x:auto;scrollbar-width:none}.sbtoks::-webkit-scrollbar{display:none}
+.sbtoks input{min-width:90px}
+.lbtoks{display:inline-flex;gap:5px;flex:none}
+.lbtok{display:inline-flex;align-items:center;gap:4px;background:var(--acc);color:#fff;border-radius:8px;padding:3px 8px;font-size:14px;font-weight:600;white-space:nowrap}
+.lbtok button{border:0;background:none;color:#fff;padding:0 0 0 2px;font-size:12px;cursor:pointer;opacity:.85}
+.lbtabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:1px 1px 2px;scroll-snap-type:x proximity}
+.lbtabs::-webkit-scrollbar{display:none}
+.lbtab{flex:none;border:1px solid var(--line);background:var(--card);color:var(--txt);border-radius:999px;padding:6px 13px;font:inherit;font-size:14.5px;font-weight:500;white-space:nowrap;cursor:pointer;scroll-snap-align:start}
+.lbtab small{color:var(--mut);margin-left:5px;font-size:12.5px}
+.lbtab.on{background:var(--txt);color:var(--bg);border-color:var(--txt)}.lbtab.on small{color:inherit;opacity:.7}
+.lbadd{color:var(--acc);border-style:dashed}
+.lbmini{display:none}
+.sugsmart .sugt{font-weight:600}.sugkind{margin-left:auto;color:var(--mut);font-size:12.5px;padding-left:10px}
+.lbscrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:900;animation:lbfade .2s}
+.lbsheet{position:fixed;left:0;right:0;bottom:0;z-index:901;background:var(--bg);border-radius:22px 22px 0 0;max-height:88vh;overflow:auto;padding:6px 16px calc(env(safe-area-inset-bottom) + 16px);animation:lbup .28s cubic-bezier(.2,.8,.2,1);box-shadow:0 -10px 40px rgba(0,0,0,.25)}
+.lbgrab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:4px auto 8px}
+.lbshead{display:flex;align-items:center;justify-content:space-between;position:sticky;top:-6px;background:var(--bg);padding:4px 0 6px;z-index:2}
+.lbshead b{font-size:18px}.lbshead .link{font-weight:600;padding:8px 4px}
+.lbsbody{display:flex;flex-direction:column}
+.lbh{margin:14px 2px 8px;font-size:13px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.lbchips{display:flex;flex-wrap:wrap;gap:6px}
+.lbsbody .seg{max-width:none}
+.lbviews{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
+.lbvrow{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 14px}.lbvrow+.lbvrow{border-top:1px solid var(--line)}
+.lbapply{width:100%;margin-top:18px;min-height:50px;font-size:16px}
+@keyframes lbup{from{transform:translateY(100%)}to{transform:none}}@keyframes lbfade{from{opacity:0}}
+@media (min-width:900px){
+  .lbsheet{left:auto;right:24px;top:80px;bottom:auto;width:420px;border-radius:18px;max-height:calc(100vh - 110px);border:1px solid var(--line);animation:lbfade .15s}
+  .lbgrab{display:none}.lbscrim{background:rgba(0,0,0,.12)}
+}
+@media (max-width:700px){
+  .lbfilter{padding:0 12px}.lbfilter .lbl{display:none}.lbbadge{margin-left:4px}
+  html.lbscrolled .lbmini{display:block;text-align:center;font-weight:600;font-size:16px;margin:0 0 -2px}
+}
+
+@media (max-width:700px){.docdrop{display:none!important}}
+.lbmore .caret,.lbmore svg{display:none}
+
+.invbar.lbhidden{display:none}
 `;
