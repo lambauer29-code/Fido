@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrinkPdf } from "./scan.js";
 import { parseReceiptQR, pastOrToday } from "./receipt.js";
 import { saveBlob, downloadCsv, downloadXlsx, tablePdf, zipBlob, vcardText, csvBlob, xlsxBlob } from "./exports.js";
-import { PROVIDERS, PROVIDER_LIST, syncCfg, setSyncCfg, syncOn, syncNow, oauthLogin, oauthConfig, setupKey, cloudState, disconnect, remoteDevices, defaultDeviceName, deviceId, kvGet } from "./sync.js";
+import { PROVIDERS, PROVIDER_LIST, syncCfg, setSyncCfg, syncOn, syncNow, oauthLogin, oauthConfig, setupKey, cloudState, disconnect, remoteDevices, defaultDeviceName, deviceId, kvGet, changePassword } from "./sync.js";
 import { canUpdate, appVersion, checkUpdate, installUpdate } from "./platform.js";
 import { latestBalance, parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS, counterpartyKey } from "./importers.js";
 
@@ -7456,6 +7456,13 @@ function SyncSettings({ notify }) {
   const [step, setStep] = useState(() => { const n = localStorage.getItem("syncNext") || ""; localStorage.removeItem("syncNext"); return n; });
   const [cloud, setCloud] = useState(null), [pw, setPw] = useState(""), [pw2, setPw2] = useState(""), [show, setShow] = useState(false), [others, setOthers] = useState(0);
   const [mega, setMega] = useState(null), [devs, setDevs] = useState(null), [help, setHelp] = useState(false);
+  const [pwc, setPwc] = useState(null); // Passwort ändern: { old, n1, n2 }
+  const doChangePw = async () => {
+    setErr("");
+    try { const r = await changePassword(pwc.old, pwc.n1, setBusy); setBusy(""); setPwc(null); setCfg(syncCfg());
+      notify?.(`Sync-Passwort geändert · ${r.files} Datei${r.files === 1 ? "" : "en"} neu verschlüsselt – auf den anderen Geräten einmal das neue Passwort eingeben`);
+    } catch (e) { setErr(e.message); setBusy(""); }
+  };
   useEffect(() => { const f = () => setCfg(syncCfg()); addEventListener("findocu-sync", f); return () => removeEventListener("findocu-sync", f); }, []);
   useEffect(() => { oauthConfig().then(setConf); deviceId(); }, []);
   useEffect(() => { if (step.startsWith("error:")) { setErr(step.slice(6)); setStep(""); } }, [step]);
@@ -7477,7 +7484,9 @@ function SyncSettings({ notify }) {
   };
   const doKey = async () => {
     setBusy("Prüfe Sync-Passwort …"); setErr("");
-    try { const r = await setupKey(pw); setOthers(r.others); setPw(""); setPw2(""); if (r.others) setStep("first"); else await firstSync("local"); }
+    try { const r = await setupKey(pw); setOthers(r.others); setPw(""); setPw2("");
+      if (cfg.pwChanged) { setSyncCfg({ ready: true, pwChanged: false, lastError: "" }); setCfg(syncCfg()); setBusy(""); notify?.("Neues Sync-Passwort übernommen"); now(); return; }
+      if (r.others) setStep("first"); else await firstSync("local"); }
     catch (e) { setErr(e.message); } finally { setBusy(""); }
   };
   const firstSync = async (first) => {
@@ -7529,7 +7538,8 @@ function SyncSettings({ notify }) {
 
       {needPw && step !== "first" && <div className="syncform">
         <b className="synchd"><ProvIcon id={cfg.provider} size={22} /> {P?.name} verbunden – Sync-Passwort</b>
-        {!cloud ? <p className="muted small">Prüfe Cloud …</p> : cloud.hasMeta
+        {cfg.pwChanged && <p className="small warnc"><b>Das Sync-Passwort wurde auf einem anderen Gerät geändert.</b> Gib hier das neue Passwort ein – deine Daten auf diesem Gerät bleiben erhalten.</p>}
+        {!cloud ? <p className="muted small">Prüfe Cloud …</p> : cfg.pwChanged ? null : cloud.hasMeta
           ? <p className="muted small">In der Cloud gibt es schon FinDocu-Daten{cloud.devices ? ` von ${cloud.devices} Gerät${cloud.devices === 1 ? "" : "en"}` : ""}. Gib <b>dasselbe Sync-Passwort</b> ein wie auf dem anderen Gerät.</p>
           : <p className="muted small">Erstes Gerät: Lege ein Sync-Passwort fest (mind. 8 Zeichen). Du brauchst es auf jedem weiteren Gerät. <b>Ohne Passwort kann niemand die Daten öffnen – auch du nicht.</b></p>}
         <label>Sync-Passwort<PwInput show={show} setShow={setShow} autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && cloud?.hasMeta && pw && doKey()} /></label>
@@ -7554,8 +7564,21 @@ function SyncSettings({ notify }) {
         {devs && devs.length > 0 && <ul className="syncdevs">{devs.map((d) => <li key={d.file}>{d.me ? "📍" : "💻"} <b>{d.name}</b>{d.me ? " (dieses Gerät)" : ""} <small className="muted">· {fmtStamp(d.at)}</small></li>)}</ul>}
         <div className="actions">
           <button className="btn bkpress" disabled={!!busy} onClick={now}>🔄 Jetzt synchronisieren</button>
+          <button className="btn" disabled={!!busy} onClick={() => { setErr(""); setPwc(pwc ? null : { old: "", n1: "", n2: "" }); }}>🔑 Passwort ändern</button>
           <button className="btn" disabled={!!busy} onClick={off}>Trennen</button>
         </div>
+        {pwc && <div className="syncform syncpwc">
+          <b className="synchd">🔑 Sync-Passwort ändern</b>
+          <p className="muted small">Alle Daten und Dateien in der Cloud werden mit dem neuen Passwort <b>neu verschlüsselt</b> – bei vielen PDFs kann das ein paar Minuten dauern, App bitte offen lassen. Deine anderen Geräte fragen danach <b>einmal</b> nach dem neuen Passwort. Wird der Vorgang unterbrochen: einfach erneut starten, mit <b>demselben</b> neuen Passwort.</p>
+          <label>Aktuelles Sync-Passwort<PwInput show={show} setShow={setShow} autoComplete="current-password" value={pwc.old} onChange={(e) => setPwc({ ...pwc, old: e.target.value })} /></label>
+          <label>Neues Sync-Passwort<PwInput show={show} setShow={setShow} autoComplete="new-password" value={pwc.n1} onChange={(e) => setPwc({ ...pwc, n1: e.target.value })} /></label>
+          <label>Neues Passwort wiederholen<PwInput show={show} setShow={setShow} autoComplete="new-password" value={pwc.n2} onChange={(e) => setPwc({ ...pwc, n2: e.target.value })} /></label>
+          {pwc.n1 && pwc.n1.length < 8 && <small className="warnc block">Mindestens 8 Zeichen</small>}
+          {pwc.n2 && pwc.n1 !== pwc.n2 && <small className="red block">Passwörter stimmen nicht überein</small>}
+          {pwc.n1 && pwc.old && pwc.n1 === pwc.old && <small className="warnc block">Das neue Passwort ist gleich dem alten</small>}
+          <div className="actions"><button className="btn primary" disabled={!!busy || !pwc.old || pwc.n1.length < 8 || pwc.n1 !== pwc.n2 || pwc.n1 === pwc.old} onClick={doChangePw}>Passwort ändern</button>
+            <button className="link" disabled={!!busy} onClick={() => setPwc(null)}>Abbrechen</button></div>
+        </div>}
         <p className="muted small">Automatisch: beim Öffnen der App, alle 90 Sekunden und beim Wechsel in eine andere App. Änderungen anderer Geräte werden beim nächsten Öffnen übernommen. Gilt bei einem Eintrag auf zwei Geräten etwas anderes, gewinnt die neuere Änderung.</p>
       </div>}
 

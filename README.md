@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.95.0 – Sync-Passwort ändern
+- Einstellungen → Backup → Cloud-Synchronisierung → **🔑 Passwort ändern**: aktuelles Passwort + neues Passwort (2×, mind. 8 Zeichen). Alle Cloud-Dateien (Gerätestände und PDFs/Fotos) werden mit dem neuen Schlüssel neu verschlüsselt, danach wird die Prüfsumme in `findocu.meta` ersetzt.
+- Abbruch-sicher: bei Unterbrechung einfach erneut starten (mit demselben neuen Passwort) – bereits umgeschlüsselte Dateien werden erkannt und übersprungen. Während des Umschlüsselns pausiert der automatische Abgleich.
+- **Andere Geräte** erkennen die Änderung beim nächsten Abgleich und fragen einmal nach dem neuen Passwort (alte Passwörter werden abgelehnt); lokale Daten bleiben erhalten.
+
 ## v0.94.0
 - **Kunden (Mac/iPad):** Kundendatei öffnet als schwebendes Fenster (verschieb- und größenveränderbar) statt fester rechter Spalte; Kundenliste nutzt wieder die volle Breite. Handy unverändert (eigene Seite).
 - Kunden-Kürzel (Avatar) im Nachtmodus wieder sichtbar (war weiß auf weiß).

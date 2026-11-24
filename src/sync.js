@@ -330,6 +330,39 @@ export async function setupKey(pw) {
 }
 // Mit MEGA: Sitzung braucht den Sync-Schlüssel nicht – Sitzung liegt nur lokal in IndexedDB.
 
+/* Sync-Passwort ändern: alle Cloud-Dateien mit dem neuen Schlüssel neu verschlüsseln.
+   Abbruch-sicher: Fortschritt (neues Salz) wird gemerkt – erneut starten mit DEMSELBEN neuen Passwort setzt fort. */
+let pwBusy = false;
+export async function changePassword(oldPw, newPw, onStep = () => {}) {
+  const p = prov(); if (!p || !(await kvGet("key"))) throw new Error("Synchronisierung nicht eingerichtet");
+  if (String(newPw || "").length < 8) throw new Error("Das neue Passwort braucht mindestens 8 Zeichen");
+  if (running) { onStep("Warte auf laufenden Abgleich …"); await running.catch(() => {}); }
+  pwBusy = true;
+  try {
+    onStep("Prüfe aktuelles Passwort …");
+    const files = await p.list(); if (!files["findocu.meta"]) throw new Error("Sync-Daten in der Cloud fehlen");
+    const m = JSON.parse(dec.decode(new Uint8Array(await p.get("findocu.meta"))));
+    const oldKey = await deriveKey(oldPw, unb64(m.salt), m.iter || ITER);
+    try { if (dec.decode(await open(oldKey, unb64(m.check))) !== "findocu-ok") throw 0; } catch { throw new Error("Das aktuelle Sync-Passwort ist falsch"); }
+    let pend = await kvGet("pwchange"); if (!pend || pend.from !== m.salt) { pend = { from: m.salt, salt: b64(crypto.getRandomValues(new Uint8Array(16))) }; await kvSet("pwchange", pend); }
+    const newKey = await deriveKey(newPw, unb64(pend.salt));
+    const names = Object.keys(files).filter((n) => /^(dev-[\w-]+\.fdsync|f-[\w-]+\.fdblob)$/.test(n));
+    let i = 0;
+    for (const n of names) {
+      onStep(`Verschlüssele neu … ${++i} von ${names.length}`);
+      const buf = await p.get(n); let plain;
+      try { plain = await open(oldKey, buf); }
+      catch { try { await open(newKey, buf); continue; } catch { throw new Error(`„${n}“ lässt sich weder mit dem alten noch mit dem neuen Passwort öffnen. Wenn du schon einmal begonnen hast: dasselbe neue Passwort wie beim ersten Versuch verwenden.`); } }
+      await p.put(n, await seal(newKey, plain));
+    }
+    onStep("Speichere neues Passwort …");
+    await p.put("findocu.meta", enc.encode(JSON.stringify({ ...m, iter: ITER, salt: pend.salt, check: b64(await seal(newKey, enc.encode("findocu-ok"))), changedAt: new Date().toISOString(), changedBy: deviceId() })));
+    await kvSet("key", newKey); await kvDel("pwchange");
+    setSyncCfg({ lastError: "", pwChanged: false });
+    return { files: names.length };
+  } finally { pwBusy = false; }
+}
+
 /* ---------- lokaler Stand: localStorage + IndexedDB (docs, tx) ---------- */
 function lsCollections() {
   const out = {};
@@ -368,7 +401,7 @@ async function applyCollection(db, c, items) {
    mode "pull": lokal ändern erlaubt (vor dem App-Start)
    mode "push": nur eigene Änderungen hochladen, fremde nur erkennen */
 let running = null;
-export function syncNow(db, opts = {}) { if (running) return running; running = doSync(db, opts).finally(() => { running = null; }); return running; }
+export function syncNow(db, opts = {}) { if (pwBusy) return Promise.resolve({ at: "", applied: 0, pending: 0, uploaded: false, up: 0, down: 0, busy: true }); if (running) return running; running = doSync(db, opts).finally(() => { running = null; }); return running; }
 
 async function doSync(db, { mode = "push", first = null, onStep = () => {}, sig = null } = {}) {
   const p = prov(), key = await kvGet("key");
@@ -378,6 +411,11 @@ async function doSync(db, { mode = "push", first = null, onStep = () => {}, sig 
   onStep("Lese Cloud …");
   const files = await p.list();
   if (!files["findocu.meta"]) throw new Error("Sync-Daten in der Cloud fehlen – bitte Synchronisierung neu einrichten");
+  // Wurde das Sync-Passwort auf einem anderen Gerät geändert? (gespeicherter Schlüssel passt nicht mehr zur Prüfsumme)
+  { const m = JSON.parse(dec.decode(new Uint8Array(await p.get("findocu.meta")))); let ok = false;
+    try { ok = dec.decode(await open(key, unb64(m.check))) === "findocu-ok"; } catch {}
+    if (!ok) { const msg = "Das Sync-Passwort wurde auf einem anderen Gerät geändert – bitte unter Einstellungen → Backup das neue Passwort eingeben";
+      await kvDel("key"); setSyncCfg({ ready: false, pwChanged: true, lastError: msg }); const e = new Error(msg); e.pwChanged = true; throw e; } }
 
   // 1) eigene Änderungen seit dem letzten Abgleich mit Zeitstempel versehen
   onStep("Prüfe Änderungen …");
