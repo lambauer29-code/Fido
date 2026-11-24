@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.97.6 – Fahrzeugkarte 250/200 px, Einklappen nur am iPad
+
+- Fahrzeugkarte im Fahrtenbuch: am Laptop 250 px, am iPhone 200 px hoch (etwas größere Symbole, Kacheln und Knöpfe).
+- Ein-/Ausklappen des Kopfbereichs beim Scrollen wieder aktiv – aber nur auf dem iPad (und Android-Tablets); iPhone und Laptop/Mac bleiben ohne.
+
 ## v0.97.5 – Fahrzeugkarte im Fahrtenbuch kompakt
 
 - Fahrzeugkarte nach Vorschlag 2: Name, Modell und Kilometerstand in einer Kopfzeile, vier kleine Kennzahl-Kacheln, Schnellaktionen als schmale Knöpfe. Desktop ca. 210 px statt ca. 380 px hoch, iPhone ca. 185 px; Kennzahlen jetzt auch am iPhone sichtbar.

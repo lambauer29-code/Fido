@@ -388,6 +388,8 @@ const ls = {
 };
 
 if (typeof document !== "undefined" && ls.get("tabbarIcons", false)) document.documentElement.classList.add("tbicons");
+const IS_TABLET = typeof navigator !== "undefined" && (/iPad/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  || (/Android/.test(navigator.userAgent) && !/Mobile/.test(navigator.userAgent)) || (typeof matchMedia !== "undefined" && matchMedia("(pointer:coarse)").matches && Math.min(screen.width, screen.height) >= 600));
 const BACKUP_SKIP = /^(dev:|appToken|appLock|srch:|pending|openSettingsSec|win:|scanFilter)/;
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
@@ -4439,7 +4441,7 @@ function scopeBits(scope, setScope, count) {
     sheet: <><h4 className="lbh">Bereich</h4><div className="seg">{[["alle", "Privat & Firma"], ["privat", "👤 Privat"], ["firma", "🏢 Firma"]].map(([k, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{l}{count && <small className="cnt"> {count(k)}</small>}</button>)}</div></> };
 }
 // Handy: beim Scrollen kleiner Titel in der fixierten Suchleiste
-const LB_MINI = false; // v0.97.3: kleiner Titel beim Scrollen ebenfalls abgeschaltet
+const LB_MINI = IS_TABLET; // v0.97.6: kleiner Titel beim Scrollen nur auf dem iPad
 if (LB_MINI && typeof window !== "undefined" && !window.__lbScroll) { window.__lbScroll = true;
   addEventListener("scroll", () => { const c = document.documentElement.classList, on = c.contains("lbscrolled"); if (!on && scrollY > 90) c.add("lbscrolled"); else if (on && scrollY < 40) c.remove("lbscrolled"); }, { passive: true }); }
 // Liste mit useListKit: Reiter = Filter, Jahr/Sortierung/Tags ins Blatt
@@ -8915,8 +8917,9 @@ function nextInvNumber(list, kind, co, date) {
 // Ein-/Ausklappen in einem Schritt: Box wächst bzw. schrumpft oben, der Inhalt bleibt an derselben Stelle stehen (kein Springen)
 const fineMouse = typeof matchMedia !== "undefined" && matchMedia("(hover:hover) and (pointer:fine)").matches;
 // v0.80.1: Einklappen des Kopfbereichs beim Scrollen abgeschaltet (auf Wunsch entfernt)
-const HDR_COLLAPSE = false; // v0.97.3: auf Wunsch in allen Menüs abgeschaltet (Code bleibt bis zur Rückfrage erhalten)
-if (typeof document !== "undefined") document.documentElement.classList.remove("hdrmin", "lbscrolled");
+// v0.97.6: Ein-/Ausklappen nur noch auf dem iPad (bzw. Tablet), nicht am iPhone und nicht am Laptop
+const HDR_COLLAPSE = IS_TABLET;
+if (typeof document !== "undefined") { document.documentElement.classList.remove("hdrmin", "lbscrolled"); document.documentElement.classList.toggle("tablet", IS_TABLET); }
 const hdrScroll = (e) => {
   if (!HDR_COLLAPSE) return;
   const el = e.currentTarget; if (el._hdrBusy) return;
@@ -14960,4 +14963,16 @@ html.uhfont header.top h1,html.uhfont .app h1,html.uhfont .app h2,html.uhfont .a
 
 html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!important}
 @media (max-width:560px){html .fbcompact .fbspecs{display:none!important}}
+
+/* v0.97.6: Fahrzeugkarte Laptop 250 px, iPhone 200 px */
+.fbcompact{min-height:250px;display:flex;flex-direction:column;justify-content:space-between;padding:16px 18px!important;box-sizing:border-box}
+.fbcompact .fbcaric{width:46px;height:46px}.fbcompact .fbcarhead b{font-size:17px}
+.fbcompact .fbstats>div{padding:9px 11px}.fbcompact .fbstats b{font-size:16px}
+.fbcompact .fbquick button{padding:8px 14px}
+@media (max-width:560px){
+  .fbcompact{min-height:200px;padding:12px 12px!important}
+  .fbcompact .fbcaric{width:40px;height:40px}
+  .fbcompact .fbstats>div{padding:6px 7px}.fbcompact .fbstats b{font-size:14px}
+  .fbcompact .fbquick button{padding:7px 2px}
+}
 `;
