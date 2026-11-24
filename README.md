@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.92.4
+- Filter-Blatt (alle Listen): „x Treffer anzeigen“ steht jetzt ganz oben unter „Zurücksetzen · Filter · Fertig“ und bleibt beim Scrollen im Blatt sichtbar.
+
 ## v0.92.3
 - Verträge: aufklappende Dokument-Vorschau unter der Zeile entfernt. Klick auf Name, Vorschaubild oder 👁 öffnet das Vorschaufenster (alle verknüpften Dokumente untereinander, ✎ öffnet den Vertrag).
 

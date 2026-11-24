@@ -4287,9 +4287,11 @@ function LbSheet({ children, onClose, onReset, hits }) {
     <div className="lbscrim" onClick={onClose} />
     <div className="lbsheet" role="dialog" aria-label="Filter">
       <div className="lbgrab" />
-      <div className="lbshead"><button className="link" onClick={onReset}>Zurücksetzen</button><b>Filter</b><button className="link" onClick={onClose}>Fertig</button></div>
+      <div className="lbstop">
+        <div className="lbshead"><button className="link" onClick={onReset}>Zurücksetzen</button><b>Filter</b><button className="link" onClick={onClose}>Fertig</button></div>
+        <button className="btn primary lbapply" onClick={onClose}>{hits != null ? `${hits} Treffer anzeigen` : "Anzeigen"}</button>
+      </div>
       <div className="lbsbody">{children}</div>
-      <button className="btn primary lbapply" onClick={onClose}>{hits != null ? `${hits} Treffer anzeigen` : "Anzeigen"}</button>
     </div></>, document.body);
 }
 // Privat/Firma als Stichwort, Vorschlag und Blatt-Abschnitt
@@ -13307,7 +13309,7 @@ html.setdrill-on header.top{min-height:0}
 .lbscrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:900;animation:lbfade .2s}
 .lbsheet{position:fixed;left:0;right:0;bottom:0;z-index:901;background:var(--bg);border-radius:22px 22px 0 0;max-height:88vh;overflow:auto;padding:6px 16px calc(env(safe-area-inset-bottom) + 16px);animation:lbup .28s cubic-bezier(.2,.8,.2,1);box-shadow:0 -10px 40px rgba(0,0,0,.25)}
 .lbgrab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:4px auto 8px}
-.lbshead{display:flex;align-items:center;justify-content:space-between;position:sticky;top:-6px;background:var(--bg);padding:4px 0 6px;z-index:2}
+.lbstop{position:sticky;top:-6px;background:var(--bg);z-index:2;padding:0 0 6px;margin:0 -16px;padding-left:16px;padding-right:16px}.lbshead{display:flex;align-items:center;justify-content:space-between;padding:4px 0 6px}
 .lbshead b{font-size:18px}.lbshead .link{font-weight:600;padding:8px 4px}
 .lbsbody{display:flex;flex-direction:column}
 .lbh{margin:14px 2px 8px;font-size:13px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
@@ -13315,7 +13317,7 @@ html.setdrill-on header.top{min-height:0}
 .lbsbody .seg{max-width:none}
 .lbviews{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
 .lbvrow{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 14px}.lbvrow+.lbvrow{border-top:1px solid var(--line)}
-.lbapply{width:100%;margin-top:18px;min-height:50px;font-size:16px}
+.lbapply{width:100%;margin-top:4px;min-height:48px;font-size:16px}
 @keyframes lbup{from{transform:translateY(100%)}to{transform:none}}@keyframes lbfade{from{opacity:0}}
 @media (min-width:900px){
   .lbsheet{left:auto;right:24px;top:80px;bottom:auto;width:420px;border-radius:18px;max-height:calc(100vh - 110px);border:1px solid var(--line);animation:lbfade .15s}
