@@ -2,6 +2,21 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.88.0
+- **iPhone: neue Navigation wie bei nativen Apps (Variante B)**:
+  - Die Tab-Leiste hat nur noch 5 Einträge: Übersicht · Dokumente · Privat · Firma · Mehr.
+  - **Privat** und **Firma** sind Startseiten mit Kacheln für die Unterbereiche, mit Kurzinfo:
+    - Firma: Rechnungen (x offen), Mahnungen (x überfällig), Kunden, Artikel, Lager & Inventur, Kassabuch, Firmenauswertung, Fahrtenbuch
+    - Privat: Konten, Ausgabe, Analyse, Vermögen, Fixkosten & Abos, Verträge, Besitz & Garantie, Umtauschfrist
+    - Mehr: Einstellungen, Backup und alle übrigen Reiter
+  - Ausgeblendete Reiter bleiben ausgeblendet.
+- **Zurück-Knopf auf iPhone und iPad**: In jedem Unterbereich steht oben „‹ Firma“, „‹ Übersicht“ usw. (der Name des vorigen Bildschirms). Zurück geht auch per Wischen vom linken Rand und mit der Zurück-Taste von Browser oder Android.
+- **iPad: Split View**:
+  - Details (Dokument, Rechnung, Vertrag …) öffnen sich als Spalte rechts, die Liste bleibt links sichtbar.
+  - Im Querformat rückt die Liste zur Seite und zeigt dann nur Titel und Betrag. Im Hochformat liegt das Detail über der Liste.
+  - Antippen eines anderen Eintrags wechselt das Detail.
+- Am Desktop ändert sich nichts.
+
 ## v0.87.0
 - **Neue Übersicht für iPhone und iPad (Variante B, Kacheln)**:
   - Umschalter **Alle · Privat · Firma** oben. Die Wahl gilt auch für Dokumente, Verträge und Besitz & Garantie.

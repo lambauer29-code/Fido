@@ -598,10 +598,22 @@ function loadNav() {
   const tabs = si < 0 ? [...n.tabs, ...missing, ...after] : [...n.tabs.slice(0, si), ...missing, n.tabs[si], ...after, ...n.tabs.slice(si + 1)];
   return { ...DEFAULT_NAV, ...n, tabs };
 }
-const tabLabel = (nav, key) => nav.tabs.find((t) => t.key === key)?.label?.trim() || TAB_DEFS[key]?.[1] || "";
+/* Handy-Navigation (v0.88): Bereiche als Startseiten, darin weiter mit Zurück */
+const HUB_DEFS = { "hub:privat": ["👤", "Privat"], "hub:firma": ["💼", "Firma"], "hub:mehr": ["▦", "Mehr"] };
+const HUB_TABS = {
+  "hub:privat": ["accounts", "cash", "analyse", "vermoegen", "contracts", "vertraege", "besitz", "deadlines"],
+  "hub:firma": ["invoices", "mahnungen", "kunden", "artikel", "inventur", "kassa", "firma", "fahrtenbuch"],
+  "hub:mehr": ["settings", "backup"]
+};
+const NAV_ROOTS = ["home", "docs", "hub:privat", "hub:firma", "hub:mehr"];
+const hubOf = (key) => Object.keys(HUB_TABS).find((h) => HUB_TABS[h].includes(key)) || "hub:mehr";
+const tabLabel = (nav, key) => HUB_DEFS[key]?.[1] || nav.tabs.find((t) => t.key === key)?.label?.trim() || TAB_DEFS[key]?.[1] || "";
 const isNavDeco = (t) => !!t.sep || t.head != null;
 /* Reiter-Symbol: eigenes Bild > eigenes Emoji > Standard */
 const TAB_SVG = {
+  "hub:privat": <><circle cx="12" cy="8" r="4" /><path d="M4 21c.8-4.4 4-7 8-7s7.2 2.6 8 7" /></>,
+  "hub:firma": <><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /><path d="M3 13h18" /></>,
+  "hub:mehr": <><rect x="4" y="4" width="6" height="6" rx="1.5" /><rect x="14" y="4" width="6" height="6" rx="1.5" /><rect x="4" y="14" width="6" height="6" rx="1.5" /><rect x="14" y="14" width="6" height="6" rx="1.5" /></>,
   home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h5v-6h4v6h5V9.5" /></>,
   docs: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h6" /></>,
   deadlines: <><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5" /><path d="M5 3 2.5 5.5M19 3l2.5 2.5" /></>,
@@ -1183,9 +1195,12 @@ function useScrollLock() {
 const XBtn = () => { const close = React.useContext(WinCtx); return <button className="xbtn" onClick={() => close?.()} aria-label="Schließen" title="Schließen">✕</button>; };
 /* Schwebendes Fenster. Klick daneben / Esc / ✕ schließt – bei ungespeicherten Änderungen wird erst nachgefragt.
    dirty: true/false erzwingt, undefined = automatisch (sobald im Fenster etwas eingegeben wurde) */
+let detailOpen = 0;
 function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern" }) {
   const wide = useMedia("(min-width:768px)");
   useEdgeBack(() => reqRef.current?.(), !wide);
+  // iPad: Liste rückt zur Seite, solange ein Detail rechts offen ist (Split View)
+  useEffect(() => { if (small) return; detailOpen++; document.documentElement.classList.add("hasdetail"); return () => { if (--detailOpen <= 0) { detailOpen = 0; document.documentElement.classList.remove("hasdetail"); } }; }, []);
   useScrollLock();
   const rootRef = useRef(null);
   const [touched, setTouched] = useState(false);
@@ -1271,7 +1286,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   };
   return (
     <WinCtx.Provider value={requestClose}>
-    <div ref={rootRef} className={"win " + className} style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: z }} onPointerDown={onHead} {...touchProps}>
+    <div ref={rootRef} className={"win " + className + (small ? " small" : "") + (center ? " center" : "")} style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: z }} onPointerDown={onHead} {...touchProps}>
       <div className="wininner">{guard}{children}</div>
       {["n", "e", "s", "w", "ne", "se", "sw", "nw"].map((d) => <span key={d} className={"rz rz-" + d} onPointerDown={edge(d)} />)}
       <span className="rzgrip" aria-hidden="true" />
@@ -1451,6 +1466,26 @@ export default function App() {
 function AppMain() {
   const [docs, setDocs] = useState([]);
   const [tab, setTab] = useState("home");
+  // Zurück-Navigation (iPhone/iPad): Stapel der vorigen Reiter, Zurück-Knopf, Wischen vom linken Rand, Browser-Zurück
+  const phoneNav = useMedia("(max-width:700px)");
+  const touchNav = useMedia("(max-width:700px), (pointer:coarse) and (max-width:1366px)");
+  const [backStack, setBackStack] = useState([]);
+  const backRef = useRef([]); backRef.current = backStack;
+  const prevTabRef = useRef(tab), navMode = useRef(null), skipPop = useRef(false);
+  useEffect(() => {
+    const prev = prevTabRef.current; prevTabRef.current = tab;
+    if (prev === tab) return;
+    const nm = navMode.current; navMode.current = null;
+    const mode = nm && Date.now() - nm.t < 350 ? nm.m : null;
+    if (mode === "back") return;
+    if (mode === "root" || NAV_ROOTS.includes(tab) || !touchNav) { setBackStack([]); return; }
+    setBackStack((st) => [...st.filter((x) => x !== tab), prev].slice(-12));
+    try { history.pushState({ fdNav: 1 }, ""); } catch {}
+  }, [tab]);
+  const goBack = () => { const st = backRef.current; if (!st.length) return; navMode.current = { m: "back", t: Date.now() }; setBackStack(st.slice(0, -1)); setTab(st[st.length - 1]); };
+  const backBtn = () => { if (!backRef.current.length) return; skipPop.current = true; try { history.back(); } catch {} goBack(); };
+  useEffect(() => { const f = () => { if (skipPop.current) { skipPop.current = false; return; } goBack(); }; addEventListener("popstate", f); return () => removeEventListener("popstate", f); }, []);
+  const rootTab = (k) => { navMode.current = { m: "root", t: Date.now() }; setTab(k); };
   const [openId, setOpenId] = useState(null);
   const [docCat, setDocCat] = useState("");
   const [budgets, setBudgets] = useState(() => ls.get("budgets", {}));
@@ -1552,6 +1587,7 @@ function AppMain() {
   useEffect(() => ls.set("nav", nav), [nav]);
   useAutoBackup();
   const syncPending = useSyncAgent();
+  useEdgeBack(backBtn, touchNav && backStack.length > 0);
   const appUpd = useAppUpdate();
   useEffect(() => { if (localStorage.getItem("syncNext")) setTab("backup"); }, []);
   useEffect(() => ls.set("docArea", docAreaSel), [docAreaSel]);
@@ -1981,7 +2017,10 @@ function AppMain() {
     <IconLibCtx.Provider value={{ lib: nav.accIcons || [], setLib: (l) => setNav((n) => ({ ...n, accIcons: l })) }}>
     <div className={"app tab-" + tab}>
       <style>{CSS}</style>
-      <header className="top">
+      <header className={"top" + (touchNav && backStack.length ? " hasback" : "")}>
+        {touchNav && backStack.length > 0 && <button className="navback" onClick={backBtn} aria-label={"Zurück zu " + tabLabel(nav, backStack[backStack.length - 1])}>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+          <span>{tabLabel(nav, backStack[backStack.length - 1])}</span></button>}
         <h1>{tabLabel(nav, tab)}</h1>
         <div className="topactions">
         <div className="topicons">
@@ -1997,6 +2036,7 @@ function AppMain() {
       </header>
 
       <main>
+        {tab.startsWith("hub:") && <HubPage hub={tab} nav={nav} setTab={setTab} docs={active} dlDocs={dlDocs} accounts={visAccounts} />}
         {tab === "home" && <Home docs={active} dlDocs={dlDocs} txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={visAccounts.some((a) => a.kind === "cash")}
           accounts={visAccounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
           uniDrop={<>
@@ -2085,7 +2125,13 @@ function AppMain() {
         onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
         suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")} />}
 
-      <nav className="bottom" onPointerOver={(e) => {
+      {phoneNav ? (
+      <nav className="bottom mtabbar" aria-label="Hauptbereiche">
+        {NAV_ROOTS.map((k) => { const on = tab === k || (k.startsWith("hub:") && !NAV_ROOTS.includes(tab) && hubOf(tab) === k && tab !== "home") || (k === "home" && false);
+          return <button key={k} className={on ? "on" : ""} aria-label={tabLabel(nav, k)} aria-current={on ? "page" : undefined} onClick={() => rootTab(k)}>
+            <TabIcon t={{ key: k }} /><span className="tl">{tabLabel(nav, k)}</span>{k === "home" && <Badge docs={dlDocs} />}</button>; })}
+      </nav>) : (
+      <nav className="bottom" onClickCapture={() => { navMode.current = { m: "root", t: Date.now() }; }} onPointerOver={(e) => {
         if (!sideMini || e.pointerType === "touch") return;
         const b = e.target.closest?.("button,.brand"); if (!b) return setSideTip(null);
         const r = b.getBoundingClientRect();
@@ -2152,6 +2198,7 @@ function AppMain() {
           <span className="tabico">{sideMini ? "»" : "«"}</span>
         </button>
       </nav>
+      )}
       {sideMini && sideTip && <div className="sidetip" style={{ top: sideTip.top }}>{sideTip.text}</div>}
 
       <SideResizer />
@@ -4186,6 +4233,44 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
 }
 
 
+
+/* ======================= Bereichs-Startseiten (iPhone, v0.88) ======================= */
+function HubPage({ hub, nav, setTab, docs, dlDocs, accounts }) {
+  const [list] = useLsState("invoices", []);
+  const [kunden] = useLsState("customers", []);
+  const [items] = useLsState("articles", []);
+  const [cts] = useLsState("contractList", []);
+  const [assets] = useLsState("assets", []);
+  const { kassen, entries } = useKassa();
+  const visible = (k) => { const t = nav.tabs.find((x) => x.key === k); return t ? (t.side || t.phone) : !!TAB_DEFS[k]; };
+  // nicht zugeordnete, eingeblendete Reiter landen unter „Mehr“
+  const assigned = new Set([...NAV_ROOTS, ...Object.values(HUB_TABS).flat()]);
+  const extra = hub === "hub:mehr" ? nav.tabs.filter((t) => !assigned.has(t.key) && !isNavDeco(t) && (t.side || t.phone) && TAB_DEFS[t.key]).map((t) => t.key) : [];
+  const keys = [...HUB_TABS[hub], ...extra].filter(visible);
+  const inv = list.filter((x) => x.kind === "rechnung");
+  const openN = inv.filter((x) => ["offen", "überfällig"].includes(invState(x))).length, overN = inv.filter((x) => invState(x) === "überfällig").length;
+  const dlOpen = (dlDocs || docs).flatMap((d) => (d.deadlines || []).filter((x) => !x.done)).filter((x) => daysUntil(x.date) <= 14).length;
+  const sub = {
+    invoices: [openN ? `${openN} offen` : "alles bezahlt", ""], mahnungen: [overN ? `${overN} überfällig` : "nichts fällig", overN ? "bad" : ""],
+    kunden: [`${kunden.length} Kunden`, ""], artikel: [`${items.length} Artikel`, ""],
+    kassa: [fmtMoney(kassen.reduce((s, k) => s + kbBalAt(entries, k, todayISO()), 0)), ""],
+    accounts: [`${accounts.filter((a) => a.kind !== "cash").length} Konten`, ""], vertraege: [`${cts.length} Verträge`, ""],
+    besitz: [`${assets.length} Geräte`, ""], deadlines: [dlOpen ? `${dlOpen} in 14 Tagen` : "keine fällig", dlOpen ? "warn" : ""],
+    firma: ["Bericht & Kennzahlen", ""], analyse: ["Ausgaben & Budgets", ""], vermoegen: ["Entwicklung", ""], cash: ["Beleg erfassen", ""],
+    contracts: ["laufende Kosten", ""], fahrtenbuch: ["Fahrten & km-Geld", ""], inventur: ["Bestand & Zählung", ""],
+    settings: ["Darstellung, Daten, Firma", ""], backup: ["Sicherung & Sync", ""]
+  };
+  return (<div className="hubpage">
+    <div className="hubgrid">
+      {keys.map((k) => { const t = nav.tabs.find((x) => x.key === k) || { key: k }; const [sv, tone] = sub[k] || ["", ""]; return (
+        <button key={k} className="hubtile" onClick={() => setTab(k)}>
+          <TabIcon t={t} />
+          <b>{tabLabel(nav, k)}</b>
+          {sv && <small className={tone}>{sv}</small>}
+        </button>); })}
+    </div>
+  </div>);
+}
 /* ======================= Übersicht als Kacheln (iPhone/iPad, v0.87) =======================
    Umschalter Alle · Privat · Firma gilt für die ganze App (Dokumente, Verträge, Besitz übernehmen ihn). */
 const APP_SCOPES = [["alle", "Alle"], ["privat", "Privat"], ["firma", "Firma"]];
@@ -12857,4 +12942,27 @@ label>.vehpick.block{margin-top:6px}
 .htcols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px;align-items:start}
 .htleft,.htright{display:grid;gap:14px;min-width:0}
 @media (min-width:1000px){.htwide .httiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* v0.88 Handy-Navigation: Bereiche + Zurück */
+nav.bottom.mtabbar{overflow:visible!important;justify-content:space-around}
+nav.bottom.mtabbar>button{flex:1 1 0;min-width:0}
+.top.hasback{flex-wrap:wrap}
+.navback{display:inline-flex;align-items:center;gap:2px;border:0;background:none;color:var(--acc);font:inherit;font-size:17px;padding:6px 8px 6px 0;margin:0 0 2px -4px;cursor:pointer;flex-basis:100%;justify-content:flex-start;min-height:44px}
+.navback span{max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hubgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.hubtile{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:16px 14px;border-radius:18px;border:1px solid var(--line);background:var(--card);color:var(--txt);font:inherit;text-align:left;cursor:pointer;min-height:112px}
+.hubtile .tabico{font-size:24px;color:var(--acc)}
+.hubtile .tabsvg{width:26px;height:26px}
+.hubtile b{font-size:16px}
+.hubtile small{color:var(--mut);font-size:13px}
+.hubtile small.bad{color:var(--red)}.hubtile small.warn{color:var(--warn)}
+.hubtile:active{transform:scale(.98)}
+@media (min-width:701px){.hubgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (min-width:1000px) and (max-width:1366px) and (pointer:coarse){html.hasdetail .app{padding-right:calc(min(46vw,560px) + 20px)!important}html.hasdetail .win:not(.small){width:min(46vw,560px)!important}
+  html.hasdetail .ditem .dcatcol,html.hasdetail .ditem .dactions,html.hasdetail .invrow .invacts,html.hasdetail .ctrow .ctacts{display:none!important}
+  html.hasdetail .ditem .grow,html.hasdetail .invrow .invmain{min-width:0}}
+/* iPad: Details als Spalte rechts neben der Liste (Split View) */
+@media (min-width:768px) and (max-width:1366px) and (pointer:coarse){
+  .win:not(.small){top:0!important;bottom:0!important;right:0!important;left:auto!important;width:min(62vw,600px)!important;height:auto!important;max-height:none!important;border-radius:0!important;border-width:0 0 0 1px!important;box-shadow:-12px 0 40px #0f1b2d26!important;transform:none!important}
+}
 `;
