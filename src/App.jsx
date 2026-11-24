@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrinkPdf } from "./scan.js";
 import { parseReceiptQR, pastOrToday } from "./receipt.js";
@@ -197,7 +197,8 @@ function DocActions({ d, prevOpen, onPreview, onEdit, onTrash }) {
   const stop = (f) => (e) => { e.stopPropagation(); f(); };
   return (
     <div className="dactions" onClick={(e) => e.stopPropagation()}>
-      <button title="Bearbeiten" aria-label="Bearbeiten" onClick={stop(onEdit)}><IcoEdit /></button>
+      {onPreview && <button title="Vorschau" aria-label="Vorschau" className={prevOpen ? "on" : ""} onClick={stop(onPreview)}><IcoEye /></button>}
+      <button title="Details bearbeiten" aria-label="Bearbeiten" onClick={stop(onEdit)}><IcoEdit /></button>
       <button title="Drucken" aria-label="Drucken" onClick={stop(() => printDoc(d))}><IcoPrint /></button>
       <button title="Teilen (Nachrichten, WhatsApp, Mail …)" aria-label="Teilen" onClick={stop(() => shareDocs([d]))}><IcoShare /></button>
       <button title="In den Papierkorb" aria-label="Löschen" className="del" onClick={stop(() => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && onTrash(d))}><IcoTrash /></button>
@@ -1292,14 +1293,27 @@ function useScrollLock() {
     };
   }, []);
 }
-const XBtn = () => { const close = React.useContext(WinCtx); return <button className="xbtn" onClick={() => close?.()} aria-label="Schließen" title="Schließen">✕</button>; };
+const XBtn = () => { const close = React.useContext(WinCtx); return <button className="xbtn" onClick={() => close?.()} aria-label="Schließen" title="Schließen"><span className="xi">✕</span><span className="xt" /></button>; };
+/* Kopfkarte für Detailansichten – nur im Handy-Sheet sichtbar (v0.98) */
+function MHero({ icon, title, sub, value, valueCls = "", pills = [] }) {
+  return (<div className="mhero">
+    {icon && <span className="mheroic">{icon}</span>}
+    <div className="grow"><small className="mherosub">{sub}</small><b className="mherot">{title}</b>
+      {!!pills.filter(Boolean).length && <div className="mheropills">{pills.filter(Boolean).map((p, i) => <span key={i} className={"stpill " + (p.cls || "")}>{p.label || p}</span>)}</div>}</div>
+    {value != null && <b className={"mherov " + valueCls}>{value}</b>}
+  </div>);
+}
 /* Schwebendes Fenster. Klick daneben / Esc / ✕ schließt – bei ungespeicherten Änderungen wird erst nachgefragt.
    dirty: true/false erzwingt, undefined = automatisch (sobald im Fenster etwas eingegeben wurde) */
-let detailOpen = 0;
+let detailOpen = 0, sheetDepth = 0, sheetScrollY = 0, lastListY = 0;
+if (typeof window !== "undefined") addEventListener("scroll", () => { if (!sheetDepth && !document.querySelector(".sheet")) lastListY = scrollY; }, { passive: true });
 function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern" }) {
   const wide = useMedia("(min-width:768px)");
   useEdgeBack(() => reqRef.current?.(), !wide);
   // iPad: Liste rückt zur Seite, solange ein Detail rechts offen ist (Split View)
+  // Handy: Scrollposition der Liste merken und nach dem Schließen wiederherstellen (v0.97.7)
+  useEffect(() => { if (wide) return; if (sheetDepth++ === 0) sheetScrollY = lastListY;
+    return () => { if (--sheetDepth <= 0) { sheetDepth = 0; const y = sheetScrollY; requestAnimationFrame(() => requestAnimationFrame(() => scrollTo(0, y))); setTimeout(() => { if (sheetDepth === 0 && Math.abs(scrollY - y) > 4) scrollTo(0, y); }, 120); } }; }, []);
   useEffect(() => { if (small) return; detailOpen++; document.documentElement.classList.add("hasdetail"); return () => { if (--detailOpen <= 0) { detailOpen = 0; document.documentElement.classList.remove("hasdetail"); } }; }, []);
   useScrollLock();
   const rootRef = useRef(null);
@@ -1347,16 +1361,43 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   });
   const [z, setZ] = useState(() => ++winZ);
   zRef.current = z;
+  // Handy-Sheet (v0.98): nach unten wischen schließt, Speichern-Leiste unten
+  const [dragY, setDragY] = useState(0), drag = useRef(null), [bar, setBar] = useState(null);
+  const tStart = (e) => { const el = rootRef.current; if (!el || wide) return; const t = e.target;
+    if (t.closest("input,textarea,select,button,a,[contenteditable],.mapbox,canvas")) return;
+    const top = el.getBoundingClientRect().top, y = e.touches[0].clientY;
+    if (!(t.closest(".mgrab,.panelhead") || (el.scrollTop <= 0 && y - top < 90))) return;
+    drag.current = { y0: y, st: el.scrollTop }; };
+  const tMove = (e) => { const d = drag.current; if (!d) return; const dy = e.touches[0].clientY - d.y0; if (rootRef.current.scrollTop > 0) { drag.current = null; setDragY(0); return; } setDragY(dy > 0 ? dy : 0); };
+  const tEnd = () => { if (!drag.current) return; drag.current = null; if (dragY > 110) { setDragY(0); reqRef.current(); } else setDragY(0); };
+  useLayoutEffect(() => {
+    if (wide) return;
+    const el = rootRef.current; if (!el) return;
+    const calc = () => {
+      const head = el.querySelector(":scope > .panelhead"), pri = head && [...head.querySelectorAll(".btn.primary")].find((b) => !b.closest(".winguard"));
+      const own = el.querySelector(":scope > .actions .btn.primary");
+      const nb = pri && !own ? { label: pri.textContent.trim(), disabled: !!pri.disabled, el: pri } : null;
+      setBar((o) => (!o && !nb) || (o && nb && o.label === nb.label && o.disabled === nb.disabled && o.el === nb.el) ? o : nb);
+    };
+    calc(); let raf = 0;
+    const mo = new MutationObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(calc); });
+    mo.observe(el, { subtree: true, childList: true, attributes: true, attributeFilter: ["disabled"], characterData: true });
+    return () => { mo.disconnect(); cancelAnimationFrame(raf); };
+  }, [wide]);
   useEffect(() => { const t = setTimeout(() => ls.set("win:" + id, rect), 150); return () => clearTimeout(t); }, [rect, id]);
   useEffect(() => { const h = () => setRect((r) => clampRect(r)); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, []);
 
-  if (!wide) return (
+  if (!wide) { const full = /scanner|docprevwin|pdfviewwin|stmtwin|iconeditwin/.test(className); return (
     <WinCtx.Provider value={requestClose}>
-    <div className={"sheet " + className} onClick={requestClose}>
-      <div ref={rootRef} className={"panel" + (small ? " small-panel" : "")} onClick={(e) => e.stopPropagation()} {...touchProps}>{guard}{children}</div>
+    <div className={"sheet msheet " + (full ? "mfull " : "") + className} onClick={requestClose}>
+      <div ref={rootRef} className={"panel" + (small ? " small-panel" : "") + (bar ? " hasbar" : "")} style={dragY > 0 ? { transform: `translateY(${dragY}px)`, transition: "none" } : undefined}
+        onClick={(e) => e.stopPropagation()} {...touchProps} onTouchStart={tStart} onTouchMove={tMove} onTouchEnd={tEnd} onTouchCancel={tEnd}>
+        <div className="mgrab" aria-hidden="true" />
+        {guard}{children}
+        {bar && <div className="msheetbar"><button type="button" className="btn primary" disabled={bar.disabled} onClick={() => bar.el?.click()}>{bar.label}</button></div>}
+      </div>
     </div>
-    </WinCtx.Provider>
-  );
+    </WinCtx.Provider>); }
 
   // Ziehen am Fensterkopf bzw. an Rändern/Ecken (Maus & Touch)
   const track = (e, apply) => {
@@ -5116,13 +5157,13 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
       ) : view === "grid" ? (
         <div className="grid">
           {list.map((d) => (
-            <div key={d.id} className={"gcard" + (pick?.has(d.id) ? " picked" : "")} onClick={() => (pick ? togglePick(d.id) : setWinPrev(d))}>
+            <div key={d.id} className={"gcard" + (pick?.has(d.id) ? " picked" : "")} onClick={() => (pick ? togglePick(d.id) : onOpen(d.id))}>
               {pick && <span className={"pickbox" + (pick.has(d.id) ? " on" : "")}>✓</span>}
               <div className="gthumbwrap">
                 <Thumb d={d} className="gthumb" />
               </div>
               <div className="gbody">
-                <DocActions d={d} prevOpen={false} onPreview={() => openOriginal(d)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
+                <DocActions d={d} prevOpen={winPrev?.id === d.id} onPreview={() => setWinPrev(d)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
                 <b className="clamp">{d.title}</b>
                 <small className="muted">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
                 <div className="row1"><Label c={d.category} />{amt(d)}</div>
@@ -5141,7 +5182,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
               {pick && <span className={"pickbox inline" + (pick.has(d.id) ? " on" : "")}>✓</span>}
               <Thumb d={d} />
               <div className="grow">
-                <div className="row1"><b className="clamp dtitle" title="Vorschau öffnen" onClick={(e) => { if (pick) return; e.stopPropagation(); setWinPrev(d); }}>{d.title}</b><span className="damtin">{amt(d)}</span></div>
+                <div className="row1"><b className="clamp dtitle">{d.title}</b><span className="damtin">{amt(d)}</span></div>
                 <small className="muted block">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
                 <div className="labels">
                   <Label c={d.category} />
@@ -5153,6 +5194,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
               </div>
               <span className="damtcol">{amt(d)}</span>
               <span className="dcatcol"><Label c={d.category} /></span>
+              {!pick && <button className="deyem" title="Vorschau" aria-label="Vorschau" onClick={(e) => { e.stopPropagation(); setWinPrev(d); }}><IcoEye /></button>}
               <DocActions d={d} prevOpen={winPrev?.id === d.id} onPreview={() => setWinPrev(d)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
             </div></SwipeRow>
             </div>
@@ -7839,7 +7881,7 @@ function PayQR({ doc, notify }) {
   );
 }
 function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash, txs = [], accounts = [], linkTx }) {
-  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false), [prevOpen, setPrevOpen] = useState(false);
   const [newCat, setNewCat] = useState(false);
   const [lq, setLq] = useState("");
   const [url, setUrl] = useState(null);
@@ -7867,6 +7909,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
     <Win id="detail" onClose={onClose} center dirty={dirty}>
         <div className="panelhead">
           <b>Dokument</b>
+          <button className="btn detprevbtn" title="Vorschau öffnen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>
           <button className="btn primary" disabled={!dirty} onClick={() => saveDoc(d)}>Speichern</button>
           <XBtn />
         </div>
@@ -8038,6 +8081,11 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
           <button className="btn danger" onClick={() => trashDoc(doc)}>🗑 Papierkorb</button>
         </div>
         <p className="muted small">{doc.fileName} · {(doc.size / 1024).toFixed(0)} KB · hinzugefügt {new Date(doc.createdAt).toLocaleString("de-AT")}</p>
+        {prevOpen && createPortal(
+          <Win id="docprev" onClose={() => setPrevOpen(false)} dirty={false} className="docprevwin">
+            <div className="panelhead"><b className="clamp">{doc.title}</b><XBtn /></div>
+            <DocPreview d={doc} onOpen={() => setPrevOpen(false)} />
+          </Win>, document.querySelector(".app") || document.body)}
     </Win>
   );
 }
@@ -9470,6 +9518,8 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
         <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(inv, co), invFileName(inv), "", inv.customer?.email)}>Vorschau</button>
         {!locked && <button className="btn primary" onClick={() => doSave(false)}>Speichern</button>}
         <XBtn /></div>
+      {(inv.customer?.name || (inv.items || []).length > 0) && <MHero icon={isA ? "📝" : "🧾"} sub={`${isA ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"}${inv.date ? " · " + fmtDate(inv.date) : ""}`} title={inv.customer?.name || "Ohne Kunde"} value={fmtMoney(invTotal(inv))}
+        pills={[{ label: invState(inv), cls: { bezahlt: "st-paid", "überfällig": "st-over", offen: "st-open" }[invState(inv)] || "st-draft" }]} />}
       {locked && <p className="warn small">Diese {isA ? "Angebot" : "Rechnung"} ist ausgestellt und kann nicht mehr geändert werden (Rechnungen dürfen nachträglich nicht verändert werden – bei Fehlern stornieren und neu ausstellen).</p>}
       <fieldset disabled={locked}>
         <legend>Kunde</legend>
@@ -10057,6 +10107,8 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
     <Win id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name ? c.name || "Vertrag" : "Neuer Vertrag"}</b>
         <button className="btn primary" disabled={!c.name} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
+      {init.name && (() => { const cd = ctDates(c); return <MHero icon="📑" sub={c.provider || "Vertrag"} title={c.name || "Vertrag"} value={c.amount ? fmtMoney(Number(String(c.amount).replace(",", ".")) || 0) : null}
+        pills={[c.interval || "monatlich", cd.cancelBy && { label: "kündbar bis " + fmtDate(cd.cancelBy), cls: "st-open" }, c.cancelledAt && { label: "gekündigt", cls: "st-over" }]} />; })()}
       <div className="seg">{SCOPES.map(([k, i, l]) => <button key={k} className={(c.scope || "privat") === k ? "on" : ""} onClick={() => set({ scope: k })}>{i} {l}</button>)}</div>
       <fieldset><legend>Vertrag</legend>
         <div className="grid2">
@@ -11250,6 +11302,8 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
   return (
     <Win id="astedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name || "Neues Gerät"}</b><button className="btn primary" disabled={!a.name?.trim()} onClick={() => { onSave({ ...a, price: a.price === "" || a.price == null ? "" : Number(String(a.price).replace(",", ".")) || 0 }); onClose(); }}>Speichern</button><XBtn /></div>
+      {init.name && <MHero icon="🛡️" sub={[a.brand, a.cat].filter(Boolean).join(" · ") || "Gerät"} title={a.name || init.name} value={a.price !== "" && a.price != null ? fmtMoney(Number(String(a.price).replace(",", ".")) || 0) : null}
+        pills={[a.date && "gekauft " + fmtDate(a.date), astEndAll(a) && { label: (astEndAll(a) < todayISO() ? "Garantie abgelaufen " : "Garantie bis ") + fmtDate(astEndAll(a)), cls: astEndAll(a) < todayISO() ? "st-draft" : "st-paid" }]} />}
       <div className="seg scopeseg">{SCOPES.map(([k, i, l]) => <button key={k} className={a.scope === k ? "on" : ""} onClick={() => set({ scope: k })}>{i} {l}</button>)}</div>
       {a.docId || busy ? (
         <div className="expatt">
@@ -14975,4 +15029,70 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
   .fbcompact .fbstats>div{padding:6px 7px}.fbcompact .fbstats b{font-size:14px}
   .fbcompact .fbquick button{padding:7px 2px}
 }
+
+/* v0.97.7: Dokumente – Titel öffnet Details, Auge öffnet Vorschau */
+.deyem{display:none}
+@media (max-width:700px){.deyem{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;border-radius:50%;border:0;background:var(--card2);color:var(--acc);padding:0;margin-left:4px;cursor:pointer}.deyem svg{width:19px;height:19px}}
+.dactions button.on{color:var(--acc)}
+.detprevbtn{display:inline-flex;align-items:center;gap:6px}.detprevbtn svg{width:18px;height:18px}
+@media (max-width:420px){.detprevbtn span{display:none}}
+.dtitle{cursor:pointer}
+
+/* ======================= v0.98: Handy-Popups neu (Bottom-Sheet, Kopfzeile, Gruppen, Aktionsleiste, Kopfkarte) ======================= */
+.mhero{display:none}
+.msheet{align-items:flex-end!important;justify-content:center!important;padding:0!important;background:rgba(8,14,26,.45)!important}
+.msheet>.panel{width:100%!important;max-width:none!important;height:auto!important;max-height:calc(100dvh - env(safe-area-inset-top) - 12px)!important;border-radius:22px 22px 0 0!important;
+  background:var(--bg);padding:0 14px calc(env(safe-area-inset-bottom) + 18px)!important;animation:msheetup .28s cubic-bezier(.2,.8,.2,1)!important;transition:transform .22s ease;box-shadow:0 -12px 40px rgba(0,0,0,.22)!important;position:relative}
+.msheet.mfull>.panel{height:calc(100dvh - env(safe-area-inset-top) - 12px)!important}
+@keyframes msheetup{from{transform:translateY(100%)}to{transform:none}}
+.mgrab{position:sticky;top:0;z-index:4;height:0;pointer-events:none}
+.mgrab::before{content:"";display:block;width:40px;height:5px;border-radius:3px;background:var(--mut);opacity:.45;margin:7px auto 0}
+/* 2 · Kopfzeile wie iOS: links Abbrechen/Schließen, Mitte Titel, rechts Sichern */
+.msheet .panelhead{position:sticky;top:0;z-index:3;display:flex!important;align-items:center;gap:6px;margin:0 -14px 10px;padding:20px 14px 10px!important;background:color-mix(in srgb,var(--bg) 94%,transparent);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:.5px solid var(--line);min-height:0}
+.msheet .panelhead .xbtn{order:-2;background:none!important;border:0!important;width:auto!important;height:auto!important;min-width:0;padding:6px 2px!important;color:var(--acc)!important;font-size:16px;font-weight:500;box-shadow:none!important;border-radius:0}
+.msheet .panelhead .xbtn .xi{display:none}
+.msheet .panelhead .xbtn .xt::before{content:"Schließen"}
+.msheet .panelhead:has(.btn.primary) .xbtn .xt::before{content:"Abbrechen"}
+.msheet .panelhead>b:first-of-type,.msheet .panelhead>.grow:first-child{order:-1;flex:1;min-width:0;margin:0!important;text-align:center;font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msheet .panelhead>b:first-of-type.clamp{display:block;-webkit-line-clamp:unset}
+.msheet .panelhead .btn.primary{background:none!important;color:var(--acc)!important;border:0!important;box-shadow:none!important;padding:6px 2px!important;font-size:16px;font-weight:700;min-height:0}
+.msheet .panelhead .btn.primary:disabled{opacity:.35}
+.msheet .panelhead .btn:not(.primary),.msheet .panelhead .iconbtn{padding:5px 10px;font-size:13px;min-height:0;border-radius:999px}
+.msheet .panelhead .iconbtn{width:32px;height:32px;padding:0}
+/* 4 · feste Aktionsleiste unten */
+.msheetbar{position:sticky;bottom:calc(-1 * (env(safe-area-inset-bottom) + 18px));z-index:3;margin:16px -14px calc(-1 * (env(safe-area-inset-bottom) + 18px));padding:10px 14px calc(env(safe-area-inset-bottom) + 12px);
+  background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:.5px solid var(--line)}
+.msheetbar .btn{width:100%;min-height:50px;font-size:17px;border-radius:14px;font-weight:700}
+.msheet .panel>.actions:has(.btn.primary){position:sticky;bottom:calc(-1 * (env(safe-area-inset-bottom) + 18px));z-index:3;margin:16px -14px calc(-1 * (env(safe-area-inset-bottom) + 18px));padding:10px 14px calc(env(safe-area-inset-bottom) + 12px);
+  background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:.5px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
+.msheet .panel>.actions .btn{flex:1;min-height:48px;font-size:16px;border-radius:14px}
+.msheet .panel>.actions .btn.primary{flex:2}
+/* 3 · gruppierte Abschnitte (Karten wie in den iOS-Einstellungen) */
+.msheet fieldset{background:var(--card);border:0!important;border-radius:14px;padding:2px 14px 6px!important;margin:30px 0 12px!important;position:relative;min-width:0}
+.msheet fieldset>legend{position:absolute;top:-22px;left:4px;padding:0!important;font-size:12px!important;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)!important;margin:0!important}
+.msheet .panel>:is(label:not(.check):not(.switchrow),.grid2){background:var(--card);margin:0!important;padding:9px 14px!important;border-radius:0}
+.msheet .panel>:is(label:not(.check):not(.switchrow),.grid2):not(:is(label:not(.check):not(.switchrow),.grid2) + *){border-top-left-radius:14px;border-top-right-radius:14px;margin-top:12px!important}
+.msheet .panel>:is(label:not(.check):not(.switchrow),.grid2):not(:has(+ :is(label:not(.check):not(.switchrow),.grid2))){border-bottom-left-radius:14px;border-bottom-right-radius:14px;margin-bottom:12px!important}
+.msheet .panel>:is(label:not(.check):not(.switchrow),.grid2) + :is(label:not(.check):not(.switchrow),.grid2){box-shadow:inset 0 .5px 0 var(--line)}
+.msheet fieldset>:is(label:not(.check),.grid2) + :is(label:not(.check),.grid2){border-top:.5px solid var(--line)}
+.msheet fieldset>:is(label:not(.check),.grid2){padding:9px 0;margin:0!important}
+/* Einzelfeld als Zeile: Bezeichnung links, Wert rechts */
+.msheet :is(.panel,fieldset)>label:not(.check):not(.switchrow):has(> input:is([type=text],[type=number],[type=email],[type=tel],[type=url],:not([type])):only-of-type):not(:has(textarea,.selbtn,select,button)){display:grid!important;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px;font-size:15px;color:var(--txt)}
+.msheet :is(.panel,fieldset)>label:not(.check):not(.switchrow):has(> input:is([type=text],[type=number],[type=email],[type=tel],[type=url],:not([type])):only-of-type):not(:has(textarea,.selbtn,select,button))>input{background:transparent!important;border:0!important;box-shadow:none!important;text-align:right;padding:6px 0!important;min-height:0;font-size:16px;margin:0!important}
+.msheet .grid2 label,.msheet fieldset label{font-size:13px}
+.msheet .panel>.check{padding:6px 4px}
+.msheet .panel>.seg{margin:10px 0!important}
+.msheet .panel>.tile,.msheet .panel>section.tile{border-radius:14px}
+/* 5 · Kopfkarte */
+.msheet .mhero{display:flex;align-items:center;gap:12px;margin:4px 0 12px;padding:14px;border-radius:18px;background:color-mix(in srgb,var(--acc) 13%,var(--card));color:var(--txt)}
+.mheroic{width:46px;height:46px;border-radius:13px;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:23px;flex:none}
+.mherosub{display:block;color:var(--mut);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mherot{display:block;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mherov{font-size:20px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mheropills{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}.mheropills .stpill{font-size:11px}
+.msheet .kbhero{background:color-mix(in srgb,var(--acc) 13%,var(--card));border-radius:18px;padding:16px;margin:4px 0 12px}
+.msheet .kbrow{background:var(--card);margin:0;padding:11px 14px;border-bottom:.5px solid var(--line)}
+.msheet .kbrow:first-of-type{border-radius:14px 14px 0 0}
+.msheet .txhero{background:color-mix(in srgb,var(--acc) 10%,var(--card));border-radius:18px;padding:16px 12px;margin:4px 0 12px}
 `;

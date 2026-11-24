@@ -2,6 +2,23 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.98.0 – Handy-Popups neu gestaltet
+
+Alle Popup-Fenster am iPhone (und iPad hochkant) nach den fünf Vorschlägen:
+1. **Bottom-Sheet:** Fenster kommen von unten, runde Ecken oben, Griff; kleine Fenster nur so hoch wie der Inhalt. Nach unten wischen (Griff/Kopfzeile) schließt – bei ungespeicherten Änderungen kommt zuerst die Rückfrage.
+2. **Kopfzeile wie iOS:** links „Abbrechen“ bzw. „Schließen“, Mitte Titel, rechts „Speichern“.
+3. **Gruppierte Abschnitte:** Felder in Karten mit Abschnittsüberschrift; einzelne Textfelder als Zeile (Bezeichnung links, Wert rechts).
+4. **Feste Aktionsleiste unten:** großer Speichern-Knopf im Daumenbereich, bleibt beim Scrollen sichtbar.
+5. **Kopfkarte:** Rechnung, Vertrag, Besitz, Kassabuch-Buchung und Buchung zeigen oben eine farbige Karte mit Betrag, Datum und Status.
+
+Laptop/Mac und iPad quer behalten die schwebenden Fenster.
+
+## v0.97.7 – Dokumente: Titel öffnet Details, Auge öffnet Vorschau
+
+- Klick auf Titel/Zeile (Liste und Galerie) öffnet jetzt die Details, nicht mehr die Vorschau.
+- Vorschau über das 👁 rechts in der Zeile (Laptop: in den Aktionen, iPhone: eigener Knopf) oder im Detailfenster über „👁 Vorschau“.
+- iPhone: Nach dem Schließen eines Fensters (z. B. Dokument-Details) steht die Liste wieder an derselben Stelle statt ganz oben.
+
 ## v0.97.6 – Fahrzeugkarte 250/200 px, Einklappen nur am iPad
 
 - Fahrzeugkarte im Fahrtenbuch: am Laptop 250 px, am iPhone 200 px hoch (etwas größere Symbole, Kacheln und Knöpfe).
