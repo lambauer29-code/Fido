@@ -1649,6 +1649,7 @@ function AppMain() {
   useEffect(() => { const f = () => { if (skipPop.current) { skipPop.current = false; return; } goBack(); }; addEventListener("popstate", f); return () => removeEventListener("popstate", f); }, []);
   const rootTab = (k) => { navMode.current = { m: "root", t: Date.now() }; setTab(k); };
   const [openId, setOpenId] = useState(null);
+  const [stbTx, setStbTx] = useState(null); // Buchung als Popup (z. B. aus dem Steuerberater-Reiter), ohne den Reiter zu wechseln
   const [docCat, setDocCat] = useState("");
   const [budgets, setBudgets] = useState(() => ls.get("budgets", {}));
   const [me, setMe] = useState(() => ls.get("me", { name: "", address: "", city: "" }));
@@ -2261,7 +2262,7 @@ function AppMain() {
           onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
           onLink={async (txId, docId) => { await linkTx(txId, docId); const d = docsRef.current.find((x) => x.id === docId); if (d?.receiptFlow) await saveDoc({ ...d, receiptFlow: false, paid: true }); }} />}
         {tab === "steuer" && <StbPage txs={txs} accounts={accounts} setAccounts={setAccounts} docs={active} saveDoc={saveDoc} updateTx={updateTx} updateTxs={updateTxs} importTxs={importTxs} getTxs={() => txsRef.current}
-          categories={categories} token={token} notify={notify} setTab={setTab} onOpen={setOpenId} openTx={(t) => { ls.set("txOpenReq", t.id); setSelAcc(t.accountId); setTab("accounts"); }} />}
+          categories={categories} token={token} notify={notify} setTab={setTab} onOpen={setOpenId} openTx={(t) => setStbTx(t)} />}
         {tab === "firma" && <BizReport docs={active} setTab={setTab} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
         {tab === "vermoegen" && <Wealth txs={txs} accounts={visAccounts} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
@@ -2399,6 +2400,10 @@ function AppMain() {
       {sideMini && sideTip && <div className="sidetip" style={{ top: sideTip.top }}>{sideTip.text}</div>}
 
       <SideResizer />
+      {stbTx && <TxSheet key={stbTx.id} t={txs.find((x) => x.id === stbTx.id) || stbTx} onSwitch={(x) => setStbTx(x)} onClose={() => setStbTx(null)}
+        scanReceiptFor={scanReceiptFor} receiptFor={receiptFor} txs={txs} recurring={recurring} subs={subs} goTab={setTab} resetCp={resetCp} addCategory={addCategory} accounts={accounts}
+        linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} categories={TX_CATS(categories)} docs={active} onOpen={(id) => setOpenId(id)} updateTx={updateTx}
+        accName={(id) => accounts.find((a) => a.id === id)?.name || "Konto"} onAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
       {openDoc && (
         <Detail doc={openDoc} categories={categories} docGroups={nav.docGroups} addCategoryEx={addCategoryEx} onClose={() => setOpenId(null)} bookCash={bookCash} txs={txs} accounts={accounts} linkTx={linkTx}
           saveDoc={saveDoc} trashDoc={trashDoc} reanalyze={reanalyze} notify={notify} />
@@ -7526,7 +7531,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
       {sec === "setup" && setup}
       {impFiles[0] && <StmtImportWin key={impFiles[0].name + impFiles.length} file={impFiles[0]} accounts={accounts} txs={txs} getTxs={getTxs} importTxs={importTxs} saveDoc={saveDoc} updateTxs={updateTxs} categories={categories} token={token} notify={notify}
         onClose={() => setImpFiles((l) => l.slice(1))} onDone={(d) => { setImpFiles((l) => { if (l.length === 1) setStmtOpen(d.id); return l.slice(1); }); }} />}
-      {curStmt && <StmtWin doc={curStmt} txs={txs} accounts={accounts} docs={docs} saveDoc={saveDoc} updateTx={updateTx} updateTxs={updateTxs} openTx={(t) => { setStmtOpen(null); openTx(t); }} notify={notify} token={token} onClose={() => setStmtOpen(null)} />}
+      {curStmt && <StmtWin doc={curStmt} txs={txs} accounts={accounts} docs={docs} saveDoc={saveDoc} updateTx={updateTx} updateTxs={updateTxs} openTx={(t) => openTx(t)} notify={notify} token={token} onClose={() => setStmtOpen(null)} />}
     </div>
   );
 }
@@ -10031,7 +10036,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                 {l.map((x) => { const sx = x.kind === "angebot" ? (x.status || "offen") : st(x), ui = STATE_UI[sx] || [sx, ""]; const payable = x.kind === "rechnung" && ["offen", "überfällig"].includes(sx); return (
                   <MItem key={x.id} icon={x.kind === "angebot" ? <MIco e="📝" /> : <MAvatar text={x.customer?.name} />} title={x.customer?.name || "Ohne Kunde"}
                     tags={[pick && (pick.has(x.id) ? "☑ gewählt" : "☐"), x.kind === "angebot" && "Angebot", ...(lt ? (x.tags || []).map((t) => "#" + t) : [])]} sub={`${x.number || "Entwurf"} · ${fmtDate(x.date)}${payable ? " · fällig " + fmtDate(invDueEff(x)) : ""}`}
-                    amount={fmtMoney(invTotal(x))} amountCls={sx === "bezahlt" ? "in" : sx === "überfällig" ? "neg" : ""} pill={<span className={"stpill " + ui[1]}>{ui[0]}</span>}
+                    amount={fmtMoney(invTotal(x))} amountCls={sx === "bezahlt" ? "in" : sx === "überfällig" ? "neg" : ""} pill={<span className="mpillrow"><span className={"stpill " + ui[1]}>{ui[0]}</span>{!pick && x.number && <button className="mieye" title="Vorschau" aria-label="Vorschau" onClick={async (e) => { e.stopPropagation(); openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email); }}><IcoEye /></button>}</span>}
                     onClick={() => (pick ? togglePick(x.id) : setEdit(x))}
                     swipe={pick ? null : { left: [x.number && { icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => (async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email))() }, lt && x.number && { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInv([x]) }, { icon: "⧉", label: "Kopie", bg: "#8b5cf6", run: () => copyAsNew(x) }],
                       right: [payable && { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayFor2(x) }, sx === "überfällig" && { icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }] }} />); })}
@@ -10092,7 +10097,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
               <div className={"invrow" + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setEdit(x))}>
                 {pick && <span className={"pickbox inline" + (pick.has(x.id) ? " on" : "")}>✓</span>}
                 <div className="invmain">
-                  <div className="row1"><b className="invname" title="Vorschau öffnen" onClick={(e) => { if (pick) return; e.stopPropagation(); (async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email))(); }}>{x.customer?.name || "Ohne Kunde"}</b>{lt && (x.tags || []).map((t) => <span key={t} className="label tag lttag">#{t}</span>)}</div>
+                  <div className="row1"><b className="invname">{x.customer?.name || "Ohne Kunde"}</b>{lt && (x.tags || []).map((t) => <span key={t} className="label tag lttag">#{t}</span>)}</div>
                   <small className="muted block">
                     {x.kind === "angebot" ? "Angebot " : ""}{x.number || "Entwurf"} · {fmtDate(x.date)}
                     {x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) && ` · fällig ${fmtDate(invDueEff(x))}`}
@@ -10177,11 +10182,18 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
   const d = ctDates(c);
   const [letter, setLetter] = useState(false);
   const linked = docs.filter((x) => (c.docIds || []).includes(x.id));
+  const [prevOpen, setPrevOpen] = useState(false);
   const cand = docs.filter((x) => !(c.docIds || []).includes(x.id)).slice(0, 300);
   return (
     <Win id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name ? c.name || "Vertrag" : "Neuer Vertrag"}</b>
+        {linked.length > 0 && <button className="btn detprevbtn" title="Dokumente ansehen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>}
         <button className="btn primary" disabled={!c.name} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
+      {prevOpen && linked.length > 0 && createPortal(
+        <Win id="ctprev" onClose={() => setPrevOpen(false)} dirty={false} className="docprevwin">
+          <div className="panelhead"><b className="clamp">{c.name}{linked.length > 1 ? ` · ${linked.length} Dokumente` : ""}</b><XBtn /></div>
+          <div className="ctprevdocs">{linked.map((x) => <DocPreview key={x.id} d={x} onOpen={() => setPrevOpen(false)} />)}</div>
+        </Win>, document.querySelector(".app") || document.body)}
       {init.name && (() => { const cd = ctDates(c); return <MHero icon="📑" sub={c.provider || "Vertrag"} title={c.name || "Vertrag"} value={c.amount ? fmtMoney(Number(String(c.amount).replace(",", ".")) || 0) : null}
         pills={[c.interval || "monatlich", cd.cancelBy && { label: "kündbar bis " + fmtDate(cd.cancelBy), cls: "st-open" }, c.cancelledAt && { label: "gekündigt", cls: "st-over" }]} />; })()}
       <div className="seg">{SCOPES.map(([k, i, l]) => <button key={k} className={(c.scope || "privat") === k ? "on" : ""} onClick={() => set({ scope: k })}>{i} {l}</button>)}</div>
@@ -10345,7 +10357,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
                   tags={[pick && (pick.has(c.id) ? "☑ gewählt" : "☐"), c.scope === "firma" && "Firma", c.inactive && "inaktiv", cdocs.length && "📎", ...(c.tags || []).map((t) => "#" + t)]}
                   sub={c.cancelledAt ? `gekündigt${c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}` : d.open ? `${c.provider || ""} · jederzeit kündbar` : d.cancelBy ? `${c.provider ? c.provider + " · " : ""}kündigen bis ${fmtDate(d.cancelBy)}` : c.provider || "Laufzeit nicht eingetragen"}
                   amount={c.amount ? fmtMoney(Number(c.amount)) : "—"} amountSub={c.interval || "monatlich"}
-                  pill={!c.cancelledAt && left != null && left >= 0 && left <= 60 && <span className={"stpill " + (left <= 30 ? "st-over" : "st-draft")}>{left === 0 ? "heute" : `in ${left} T.`}</span>}
+                  pill={<span className="mpillrow">{!c.cancelledAt && left != null && left >= 0 && left <= 60 && <span className={"stpill " + (left <= 30 ? "st-over" : "st-draft")}>{left === 0 ? "heute" : `in ${left} T.`}</span>}{!pick && cdocs.length > 0 && <button className="mieye" title="Vorschau" aria-label="Vorschau" onClick={(e) => { e.stopPropagation(); setPrevCt(c.id); }}><IcoEye /></button>}</span>}
                   onClick={() => (pick ? togglePick(c.id) : setEdit(c))}
                   swipe={pick ? null : { left: [cdocs[0] && { icon: <IcoEye />, label: "Dokument", bg: "#0ea5e9", run: () => onOpen(cdocs[0].id) }],
                     right: [{ icon: c.inactive ? "▶" : "⏸", label: c.inactive ? "Aktiv" : "Inaktiv", bg: "#64748b", run: () => save({ ...c, inactive: !c.inactive }) },
@@ -10377,10 +10389,10 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
           <div key={c.id} className="dwrap ctwrap">
           <div className={"frow click ctrow" + (c.cancelledAt ? " ended" : "") + (c.inactive ? " inactive" : "") + (pick?.has(c.id) ? " picked" : "")} onClick={() => (pick ? togglePick(c.id) : setEdit(c))}>
             {pick && <KitPickBox on={pick.has(c.id)} />}
-            {cdocs[0] ? <span onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevCt(open ? null : c.id); }} title="Vorschau öffnen"><Thumb d={cdocs[0]} /></span>
+            {cdocs[0] ? <span><Thumb d={cdocs[0]} /></span>
               : <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{ctCats()[c.cat] || "📄"}</span>}
             <div className="grow">
-              <b className={cdocs.length ? "dtitle" : ""} title={cdocs.length ? "Vorschau öffnen" : undefined} onClick={cdocs.length ? (e) => { if (pick) return; e.stopPropagation(); setPrevCt(open ? null : c.id); } : undefined}>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small> <KitTags tags={c.tags} />
+              <b>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small> <KitTags tags={c.tags} />
               <small className="muted block ctsub">{[c.provider, c.customerNo && "Nr. " + c.customerNo, c.interval || "monatlich", cdocs.length ? `📎 ${cdocs.length}` : ""].filter(Boolean).join(" · ")}{" · "}{c.cancelledAt ? <span className="muted">Gekündigt{c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}</span>
                 : d.open ? <span className="muted">unbefristet · jederzeit kündbar</span>
                 : d.cancelBy ? <span className={daysUntil(d.cancelBy) <= 30 ? "neg" : daysUntil(d.cancelBy) <= 60 ? "warnc" : "muted"}>kündigen bis {fmtDate(d.cancelBy)} · Ende {fmtDate(d.end)}</span>
@@ -10396,15 +10408,15 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
           </div>
           </div>); })}
       </section>
+      </FitScroll>
+      </>)}
+      {ctBulk}
       {prevCt && (() => { const pc = list.find((x) => x.id === prevCt); const pd = (pc?.docIds || []).map((id) => docs.find((x) => x.id === id)).filter(Boolean); return pd.length ? createPortal(
         <Win id="ctprev" onClose={() => setPrevCt(null)} dirty={false} className="docprevwin">
           <div className="panelhead"><b className="clamp">{pc.name}{pd.length > 1 ? ` · ${pd.length} Dokumente` : ""}</b>
             <button className="iconbtn" title="Vertrag bearbeiten" aria-label="Vertrag bearbeiten" onClick={() => { setPrevCt(null); setEdit(pc); }}><IcoEdit /></button><XBtn /></div>
           <div className="ctprevdocs">{pd.map((x) => <DocPreview key={x.id} d={x} onOpen={() => onOpen(x.id)} />)}</div>
         </Win>, document.querySelector(".app") || document.body) : null; })()}
-      </FitScroll>
-      </>)}
-      {ctBulk}
       {edit && <ContractEditor c={edit} docs={docs} me={me} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
     </div>
   );
@@ -12253,7 +12265,7 @@ function DunningPage({ setTab, book }) {
           {overV.map(({ x, last, since, ready, next }) => (
             <MItem key={x.id} icon={<MAvatar text={x.customer?.name} color="#ef4444" />} title={x.customer?.name || "Ohne Kunde"} tags={[pick && (pick.has(x.id) ? "☑ gewählt" : "☐"), ...(x.tags || []).map((t) => "#" + t)]}
               sub={`${x.number} · ${since} T. überfällig${last ? " · zuletzt " + remindName(last.level) : ""}`} amount={fmtMoney(invTotal(x))} amountCls="neg"
-              pill={<span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? remindName(next) : `in ${(dn.waitDays || 0) - since} T.`}</span>}
+              pill={<span className="mpillrow"><span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? remindName(next) : `in ${(dn.waitDays || 0) - since} T.`}</span>{!pick && <button className="mieye" title="Rechnung ansehen" aria-label="Vorschau" onClick={async (e) => { e.stopPropagation(); openPdf(await buildInvoicePdf({ ...x, reminders: [] }, co), invFileName(x)); }}><IcoEye /></button>}</span>}
               onClick={() => (pick ? togglePick(x.id) : setRemind(x))}
               swipe={pick ? null : { left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => (async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email))() }, { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInvs([[x, null]]) }],
                 right: [{ icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }, { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayX(x) }] }} />
@@ -12263,8 +12275,7 @@ function DunningPage({ setTab, book }) {
           {histV.map(({ x, r, i }) => { const s = invState(x); return (
             <MItem key={x.id + i} icon={<MIco e="📮" />} title={`${remindName(r.level)} · ${x.customer?.name || ""}`} sub={`${fmtDate(r.date)} · ${x.number} · Frist ${fmtDate(r.due)}`}
               amount={fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))} amountCls={s === "bezahlt" ? "in" : ""}
-              pill={i === x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
-              onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}
+              pill={<span className="mpillrow">{i === x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}<button className="mieye" title="Vorschau" aria-label="Vorschau" onClick={async (e) => { e.stopPropagation(); openPdf(await pdfOf(x, i), invFileName(x, r)); }}><IcoEye /></button></span>}
               swipe={{ left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => (async () => openPdf(await pdfOf(x, i), invFileName(x, r)))() }, { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInvs([[x, i]]) }],
                 right: [{ icon: "📤", label: "Teilen", bg: "#8b5cf6", run: async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email) }] }} />); })}
         </MScroll>
@@ -12300,7 +12311,7 @@ function DunningPage({ setTab, book }) {
           <div className={"invrow" + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setRemind(x))}>
             {pick && <KitPickBox on={pick.has(x.id)} />}
             <div className="invmain">
-              <div className="row1"><b className="invname" title="Vorschau öffnen" onClick={(e) => { if (pick) return; e.stopPropagation(); (async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email))(); }}>{x.customer?.name || "Ohne Kunde"}</b><KitTags tags={x.tags} /></div>
+              <div className="row1"><b className="invname">{x.customer?.name || "Ohne Kunde"}</b><KitTags tags={x.tags} /></div>
               <small className="muted block">{x.number} · fällig {fmtDate(invDueEff(x))} · {since} Tage überfällig{last ? ` · zuletzt ${remindName(last.level)} am ${fmtDate(last.date)}` : " · noch nicht gemahnt"}</small>
             </div>
             <b className="invamt neg">{fmtMoney(invTotal(x))}</b>
@@ -12308,6 +12319,7 @@ function DunningPage({ setTab, book }) {
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
               <button className={"btn sm" + (ready ? " danger" : "")} onClick={() => setRemind(x)}>{remindName(next)} erstellen</button>
               <StatusMenu x={x} s={invState(x)} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />
+              <button className="iconbtn" title="Rechnung ansehen" aria-label="Vorschau" onClick={async () => openPdf(await buildInvoicePdf({ ...x, reminders: [] }, co), invFileName(x))}><IcoEye /></button>
               <button className="iconbtn" title="Rechnung drucken" aria-label="Drucken" onClick={() => printInvs([[x, null]])}><IcoPrint /></button>
               <button className="iconbtn" title="Tags bearbeiten" aria-label="Tags bearbeiten" onClick={() => tagInv([x])}>#</button>
             </div>
@@ -12319,9 +12331,9 @@ function DunningPage({ setTab, book }) {
         {!histS.length && <p className="muted small" style={{ padding: "0 14px" }}>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</p>}
         {histV.map(({ x, r, i }) => { const s = invState(x); return (
           <React.Fragment key={x.id + i}>
-          <div className={"invrow"} onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>
+          <div className={"invrow"}>
             <div className="invmain">
-              <div className="row1"><b className="invname" title="Vorschau öffnen" onClick={(e) => { e.stopPropagation(); (async () => openPdf(await pdfOf(x, i), invFileName(x, r)))(); }}>{remindName(r.level)} · {x.customer?.name}</b></div>
+              <div className="row1"><b className="invname">{remindName(r.level)} · {x.customer?.name}</b></div>
               <small className="muted block">{fmtDate(r.date)} · {x.number} · Frist {fmtDate(r.due)}{Number(r.fee) ? ` · Spesen ${fmtMoney(Number(r.fee))}` : ""}</small>
             </div>
             <b className="invamt">{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))}</b>
@@ -15190,4 +15202,9 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
 }
 
 @media (max-width:767px){.mtx,.dlist>.dwrap{content-visibility:auto;contain-intrinsic-size:auto 68px}}
+
+/* v0.98.2: Auge rechts in Handy-Zeilen */
+.mieye{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;border:0;background:var(--card2);color:var(--acc);padding:0;margin-left:6px;cursor:pointer;flex:none;vertical-align:middle}
+.mieye svg{width:18px;height:18px}
+.mpillrow{display:inline-flex;align-items:center;gap:4px;justify-content:flex-end}
 `;

@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.98.2 – Vorschau nur über das Auge, Buchung im Steuerberater als Popup
+
+- **Rechnungen, Mahnungen, Verträge:** Klick auf Titel/Zeile öffnet die Details (Popup), nicht mehr die Vorschau. Vorschau nur über das 👁 rechts (jetzt auch am Handy in jeder Zeile) oder im Popup über „Vorschau“. Mahnungen: 👁 auch bei offenen Rechnungen; Verlaufszeilen öffnen beim Antippen nichts mehr. Vertrags-Popup hat neu den Knopf „👁 Vorschau“ für die verknüpften Dokumente.
+- **Steuerberater:** Eine Buchung (aus Prüfen, Klärungsliste oder Kontoauszug) öffnet sich als Popup direkt im Reiter – kein Wechsel mehr zu den Konten. Aus dem Kontoauszug geöffnet, bleibt der Auszug dahinter offen.
+
 ## v0.98.1 – Leistung am Handy (Ruckler beseitigt)
 
 - **Datum/Betrag formatieren:** `fmtDate`, `fmtMoney`, `monthLabel` und alle `toLocale…`-Aufrufe verwenden zwischengespeicherte Intl-Formatierer (war der größte Bremsklotz beim Öffnen von Listen).
