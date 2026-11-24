@@ -3,6 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <script>
+      // iPad im Hochformat: dieselbe Ansicht wie am iPhone, nur größer (Layout-Breite 700 px, iPadOS skaliert hoch).
+      // iPad quer: Ansicht wie am Mac (Seitenleiste mit Beschriftung, Details als Spalte rechts).
+      (function () {
+        var m = document.querySelector('meta[name="viewport"]'), base = m.getAttribute("content");
+        var short = Math.min(screen.width, screen.height);
+        var ipad = short >= 744 && short <= 1100 && (matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 1);
+        if (!ipad) return;
+        var mq = matchMedia("(orientation: portrait)");
+        function set() {
+          var p = mq.matches;
+          m.setAttribute("content", p ? "width=700, viewport-fit=cover" : base);
+          document.documentElement.classList.toggle("ipad-portrait", p);
+          document.documentElement.classList.toggle("ipad-landscape", !p);
+        }
+        set();
+        mq.addEventListener ? mq.addEventListener("change", set) : mq.addListener(set);
+      })();
+    </script>
     <meta name="theme-color" content="#f3f5f9" />
     <script>try{var m=JSON.parse(localStorage.getItem("theme")||'"auto"'),h=new Date().getHours(),d=m==="dark"||(m==="zeit"&&(h<7||h>=19))||(m==="auto"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light";document.querySelector('meta[name="theme-color"]').content=d?"#0d1117":"#f3f5f9"}catch(e){}</script>
     <meta name="apple-mobile-web-app-capable" content="yes" />

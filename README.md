@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.89.0
+- **iPad neu**:
+  - **Hochformat:** genau die iPhone-Ansicht, nur größer. Die Tab-Leiste hat Übersicht · Dokumente · Privat · Firma · Mehr, dazu Bereichs-Startseiten, Zurück-Knopf und die Kachel-Übersicht. Technisch rechnet das iPad im Hochformat mit 700 px Breite und vergrößert alles passend.
+  - **Querformat:** die Ansicht wie am Mac, mit voller Seitenleiste samt Beschriftung, Konten-Baum und Übersicht. Details öffnen sich als Spalte rechts.
+  - Beim Drehen wechselt die Ansicht automatisch.
+- Die schmale Symbol-Seitenleiste am iPad ist entfallen. Am Mac bleibt sie über den Seitenleisten-Knopf wählbar.
+
 ## v0.88.0
 - **iPhone: neue Navigation wie bei nativen Apps (Variante B)**:
   - Die Tab-Leiste hat nur noch 5 Einträge: Übersicht · Dokumente · Privat · Firma · Mehr.

@@ -1660,7 +1660,7 @@ function AppMain() {
   pdfUi = setPdfView;
   const impRef = useRef(null), vcfApp = useRef(null);
   const [sideMiniSet, setSideMiniRaw] = useState(() => ls.get("sideMini", null));
-  const tabletAuto = useMedia("(min-width:701px) and (max-width:1180px) and (pointer:coarse)");
+  const tabletAuto = false; // iPad quer: volle Seitenleiste wie am Mac; iPad hoch: iPhone-Ansicht (siehe index.html)
   const sideMini = sideMiniSet === null ? tabletAuto : sideMiniSet; // iPad: automatisch nur Symbole, solange nicht selbst umgestellt
   const [sideTip, setSideTip] = useState(null);
   const setSideMini = (v) => { setSideMiniRaw(v); ls.set("sideMini", v); };
@@ -4003,7 +4003,7 @@ function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () =
   );
 }
 function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, accounts = [], onManual, openAccount, cashForm, uniDrop, editing = false, setEditing = () => {}, actions }) {
-  const touchHome = useMedia("(max-width:700px), (pointer:coarse) and (max-width:1366px)");
+  const touchHome = useMedia("(max-width:700px)"); // iPhone + iPad hoch (700 px Layout); iPad quer wie am Mac
   const bankAccs = accounts.filter((a) => a.kind !== "cash");
   const bankBals = bankAccs.map((a) => accountBalance(a, txs)).filter((x) => x != null);
   const bankTotal = bankBals.length ? bankBals.reduce((x, y) => x + y, 0) : null;
