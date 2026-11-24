@@ -4856,7 +4856,6 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
   const [showDrop, setShowDrop] = useLsState("docDrop", true);
   const [chipCfg, setChipCfg] = useLsState("docChips", { order: [], hidden: [] });
   const [q, setQ] = useState("");
-  const [prevId, setPrevId] = useState(null);
   const [winPrev, setWinPrev] = useState(null);
   // Listen-Aufbau wie Rechnungen: Jahr · Sortierung · Tags · Ansichten · Auswahl
   const dDate = (d) => d.documentDate || d.createdAt || "";
@@ -4960,14 +4959,13 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
           <p>Noch keine Dokumente.<br />Tippe auf <b>＋</b>, um ein PDF oder Foto hinzuzufügen – Claude sortiert, verschlagwortet und liest Beträge, Fristen &amp; Verträge aus.</p></div>
       )}
 
-      {winPrev && (
+      {winPrev && createPortal(
         <Win id="docprev" onClose={() => setWinPrev(null)} dirty={false} className="docprevwin">
           <div className="panelhead"><b className="clamp">{winPrev.title}</b>
             <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = winPrev.id; setWinPrev(null); onOpen(id); }}><IcoEdit /></button>
             <XBtn /></div>
           <DocPreview d={winPrev} onOpen={() => onOpen(winPrev.id)} />
-        </Win>
-      )}
+        </Win>, document.querySelector(".app") || document.body)}
 
       {mode === "ordner" && !cat && !q.trim() ? (
         <FolderGrid docGroups={docGroups} docs={docs.filter((d) => (scope === "alle" || docScope(d) === scope) && (area === "alle" || docArea(d) === area))} onOpen={setCat} />
@@ -4994,14 +4992,14 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
       ) : (
         <div className="dlist">
           {list.map((d) => (
-            <div key={d.id} className={"dwrap" + (prevId === d.id ? " open" : "")}>
-            <SwipeRow left={pick ? [] : [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevId(prevId === d.id ? null : d.id) }, { icon: "📤", label: "Teilen", bg: "#8b5cf6", run: () => shareDocs([d]) }]}
+            <div key={d.id} className="dwrap">
+            <SwipeRow left={pick ? [] : [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setWinPrev(d) }, { icon: "📤", label: "Teilen", bg: "#8b5cf6", run: () => shareDocs([d]) }]}
               right={pick ? [] : [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: () => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && trashDoc(d) }, { icon: "✎", label: "Bearbeiten", bg: "#3b82f6", run: () => onOpen(d.id) }]}>
             <div className={"ditem" + (pick?.has(d.id) ? " picked" : "")} onClick={() => (pick ? togglePick(d.id) : onOpen(d.id))}>
               {pick && <span className={"pickbox inline" + (pick.has(d.id) ? " on" : "")}>✓</span>}
               <Thumb d={d} />
               <div className="grow">
-                <div className="row1"><b className="clamp dtitle" title="Vorschau öffnen" onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevId(prevId === d.id ? null : d.id); }}>{d.title}</b><span className="damtin">{amt(d)}</span></div>
+                <div className="row1"><b className="clamp dtitle" title="Vorschau öffnen" onClick={(e) => { if (pick) return; e.stopPropagation(); setWinPrev(d); }}>{d.title}</b><span className="damtin">{amt(d)}</span></div>
                 <small className="muted block">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
                 <div className="labels">
                   <Label c={d.category} />
@@ -5013,9 +5011,8 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
               </div>
               <span className="damtcol">{amt(d)}</span>
               <span className="dcatcol"><Label c={d.category} /></span>
-              <DocActions d={d} prevOpen={prevId === d.id} onPreview={() => setPrevId(prevId === d.id ? null : d.id)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
+              <DocActions d={d} prevOpen={winPrev?.id === d.id} onPreview={() => setWinPrev(d)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
             </div></SwipeRow>
-            {prevId === d.id && <DocPreview d={d} onOpen={() => onOpen(d.id)} />}
             </div>
           ))}
         </div>
@@ -9301,13 +9298,13 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
         {!shown.length && list.length > 0 && <p className="muted small">Keine Verträge für diesen Filter.</p>}
         {!list.length && <p className="muted small">Noch keine Verträge hinterlegt. Mit „＋ Vertrag“ z. B. Internet, Handy, Strom, Versicherungen oder Miete eintragen – FinDocu rechnet den letzten Kündigungstag aus. Erkannte Abos aus deinen Kontobuchungen findest du weiterhin unter „Fixkosten & Abos“.</p>}
         {shown.map(({ c, d }) => { const cdocs = (c.docIds || []).map((id) => docs.find((x) => x.id === id)).filter(Boolean); const open = prevCt === c.id && cdocs.length; return (
-          <div key={c.id} className={"dwrap ctwrap" + (open ? " open" : "")}>
+          <div key={c.id} className="dwrap ctwrap">
           <div className={"frow click ctrow" + (c.cancelledAt ? " ended" : "") + (c.inactive ? " inactive" : "") + (pick?.has(c.id) ? " picked" : "")} onClick={() => (pick ? togglePick(c.id) : setEdit(c))}>
             {pick && <KitPickBox on={pick.has(c.id)} />}
             {cdocs[0] ? <span onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevCt(open ? null : c.id); }} title="Vorschau öffnen"><Thumb d={cdocs[0]} /></span>
               : <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{ctCats()[c.cat] || "📄"}</span>}
             <div className="grow">
-              <b className={cdocs.length ? "dtitle" : ""} title={cdocs.length ? "Vorschau ein-/ausblenden" : undefined} onClick={cdocs.length ? (e) => { if (pick) return; e.stopPropagation(); setPrevCt(open ? null : c.id); } : undefined}>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small> <KitTags tags={c.tags} />
+              <b className={cdocs.length ? "dtitle" : ""} title={cdocs.length ? "Vorschau öffnen" : undefined} onClick={cdocs.length ? (e) => { if (pick) return; e.stopPropagation(); setPrevCt(open ? null : c.id); } : undefined}>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small> <KitTags tags={c.tags} />
               <small className="muted block ctsub">{[c.provider, c.customerNo && "Nr. " + c.customerNo, c.interval || "monatlich", cdocs.length ? `📎 ${cdocs.length}` : ""].filter(Boolean).join(" · ")}{" · "}{c.cancelledAt ? <span className="muted">Gekündigt{c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}</span>
                 : d.open ? <span className="muted">unbefristet · jederzeit kündbar</span>
                 : d.cancelBy ? <span className={daysUntil(d.cancelBy) <= 30 ? "neg" : daysUntil(d.cancelBy) <= 60 ? "warnc" : "muted"}>kündigen bis {fmtDate(d.cancelBy)} · Ende {fmtDate(d.end)}</span>
@@ -9316,14 +9313,19 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
             <b className="invamt ctamt">{c.amount ? fmtMoney(Number(c.amount)) : "—"}</b>
             <div className="ctacts" onClick={(e) => e.stopPropagation()}>
               <button className={"stpill ctstate " + (c.inactive ? "st-draft" : "st-paid")} title={c.inactive ? "Inaktiv – zählt nicht zu den Kosten. Antippen = aktiv" : "Aktiv – antippen = inaktiv"} onClick={() => save({ ...c, inactive: !c.inactive })}>{c.inactive ? "Inaktiv" : "Aktiv"}</button>
-              <button className={"iconbtn" + (open ? " on" : "")} disabled={!cdocs.length} title={cdocs.length ? "Vorschau ein-/ausblenden" : "Kein Dokument verknüpft"} onClick={() => setPrevCt(open ? null : c.id)}>{open ? <IcoEyeOff /> : <IcoEye />}</button>
+              <button className={"iconbtn" + (open ? " on" : "")} disabled={!cdocs.length} title={cdocs.length ? "Vorschau öffnen" : "Kein Dokument verknüpft"} onClick={() => setPrevCt(open ? null : c.id)}>{open ? <IcoEyeOff /> : <IcoEye />}</button>
               {cdocs[0] ? <button className="iconbtn" title="Drucken" onClick={() => printDoc(cdocs[0])}><IcoPrint /></button> : <span className="iconbtn invph" aria-hidden="true" />}
               <button className="iconbtn" title="Tags bearbeiten" aria-label="Tags bearbeiten" onClick={() => tagCts([c])}>#</button>
             </div>
           </div>
-          {open && cdocs.map((x) => <DocPreview key={x.id} d={x} onOpen={() => onOpen(x.id)} />)}
           </div>); })}
       </section>
+      {prevCt && (() => { const pc = list.find((x) => x.id === prevCt); const pd = (pc?.docIds || []).map((id) => docs.find((x) => x.id === id)).filter(Boolean); return pd.length ? createPortal(
+        <Win id="ctprev" onClose={() => setPrevCt(null)} dirty={false} className="docprevwin">
+          <div className="panelhead"><b className="clamp">{pc.name}{pd.length > 1 ? ` · ${pd.length} Dokumente` : ""}</b>
+            <button className="iconbtn" title="Vertrag bearbeiten" aria-label="Vertrag bearbeiten" onClick={() => { setPrevCt(null); setEdit(pc); }}><IcoEdit /></button><XBtn /></div>
+          <div className="ctprevdocs">{pd.map((x) => <DocPreview key={x.id} d={x} onOpen={() => onOpen(x.id)} />)}</div>
+        </Win>, document.querySelector(".app") || document.body) : null; })()}
       </FitScroll>
       </>)}
       {ctBulk}
@@ -13328,4 +13330,6 @@ html.setdrill-on header.top{min-height:0}
 .lbmore .caret,.lbmore svg{display:none}
 
 .invbar.lbhidden{display:none}
+
+.ctprevdocs{display:flex;flex-direction:column;gap:12px;overflow:auto;flex:1;min-height:0}
 `;

@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.92.3
+- Verträge: aufklappende Dokument-Vorschau unter der Zeile entfernt. Klick auf Name, Vorschaubild oder 👁 öffnet das Vorschaufenster (alle verknüpften Dokumente untereinander, ✎ öffnet den Vertrag).
+
+## v0.92.2
+- Dokumente: aufklappende Vorschau unter der Zeile entfernt. Klick auf den Titel, 👁 oder Wischen → „Vorschau“ öffnen das Vorschaufenster (wie in der Galerie), mit ✎ zum Bearbeiten.
+- Vorschaufenster liegt jetzt sicher über Suchleiste und Reitern (wurde vorher teilweise verdeckt).
+
 ## v0.92.1
 - Rechnungen & Mahnungen: die aufklappende PDF-Vorschau unter der Zeile ist entfernt (Code gelöscht, nach Rückfrage). Klick auf den Kundennamen bzw. Wischen → „Vorschau“ am Handy öffnet jetzt überall das PDF-Fenster (wie „Vorschau“ im Rechnungsfenster) – mit Drucken und Teilen.
 
