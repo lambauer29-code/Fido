@@ -2021,7 +2021,7 @@ function AppMain() {
         {touchNav && backStack.length > 0 && <button className="navback" onClick={backBtn} aria-label={"Zurück zu " + tabLabel(nav, backStack[backStack.length - 1])}>
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
           <span>{tabLabel(nav, backStack[backStack.length - 1])}</span></button>}
-        <h1>{tabLabel(nav, tab)}</h1>
+        <h1 className={tabLabel(nav, tab).length > 14 ? "longh1" : ""}>{tabLabel(nav, tab)}</h1>
         <div className="topactions">
         <div className="topicons">
           {tab === "home" && <button className={"eyebtn" + (homeEdit ? " on" : "")} onClick={() => setHomeEdit(!homeEdit)} aria-label="Übersicht anpassen" title="Übersicht anpassen"><IcoLayout /></button>}
@@ -3343,12 +3343,11 @@ function TabbarSetting() {
   return (<>
     <small className="muted block tbsethead">Symbolleiste unten (Handy)</small>
     <div className="themeopts tbset" role="radiogroup" aria-label="Symbolleiste">
-      {[[false, "🔤", "Symbole & Text", "Name unter jedem Symbol"], [true, "▫️", "Nur Symbole", "kompakter, mehr Reiter sichtbar"]].map(([k, i, t, sub]) => (
+      {[[false, "🔤", "Symbole & Text", "Name unter jedem Symbol"], [true, "◻️", "Nur Symbole", "kompakter, mehr Reiter sichtbar"]].map(([k, i, t, sub]) => (
         <button key={String(k)} role="radio" aria-checked={icons === k} className={icons === k ? "on" : ""} onClick={() => setIcons(k)}>
           <span>{i}</span><b>{t}</b><small>{sub}</small>
         </button>))}
     </div>
-    <small className="muted block tbsethead">Tag- und Nachtmodus</small>
   </>);
 }
 /* Passwortfeld mit Auge (anzeigen / verbergen) */
@@ -4234,6 +4233,106 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
 
 
 
+
+/* ======================= Ablage: Ordner & Akten (v0.90) ======================= */
+const akteMatch = (a, d) => {
+  if (!(a.cats?.length || a.scope !== "alle" || a.tax || a.year || a.tags?.length)) return false;
+  return (!a.cats?.length || a.cats.includes(d.category)) && (!a.scope || a.scope === "alle" || docScope(d) === a.scope) && (!a.tax || d.taxRelevant)
+    && (!a.year || monthKey(d).startsWith(a.year)) && (!a.tags?.length || a.tags.some((t) => (d.tags || []).includes(t)));
+};
+function defaultAkten(categories) {
+  const y = todayISO().slice(0, 4), has = (c) => categories.includes(c);
+  return [
+    has("Auto & Mobilität") && { id: "auto", name: "Auto", icon: "🚗", cats: ["Auto & Mobilität"], scope: "alle" },
+    has("Wohnen & Energie") && { id: "wohnen", name: "Wohnung", icon: "🏠", cats: ["Wohnen & Energie"], scope: "alle" },
+    { id: "steuer", name: "Steuer " + y, icon: "🧾", cats: [], scope: "alle", tax: true, year: y },
+    { id: "firma", name: "Firma", icon: "💼", cats: [], scope: "firma" },
+    has("Gesundheit") && { id: "gesund", name: "Gesundheit", icon: "🩺", cats: ["Gesundheit"], scope: "alle" },
+    has("Garantie & Kaufbelege") && { id: "garantie", name: "Garantie & Käufe", icon: "🛡️", cats: ["Garantie & Kaufbelege"], scope: "alle" }
+  ].filter(Boolean);
+}
+function akteStats(a, docs) {
+  const l = docs.filter((d) => akteMatch(a, d));
+  const ct = activeContracts(l);
+  const monthly = ct.reduce((s, d) => s + monthlyCost(d.contract), 0);
+  const dl = l.flatMap((d) => (d.deadlines || []).filter((x) => !x.done && x.date && daysUntil(x.date) >= -60)).sort((x, y) => x.date.localeCompare(y.date))[0];
+  const unpaid = l.filter((d) => d.direction === "ausgabe" && d.amount?.total && !d.paid);
+  const tax = l.filter((d) => d.taxRelevant && isEUR(d)).reduce((s, d) => s + Math.abs(d.amount?.total || 0), 0);
+  return { n: l.length, ct: ct.length, monthly, dl, unpaidN: unpaid.length, unpaid: unpaid.reduce((s, d) => s + (d.amount.total || 0), 0), tax };
+}
+function FolderGrid({ docGroups, docs, onOpen }) {
+  const groups = normGroups(docGroups);
+  const cnt = (c) => docs.filter((d) => d.category === c).length;
+  const last = (c) => docs.filter((d) => d.category === c).map((d) => d.documentDate || d.createdAt || "").sort().pop();
+  const shown = new Set();
+  const secs = groups.map((g) => { const cats = (g.cats || []).filter((c) => cnt(c) && !shown.has(c)); cats.forEach((c) => shown.add(c)); return [g.title || g.name || "", cats]; }).filter(([, c]) => c.length);
+  const rest = [...new Set(docs.map((d) => d.category || "Sonstiges"))].filter((c) => !shown.has(c));
+  if (rest.length) secs.push(["Weitere", rest]);
+  if (!secs.length) return <p className="muted small" style={{ padding: 12 }}>Noch keine Dokumente in diesem Filter.</p>;
+  return (<div className="foldergrid">
+    {secs.map(([name, cats]) => (<section key={name}>
+      {name && <h4 className="foldersec">{name}</h4>}
+      <div className="folders">{cats.map((c) => (
+        <button key={c} className="folder" onClick={() => onOpen(c)} style={{ "--fc": catMeta(c).color }}>
+          <span className="foldericon" aria-hidden="true"><svg viewBox="0 0 48 40"><path d="M3 8a4 4 0 0 1 4-4h11l4 5h19a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z" /></svg><span className="folderglyph"><CatGlyph c={c} /></span></span>
+          <b className="clamp">{c}</b>
+          <small>{cnt(c)} Dokument{cnt(c) === 1 ? "" : "e"}{last(c) ? " · " + fmtDate(last(c)).slice(0, 6) : ""}</small>
+        </button>))}</div>
+    </section>))}
+  </div>);
+}
+function AktenGrid({ akten, docs, onOpen, onNew }) {
+  return (<div className="aktengrid">
+    {akten.map((a) => { const st = akteStats(a, docs), n = st.dl ? daysUntil(st.dl.date) : null; return (
+      <button key={a.id} className="akte" onClick={() => onOpen(a.id)}>
+        <div className="aktehead"><span className="akteico" aria-hidden="true">{a.icon || "🗂️"}</span><b className="clamp">{a.name}</b></div>
+        <small className="muted">{st.n} Beleg{st.n === 1 ? "" : "e"}{st.ct ? ` · ${st.ct} Vertr${st.ct === 1 ? "ag" : "äge"}` : ""}</small>
+        {st.monthly > 0 && <span>{fmtMoney(st.monthly)} / Monat</span>}
+        {a.tax && <span>{fmtMoney(st.tax)} steuerrelevant</span>}
+        {st.unpaidN > 0 ? <span className="warnc">{st.unpaidN} unbezahlt · {fmtMoney(st.unpaid)}</span>
+          : st.dl ? <span className={n < 0 ? "red" : n <= 14 ? "warnc" : "muted"}>{st.dl.label}: {n < 0 ? `${-n} T. überfällig` : n === 0 ? "heute" : `in ${n} T.`}</span>
+          : <span className="okc">alles erledigt</span>}
+      </button>); })}
+    <button className="akte aktenew" onClick={onNew}><span className="akteico" aria-hidden="true">＋</span><b>Neue Akte</b><small className="muted">z. B. Hausbau, Urlaub, Hund</small></button>
+  </div>);
+}
+function AkteHead({ akte, docs, sub, setSub }) {
+  const st = akteStats(akte, docs);
+  return (<div className="aktebar">
+    <div className="aktekpis">
+      <div><small>Belege</small><b>{st.n}</b></div>
+      <div><small>Verträge</small><b>{st.ct}{st.monthly ? <small> · {fmtMoney(st.monthly)}/M</small> : ""}</b></div>
+      <div><small>Unbezahlt</small><b className={st.unpaidN ? "warnc" : ""}>{st.unpaidN ? fmtMoney(st.unpaid) : "–"}</b></div>
+      <div><small>Nächste Frist</small><b>{st.dl ? fmtDate(st.dl.date) : "–"}</b></div>
+    </div>
+    <div className="seg aktesubs">{[["alle", "Dokumente"], ["vertraege", "Verträge"], ["fristen", "Fristen"], ["offen", "Unbezahlt"]].map(([k, l]) => <button key={k} className={sub === k ? "on" : ""} onClick={() => setSub(k)}>{l}</button>)}</div>
+  </div>);
+}
+function AkteWin({ akte, categories, years, onClose, onSave, onDelete }) {
+  const [a, setA] = useState(akte), set = (p) => setA((x) => ({ ...x, ...p }));
+  const toggleCat = (c) => set({ cats: a.cats.includes(c) ? a.cats.filter((x) => x !== c) : [...a.cats, c] });
+  const ok = a.name.trim() && (a.cats.length || a.scope !== "alle" || a.tax || a.year);
+  return (<Win id="akte" onClose={onClose} small className="aktewin">
+    <div className="panelhead"><b>{akte.name ? "Akte bearbeiten" : "Neue Akte"}</b><XBtn /></div>
+    <div className="aktewbody">
+      <div className="row2"><label className="akteicon">Symbol<input value={a.icon} maxLength={4} onChange={(e) => set({ icon: e.target.value })} /></label>
+        <label className="grow">Name<input value={a.name} autoFocus placeholder="z. B. Auto" onChange={(e) => set({ name: e.target.value })} /></label></div>
+      <label>Kategorien (leer = alle)</label>
+      <div className="chips aktecats">{categories.map((c) => <button key={c} type="button" className={"chip" + (a.cats.includes(c) ? " on" : "")} onClick={() => toggleCat(c)}><CatGlyph c={c} /> {c}</button>)}</div>
+      <label>Bereich</label>
+      <div className="seg">{[["alle", "Alle"], ["privat", "👤 Privat"], ["firma", "🏢 Firma"]].map(([k, l]) => <button key={k} type="button" className={a.scope === k ? "on" : ""} onClick={() => set({ scope: k })}>{l}</button>)}</div>
+      <div className="row2">
+        <label className="check"><input type="checkbox" checked={!!a.tax} onChange={(e) => set({ tax: e.target.checked })} /> nur steuerrelevante</label>
+        <label className="grow">Jahr<PSelect value={a.year || ""} onChange={(e) => set({ year: e.target.value })}><option value="">alle Jahre</option>{years.map((y) => <option key={y} value={y}>{y}</option>)}</PSelect></label>
+      </div>
+      {!ok && <small className="muted">Name und mindestens eine Regel (Kategorie, Bereich, Steuer oder Jahr) angeben.</small>}
+      <div className="actions">
+        <button className="btn primary" disabled={!ok} onClick={() => onSave({ ...a, name: a.name.trim() })}>Speichern</button>
+        {akte.name && <button className="btn danger" onClick={() => onDelete(akte)}>Löschen</button>}
+      </div>
+    </div>
+  </Win>);
+}
 /* ======================= Bereichs-Startseiten (iPhone, v0.88) ======================= */
 function HubPage({ hub, nav, setTab, docs, dlDocs, accounts }) {
   const [list] = useLsState("invoices", []);
@@ -4253,7 +4352,7 @@ function HubPage({ hub, nav, setTab, docs, dlDocs, accounts }) {
   const sub = {
     invoices: [openN ? `${openN} offen` : "alles bezahlt", ""], mahnungen: [overN ? `${overN} überfällig` : "nichts fällig", overN ? "bad" : ""],
     kunden: [`${kunden.length} Kunden`, ""], artikel: [`${items.length} Artikel`, ""],
-    kassa: [fmtMoney(kassen.reduce((s, k) => s + kbBalAt(entries, k, todayISO()), 0)), ""],
+    kassa: [fmtMoney(kassen.reduce((s, k) => s + kbBalAt(entries, k, todayISO()), 0)) + (kassen.length > 1 ? ` · ${kassen.length} Kassen` : ""), ""],
     accounts: [`${accounts.filter((a) => a.kind !== "cash").length} Konten`, ""], vertraege: [`${cts.length} Verträge`, ""],
     besitz: [`${assets.length} Geräte`, ""], deadlines: [dlOpen ? `${dlOpen} in 14 Tagen` : "keine fällig", dlOpen ? "warn" : ""],
     firma: ["Bericht & Kennzahlen", ""], analyse: ["Ausgaben & Budgets", ""], vermoegen: ["Entwicklung", ""], cash: ["Beleg erfassen", ""],
@@ -4697,6 +4796,16 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
   const [unpaid, setUnpaid] = useState(false);
   const [view, setView] = useState(() => ls.get("view", "list"));
   useEffect(() => ls.set("view", view), [view]);
+  // Ablage-Ansicht (v0.90): Liste · Ordner · Akten – frei kombinierbar mit Darstellung Liste/Galerie
+  const [mode, setMode] = useLsState("docMode", "liste");
+  const [aktenRaw, setAkten] = useLsState("docAkten", null);
+  const akten = aktenRaw || defaultAkten(categories);
+  const [akteId, setAkteId] = useState(""), [akteSub, setAkteSub] = useState("alle"), [akteEdit, setAkteEdit] = useState(null);
+  const akte = mode === "akten" ? akten.find((a) => a.id === akteId) : null;
+  const subOpen = (mode === "ordner" && !!cat) || !!akte;
+  const closeSub = () => { if (akte) { setAkteId(""); setAkteSub("alle"); } else setCat(""); };
+  useEdgeBack(closeSub, subOpen);
+  const overview = (mode === "ordner" && !cat || mode === "akten" && !akte) && !q.trim();
 
   const tags = useMemo(() => [...new Set(docs.flatMap((d) => d.tags || []))].sort(), [docs]);
   const years = useMemo(() => [...new Set(docs.map((d) => monthKey(d).slice(0, 4)).filter(Boolean))].sort().reverse(), [docs]);
@@ -4707,8 +4816,9 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
       .filter((d) => (scope === "alle" || docScope(d) === scope) && (area === "alle" || docArea(d) === area) && (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) && (!month || monthKey(d).slice(5, 7) === month) &&
         (!taxOnly || d.taxRelevant) && (!unpaid || (d.direction === "ausgabe" && d.amount?.total && !d.paid)))
       .filter((d) => { if (!terms.length) return true; const h = haystack(d); return terms.every((t) => h.includes(t)); })
+      .filter((d) => !akte || (akteMatch(akte, d) && (akteSub === "alle" || (akteSub === "vertraege" ? !!d.contract : akteSub === "fristen" ? (d.deadlines || []).some((x) => !x.done && x.date && daysUntil(x.date) >= -60) : d.direction === "ausgabe" && d.amount?.total && !d.paid))))
       .sort(kit.sorts[sort]?.[2] || kit.sorts.date[2]);
-  }, [docs, q, cat, tag, year, month, sort, taxOnly, unpaid, area, scope]);
+  }, [docs, q, cat, tag, year, month, sort, taxOnly, unpaid, area, scope, akte, akteSub]);
 
   const counts = useMemo(() => Object.fromEntries(categories.map((c) => [c, docs.filter((d) => d.category === c).length])), [docs, categories]);
   const amt = (d) => d.amount?.total != null && (
@@ -4735,27 +4845,40 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
         <button className={"btn" + (pick ? " on" : "")} disabled={!list.length && !pick} onClick={() => setPick(pick ? null : new Set())}>{pick ? "✕ Auswahl beenden" : "☑ Auswählen"}</button>
         <PickMenu btnClass="btn ltmore" label="Mehr" title="Weitere Aktionen" wide items={[...(onFiles ? [{ k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }] : []), { head: "Export" }, ...exp2pick(docExp.slice(1))]} />
       </div>
-      <SearchBox placeholder="Dokumente durchsuchen" value={q} onChange={setQ}>
-        <button className="iconbtn" onClick={() => setView(view === "list" ? "grid" : "list")} aria-label="Ansicht">{view === "list" ? "▦" : "☰"}</button>
-      </SearchBox>
+      <SearchBox placeholder="Dokumente durchsuchen" value={q} onChange={setQ} />
 
-      {!chipCfg.hidden.includes("scopebar") && <div className="seg scopeseg" role="group" aria-label="Privat oder Firma">
+      <div className="docmodes">
+        <div className="seg docmodeseg" role="tablist" aria-label="Ablage">
+          {[["liste", "☰", "Liste"], ["ordner", "📁", "Ordner"], ["akten", "🗂️", "Akten"]].map(([k, i, l]) => <button key={k} role="tab" aria-selected={mode === k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); setAkteId(""); if (k !== "liste") setCat(""); }}>{i} {l}</button>)}
+        </div>
+        <div className="seg docviewseg" role="group" aria-label="Darstellung">
+          <button className={view === "list" ? "on" : ""} onClick={() => setView("list")} aria-label="Als Liste" title="Als Liste">☰</button>
+          <button className={view === "grid" ? "on" : ""} onClick={() => setView("grid")} aria-label="Als Galerie" title="Als Galerie">▦</button>
+        </div>
+      </div>
+      {subOpen && <div className="docsubbar">
+        <button className="navback" onClick={closeSub}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>{akte ? "Akten" : "Ordner"}</span></button>
+        <b className="docsubtitle">{akte ? <>{akte.icon} {akte.name}</> : <><CatGlyph c={cat} /> {cat}</>}</b>
+        {akte && <button className="iconbtn" title="Akte bearbeiten" aria-label="Akte bearbeiten" onClick={() => setAkteEdit(akte)}><IcoEdit /></button>}
+      </div>}
+      {akte && <AkteHead akte={akte} docs={docs} sub={akteSub} setSub={setAkteSub} />}
+      {!chipCfg.hidden.includes("scopebar") && !subOpen && <div className="seg scopeseg" role="group" aria-label="Privat oder Firma">
         {[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => (
           <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small className="cnt">({k === "alle" ? docs.length : docs.filter((d) => docScope(d) === k).length})</small></button>
         ))}
       </div>}
-      {!chipCfg.hidden.includes("areabar") && <div className="seg areaseg">
+      {!chipCfg.hidden.includes("areabar") && mode === "liste" && <div className="seg areaseg">
         {[["alle", "Alle", docs.length], ...Object.entries(AREAS).map(([k, [i, l]]) => [k, `${i} ${l}`, docs.filter((d) => docArea(d) === k).length])].map(([k, l, n]) => (
           <button key={k} className={area === k ? "on" : ""} onClick={() => setArea(k)}>{l} <small className="cnt">({n})</small></button>
         ))}
       </div>}
       {area === "sonstiges" && <p className="muted small" style={{ margin: "4px 2px 8px" }}>Dokumente in „Sonstiges“ zählen nicht in Übersicht, Budgets und Auswertungen.</p>}
-      {!!docs.length && (
+      {!!docs.length && mode === "liste" && (
         <div className="tile mobile-only accphone">
           <DocTree docGroups={docGroups} docs={docs} selected={cat} onSelect={setCat} onToggleGroup={toggleDocGroup} variant="card" />
         </div>
       )}
-      <ChipBar storeKey="docChips" cfg={chipCfg} setCfg={setChipCfg} className="ltfilter" lead={<>{cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>}
+      {!overview && <ChipBar storeKey="docChips" cfg={chipCfg} setCfg={setChipCfg} className={"ltfilter" + (subOpen ? " chiprow" : "")} lead={<>{cat && <button className="chip on" onClick={() => setCat("")}>✕ <CatGlyph c={cat} /> {cat}</button>}
         {kit.views.map((v) => <span key={v.id} className="ltview"><button className={"chip" + (viewOn(v) ? " on" : "")} onClick={() => { setFState(v.filter); setQ(v.q || ""); setYear(v.yr || ""); setTag(v.tagF || ""); kit.setSortBy(v.sortBy || "date"); }}>☆ {v.n}</button><button className="ltx" title="Ansicht löschen" aria-label="Ansicht löschen" onClick={() => confirm(`Ansicht „${v.n}“ löschen?`) && kit.setViews((l) => l.filter((y) => y.id !== v.id))}>✕</button></span>)}</>} items={[
         deadlineTab && { k: "frist", label: "⏰ " + deadlineTab.label, el: <button className="chip" onClick={deadlineTab.open}>⏰ {deadlineTab.label}</button> },
         { k: "steuer", label: "🧾 Steuerrelevant", el: <button className={taxOnly ? "chip on" : "chip"} onClick={() => setTaxOnly(!taxOnly)}>🧾 Steuerrelevant</button> },
@@ -4767,11 +4890,11 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
         { k: "view", label: "☆ Ansicht merken", el: anyF ? <button className="chip" onClick={saveView}>☆ Ansicht merken</button> : null },
         { k: "scopebar", label: "👤 Leiste Privat / Firma", el: null },
         { k: "areabar", label: "🗂️ Leiste Bereiche", el: null },
-      ]} />
-      {onFiles && showDrop && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} />}
+      ]} />}
+      {onFiles && showDrop && !overview && !subOpen && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} />}
       {docBusy && <ImportBar {...docBusy} />}
-      <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>
-      <FitScroll card={view !== "grid"} className="docbox">
+      {!overview && <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>}
+      <FitScroll card={view !== "grid" && !overview} className="docbox">
 
       {!docs.length && (
         <div className="empty"><div style={{ fontSize: 48 }}>📥</div>
@@ -4787,7 +4910,11 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
         </Win>
       )}
 
-      {view === "grid" ? (
+      {mode === "ordner" && !cat && !q.trim() ? (
+        <FolderGrid docGroups={docGroups} docs={docs.filter((d) => (scope === "alle" || docScope(d) === scope) && (area === "alle" || docArea(d) === area))} onOpen={setCat} />
+      ) : mode === "akten" && !akte && !q.trim() ? (
+        <AktenGrid akten={akten} docs={docs.filter((d) => scope === "alle" || docScope(d) === scope)} onOpen={(id) => { setAkteId(id); setAkteSub("alle"); }} onNew={() => setAkteEdit({ id: uid(), name: "", icon: "🗂️", cats: [], scope: "alle", tax: false, year: "" })} />
+      ) : view === "grid" ? (
         <div className="grid">
           {list.map((d) => (
             <div key={d.id} className={"gcard" + (pick?.has(d.id) ? " picked" : "")} onClick={() => (pick ? togglePick(d.id) : setWinPrev(d))}>
@@ -4835,6 +4962,9 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
         </div>
       )}
       </FitScroll>
+      {akteEdit && <AkteWin akte={akteEdit} categories={categories} years={years} onClose={() => setAkteEdit(null)}
+        onSave={(a) => { setAkten(akten.some((x) => x.id === a.id) ? akten.map((x) => (x.id === a.id ? a : x)) : [...akten, a]); setAkteEdit(null); }}
+        onDelete={(a) => { if (!confirm(`Akte „${a.name}“ löschen? Die Dokumente bleiben erhalten.`)) return; setAkten(akten.filter((x) => x.id !== a.id)); setAkteEdit(null); setAkteId(""); }} />}
       <KitBulk kit={kit} shown={list} actions={[
         { icon: <IcoShare />, label: "Teilen", run: (sel) => shareDocs(sel) },
         { icon: "🗂", label: "ZIP", run: (sel) => zipOf(sel, `dokumente-auswahl-${isoToday()}.zip`) },
@@ -6965,6 +7095,11 @@ function SetSec({ id, title, children }) {
   );
 }
 
+const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung"]], ["Daten & Ablage", ["import", "docgroups", "doccats", "rules", "kontaktarten", "trash"]],
+  ["Navigation & Budgets", ["nav-tabs", "nav-accounts", "budgets"]], ["Firma", ["meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel"]]];
+const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-accounts": "Konten & Gruppen" };
+const SET_ICONS = { darstellung: "🌓", design: "🎨", applock: "🔒", datenschutz: "🛡️", verbindung: "🔌", import: "📥", docgroups: "🗂️", doccats: "🏷️", rules: "⚙️", kontaktarten: "👥", trash: "🗑️",
+  "nav-tabs": "📑", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
 const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
@@ -7398,6 +7533,10 @@ async function decryptBackup(j, pw) {
 
 function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
+  const phoneSet = useMedia("(max-width:700px)");
+  const [drill, setDrill] = useState("");
+  useEdgeBack(() => setDrill(""), phoneSet && !!drill);
+  useEffect(() => { const on = phoneSet && !!drill && !only; document.documentElement.classList.toggle("setdrill-on", on); return () => document.documentElement.classList.remove("setdrill-on"); }, [phoneSet, drill, only]);
   const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
   useEffect(() => {
     const id = ls.get("openSettingsSec", null); if (!id) return; ls.set("openSettingsSec", null);
@@ -7475,6 +7614,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
     "darstellung": <><SetSec id="darstellung" title="Darstellung">
         <TabbarSetting />
         <CmpSetting />
+        <small className="muted block tbsethead">Tag- und Nachtmodus</small>
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
             <button key={k} role="radio" aria-checked={themeMode === k} className={themeMode === k ? "on" : ""} onClick={() => setThemeMode(k)}>
@@ -7638,6 +7778,29 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
   };
   if (only) return <div className="settings onlysec">{sections[only]}</div>;
   const order = mergeOrder(secOrder, SET_IDS).filter((id) => id !== "backup");
+  if (phoneSet) {
+    const titleOf = (id) => React.Children.toArray(sections[id]?.props?.children)[0]?.props?.title || SET_TITLES[id] || id;
+    if (drill && sections[drill]) return (
+      <SetCtx.Provider value={{ order, collapsed: [], dnd: secDnd, toggle: () => {} }}>
+        <div className="settings setdrill">
+          <div className="docsubbar"><button className="navback" onClick={() => setDrill("")}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>Einstellungen</span></button></div>
+          <h2 className="setdrilltitle">{titleOf(drill)}</h2>
+          {sections[drill]}
+        </div>
+      </SetCtx.Provider>);
+    const show = order.filter((id) => id !== "rules" || rules.length);
+    const groups = SET_GROUPS.map(([g, ids]) => [g, show.filter((id) => ids.includes(id))]).filter(([, l]) => l.length);
+    const rest = show.filter((id) => !SET_GROUPS.some(([, ids]) => ids.includes(id)));
+    if (rest.length) groups.push(["Weitere", rest]);
+    return (<div className="settings setlist">
+      {groups.map(([g, ids]) => <section key={g}><h4 className="setgrouph">{g}</h4>
+        <div className="setgroup">{ids.map((id) => (
+          <button key={id} className="setrow" onClick={() => { setDrill(id); window.scrollTo(0, 0); document.querySelector(".fitscroll,.main")?.scrollTo?.(0, 0); }}>
+            <span className="setico" aria-hidden="true">{SET_ICONS[id] || "⚙️"}</span><span className="grow">{titleOf(id)}</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+          </button>))}</div></section>)}
+    </div>);
+  }
   const ctx = { order, collapsed: secClosed, dnd: secDnd,
     toggle: (id) => setSecClosed((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id])) };
   const allClosed = order.every((id) => secClosed.includes(id));
@@ -12965,4 +13128,82 @@ nav.bottom.mtabbar>button{flex:1 1 0;min-width:0}
 @media (min-width:768px) and (max-width:1366px) and (pointer:coarse){
   .win:not(.small){top:0!important;bottom:0!important;right:0!important;left:auto!important;width:min(62vw,600px)!important;height:auto!important;max-height:none!important;border-radius:0!important;border-width:0 0 0 1px!important;box-shadow:-12px 0 40px #0f1b2d26!important;transform:none!important}
 }
+
+/* v0.90 Ablage: Ordner, Galerie, Akten */
+.docmodes{display:flex;gap:8px;align-items:center;margin:0 0 10px}
+.docmodeseg{flex:1;max-width:460px}.docmodeseg button{flex:1}
+.docviewseg button{min-width:44px;font-size:17px}
+.docsubbar{display:flex;align-items:center;gap:6px;margin:0 0 8px}
+.docsubbar .navback{flex-basis:auto;margin:0;min-height:40px}
+.docsubtitle{flex:1;font-size:18px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.foldergrid{display:grid;gap:16px;padding:12px}
+.foldersec{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.folders{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.folder{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--txt);font:inherit;text-align:left;cursor:pointer;min-width:0}
+.folder:hover{border-color:var(--acc)}.folder:active{transform:scale(.98)}
+.foldericon{position:relative;width:52px;height:44px;display:block}
+.foldericon svg{width:52px;height:44px;fill:color-mix(in srgb,var(--fc,var(--acc)) 30%,var(--card))}
+.folderglyph{position:absolute;left:0;right:0;top:15px;text-align:center;font-size:17px}
+.folderglyph .catimg{width:20px;height:20px}
+.folder b{font-size:15px;max-width:100%}.folder small{color:var(--mut);font-size:12.5px}
+.aktengrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;padding:12px}
+.akte{display:flex;flex-direction:column;gap:4px;align-items:flex-start;padding:14px;border-radius:18px;border:1px solid var(--line);background:var(--card);color:var(--txt);font:inherit;text-align:left;cursor:pointer;min-height:130px;min-width:0}
+.akte:hover{border-color:var(--acc)}.akte:active{transform:scale(.98)}
+.aktehead{display:flex;align-items:center;gap:8px;margin-bottom:2px;max-width:100%}
+.akteico{font-size:24px;width:40px;height:40px;border-radius:12px;background:color-mix(in srgb,var(--acc) 12%,transparent);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.akte b{font-size:16px}.akte span,.akte small{font-size:13px}
+.aktenew{border-style:dashed;justify-content:center}
+.warnc{color:var(--warn)}.okc{color:var(--ok)}
+.aktebar{display:grid;gap:8px;margin:0 0 10px}
+.aktekpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.aktekpis>div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px 10px;min-width:0}
+.aktekpis small{display:block;color:var(--mut);font-size:12px}.aktekpis b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.aktesubs button{flex:1}
+.aktewbody{display:grid;gap:10px;padding:4px 16px 16px}
+.aktewbody .row2{display:flex;gap:10px;align-items:flex-end}
+.akteicon input{width:64px;text-align:center;font-size:20px}
+.aktecats{display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow:auto}
+@media (max-width:700px){
+  .docmodes{flex-wrap:nowrap}.docmodeseg button{padding-left:4px;padding-right:4px;font-size:14px}
+  .folders{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .aktengrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:10px}
+  .akte{min-height:120px;padding:12px}
+  .aktekpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .foldergrid{padding:10px}
+}
+
+.docmodeseg button{white-space:nowrap}
+@media (max-width:700px){.docmodeseg button{font-size:14.5px}.docviewseg button{min-width:40px}}
+
+.folder{width:100%;box-sizing:border-box}
+@media (max-width:700px){
+  .chiprow{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .chiprow>*{flex:none!important;width:auto!important}
+  .aktekpis{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+  .aktekpis>div{padding:6px 8px;border-radius:12px}.aktekpis small{font-size:11px}.aktekpis b{font-size:14px}
+}
+
+@media (max-width:700px){.chips.chiprow{display:flex!important;grid-template-columns:none!important}}
+
+/* v0.90 Einstellungen am Handy: Drill-down */
+.setlist{display:grid;gap:18px}
+.setgrouph{margin:0 0 6px 14px;font-size:13px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.setgroup{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.setrow{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:8px 14px;border:0;background:none;color:var(--txt);font:inherit;font-size:16px;text-align:left;cursor:pointer}
+.setrow+.setrow{border-top:1px solid var(--line)}
+.setrow:active{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.setrow svg{color:var(--mut);flex:none}
+.setico{width:32px;height:32px;border-radius:9px;background:color-mix(in srgb,var(--acc) 12%,transparent);display:inline-flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+.setdrill .ssechead{display:none}
+.setdrill .ssec{border:0;background:none;padding:0;margin:0}
+.setdrill .ssecbody{padding:0}
+.setdrilltitle{margin:2px 2px 12px;font-size:26px}
+@media (max-width:700px){.cmpset{flex-direction:column;align-items:stretch!important;gap:8px}}
+
+html.setdrill-on header.top h1,html.setdrill-on header.top>.navback{display:none}
+html.setdrill-on header.top{min-height:0}
+
+@media (max-width:700px){header.top h1{overflow-wrap:break-word}header.top h1.longh1{font-size:30px!important;line-height:1.15!important}}
+
+.inrow{display:flex;gap:6px;align-items:stretch}.inrow>input{flex:1 1 56px;min-width:56px}.inrow>select,.inrow>.pselect{flex:0 1 auto;min-width:0}
 `;

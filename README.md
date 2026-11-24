@@ -2,6 +2,19 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.90.1
+- Handy-Check aller Unterseiten (Privat: 8, Firma: 8, Mehr: 2) inkl. Bearbeitungsfenster: Alle passen in die Breite, nichts läuft seitlich über.
+- Lange Seitentitel (z. B. „Firmenauswertung“) werden am Handy kleiner gesetzt statt abgeschnitten.
+- Vertrag → „Kündigungsfrist“: Zahlenfeld war neben „Monate“ zusammengequetscht – jetzt normal breit.
+- Firma-Startseite: Kachel „Kassabuch“ zeigt bei mehreren Kassen „· 2 Kassen“ (Summe aller Kassen; im Kassabuch selbst steht der Stand der gewählten Kasse).
+
+## v0.90.0
+- **Dokumente – Ablage frei wählbar:** Umschalter „☰ Liste · 📁 Ordner · 🗂️ Akten“ plus Darstellung „Liste ☰ / Galerie ▦“ – beliebig kombinierbar (z. B. Ordner öffnen und als Galerie ansehen). Auswahl wird gemerkt.
+- **Ordner:** Kategorien als Ordner-Kacheln nach Gruppen (Finanzen, Firma, Verträge …) mit Anzahl und letztem Datum; Privat/Firma-Filter wirkt mit. Ordner öffnen → Zurück-Leiste „‹ Ordner“, am Handy auch per Wischen vom Rand.
+- **Akten:** Themen-Mappen (Auto, Wohnung, Steuer <Jahr>, Firma, Gesundheit, Garantie & Käufe) mit Belegen, Verträgen, €/Monat, Unbezahltem und nächster Frist. Geöffnete Akte: Kennzahlen + Reiter Dokumente / Verträge / Fristen / Unbezahlt. Eigene Akten anlegen/bearbeiten (Symbol, Name, Kategorien, Privat/Firma, nur steuerrelevant, Jahr).
+- **Einstellungen am Handy:** statt langer Klappliste jetzt iOS-artige Liste in Gruppen (Allgemein, Daten & Ablage, Navigation & Budgets, Firma) → Antippen öffnet den Bereich als eigene Seite mit „‹ Einstellungen“ und Rand-Wischen zurück. Mac/Desktop unverändert.
+- „Darstellung“: Reihenfolge korrigiert (Überschrift „Tag- und Nachtmodus“ stand über „Kennzahlen“), Kennzahlen-Auswahl am Handy untereinander.
+
 ## v0.89.0
 - **iPad neu**:
   - **Hochformat:** genau die iPhone-Ansicht, nur größer. Die Tab-Leiste hat Übersicht · Dokumente · Privat · Firma · Mehr, dazu Bereichs-Startseiten, Zurück-Knopf und die Kachel-Übersicht. Technisch rechnet das iPad im Hochformat mit 700 px Breite und vergrößert alles passend.
