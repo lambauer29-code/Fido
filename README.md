@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.94.0
+- **Kunden (Mac/iPad):** Kundendatei öffnet als schwebendes Fenster (verschieb- und größenveränderbar) statt fester rechter Spalte; Kundenliste nutzt wieder die volle Breite. Handy unverändert (eigene Seite).
+- Kunden-Kürzel (Avatar) im Nachtmodus wieder sichtbar (war weiß auf weiß).
+- **Fahrtenbuch-Verlauf als Zeitleiste:** oben Erinnerungs-Karten (wischbar, farbig nach Dringlichkeit: in X km · in Y Tagen), darunter je Monat eine Zusammenfassung (Kosten · km · l/100 km bzw. kWh/100 km · Zeit zwischen Tankvorgängen) und die Einträge mit farbigen Kreis-Symbolen an einer gestrichelten Linie: Titel, km · Verbrauch · Liter, rechts Betrag und Datum. Gilt auch für die Reiter Tanken, Fahrten, Ausgaben. Aktionen (✎ 🖨 ⤴ 🗑) erscheinen am Mac beim Darüberfahren.
+
 ## v0.93.1
 - Konten (Mac/iPad): die Buchungsliste reicht jetzt bis ca. 10 px über den unteren Fensterrand (vorher ~50 px Lücke); passt sie nicht ganz hinein, scrollt die Seite wie bisher.
 

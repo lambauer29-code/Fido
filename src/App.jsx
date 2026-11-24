@@ -3257,7 +3257,10 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
       {["verlauf", "fuel", "trip", "expense"].includes(view) && (
         <section className="tile">
           {view === "trip" && trips.length > 0 && <div className="tilehead"><b>Fahrten {year}</b><button className="link" onClick={exportCsv}>⬇︎ CSV fürs Finanzamt</button></div>}
-          {mine.filter((x) => view === "verlauf" || x.type === view).map(row)}
+          {view === "verlauf" && myRem.length > 0 && <FbRemStrip rems={myRem} remState={remState} onOpen={(r) => setRemEdit(r)} />}
+          <FbTimeline list={mine.filter((x) => view === "verlauf" || x.type === view)} all={st.e} st={st} kmRate={kmRate} prevId={prevId} docOf={docOf}
+            onClick={(x) => (docOf(x) ? setPrevId(prevId === x.id ? null : x.id) : openEdit(x))} Acts={FbActs}
+            preview={(x) => <div className="txprev"><DocPreview d={docOf(x)} onOpen={() => onOpen(docOf(x).id)} /></div>} />
           {!mine.filter((x) => view === "verlauf" || x.type === view).length && <p className="muted small">Noch keine Einträge – oben über ⛽ Tanken, 🛣️ Fahrt oder 🧾 Ausgabe erfassen.</p>}
         </section>
       )}
@@ -9503,9 +9506,9 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
   const [invoices, setInvoices] = useLsState("invoices", []);
   const [edit, setEdit] = useState(null), [q, setQ] = useState(""), [type, setType] = useState("alle");
   const [selId, setSelId] = useState(null), [assignOpen, setAssignOpen] = useState(false);
-  const wide = useMedia("(min-width:1100px)");
+  const wide = false; // v0.94: Kundendatei am Desktop als schwebendes Fenster
   const selC = list.find((c) => c.id === selId) || null;
-  useEdgeBack(() => setSelId(null), !!selC && !wide);
+  useEdgeBack(() => setSelId(null), !!selC && mob);
   const unmatched = invoices.filter((i) => i.customer?.name?.trim() && !list.some((c) => custMatch(c, i)));
   const assign = (invId, c) => setInvoices((l) => l.map((x) => (x.id === invId ? { ...x, customer: { ...(x.customer || {}), id: c.id } } : x)));
   const save = (c) => setList((l) => (l.some((x) => x.id === c.id) ? l.map((x) => (x.id === c.id ? c : x)) : [...l, c]));
@@ -9519,7 +9522,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       c.address && `ADR;TYPE=WORK:;;${c.address.replace(/\n/g, ";")};;;;`, c.web && `URL:${c.web}`, "END:VCARD"].filter(Boolean).join("\r\n");
     downloadFiles([new File([v], safeName(c.name) + ".vcf", { type: "text/vcard" })]);
   };
-  const detail = selC && <CustomerDetail c={selC} invoices={invoices} typeOf={typeOf} back={!wide} onBack={() => setSelId(null)} onEdit={() => setEdit(selC)} setTab={setTab} vcard={vcard} />;
+  const detail = selC && <CustomerDetail c={selC} invoices={invoices} typeOf={typeOf} back={mob} onBack={() => setSelId(null)} onEdit={() => setEdit(selC)} setTab={setTab} vcard={vcard} />;
   return (
     <div className="ctpage">
       {mob && selC ? <div className="mpage custpage">{detail}</div> : mob ? (
@@ -9550,7 +9553,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
           ))}
         </MScroll>
       </div>
-      ) : !wide && selC ? <div className="custpage">{detail}</div> : (<div className={"custsplit" + (wide ? " on" : "")}><div className="custlist">
+      ) : (<div className="custsplit"><div className="custlist">
       <div className="invbar lbhidden">
         <input ref={vcfRef} type="file" accept=".vcf,text/vcard,text/x-vcard" multiple hidden onChange={async (e) => {
           const files = [...e.target.files]; e.target.value = ""; let all = [];
@@ -9576,7 +9579,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📱 Aus Handy-Kontakten“ übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
         {shown.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
-          <div key={c.id} className={"frow click contactrow" + (selId === c.id && wide ? " sel" : "")} onClick={() => setSelId(c.id)}>
+          <div key={c.id} className={"frow click contactrow" + (selId === c.id && !mob ? " sel" : "")} onClick={() => setSelId(c.id)}>
             <span className="caticon avatar" style={{ width: 42, height: 42 }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>
             <div className="grow">
               <b>{c.name}</b> <small style={{ color: typeOf(c).color }}><TypeGlyph t={typeOf(c)} /> {typeOf(c).name}</small> <small className="muted">{c.number || ""}</small>
@@ -9592,7 +9595,11 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
           </div>); })}
       </section>
       </FitScroll>
-      </div>{wide && <div className="custdetail">{detail || <div className="custempty"><div style={{ fontSize: 42 }}>👥</div><p className="muted">Kunden links auswählen – Rechnungen, Angebote, Mahnungen und Kundenkonto erscheinen hier.</p></div>}</div>}</div>)}
+      </div></div>)}
+      {!mob && selC && createPortal(<Win id="custdet" onClose={() => setSelId(null)} dirty={false} className="custwin" defW={720}>
+        <div className="panelhead"><b>Kundendatei</b><XBtn /></div>
+        <div className="custwinbody">{detail}</div>
+      </Win>, document.querySelector(".app") || document.body)}
       {assignOpen && <AssignWin items={unmatched} customers={list} onAssign={assign} onNew={(i) => { const c = { id: uid(), type: "Kunde", number: nextNo(), ...i.customer }; c.id = c.id && !list.some((x) => x.id === c.id) ? c.id : uid(); setList((l) => [...l, c]); assign(i.id, c); }} onClose={() => setAssignOpen(false)} />}
       {picked && <ContactImportWin items={picked} existing={list} onClose={() => setPicked(null)} onImport={(sel) => {
         let n = list.reduce((m, c) => Math.max(m, parseInt(String(c.number || "").replace(/\D/g, ""), 10) || 0), 0);
@@ -9605,6 +9612,61 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
 }
 
 
+
+/* ======================= Fahrtenbuch-Verlauf als Zeitleiste (v0.94) ======================= */
+const FB_COL = { fuel: "#f59e0b", elec: "#14b8a6", expense: "#8d6e63", trip: "#3b82f6" };
+const fbDay = (d) => new Date(d + "T12:00:00").toLocaleDateString("de-AT", { day: "2-digit", month: "short" });
+function FbRemStrip({ rems, remState, onOpen }) {
+  const l = [...rems].map((r) => [r, remState(r)]).sort((a, b) => (a[1].dd ?? 9e9) - (b[1].dd ?? 9e9));
+  return (<div className="fbrems"><h4 className="fbtlh">Erinnerungen</h4><div className="fbremrow">
+    {l.map(([r, x]) => (<button key={r.id} className={"fbremcard " + x.cls} onClick={() => onOpen(r)}>
+      <span className="fbremtop"><span className="fbremic" aria-hidden="true">⏰</span><b className="clamp">{r.title}</b></span>
+      <small className="muted">{[r.km && kmFmt(r.km), r.date && fmtDate(r.date)].filter(Boolean).join(" · ")}</small>
+      <small className="fbremwhen">{[x.dk != null && (x.dk <= 0 ? `${kmFmt(-x.dk)} überzogen` : `in ${kmFmt(x.dk)}`), x.dd != null && (x.dd < 0 ? `seit ${-x.dd} Tagen fällig` : x.dd === 0 ? "heute" : `in ${x.dd} Tagen`)].filter(Boolean).join(" · ")}</small>
+    </button>))}</div></div>);
+}
+function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, preview }) {
+  const consAt = new Map([...(st.cons || []), ...(st.consE || [])].map((c) => [c.date + ":" + c.km, c.v]));
+  const kmOf = (x) => +(x.type === "trip" ? x.endKm : x.km) || 0;
+  const allSorted = [...all].sort((a, b) => a.date.localeCompare(b.date) || kmOf(a) - kmOf(b));
+  const groups = mGroup(list, (x) => x.date.slice(0, 7));
+  const sumMonth = (m) => {
+    const inM = all.filter((x) => x.date.startsWith(m)), before = allSorted.filter((x) => x.date < m + "-01" && kmOf(x));
+    const kmEnd = Math.max(0, ...inM.map(kmOf)), kmStart = before.length ? Math.max(...before.map(kmOf)) : Math.min(...inM.map(kmOf).filter(Boolean));
+    const km = kmEnd && kmStart && kmEnd > kmStart ? kmEnd - kmStart : 0;
+    const cost = inM.filter((x) => x.type !== "trip").reduce((s, x) => s + (+x.total || 0), 0);
+    const cm = (st.cons || []).filter((c) => c.date.startsWith(m)), ce = (st.consE || []).filter((c) => c.date.startsWith(m));
+    const wavg = (l) => { const d = l.reduce((s, c) => s + c.dist, 0); return d ? l.reduce((s, c) => s + c.v * c.dist, 0) / d : null; };
+    const fl = inM.filter((x) => x.type === "fuel").sort((a, b) => a.date.localeCompare(b.date));
+    let every = null; if (fl.length >= 2) { const days = (new Date(fl[fl.length - 1].date) - new Date(fl[0].date)) / 864e5 / (fl.length - 1), kms = (kmOf(fl[fl.length - 1]) - kmOf(fl[0])) / (fl.length - 1); every = [Math.round(days), kms > 0 ? Math.round(kms) : null]; }
+    return { cost, km, l: wavg(cm), e: wavg(ce), every };
+  };
+  if (!list.length) return null;
+  return (<div className="fbtl">{groups.map(([m, l]) => { const sm = sumMonth(m); return (<React.Fragment key={m}>
+    <div className="fbtlm"><span className="fbtlmark" aria-hidden="true" />
+      <div className="fbmcard">
+        <b className="fbmtitle">{new Date(m + "-15").toLocaleDateString("de-AT", { month: "long", year: "numeric" })}</b>
+        <div className="fbmline">{[sm.cost ? fmtMoney(sm.cost) : null, sm.km ? kmFmt(sm.km) : null, sm.l != null ? `${sm.l.toFixed(2).replace(".", ",")} l/100 km` : null, sm.e != null ? `${sm.e.toFixed(1).replace(".", ",")} kWh/100 km` : null].filter(Boolean).join(" · ") || "keine Kosten"}</div>
+        {sm.every && <div className="fbmnote"><span className="muted">Zeit zwischen Tankvorgängen:</span> alle {sm.every[0]} Tage{sm.every[1] ? `, etwa ${kmFmt(sm.every[1])}` : ""}</div>}
+      </div></div>
+    {l.map((x) => { const el = x.type === "fuel" && isElec(x.fuel), col = x.type === "fuel" ? (el ? FB_COL.elec : FB_COL.fuel) : FB_COL[x.type] || FB_COL.expense;
+      const icon = x.type === "fuel" ? (el ? "⚡" : "⛽") : x.type === "trip" ? "🛣️" : (FB_EXP.find((c) => c[0] === x.cat)?.[1] || "🧾");
+      const cons = x.type === "fuel" ? consAt.get(x.date + ":" + x.km) : null;
+      const title = x.type === "fuel" ? (el ? "Laden" : x.fuel || "Tanken") : x.type === "trip" ? `${x.from || "?"} → ${x.to || "?"}` : x.cat || "Ausgabe";
+      const sub = x.type === "fuel" ? [x.km && kmFmt(x.km), cons != null && `${cons.toFixed(2).replace(".", ",")} ${el ? "kWh" : "l"}/100 km`, x.liters && `${amtStr(x.liters).replace(",00", "")} ${unitOf(x.fuel)}`].filter(Boolean)
+        : x.type === "trip" ? [kmFmt(Math.max(0, x.endKm - x.startKm)), { business: "geschäftlich", private: "privat", commute: "Arbeitsweg" }[x.purpose], x.note].filter(Boolean)
+        : [x.km && kmFmt(x.km), x.station, x.note].filter(Boolean);
+      return (<div key={x.id} className={"fbtlrow" + (prevId === x.id ? " open" : "")}>
+        <div className="frow click fbtlitem" onClick={() => onClick(x)}>
+          <span className="fbtldot" style={{ background: col }} aria-hidden="true">{icon}</span>
+          <div className="grow"><b className="fbtltitle">{title}{docOf(x) && <span className="fbclip" title="Beleg angehängt"> 📎</span>}</b><small className="muted block">{sub.join(" · ")}</small></div>
+          <div className="right fbtlright"><b>{x.type === "trip" ? (x.purpose === "business" ? fmtMoney((x.endKm - x.startKm) * kmRate) : kmFmt(x.endKm - x.startKm)) : fmtMoney(+x.total || 0)}</b><small className="muted block">{fbDay(x.date)}</small></div>
+          <Acts x={x} />
+        </div>
+        {prevId === x.id && docOf(x) && preview(x)}
+      </div>); })}
+  </React.Fragment>); })}</div>);
+}
 /* ======================= Kundendatei (v0.93): Übersicht · Rechnungen · Angebote · Mahnungen · Konto ======================= */
 // Rechnung gehört zum Kunden: feste ID, sonst Kundennummer, sonst Name
 const custMatch = (c, inv) => { const k = inv?.customer; if (!k || !c) return false; if (k.id) return k.id === c.id;
@@ -13503,4 +13565,34 @@ html.setdrill-on header.top{min-height:0}
 
 .cdav{background:color-mix(in srgb,currentColor 14%,var(--card2))!important;border-radius:50%!important;display:inline-flex!important;align-items:center;justify-content:center;font-weight:700}
 @media (max-width:700px){.cdacts a.iconbtn{display:none!important}.cdhead{align-items:flex-start}.cdav{width:46px!important;height:46px!important}}
+
+/* v0.94 Fahrtenbuch-Zeitleiste */
+.fbtlh{margin:4px 2px 10px;font-size:13px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.fbrems{margin:0 0 14px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.fbremrow{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding:2px}
+.fbremrow::-webkit-scrollbar{display:none}
+.fbremcard{flex:none;width:min(300px,78vw);display:flex;flex-direction:column;gap:4px;align-items:flex-start;text-align:left;border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:16px;background:var(--card);color:var(--txt);padding:12px 14px;font:inherit;cursor:pointer}
+.fbremcard.soon{border-left-color:#f59e0b}.fbremcard.due{border-left-color:var(--neg,#e5484d)}
+.fbremtop{display:flex;align-items:center;gap:10px;max-width:100%}.fbremtop b{font-size:16px}
+.fbremic{width:32px;height:32px;border-radius:50%;background:#f59e0b;display:inline-flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+.fbremwhen{color:#d97706;font-weight:600}.fbremcard.due .fbremwhen{color:var(--neg,#e5484d)}
+.fbtl{position:relative;padding-left:4px}
+.fbtl::before{content:"";position:absolute;left:25px;top:8px;bottom:8px;border-left:2px dashed var(--line)}
+.fbtlm{position:relative;display:flex;align-items:flex-start;gap:14px;margin:6px 0 4px}
+.fbtlmark{width:44px;flex:none;height:3px;margin-top:22px;background:var(--line);border-radius:2px;position:relative;z-index:1}
+.fbmcard{flex:1;min-width:0;border:1px solid var(--line);border-radius:16px;padding:10px 14px;background:color-mix(in srgb,var(--card2) 55%,transparent)}
+.fbmtitle{display:block;font-size:13.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-bottom:2px}
+.fbmline{font-size:15.5px}.fbmnote{font-size:14px;margin-top:2px}
+.fbtlrow{position:relative}
+.fbtlitem{gap:14px!important;padding:10px 0!important;align-items:center;border-bottom:1px solid var(--line)}
+.fbtlrow:last-child .fbtlitem{border-bottom:0}
+.fbtldot{width:44px;height:44px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:20px;position:relative;z-index:1;box-shadow:0 0 0 4px var(--card)}
+.fbtltitle{font-size:16.5px}.fbclip{font-size:13px;font-weight:400}
+.fbtlright{text-align:right}.fbtlright b{font-size:16.5px;white-space:nowrap}
+@media (hover:hover){.fbtlitem .txacts{opacity:0;transition:opacity .15s}.fbtlitem:hover .txacts{opacity:1}}
+@media (hover:none),(max-width:700px){.fbtlitem .txacts{display:none}}
+
+html .caticon.avatar,html.fg .caticon.avatar{background:color-mix(in srgb,var(--acc) 88%,#000)!important;color:#fff!important;border-radius:50%!important}
+.custwinbody{padding:4px 16px 16px;overflow:auto;flex:1;min-height:0}
+.win.custwin:not(.small){width:min(720px,60vw)}
 `;
