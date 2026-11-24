@@ -5001,7 +5001,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
               {pick && <span className={"pickbox inline" + (pick.has(d.id) ? " on" : "")}>✓</span>}
               <Thumb d={d} />
               <div className="grow">
-                <div className="row1"><b className="clamp dtitle" title="Vorschau ein-/ausblenden" onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevId(prevId === d.id ? null : d.id); }}>{d.title}</b><span className="damtin">{amt(d)}</span></div>
+                <div className="row1"><b className="clamp dtitle" title="Vorschau öffnen" onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevId(prevId === d.id ? null : d.id); }}>{d.title}</b><span className="damtin">{amt(d)}</span></div>
                 <small className="muted block">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
                 <div className="labels">
                   <Label c={d.category} />
@@ -8148,14 +8148,6 @@ const fillDun = (t, inv, r) => String(t || "").replace(/\{nummer\}/g, inv.number
 const hexRgb = (h, rgb) => { const m = String(h || "#0b63f6").replace("#", ""); const n = parseInt(m.length === 3 ? m.split("").map((x) => x + x).join("") : m, 16) || 0x0b63f6; return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
 
 /* Rechnung/Mahnung als Vorschau direkt unter der Zeile (wie bei Dokumenten) */
-function InvPreview({ x, co, make, name }) {
-  const mk = make || (() => buildInvoicePdf(x, co));
-  const key = "inv:" + x.id + ":" + JSON.stringify([x.number, x.date, x.status, (x.items || []).length, (x.reminders || []).length, name]);
-  const nm = name || invFileName(x);
-  return <div className="invprev" onClick={(e) => e.stopPropagation()}>
-    <DocPreview key={key} d={{ id: key, title: nm }} getBlob={mk} onPrint={async () => openPdf(await mk(), nm, "", x.customer?.email)} onOriginal={async () => openPdf(await mk(), nm, "", x.customer?.email)} />
-  </div>;
-}
 async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   co = { ...CO_DEFAULT, ...co };
   const D = { ...DESIGN_DEF, ...design };
@@ -8803,7 +8795,6 @@ const unpayInv = async (x, book, patch) => {
 /* ---------- Seite ---------- */
 function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }) {
   const mob = useMobileBeta();
-  const [prevInv, setPrevInv] = useState(null);
   const [list, setList] = useLsState("invoices", []);
   const [templates, setTemplates] = useLsState("invoiceTemplates", []);
   const [customers, setCustomers] = useLsState("customers", []);
@@ -8971,9 +8962,8 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                     tags={[pick && (pick.has(x.id) ? "☑ gewählt" : "☐"), x.kind === "angebot" && "Angebot", ...(lt ? (x.tags || []).map((t) => "#" + t) : [])]} sub={`${x.number || "Entwurf"} · ${fmtDate(x.date)}${payable ? " · fällig " + fmtDate(invDueEff(x)) : ""}`}
                     amount={fmtMoney(invTotal(x))} amountCls={sx === "bezahlt" ? "in" : sx === "überfällig" ? "neg" : ""} pill={<span className={"stpill " + ui[1]}>{ui[0]}</span>}
                     onClick={() => (pick ? togglePick(x.id) : setEdit(x))}
-                    swipe={pick ? null : { left: [x.number && { icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }, lt && x.number && { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInv([x]) }, { icon: "⧉", label: "Kopie", bg: "#8b5cf6", run: () => copyAsNew(x) }],
-                      right: [payable && { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayFor2(x) }, sx === "überfällig" && { icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }] }}
-                    after={prevInv === x.id && <InvPreview x={x} co={co} />} />); })}
+                    swipe={pick ? null : { left: [x.number && { icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => (async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email))() }, lt && x.number && { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInv([x]) }, { icon: "⧉", label: "Kopie", bg: "#8b5cf6", run: () => copyAsNew(x) }],
+                      right: [payable && { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayFor2(x) }, sx === "überfällig" && { icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }] }} />); })}
               </React.Fragment>
             ))}
           </>)}
@@ -9028,10 +9018,10 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           {shown.map((x) => {
             const s = st(x), [label, cls] = STATE_UI[s] || [s, ""], pay = payFor(x);
             return (<React.Fragment key={x.id}>
-              <div className={"invrow" + (prevInv === x.id ? " prevopen" : "") + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setEdit(x))}>
+              <div className={"invrow" + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setEdit(x))}>
                 {pick && <span className={"pickbox inline" + (pick.has(x.id) ? " on" : "")}>✓</span>}
                 <div className="invmain">
-                  <div className="row1"><b className="invname" title="Vorschau ein-/ausblenden" onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevInv(prevInv === x.id ? null : x.id); }}>{x.customer?.name || "Ohne Kunde"}</b>{lt && (x.tags || []).map((t) => <span key={t} className="label tag lttag">#{t}</span>)}</div>
+                  <div className="row1"><b className="invname" title="Vorschau öffnen" onClick={(e) => { if (pick) return; e.stopPropagation(); (async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email))(); }}>{x.customer?.name || "Ohne Kunde"}</b>{lt && (x.tags || []).map((t) => <span key={t} className="label tag lttag">#{t}</span>)}</div>
                   <small className="muted block">
                     {x.kind === "angebot" ? "Angebot " : ""}{x.number || "Entwurf"} · {fmtDate(x.date)}
                     {x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) && ` · fällig ${fmtDate(invDueEff(x))}`}
@@ -9060,7 +9050,6 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                   </details>
                 </div>
               </div>
-              {prevInv === x.id && <InvPreview x={x} co={co} />}
             </React.Fragment>);
           })}
         </section>
@@ -9315,7 +9304,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
           <div key={c.id} className={"dwrap ctwrap" + (open ? " open" : "")}>
           <div className={"frow click ctrow" + (c.cancelledAt ? " ended" : "") + (c.inactive ? " inactive" : "") + (pick?.has(c.id) ? " picked" : "")} onClick={() => (pick ? togglePick(c.id) : setEdit(c))}>
             {pick && <KitPickBox on={pick.has(c.id)} />}
-            {cdocs[0] ? <span onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevCt(open ? null : c.id); }} title="Vorschau ein-/ausblenden"><Thumb d={cdocs[0]} /></span>
+            {cdocs[0] ? <span onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevCt(open ? null : c.id); }} title="Vorschau öffnen"><Thumb d={cdocs[0]} /></span>
               : <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{ctCats()[c.cat] || "📄"}</span>}
             <div className="grow">
               <b className={cdocs.length ? "dtitle" : ""} title={cdocs.length ? "Vorschau ein-/ausblenden" : undefined} onClick={cdocs.length ? (e) => { if (pick) return; e.stopPropagation(); setPrevCt(open ? null : c.id); } : undefined}>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small> <KitTags tags={c.tags} />
@@ -10804,7 +10793,7 @@ function DunningPage({ setTab, book }) {
   const [list, setList] = useLsState("invoices", []);
   const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
   const dn = dunning();
-  const [remind, setRemind] = useState(null), [other, setOther] = useState(""), [payX, setPayX] = useState(null), [prevInv, setPrevInv] = useState(null);
+  const [remind, setRemind] = useState(null), [other, setOther] = useState(""), [payX, setPayX] = useState(null);
   const [mq, setMq] = useState("");
   const mqHit = (x, r) => !mq || norm(`${x.customer?.name || ""} ${x.number || ""} ${r ? remindName(r.level) : ""} ${invTotal(x)}`).includes(norm(mq));
   const patch = (id, p) => setList((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
@@ -10857,9 +10846,8 @@ function DunningPage({ setTab, book }) {
               sub={`${x.number} · ${since} T. überfällig${last ? " · zuletzt " + remindName(last.level) : ""}`} amount={fmtMoney(invTotal(x))} amountCls="neg"
               pill={<span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? remindName(next) : `in ${(dn.waitDays || 0) - since} T.`}</span>}
               onClick={() => (pick ? togglePick(x.id) : setRemind(x))}
-              swipe={pick ? null : { left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id ? null : x.id) }, { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInvs([[x, null]]) }],
-                right: [{ icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }, { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayX(x) }] }}
-              after={prevInv === x.id && <InvPreview x={x} co={co} />} />
+              swipe={pick ? null : { left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => (async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email))() }, { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInvs([[x, null]]) }],
+                right: [{ icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }, { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayX(x) }] }} />
           ))}
           {(mf === "alle" || mf === "verlauf") && <MHead right={histS.length}>Mahnverlauf</MHead>}
           {(mf === "alle" || mf === "verlauf") && !histS.length && <MEmpty>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</MEmpty>}
@@ -10868,9 +10856,8 @@ function DunningPage({ setTab, book }) {
               amount={fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))} amountCls={s === "bezahlt" ? "in" : ""}
               pill={i === x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
               onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}
-              swipe={{ left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => setPrevInv(prevInv === x.id + ":" + i ? null : x.id + ":" + i) }, { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInvs([[x, i]]) }],
-                right: [{ icon: "📤", label: "Teilen", bg: "#8b5cf6", run: async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email) }] }}
-              after={prevInv === x.id + ":" + i && <InvPreview x={x} co={co} make={() => pdfOf(x, i)} name={invFileName(x, r)} />} />); })}
+              swipe={{ left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => (async () => openPdf(await pdfOf(x, i), invFileName(x, r)))() }, { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInvs([[x, i]]) }],
+                right: [{ icon: "📤", label: "Teilen", bg: "#8b5cf6", run: async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email) }] }} />); })}
         </MScroll>
         {pickOpen && (
           <Win id="dunpick" onClose={() => setPickOpen(false)} dirty={false} small>
@@ -10901,10 +10888,10 @@ function DunningPage({ setTab, book }) {
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b><small>{overS.length}</small></div>
         {!overS.length && <p className="muted small" style={{ padding: "0 14px" }}>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</p>}
         {overS.map(({ x, last, since, ready, next }) => (<React.Fragment key={x.id}>
-          <div className={"invrow" + (prevInv === x.id ? " prevopen" : "") + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setRemind(x))}>
+          <div className={"invrow" + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setRemind(x))}>
             {pick && <KitPickBox on={pick.has(x.id)} />}
             <div className="invmain">
-              <div className="row1"><b className="invname" title="Vorschau ein-/ausblenden" onClick={(e) => { if (pick) return; e.stopPropagation(); setPrevInv(prevInv === x.id ? null : x.id); }}>{x.customer?.name || "Ohne Kunde"}</b><KitTags tags={x.tags} /></div>
+              <div className="row1"><b className="invname" title="Vorschau öffnen" onClick={(e) => { if (pick) return; e.stopPropagation(); (async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email))(); }}>{x.customer?.name || "Ohne Kunde"}</b><KitTags tags={x.tags} /></div>
               <small className="muted block">{x.number} · fällig {fmtDate(invDueEff(x))} · {since} Tage überfällig{last ? ` · zuletzt ${remindName(last.level)} am ${fmtDate(last.date)}` : " · noch nicht gemahnt"}</small>
             </div>
             <b className="invamt neg">{fmtMoney(invTotal(x))}</b>
@@ -10916,7 +10903,6 @@ function DunningPage({ setTab, book }) {
               <button className="iconbtn" title="Tags bearbeiten" aria-label="Tags bearbeiten" onClick={() => tagInv([x])}>#</button>
             </div>
           </div>
-          {prevInv === x.id && <InvPreview x={x} co={co} />}
         </React.Fragment>))}
       </section>}
       {(mf === "alle" || mf === "verlauf") && <section className="tile invlist">
@@ -10924,9 +10910,9 @@ function DunningPage({ setTab, book }) {
         {!histS.length && <p className="muted small" style={{ padding: "0 14px" }}>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</p>}
         {histS.map(({ x, r, i }) => { const s = invState(x); return (
           <React.Fragment key={x.id + i}>
-          <div className={"invrow" + (prevInv === x.id + ":" + i ? " prevopen" : "")} onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>
+          <div className={"invrow"} onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}>
             <div className="invmain">
-              <div className="row1"><b className="invname" title="Vorschau ein-/ausblenden" onClick={(e) => { e.stopPropagation(); setPrevInv(prevInv === x.id + ":" + i ? null : x.id + ":" + i); }}>{remindName(r.level)} · {x.customer?.name}</b></div>
+              <div className="row1"><b className="invname" title="Vorschau öffnen" onClick={(e) => { e.stopPropagation(); (async () => openPdf(await pdfOf(x, i), invFileName(x, r)))(); }}>{remindName(r.level)} · {x.customer?.name}</b></div>
               <small className="muted block">{fmtDate(r.date)} · {x.number} · Frist {fmtDate(r.due)}{Number(r.fee) ? ` · Spesen ${fmtMoney(Number(r.fee))}` : ""}</small>
             </div>
             <b className="invamt">{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))}</b>
@@ -10939,7 +10925,6 @@ function DunningPage({ setTab, book }) {
               {i === x.reminders.length - 1 && <StatusMenu x={x} s={s} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />}
             </div>
           </div>
-          {prevInv === x.id + ":" + i && <InvPreview x={x} co={co} make={() => pdfOf(x, i)} name={invFileName(x, r)} />}
           </React.Fragment>); })}
       </section>}
       </FitScroll>
@@ -12556,10 +12541,10 @@ html,body{min-height:100%}
 .calupcwin .calrow .datebox b{font-size:17px;line-height:1.05;color:inherit}.calupcwin .calrow .datebox small{font-size:10px;line-height:1.1;margin-top:2px}
 .calupcwin .calrow.over .datebox b{color:var(--red)}
 .invname{cursor:pointer}.invname:hover{text-decoration:underline;text-underline-offset:3px}
-.invprev{padding:0 14px 14px}.invprev .dprev{margin:0}
+
 .invrow.prevopen{background:color-mix(in srgb,var(--acc) 8%,transparent)}
 .cactions .chip{display:inline-flex!important;align-items:center;gap:6px;line-height:1.2;vertical-align:middle;height:auto!important}
-.dprevbar .btn{white-space:nowrap}@media (max-width:600px){.invprev{padding:0 6px 10px}}
+.dprevbar .btn{white-space:nowrap}
 /* Ausgabe-Widget in der Übersicht: kompakt bei schmaler Kachel */
 .expform{container-type:inline-size}
 @container (max-width:460px){

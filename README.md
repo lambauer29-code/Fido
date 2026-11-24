@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.92.1
+- Rechnungen & Mahnungen: die aufklappende PDF-Vorschau unter der Zeile ist entfernt (Code gelöscht, nach Rückfrage). Klick auf den Kundennamen bzw. Wischen → „Vorschau“ am Handy öffnet jetzt überall das PDF-Fenster (wie „Vorschau“ im Rechnungsfenster) – mit Drucken und Teilen.
+
 ## v0.92.0 – neuer Listen-Kopf (Vorschläge 1 + 2 + 4 + 5 + 6)
 - **Eine Zeile oben:** Suchfeld · ⚙︎ Filter (mit Zähler) · ⋯ (Neu, Auswählen, Export, Einstellungen). Gilt für Dokumente, Rechnungen, Mahnungen, Verträge, Fixkosten & Abos, Kunden, Artikel, Besitz & Garantie, Lager & Inventur, Kassabuch und alle Handy-Listen.
 - **Filter-Blatt:** am Handy von unten, ab iPad quer/Mac als Fenster rechts oben – Ansicht, Privat/Firma, Kategorie, Status, Jahr, Monat, Sortierung, Tags, gespeicherte Reiter löschen; Knopf „x Treffer anzeigen“.
