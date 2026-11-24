@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.96.1
+- Einheitliche Listen-Schrift wie bei Konten (Titel 17 px, Unterzeile 16 px, Betrag 17 px) in Rechnungen, Kunden, Artikel, Lager & Inventur, Mahnungen, Verträge, Fixkosten & Abos, Kassabuch und Fahrtenbuch (vorher 20/17/20 px). Die Schriftgrößen-Einstellung (Design) wirkt weiterhin zusätzlich.
+
 ## v0.96.0 – Design-Stile & eigene Symbole
 - **Einstellungen → Design → Stil:** 11 Stile mit Vorschau: Klassisch, Glas, Soft UI, Bento, Neo-Brutal, Editorial, Kompakt Pro, Clay, Aurora, Expressiv, Großer Kontrast. Jeder ändert Schriftart (Inter, Nunito, Space Grotesk, Fraunces, JetBrains Mono, Archivo Black – von Google Fonts), Ecken, Schatten/Rahmen, Kartenform, Dichte und Grundfarben; Tag/Nacht wird berücksichtigt (Aurora ist immer dunkel). Farbstil und Schriftgrößen bleiben zusätzlich einstellbar.
 - **Einstellungen → Fahrtenbuch – Symbole:** je Eintragsart (Tanken, Laden, Fahrt, Ausgabe, Erinnerung und alle Ausgaben-Kategorien) eigenes Emoji/Zeichen, Kreisfarbe oder hochgeladenes Bild (PNG/JPG/SVG/WebP, 128 px). Gilt für Zeitleiste, Schnellknöpfe und Erinnerungskarten; wird gesynct.

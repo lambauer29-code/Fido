@@ -13832,4 +13832,10 @@ html.sty-kontrast .muted,html.sty-kontrast small{color:var(--mut)!important}
 html.sty-kontrast *:focus-visible{outline:3px solid var(--acc)!important;outline-offset:2px}
 
 html.sty-kontrast .lbtab.on small,html.sty-kontrast .chip.on small,html.sty-kontrast .btn.primary small{color:inherit!important;opacity:.8}
+
+/* v0.96.1 Listen-Schrift wie in Konten (Titel 17 · Unterzeile 16 · Betrag 17) */
+.fitscroll b.invname,.fitscroll b.dtitle,.fitscroll .frow .grow>b,.fitscroll .contactrow .grow>b,.fitscroll b.fbtltitle,.fitscroll .kbr b,.fitscroll .cdrow .grow>b{font-size:17px!important;font-weight:500!important}
+.fitscroll b.invamt,.fitscroll .frow .right>b,.fitscroll .fbtlright b,.fitscroll .kbr span.r,.fitscroll .ctamt{font-size:17px!important;font-weight:500!important}
+.fitscroll .grow small.muted,.fitscroll small.muted.block,.fitscroll .ctsub,.fitscroll .kbr span.muted,.fitscroll .kbcdate,.fitscroll .fbtlright small,.fitscroll .contactrow small{font-size:16px!important}
+.fitscroll .right small,.fitscroll .invmain~* small,.fitscroll .ctlist .right small{font-size:13px!important}
 `;
