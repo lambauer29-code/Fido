@@ -489,7 +489,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], inventur: ["📋", "Lager & Inventur"], besitz: ["🛡️", "Besitz & Garantie"], kassa: ["📒", "Kassabuch"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], steuer: ["🧑‍💼", "Steuerberater"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], inventur: ["📋", "Lager & Inventur"], besitz: ["🛡️", "Besitz & Garantie"], kassa: ["📒", "Kassabuch"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -562,7 +562,7 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 const DEFAULT_NAV = {
   tabs: [
     { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: true, parent: "docs" },
-    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: true }, { key: "analyse", side: true, phone: true }, { key: "vermoegen", side: true, phone: true }, { key: "fahrtenbuch", side: true, phone: true }, { key: "invoices", side: true, phone: true }, { key: "kunden", side: true, phone: true }, { key: "mahnungen", side: true, phone: true }, { key: "firma", side: true, phone: true }, { key: "artikel", side: true, phone: true }, { key: "inventur", side: true, phone: true }, { key: "besitz", side: true, phone: true }, { key: "kassa", side: true, phone: true }, { key: "vertraege", side: true, phone: true }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: true, parent: "settings" }
+    { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: true }, { key: "analyse", side: true, phone: true }, { key: "vermoegen", side: true, phone: true }, { key: "fahrtenbuch", side: true, phone: true }, { key: "invoices", side: true, phone: true }, { key: "kunden", side: true, phone: true }, { key: "mahnungen", side: true, phone: true }, { key: "firma", side: true, phone: true }, { key: "steuer", side: true, phone: true }, { key: "artikel", side: true, phone: true }, { key: "inventur", side: true, phone: true }, { key: "besitz", side: true, phone: true }, { key: "kassa", side: true, phone: true }, { key: "vertraege", side: true, phone: true }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: true, parent: "settings" }
   ],
   groups: [
     { id: "g-cash", title: "Bargeld", kinds: ["cash"], ids: [] },
@@ -602,7 +602,7 @@ function loadNav() {
 const HUB_DEFS = { "hub:privat": ["👤", "Privat"], "hub:firma": ["💼", "Firma"], "hub:mehr": ["▦", "Mehr"] };
 const HUB_TABS = {
   "hub:privat": ["accounts", "cash", "analyse", "vermoegen", "contracts", "vertraege", "besitz", "deadlines"],
-  "hub:firma": ["invoices", "mahnungen", "kunden", "artikel", "inventur", "kassa", "firma", "fahrtenbuch"],
+  "hub:firma": ["invoices", "mahnungen", "kunden", "artikel", "inventur", "kassa", "firma", "steuer", "fahrtenbuch"],
   "hub:mehr": ["settings", "backup"]
 };
 const NAV_ROOTS = ["home", "docs", "hub:privat", "hub:firma", "hub:mehr"];
@@ -622,6 +622,7 @@ const TAB_SVG = {
   vermoegen: <><path d="M3 17l5-5 4 4 8-8" /><path d="M15 8h5v5" /><path d="M3 21h18" /></>,
   fahrtenbuch: <><path d="M5 17h14v-5l-2-5H7l-2 5z" /><path d="M5 12h14" /><circle cx="8" cy="17" r="1.8" /><circle cx="16" cy="17" r="1.8" /></>,
   firma: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 16v-3M12 16V9M16 16v-5" /></>,
+  steuer: <><path d="M6 3h9l4 4v14H6z" /><path d="M15 3v4h4" /><path d="m9 13 2 2 4-4" /><path d="M9 18h6" /></>,
   cash: <><rect x="2.5" y="6" width="19" height="12" rx="2.5" /><circle cx="12" cy="12" r="2.6" /><path d="M6 9.5v5M18 9.5v5" /></>,
   invoices: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
   kunden: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.5 3 5.2" /></>,
@@ -1627,8 +1628,12 @@ function AppMain() {
     }
     return { added: fresh.length, dupes: withMeta.length - fresh.length, matched: links.length };
   }
+  async function updateTxs(ch) {
+    if (!ch.length) return; const m = new Map(ch.map((t) => [t.id, t]));
+    const l = txsRef.current.map((t) => m.get(t.id) || t); setTxs(l); await db.putTxs(ch);
+  }
   async function updateTx(t, applyRule) {
-    let list = txs.map((x) => (x.id === t.id ? t : x));
+    let list = txsRef.current.map((x) => (x.id === t.id ? t : x));
     if (applyRule && t.counterparty) {
       const match = t.counterparty.toLowerCase();
       setRules((r) => [{ match, category: t.category }, ...r.filter((x) => x.match !== match)]);
@@ -2094,6 +2099,8 @@ function AppMain() {
           txs={txs} docs={active} onScan={scanFor} onOpen={setOpenId}
           onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
           onLink={async (txId, docId) => { await linkTx(txId, docId); const d = docsRef.current.find((x) => x.id === docId); if (d?.receiptFlow) await saveDoc({ ...d, receiptFlow: false, paid: true }); }} />}
+        {tab === "steuer" && <StbPage txs={txs} accounts={accounts} setAccounts={setAccounts} docs={active} saveDoc={saveDoc} updateTx={updateTx} updateTxs={updateTxs} importTxs={importTxs} getTxs={() => txsRef.current}
+          categories={categories} token={token} notify={notify} setTab={setTab} onOpen={setOpenId} openTx={(t) => { ls.set("txOpenReq", t.id); setSelAcc(t.accountId); setTab("accounts"); }} />}
         {tab === "firma" && <BizReport docs={active} setTab={setTab} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
         {tab === "vermoegen" && <Wealth txs={txs} accounts={visAccounts} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
@@ -4334,7 +4341,8 @@ function scopeBits(scope, setScope, count) {
     sheet: <><h4 className="lbh">Bereich</h4><div className="seg">{[["alle", "Privat & Firma"], ["privat", "👤 Privat"], ["firma", "🏢 Firma"]].map(([k, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{l}{count && <small className="cnt"> {count(k)}</small>}</button>)}</div></> };
 }
 // Handy: beim Scrollen kleiner Titel in der fixierten Suchleiste
-if (typeof window !== "undefined" && !window.__lbScroll) { window.__lbScroll = true;
+const LB_MINI = false; // v0.97.3: kleiner Titel beim Scrollen ebenfalls abgeschaltet
+if (LB_MINI && typeof window !== "undefined" && !window.__lbScroll) { window.__lbScroll = true;
   addEventListener("scroll", () => { const c = document.documentElement.classList, on = c.contains("lbscrolled"); if (!on && scrollY > 90) c.add("lbscrolled"); else if (on && scrollY < 40) c.remove("lbscrolled"); }, { passive: true }); }
 // Liste mit useListKit: Reiter = Filter, Jahr/Sortierung/Tags ins Blatt
 function KitBar({ kit, all, filters, filter, setFilter, q, setQ, placeholder, actions, hits, tokens, smart, sheet, noYear, noTags }) {
@@ -4466,7 +4474,7 @@ function HubPage({ hub, nav, setTab, docs, dlDocs, accounts }) {
     kassa: [fmtMoney(kassen.reduce((s, k) => s + kbBalAt(entries, k, todayISO()), 0)) + (kassen.length > 1 ? ` · ${kassen.length} Kassen` : ""), ""],
     accounts: [`${accounts.filter((a) => a.kind !== "cash").length} Konten`, ""], vertraege: [`${cts.length} Verträge`, ""],
     besitz: [`${assets.length} Geräte`, ""], deadlines: [dlOpen ? `${dlOpen} in 14 Tagen` : "keine fällig", dlOpen ? "warn" : ""],
-    firma: ["Bericht & Kennzahlen", ""], analyse: ["Ausgaben & Budgets", ""], vermoegen: ["Entwicklung", ""], cash: ["Beleg erfassen", ""],
+    firma: ["Bericht & Kennzahlen", ""], steuer: ["Auszüge, Belege, Paket", ""], analyse: ["Ausgaben & Budgets", ""], vermoegen: ["Entwicklung", ""], cash: ["Beleg erfassen", ""],
     contracts: ["laufende Kosten", ""], fahrtenbuch: ["Fahrten & km-Geld", ""], inventur: ["Bestand & Zählung", ""],
     settings: ["Darstellung, Daten, Firma", ""], backup: ["Sicherung & Sync", ""]
   };
@@ -5552,6 +5560,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const [month, setMonth] = useState("");
   const [imp, setImp] = useState(null);
   const [txOpen, setTxOpen] = useState(null);
+  useEffect(() => { const id = ls.get("txOpenReq", null); if (!id) return; ls.set("txOpenReq", null); const t = txs.find((x) => x.id === id); if (t) setTxOpen(t); }, []);
   const [coll, setColl] = useState("");
   const [logoOpen, setLogoOpen] = useState(false);
   useEffect(() => { const t = setTimeout(() => autoLogos(txs), 1500); return () => clearTimeout(t); }, [txs.length]);
@@ -5625,7 +5634,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => { setImp(null); if (impQ.current.files.length) setTimeout(nextImp, 50); }} />}
       {logoOpen && <LogoWin txs={txs} onClose={() => setLogoOpen(false)} />}
       {accVis && <AccVisWin accounts={accounts} txs={txs} onHide={accActions.onHide} onUnhide={accActions.onUnhide} onClose={() => setAccVis(false)} />}
-      {txOpen && <TxSheet scanReceiptFor={scanReceiptFor} receiptFor={receiptFor} txs={txs} recurring={recurring} subs={subs} goTab={goTab} resetCp={resetCp} onSearch={(v) => { setQ(v); setMonth(""); }} onAccount={(id) => setAcc?.(id)} onColl={(id) => { setColl(id); setSel?.([]); }} addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txs.find((x) => x.id === txOpen.id) || txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
+      {txOpen && <TxSheet key={txOpen.id} onSwitch={(x) => setTxOpen(x)} scanReceiptFor={scanReceiptFor} receiptFor={receiptFor} txs={txs} recurring={recurring} subs={subs} goTab={goTab} resetCp={resetCp} onSearch={(v) => { setQ(v); setMonth(""); }} onAccount={(id) => setAcc?.(id)} onColl={(id) => { setColl(id); setSel?.([]); }} addCategory={addCategory} accounts={accounts} linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} t={txs.find((x) => x.id === txOpen.id) || txOpen} categories={TX_CATS(categories)} docs={docs} onOpen={(id) => { setTxOpen(null); onOpen(id); }} updateTx={updateTx} onClose={() => setTxOpen(null)} accName={accName} />}
   </>);
   // ---------- Handy: Kontenliste → Kontodetail (Finanzguru-Stil) ----------
   const mobile = useMobileBeta();
@@ -5872,6 +5881,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
                 <TxIcon t={t} size={30} />
                 <span className="grow"><b className="one">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
                   {t.kind !== "broker" && t.counterparty && t.purpose && <small className="muted one block">{t.purpose}</small>}</span>
+                {t.kind !== "broker" && t.category !== "Umbuchung" && (() => { const sc = txScopeInfo(t, accounts.find((a) => a.id === t.accountId)).scope; return sc === "firma" ? <span className="txsc sc-firma" title="Firma">🏢</span> : sc === "unklar" ? <span className="txsc sc-unklar" title="Privat/Firma unklar">❓</span> : null; })()}
                 {t.docId && <span title="Beleg verknüpft – Klick auf die Zeile zeigt ihn">📎</span>}
               </span>
               <span className="one muted">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}</span>
@@ -6451,16 +6461,25 @@ function sepaInfo(t) {
 }
 function txColls() { return ls.get("txColls", []); }
 
-function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, onOpen, updateTx, updateTxs, resetCp, onClose, accName, deleteTx, linkTx, attachNew, addCategory, accounts = [], recurring = [], subs, goTab, onSearch, onAccount, onColl }) {
-  const linkedInv = t.invoiceId ? ls.get("invoices", []).find((i) => i.id === t.invoiceId) : null;
+function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories, docs, onOpen, updateTx, updateTxs, resetCp, onClose, accName, deleteTx, linkTx, attachNew, addCategory, accounts = [], recurring = [], subs, goTab, onSearch, onAccount, onColl }) {
+  const linkedInv = (t.invoiceId && ls.get("invoices", []).find((i) => i.id === t.invoiceId)) || ls.get("invoices", []).find((i) => i.paidTx === t.id) || null;
   const doc = t.docId && docs.find((d) => d.id === t.docId);
   const key = cpKey(t), acc = accounts.find((a) => a.id === t.accountId);
+  const si = txScopeInfo(t, acc, doc), pctBiz = bizPctOf(t, si.scope);
+  const [prevDoc, setPrevDoc] = useState(null), [ctPrev, setCtPrev] = useState(false), [histOpen, setHistOpen] = useLsState("txHistOpen", false), [histN, setHistN] = useState(15), [swap, setSwap] = useState(false), [splitOpen, setSplitOpen] = useState(false), [split, setSplit] = useState(pctBiz);
+  const [askOpen, setAskOpen] = useState(false), [askQ, setAskQ] = useState(t.ask?.q || ""), [askA, setAskA] = useState(t.ask?.a || "");
+  const unlinkInv = () => {
+    if (!confirm(`Verknüpfung zu Rechnung ${linkedInv.number} lösen?`)) return;
+    if (linkedInv.paidTx === t.id) { const reopen = confirm(`Rechnung ${linkedInv.number} wieder auf „offen“ setzen?`);
+      ls.set("invoices", ls.get("invoices", []).map((x) => (x.id === linkedInv.id ? { ...x, paidTx: undefined, paidTxCreated: undefined, ...(reopen ? { status: "offen", paidAt: undefined, paidAccount: undefined, payMethod: undefined } : {}) } : x))); }
+    save({ ...t, invoiceId: undefined });
+  };
   const [edit, setEdit] = useState(null);           // Bearbeiten-Formular
   const [catOpen, setCatOpen] = useState(false), [cat, setCat] = useState(t.category), [rule, setRule] = useState(false), [extraCats, setExtraCats] = useState([]);
   const [icoOpen, setIcoOpen] = useState(false), [, bump] = useState(0), [logoBusy, setLogoBusy] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false), [note, setNote] = useState(t.note || "");
   const [collOpen, setCollOpen] = useState(false), [colls, setColls] = useState(txColls), [newColl, setNewColl] = useState("");
-  const [pickDoc, setPickDoc] = useState(false), [dq, setDq] = useState(""), [showPrev, setShowPrev] = useState(false);
+  const [pickDoc, setPickDoc] = useState(false), [dq, setDq] = useState("");
   const [qrOpen, setQrOpen] = useState(false); const fileRef = useRef();
   const onQr = (text) => {
     setQrOpen(false);
@@ -6488,6 +6507,30 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
   const setTxColls = (ids) => save({ ...t, colls: ids });
   const ICO = CP_ICONS[key];
   const title = t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || "Buchung";
+  const belegOpts = (<>
+            <div className="expscan">
+              <button className="expbig" onClick={() => { scanReceiptFor ? scanReceiptFor(t.id) : attachNew(t.id, "scan"); onClose(); }}>
+                <span className="expico">📷</span><b>Beleg scannen</b><small>KI liest Firma, Datum, Betrag & Steuern</small>
+              </button>
+              <button className="expbig" onClick={() => setQrOpen(true)}>
+                <span className="expico">▦</span><b>QR-Code</b><small>Registrierkassen-QR (RKSV)</small>
+              </button>
+              <button className="expbig" onClick={() => fileRef.current.click()}>
+                <span className="expico">🖼</span><b>Foto / PDF</b><small>aus Galerie oder Dateien</small>
+              </button>
+              <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const x = e.target.files[0]; e.target.value = ""; if (x) { receiptFor ? receiptFor(t.id, x) : attachNew(t.id, "file"); onClose(); } }} />
+            </div>
+            <button className="link txadd" onClick={() => setPickDoc(!pickDoc)}>🗂 Vorhandenes Dokument zuordnen</button>
+            {pickDoc && (() => {
+              const qn = norm(dq), amtAbs = Math.abs(t.amount);
+              const cand = docs.filter((d) => d.id !== t.docId && !isStmt(d) && (!qn || norm(`${d.title} ${d.sender}`).includes(qn)))
+                .map((d) => ({ d, s: (Math.abs((d.amount?.total || 0) - amtAbs) < 0.01 ? 2 : 0) + (norm(d.sender || "").includes(norm(t.counterparty || "").split(" ")[0] || "#") ? 1 : 0) }))
+                .sort((a, b) => b.s - a.s || (b.d.documentDate || "").localeCompare(a.d.documentDate || "")).slice(0, 8);
+              return <div className="pickdocs"><SearchBox className="sbplain" icon={false} placeholder="Dokument suchen" value={dq} onChange={setDq} />
+                {cand.map(({ d }) => <div key={d.id} className="frow click" onClick={() => { linkTx(t.id, d.id); setSwap(false); setPickDoc(false); }}><Thumb d={d} /><div className="grow"><b className="clamp small">{d.title}</b><small className="muted block">{d.sender} · {d.documentDate && fmtDate(d.documentDate)}{d.amount?.total ? " · " + fmtMoney(d.amount.total) : ""}</small></div></div>)}
+              </div>;
+            })()}
+  </>);
 
   if (edit) return (
     <Win id="tx" onClose={() => setEdit(null)} dirty small defW={520}>
@@ -6514,6 +6557,12 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
         <div className="txheroico" onClick={() => setIcoOpen(!icoOpen)} title="Symbol ändern"><TxIcon t={t} size={84} /><span className="txpen">✎</span></div>
         <h2>{title}</h2>
         {t.kind !== "broker" && <button className="txcat" onClick={() => setCatOpen(!catOpen)}><CatGlyph c={t.category} /> {t.category} <span>✎</span></button>}
+        {t.kind !== "broker" && !isTransfer && (
+          <div className="txscope">
+            <div className="seg">{TX_SCOPES.map(([k, ic, lb]) => <button key={k} className={(si.scope === k ? "on " : "") + "sc-" + k} onClick={() => save({ ...t, scope: k, scopeSrc: undefined, ...(k !== "firma" ? { bizPct: undefined } : {}) })}>{ic} {lb}</button>)}</div>
+            <small className="muted">{si.set ? (si.src ? si.src : "selbst zugeordnet") : "Vorschlag: " + si.src}{t.scopeWhy ? " · " + t.scopeWhy : ""}{si.scope === "firma" && pctBiz < 100 ? ` · ${pctBiz} % Firma` : ""}</small>
+          </div>
+        )}
       </div>
       {icoOpen && (
         <div className="tile txpick">
@@ -6543,10 +6592,26 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
           <button className="btn primary" disabled={cat === t.category && !rule} onClick={() => { save(withOrig({ ...t, category: cat }), rule); setCatOpen(false); }}>Übernehmen</button>
         </div>
       )}
-      {linkedInv && <div className="lookbox ok">🧾 Zahlungseingang zu Rechnung <b>{linkedInv.number}</b> · {linkedInv.customer?.name} · {fmtMoney(invTotal(linkedInv))}</div>}
+      {linkedInv && <div className="lookbox ok txinv">
+        <span className="grow click" onClick={() => { ls.set("invOpenReq", linkedInv.id); goTab?.("invoices"); onClose(); }}>🧾 Zahlungseingang zu Rechnung <b>{linkedInv.number}</b> · {linkedInv.customer?.name} · {fmtMoney(invTotal(linkedInv))} <span className="muted">›</span></span>
+        <button className="link red small" onClick={unlinkInv}>Lösen</button></div>}
 
       <section className="tile txcard">
         <div className="txkv"><span>Betrag</span><b className={income ? "pos" : ""}>{income ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b></div>
+        {t.kind !== "broker" && si.scope === "firma" && !isTransfer && (
+          <div className="txkv col"><span>✂️ Aufteilen Firma / Privat</span>
+            <div className="txlink plain" onClick={() => { setSplit(pctBiz); setSplitOpen(!splitOpen); }}>
+              <div className="grow"><b>{pctBiz < 100 ? `${pctBiz} % Firma · ${100 - pctBiz} % Privat` : "Ganz Firma"}</b><small className="muted block">{pctBiz < 100 ? `Firma ${fmtMoney(bizAmt(t, "firma"))} · Privat ${fmtMoney(t.amount - bizAmt(t, "firma"))}` : "z. B. Handy oder Auto teilweise privat genutzt"}</small></div>
+              <span className="link">{splitOpen ? "Schließen" : "Ändern"}</span>
+            </div>
+            {splitOpen && <div className="txpick txsplit">
+              <div className="row"><input type="range" min="0" max="100" step="5" value={split} onChange={(e) => setSplit(+e.target.value)} /><input className="pctin" inputMode="numeric" value={split} onChange={(e) => setSplit(Math.max(0, Math.min(100, +e.target.value.replace(/\D/g, "") || 0)))} /> %</div>
+              <div className="chips">{[100, 80, 70, 60, 50, 40, 30].map((v) => <button key={v} className={"chip" + (split === v ? " on" : "")} onClick={() => setSplit(v)}>{v} %</button>)}</div>
+              <small className="muted">Firma {fmtMoney(Math.round(t.amount * split) / 100)} · Privat {fmtMoney(t.amount - Math.round(t.amount * split) / 100)}</small>
+              <div className="row"><button className="btn sm primary" onClick={() => { save({ ...t, scope: "firma", scopeSrc: undefined, bizPct: split >= 100 ? undefined : split }); setSplitOpen(false); }}>Übernehmen</button><button className="link" onClick={() => setSplitOpen(false)}>Abbrechen</button></div>
+            </div>}
+          </div>
+        )}
         <div className="txkv"><span>Buchungsdatum</span><b>{relDay(t.date)}</b></div>
         {t.valueDate && t.valueDate !== t.date && <div className="txkv"><span>Valuta</span><b>{fmtDate(t.valueDate)}</b></div>}
         {t.purpose && <div className="txkv col"><span>Zweck</span><p>{t.purpose}</p></div>}
@@ -6559,7 +6624,7 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
         )}
         {(ct || rec) && (
           <div className="txkv col"><span>Zugehöriger Vertrag</span>
-            <div className="txlink" onClick={() => { if (ct) { ls.set("ctOpenReq", ct.id); goTab?.("vertraege"); } else goTab?.("contracts"); onClose(); }}>
+            <div className="txlink" onClick={() => { if (ct) setCtPrev(true); else { goTab?.("contracts"); onClose(); } }}>
               <TxIcon t={t} size={44} />
               <div className="grow"><b>{ct ? ct.name || ct.provider : rec.name}</b><small className="muted block">{ct ? (ct.interval || "monatlich").replace(/^./, (c) => c.toUpperCase()) : rec.interval}{!ct && !(subs?.confirmed || []).includes(rec.key) ? " · erkannt" : ""}</small></div>
               <b>{ct ? fmtMoney(-(Number(ct.amount) || 0)) : fmtMoney(-rec.amount)}</b><span className="muted">›</span>
@@ -6569,38 +6634,19 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
         {/* Beleg */}
         {doc ? (
           <div className="txkv col"><span>Beleg</span>
-            <div className="txlink" onClick={() => setShowPrev(!showPrev)}>
-              <Thumb d={doc} /><div className="grow"><b>📎 {doc.title}</b><small className="muted block">{showPrev ? "Vorschau ausblenden" : "Antippen für Vorschau"}</small></div>
-              <button className="link" onClick={(e) => { e.stopPropagation(); onOpen(doc.id); }}>Öffnen</button>
-              <button className="link red" onClick={(e) => { e.stopPropagation(); linkTx(t.id, null); onClose(); }}>Lösen</button>
+            <div className="txlink" onClick={() => setPrevDoc(doc)}>
+              <Thumb d={doc} /><div className="grow"><b>📎 {doc.title}</b><small className="muted block">{doc.sender ? doc.sender + " · " : ""}{doc.amount?.total ? fmtMoney(doc.amount.total) + " · " : ""}Antippen für Vorschau</small></div>
             </div>
-            {showPrev && <DocPreview d={doc} onOpen={() => onOpen(doc.id)} />}
+            <div className="row txbelacts">
+              <button className="btn sm" onClick={() => setPrevDoc(doc)}>👁 Vorschau</button>
+              <button className={"btn sm" + (swap ? " on" : "")} onClick={() => setSwap(!swap)}>⇄ Tauschen</button>
+              <button className="btn sm" onClick={() => onOpen(doc.id)}>Öffnen</button>
+              <button className="btn sm red" onClick={() => confirm(`Beleg „${doc.title}“ von der Buchung lösen?\nDer Beleg bleibt unter Dokumente erhalten.`) && linkTx(t.id, null)}>✕ Lösen</button>
+            </div>
+            {swap && <div className="txswap"><small className="muted block">Neuen Beleg wählen – er ersetzt „{doc.title}“ (der alte bleibt unter Dokumente):</small>{belegOpts}</div>}
           </div>
         ) : t.kind !== "broker" && (
-          <div className="txkv col"><span>Beleg / Rechnung</span>
-            <div className="expscan">
-              <button className="expbig" onClick={() => { scanReceiptFor ? scanReceiptFor(t.id) : attachNew(t.id, "scan"); onClose(); }}>
-                <span className="expico">📷</span><b>Beleg scannen</b><small>KI liest Firma, Datum, Betrag & Steuern</small>
-              </button>
-              <button className="expbig" onClick={() => setQrOpen(true)}>
-                <span className="expico">▦</span><b>QR-Code</b><small>Registrierkassen-QR (RKSV)</small>
-              </button>
-              <button className="expbig" onClick={() => fileRef.current.click()}>
-                <span className="expico">🖼</span><b>Foto / PDF</b><small>aus Galerie oder Dateien</small>
-              </button>
-              <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const x = e.target.files[0]; e.target.value = ""; if (x) { receiptFor ? receiptFor(t.id, x) : attachNew(t.id, "file"); onClose(); } }} />
-            </div>
-            <button className="link txadd" onClick={() => setPickDoc(!pickDoc)}>🗂 Vorhandenes Dokument zuordnen</button>
-            {pickDoc && (() => {
-              const qn = norm(dq), amtAbs = Math.abs(t.amount);
-              const cand = docs.filter((d) => !qn || norm(`${d.title} ${d.sender}`).includes(qn))
-                .map((d) => ({ d, s: (Math.abs((d.amount?.total || 0) - amtAbs) < 0.01 ? 2 : 0) + (norm(d.sender || "").includes(norm(t.counterparty || "").split(" ")[0] || "#") ? 1 : 0) }))
-                .sort((a, b) => b.s - a.s || (b.d.documentDate || "").localeCompare(a.d.documentDate || "")).slice(0, 8);
-              return <div className="pickdocs"><SearchBox className="sbplain" icon={false} placeholder="Dokument suchen" value={dq} onChange={setDq} />
-                {cand.map(({ d }) => <div key={d.id} className="frow click" onClick={() => { linkTx(t.id, d.id); onClose(); }}><Thumb d={d} /><div className="grow"><b className="clamp small">{d.title}</b><small className="muted block">{d.sender} · {d.documentDate && fmtDate(d.documentDate)}{d.amount?.total ? " · " + fmtMoney(d.amount.total) : ""}</small></div></div>)}
-              </div>;
-            })()}
-          </div>
+          <div className="txkv col"><span>Beleg / Rechnung</span>{belegOpts}</div>
         )}
         {!!t.items?.length && (
           <div className="txkv col"><span>Positionen ({t.items.length})</span>
@@ -6620,6 +6666,20 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
             </div>
           )}
         </div>
+        {/* Frage an den Steuerberater */}
+        {t.kind !== "broker" && <div className="txkv col"><span>{t.ask && !askOpen ? "Frage an den Steuerberater" : ""}</span>
+          {t.ask && !askOpen && <p className="txask" onClick={() => setAskOpen(true)}>❓ {t.ask.q} <span className={"stpill " + (t.ask.state === "geklärt" ? "st-paid" : "st-open")}>{t.ask.state}</span>{t.ask.a && <small className="block">💬 {t.ask.a}</small>}</p>}
+          {!askOpen && <button className="link txadd" onClick={() => { setAskQ(t.ask?.q || ""); setAskA(t.ask?.a || ""); setAskOpen(true); }}>{t.ask ? "Frage bearbeiten" : "❓ Frage an den Steuerberater"}</button>}
+          {askOpen && <div className="txpick">
+            <textarea rows={2} autoFocus value={askQ} onChange={(e) => setAskQ(e.target.value)} placeholder="z. B. Ist das eine Firmenausgabe?" />
+            {t.ask && <textarea rows={2} value={askA} onChange={(e) => setAskA(e.target.value)} placeholder="Antwort vom Steuerberater" />}
+            <div className="row">
+              <button className="btn sm primary" disabled={!askQ.trim()} onClick={() => { save({ ...t, ask: { ...(t.ask || { state: "offen", at: todayISO() }), q: askQ.trim(), a: askA.trim() } }); setAskOpen(false); }}>Speichern</button>
+              {t.ask && t.ask.state !== "geklärt" && <button className="btn sm" onClick={() => { save({ ...t, ask: { ...t.ask, q: askQ.trim() || t.ask.q, a: askA.trim(), state: "geklärt", doneAt: todayISO() } }); setAskOpen(false); }}>✓ Geklärt</button>}
+              {t.ask && <button className="link red" onClick={() => { save({ ...t, ask: undefined }); setAskOpen(false); }}>Entfernen</button>}
+              <button className="link" onClick={() => setAskOpen(false)}>Abbrechen</button>
+            </div></div>}
+        </div>}
         {/* Notiz */}
         <div className="txkv col"><span>{t.note && !noteOpen ? "Notiz" : ""}</span>
           {t.note && !noteOpen && <p onClick={() => setNoteOpen(true)}>{t.note}</p>}
@@ -6640,11 +6700,49 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
             <line x1="0" x2="330" y1={120 - (avg / max) * 110} y2={120 - (avg / max) * 110} className="avg" />
           </svg>
           <div className="txavg">Ø {fmtMoney(avg)} <small>/ Monat</small></div>
-          <button className="txlinkrow" onClick={() => { onSearch?.(t.counterparty || title); onClose(); }}>Alle Buchungen anzeigen ({same.length}) <span>›</span></button>
+          <button className={"txlinkrow txhisttog" + (histOpen ? " open" : "")} aria-expanded={histOpen} onClick={() => setHistOpen(!histOpen)}>{histOpen ? "Buchungen ausblenden" : `Letzte Buchungen anzeigen (${same.length})`} <span className="chev">⌄</span></button>
+          {histOpen && (() => { const hl = [...same].sort((a, b) => b.date.localeCompare(a.date) || (b.id > a.id ? 1 : -1)); return (
+            <div className="txhist">
+              {hl.slice(0, histN).map((x) => { const xd = x.docId && docs.find((d) => d.id === x.docId); return (
+                <div key={x.id} className={"txhrow" + (x.id === t.id ? " cur" : "")} onClick={() => x.id !== t.id && onSwitch?.(x)}>
+                  <span className="txhdate">{fmtDate(x.date)}</span>
+                  <span className="grow one muted">{x.id === t.id ? "diese Buchung" : x.purpose || x.category}</span>
+                  {xd ? <button className="txhdoc" title={`Beleg: ${xd.title}`} aria-label="Beleg ansehen" onClick={(e) => { e.stopPropagation(); setPrevDoc(xd); }}>📎</button> : <span className="txhdoc none" />}
+                  <b className={x.amount > 0 ? "pos" : ""}>{fmtMoney(x.amount, x.currency)}</b>
+                </div>); })}
+              <div className="txhfoot">
+                {hl.length > histN && <button className="link small" onClick={() => setHistN(histN + 15)}>15 weitere ({hl.length - histN})</button>}
+                <span className="grow" />
+                <button className="link small" onClick={() => { onSearch?.(t.counterparty || title); onClose(); }}>In der Liste anzeigen ›</button>
+              </div>
+            </div>); })()}
         </section>
       )}
 
       {qrOpen && createPortal(<CodeScanWin title="Kassenbon-QR scannen" onClose={() => setQrOpen(false)} onResult={(code) => onQr(code)} />, document.querySelector(".app") || document.body)}
+      {ctPrev && ct && (() => { const cd = ctDates(ct), cdocs = (ct.docIds || []).map((id) => docs.find((d) => d.id === id)).filter(Boolean); return createPortal(
+        <Win id="ctprev" onClose={() => setCtPrev(false)} dirty={false} small defW={560} className="txctprev">
+          <div className="panelhead"><b className="clamp">📑 {ct.name || ct.provider}</b>
+            <button className="iconbtn" title="Vertrag bearbeiten" aria-label="Vertrag bearbeiten" onClick={() => { ls.set("ctOpenReq", ct.id); goTab?.("vertraege"); setCtPrev(false); onClose(); }}><IcoEdit /></button><XBtn /></div>
+          <section className="tile txcard">
+            {[["Anbieter", ct.provider], ["Betrag", ct.amount ? `${fmtMoney(Number(ct.amount))} · ${ct.interval || "monatlich"}` : ""], ["Kategorie", ct.cat], ["Kundennummer", ct.customerNo], ["Vertragsnummer", ct.contractNo],
+              ["Beginn", ct.start && fmtDate(ct.start)], ["Läuft bis", cd.end && (cd.open ? "unbefristet" : fmtDate(cd.end))], ["Kündigen bis", cd.cancelBy && fmtDate(cd.cancelBy)], ["Bereich", ct.scope === "firma" ? "🏢 Firma" : "👤 Privat"], ["Status", ct.cancelledAt ? "gekündigt" : ct.inactive ? "inaktiv" : "aktiv"]]
+              .filter(([, v]) => v).map(([k, v]) => <div key={k} className="txkv"><span>{k}</span><b>{v}</b></div>)}
+            {ct.note && <div className="txkv col"><span>Notiz</span><p>{ct.note}</p></div>}
+          </section>
+          <h3 className="txsec">Dokumente zum Vertrag ({cdocs.length})</h3>
+          {cdocs.length ? <div className="txctdocs">{cdocs.map((d) => (
+            <div key={d.id} className="txlink" onClick={() => setPrevDoc(d)}><Thumb d={d} /><div className="grow"><b className="one">{d.title}</b><small className="muted block">{d.documentDate ? fmtDate(d.documentDate) : ""}{d.docType ? " · " + d.docType : ""}</small></div><span className="link">👁 Vorschau</span></div>))}</div>
+            : <p className="muted small">Noch keine Dokumente mit diesem Vertrag verknüpft. Unter Verträge → Bearbeiten kannst du welche zuordnen.</p>}
+          <button className="btn" style={{ marginTop: 12 }} onClick={() => { ls.set("ctOpenReq", ct.id); goTab?.("vertraege"); setCtPrev(false); onClose(); }}>In Verträgen öffnen ›</button>
+        </Win>, document.querySelector(".app") || document.body); })()}
+      {prevDoc && createPortal(
+        <Win id="docprev" onClose={() => setPrevDoc(null)} dirty={false} className="docprevwin">
+          <div className="panelhead"><b className="clamp">{prevDoc.title}</b>
+            <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = prevDoc.id; setPrevDoc(null); onOpen(id); }}><IcoEdit /></button>
+            <XBtn /></div>
+          <DocPreview key={prevDoc.id} d={prevDoc} onOpen={() => onOpen(prevDoc.id)} />
+        </Win>, document.querySelector(".app") || document.body)}
       <h3 className="txsec">Sonstiges</h3>
       <section className="tile txcard">
         <div className="txkv col"><span>Von</span>
@@ -6674,6 +6772,673 @@ function TxSheet({ scanReceiptFor, receiptFor, t, txs = [], categories, docs, on
         <button className="txlinkrow red" onClick={() => confirm(t.manual ? "Buchung löschen?" : "Diese Buchung stammt aus einem Bankimport. Trotzdem löschen?\n(Beim nächsten Import desselben Zeitraums kann sie wieder erscheinen.)") && (deleteTx(t), onClose())}>🗑 Buchung löschen</button>
       </section>
     </Win>
+  );
+}
+
+/* ======================= Firma/Privat je Buchung · Kontoauszüge · Steuerberater (v0.97) ======================= */
+const TX_SCOPES = [["firma", "🏢", "Firma"], ["privat", "👤", "Privat"], ["unklar", "❓", "Unklar"]];
+const SCOPE_COL = { firma: [245, 158, 11], privat: [100, 181, 246], unklar: [229, 115, 115] };
+// Zuordnung einer Buchung: eigene Wahl/KI > Beleg „Firma“ > Verwendung des Kontos > Privat
+function txScopeInfo(t, acc, doc) {
+  if (t?.scope) return { scope: t.scope, src: t.scopeSrc === "ki" ? "KI-Vorschlag" : "", set: true };
+  if (doc?.scope === "firma") return { scope: "firma", src: "aus dem Beleg" };
+  if (acc?.use === "firma") return { scope: "firma", src: "Firmenkonto" };
+  if (acc?.use === "gemischt") return { scope: "unklar", src: "Konto privat & Firma" };
+  return { scope: "privat", src: acc?.use === "privat" ? "Privatkonto" : "Standard" };
+}
+const bizPctOf = (t, scope) => (scope === "firma" ? (t.bizPct != null ? +t.bizPct : 100) : 0);
+const bizAmt = (t, scope) => Math.round(t.amount * bizPctOf(t, scope)) / 100;
+const dayDiff = (a, b) => Math.round((new Date(a) - new Date(b)) / 864e5);
+const isStmt = (d) => !!d?.stmt && !d.deletedAt;
+const stmtTitle = (accName, from, to) => `Kontoauszug ${accName} ${from && to ? (from.slice(0, 7) === to.slice(0, 7) ? monthLabel(from.slice(0, 7)) : fmtDate(from) + " – " + fmtDate(to)) : ""}`.trim();
+const monthsBetween = (from, to) => (from && to ? monthsRange(from.slice(0, 7), to.slice(0, 7)) : []);
+// Auszugszeilen den Buchungen der App zuordnen (gleicher Betrag, Datum ± 4 Tage)
+function matchStmtLines(lines, txs, accountId) {
+  const used = new Set(), pool = txs.filter((t) => t.kind !== "broker" && (!accountId || t.accountId === accountId));
+  return lines.map((l) => {
+    const c = pool.filter((t) => !used.has(t.id) && Math.abs(t.amount - l.amount) < 0.005 && Math.abs(dayDiff(t.date, l.date)) <= 4)
+      .sort((a, b) => Math.abs(dayDiff(a.date, l.date)) - Math.abs(dayDiff(b.date, l.date)))[0];
+    if (c) used.add(c.id);
+    return { ...l, txId: c?.id || null };
+  });
+}
+// Position jeder Zeile im PDF suchen (nur PDFs mit Textebene) → box in Seitenanteilen
+async function stmtLayout(blob, lines) {
+  if (blob.type !== "application/pdf") return lines;
+  try {
+    const pdf = await (await loadPdfjs()).getDocument({ data: await blob.arrayBuffer() }).promise;
+    const pages = [];
+    for (let p = 1; p <= Math.min(pdf.numPages, 40); p++) {
+      const pg = await pdf.getPage(p), vp = pg.getViewport({ scale: 1 }), tc = await pg.getTextContent();
+      const its = tc.items.filter((i) => i.str && i.str.trim()).map((i) => ({ s: i.str, x: i.transform[4], y: i.transform[5], h: Math.abs(i.transform[3]) || 9, w: i.width || 0 }));
+      const rows = [];
+      for (const it of its.sort((a, b) => b.y - a.y || a.x - b.x)) {
+        const r = rows.find((r) => Math.abs(r.y - it.y) < Math.max(2.5, it.h * 0.35));
+        if (r) { r.items.push(it); r.h = Math.max(r.h, it.h); } else rows.push({ y: it.y, h: it.h, items: [it] });
+      }
+      rows.forEach((r) => { r.items.sort((a, b) => a.x - b.x); r.text = r.items.map((i) => i.s).join(" ").replace(/\s+/g, " "); r.x0 = Math.min(...r.items.map((i) => i.x)); r.x1 = Math.max(...r.items.map((i) => i.x + i.w)); });
+      rows.sort((a, b) => b.y - a.y);
+      pages.push({ W: vp.width, H: vp.height, rows });
+    }
+    const AMT = /\d{1,3}(?:[.\s]\d{3})*,\d{2}|\d+,\d{2}/;
+    const taken = new Set();
+    return lines.map((l) => {
+      const a = Math.abs(l.amount), v1 = a.toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), v2 = v1.replace(/[.\s ]/g, "");
+      const [y, m, d] = (l.date || "").split("-"), dts = [`${d}.${m}.`, `${d}.${m}`, `${d}${m}`, `${d}/${m}`];
+      let best = null;
+      pages.forEach((pg, pi) => pg.rows.forEach((r, ri) => {
+        if (taken.has(pi + ":" + ri)) return;
+        const tx = r.text, flat = tx.replace(/[.\s ]/g, "");
+        if (!(tx.includes(v1) || flat.includes(v2))) return;
+        const s = 1 + (dts.some((x) => tx.includes(x)) ? 2 : 0) + (l.counterparty && norm(tx).includes(norm(l.counterparty).split(" ")[0] || "#") ? 1 : 0);
+        if (!best || s > best.s) best = { s, pi, ri };
+      }));
+      if (!best) return l;
+      taken.add(best.pi + ":" + best.ri);
+      const pg = pages[best.pi], r0 = pg.rows[best.ri];
+      let last = r0, x0 = r0.x0, x1 = r0.x1;
+      // Folgezeilen (Verwendungszweck) dazunehmen, bis zur nächsten Buchung
+      for (let k = best.ri + 1; k < Math.min(pg.rows.length, best.ri + 4); k++) {
+        const r = pg.rows[k];
+        if (AMT.test(r.text) || /^\s*\d{2}\.\d{2}/.test(r.text) || last.y - r.y > last.h * 2.4) break;
+        last = r; x0 = Math.min(x0, r.x0); x1 = Math.max(x1, r.x1);
+      }
+      const top = r0.y + r0.h * 1.05, bot = last.y - last.h * 0.35;
+      const margin = Math.min(...pg.rows.map((r) => r.x0)), right = Math.max(...pg.rows.map((r) => r.x1));
+      return { ...l, box: { p: best.pi, t: Math.max(0, 1 - top / pg.H), b: Math.min(1, 1 - bot / pg.H), l: Math.max(0, (Math.min(x0, margin) - 3) / pg.W), r: Math.min(1, (right + 3) / pg.W) } };
+    });
+  } catch { return lines; }
+}
+// KI: Firma / Privat / Unklar je Zeile – fällt ohne KI auf die Konto-Verwendung zurück
+async function classifyItems(items, token) {
+  const r = await fetch("/api/classify", { method: "POST", headers: { "content-type": "application/json", "x-app-token": token || "" }, body: JSON.stringify({ items, business: ls.get("stbBizDesc", "") }) });
+  const j = await r.json().catch(() => ({ error: "HTTP " + r.status }));
+  if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+  return Object.fromEntries((j.results || []).filter((x) => ["firma", "privat", "unklar"].includes(x.scope)).map((x) => [x.i, x]));
+}
+// Markiertes PDF: Original mit farbigen Zeilen + Zusammenfassung als letzte Seite(n)
+async function stmtMarkedPdf(doc, blob, txs, accounts, docs) {
+  const { PDFDocument, rgb, StandardFonts } = await import("pdf-lib");
+  const rows = stmtRows(doc, txs, accounts, docs);
+  let out;
+  if (blob.type === "application/pdf") {
+    out = await PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true });
+    const font = await out.embedFont(StandardFonts.HelveticaBold), pages = out.getPages();
+    for (const r of rows) {
+      const b = r.box, pg = b && pages[b.p]; if (!pg) continue;
+      const { width: W, height: H } = pg.getSize(), [cr, cg, cb] = SCOPE_COL[r.scope] || SCOPE_COL.unklar, col = rgb(cr / 255, cg / 255, cb / 255);
+      pg.drawRectangle({ x: b.l * W, y: H * (1 - b.b), width: (b.r - b.l) * W, height: (b.b - b.t) * H, color: col, opacity: 0.26 });
+      pg.drawRectangle({ x: b.l * W - 3, y: H * (1 - b.b), width: 2.2, height: (b.b - b.t) * H, color: col, opacity: 0.95 });
+      pg.drawText(r.scope === "firma" ? "F" : r.scope === "privat" ? "P" : "?", { x: Math.max(2, b.l * W - 11), y: H * (1 - b.t) - 8, size: 7, font, color: col });
+    }
+  } else {
+    out = await PDFDocument.create();
+    const img = blob.type === "image/png" ? await out.embedPng(await blob.arrayBuffer()) : await out.embedJpg(await blob.arrayBuffer());
+    const s = Math.min(595 / img.width, 842 / img.height), pg = out.addPage([img.width * s, img.height * s]); pg.drawImage(img, { x: 0, y: 0, width: img.width * s, height: img.height * s });
+  }
+  const sum = (sc) => rows.filter((r) => r.scope === sc).reduce((s, r) => s + r.amount, 0);
+  const tbl = await tablePdf({ title: doc.title || "Kontoauszug", subtitle: `Zuordnung Firma / Privat · Stand ${fmtDate(todayISO())}`, landscape: true,
+    kpis: [["Firma", fmtMoney(rows.filter((r) => r.scope === "firma").reduce((s, r) => s + r.biz, 0))], ["Privat", fmtMoney(sum("privat"))], ["Unklar", `${rows.filter((r) => r.scope === "unklar").length} Zeilen`], ["Firma ohne Beleg", String(rows.filter((r) => r.scope === "firma" && r.amount < 0 && !r.beleg).length)]],
+    columns: [{ label: "Datum", w: 1 }, { label: "Empfänger / Auftraggeber", w: 2.6 }, { label: "Zweck", w: 3.2 }, { label: "Betrag €", w: 1.1, align: "right" }, { label: "Zuordnung", w: 1.3 }, { label: "Firmenanteil €", w: 1.2, align: "right" }, { label: "Beleg", w: 1 }, { label: "Hinweis", w: 2.4 }],
+    rows: rows.map((r) => [r.date, r.cp, r.purpose, r.amount, r.label, r.scope === "firma" ? r.biz : "", r.beleg ? "ja" : r.scope === "firma" && r.amount < 0 ? "FEHLT" : "", r.reason]),
+    note: "Gelb = Firma, Blau = Privat, Rot = unklar. Zuordnung mit KI-Unterstützung erstellt und in FinDocu geprüft – keine Steuerberatung." });
+  const src = await PDFDocument.load(await tbl.arrayBuffer());
+  (await out.copyPages(src, src.getPageIndices())).forEach((p) => out.addPage(p));
+  return new Blob([await out.save()], { type: "application/pdf" });
+}
+// Zeilen eines Auszugs mit aktuellem Stand (verknüpfte Buchung ist führend)
+function stmtRows(doc, txs, accounts, docs) {
+  const tm = new Map(txs.map((t) => [t.id, t])), acc = accounts.find((a) => a.id === doc.stmt.accountId);
+  return (doc.stmt.lines || []).map((l, i) => {
+    const t = l.txId && tm.get(l.txId), bd = t?.docId && docs.find((d) => d.id === t.docId);
+    const info = t ? txScopeInfo(t, accounts.find((a) => a.id === t.accountId) || acc, bd) : { scope: l.scope || "unklar", src: l.scopeSrc === "ki" ? "KI-Vorschlag" : "" };
+    const scope = info.scope, base = t || { amount: l.amount, bizPct: l.bizPct };
+    return { i, l, t, box: l.box, date: l.date, cp: t?.counterparty || l.counterparty || "", purpose: (t?.purpose || l.purpose || "").slice(0, 140), amount: l.amount, scope, src: info.src,
+      label: (TX_SCOPES.find((s) => s[0] === scope) || [])[2] + (scope === "firma" && bizPctOf(base, scope) < 100 ? ` ${bizPctOf(base, scope)} %` : ""),
+      biz: bizAmt(base, scope), beleg: !!bd, reason: t?.ask?.q || t?.scopeWhy || l.reason || "" };
+  });
+}
+/* Kontoauszug ansehen: PDF mit Markierungen + Zeilenliste */
+function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openTx, notify, token, onClose }) {
+  const [pages, setPages] = useState(null), [view, setView] = useState("beides"), [hi, setHi] = useState(null), [busy, setBusy] = useState(false);
+  const mob = useMobileBeta();
+  const blobRef = useRef(null);
+  useEffect(() => { let dead = false; db.getFile(doc.id).then(async (b) => { blobRef.current = b; if (!b) return setPages([]); const p = await blobToImages(b, Math.min(1500, Math.round(820 * (window.devicePixelRatio || 1)))); if (!dead) setPages(p); }).catch(() => setPages([])); return () => { dead = true; }; }, [doc.id]);
+  const rows = stmtRows(doc, txs, accounts, docs);
+  const acc = accounts.find((a) => a.id === doc.stmt.accountId);
+  const setScope = async (r, scope) => {
+    if (r.t) await updateTx({ ...r.t, scope, scopeSrc: undefined });
+    else await saveDoc({ ...doc, stmt: { ...doc.stmt, lines: doc.stmt.lines.map((l, i) => (i === r.i ? { ...l, scope, scopeSrc: undefined } : l)) } });
+  };
+  const cycle = (r) => setScope(r, r.scope === "firma" ? "privat" : r.scope === "privat" ? "unklar" : "firma");
+  const cnt = (sc) => rows.filter((r) => r.scope === sc).length;
+  const noBeleg = rows.filter((r) => r.scope === "firma" && r.amount < 0 && !r.beleg).length, noTx = rows.filter((r) => !r.t).length;
+  async function reMatch() {
+    setBusy(true);
+    try {
+      let lines = matchStmtLines(doc.stmt.lines.map(({ txId, ...l }) => l), txs, doc.stmt.accountId);
+      if (blobRef.current && !lines.some((l) => l.box)) lines = await stmtLayout(blobRef.current, lines);
+      await saveDoc({ ...doc, stmt: { ...doc.stmt, lines } }); notify?.(`${lines.filter((l) => l.txId).length} von ${lines.length} Zeilen einer Buchung zugeordnet`);
+    } finally { setBusy(false); }
+  }
+  async function reAi() {
+    setBusy(true);
+    try {
+      const open = rows.filter((r) => !(r.t?.scope && !r.t.scopeSrc));
+      const res = await classifyItems(open.map((r) => ({ i: r.i, date: r.date, amount: r.amount, counterparty: r.cp, purpose: r.purpose, category: r.t?.category || "", account: acc?.name || "", accountUse: acc?.use || "" })), token);
+      const upd = open.filter((r) => r.t && res[r.i]).map((r) => ({ ...r.t, scope: res[r.i].scope, scopeSrc: "ki", scopeWhy: res[r.i].reason || undefined }));
+      if (upd.length) await updateTxs(upd);
+      const n = open.filter((r) => res[r.i]).length;
+      const lines = doc.stmt.lines.map((l, i) => (res[i] && !l.txId ? { ...l, scope: res[i].scope, scopeSrc: "ki", reason: res[i].reason || "" } : l));
+      await saveDoc({ ...doc, stmt: { ...doc.stmt, lines, aiAt: new Date().toISOString() } });
+      notify?.(`KI hat ${n} Zeilen eingeschätzt – manuell gesetzte bleiben unverändert`);
+    } catch (e) { notify?.("KI-Zuordnung nicht möglich: " + e.message); }
+    finally { setBusy(false); }
+  }
+  async function exportPdf(share) {
+    setBusy(true);
+    try { const b = await stmtMarkedPdf(doc, blobRef.current, txs, accounts, docs); const name = (doc.title || "Kontoauszug").replace(/[\\/:*?"<>|]/g, "-") + " markiert.pdf"; share ? sharePdf(b, name, doc.title) : saveBlob(b, name); }
+    catch (e) { notify?.("Export fehlgeschlagen: " + e.message); } finally { setBusy(false); }
+  }
+  const showPdf = view !== "liste", showList = view !== "pdf";
+  const list = (
+    <div className="stmtlist">
+      {rows.map((r) => (
+        <div key={r.i} className={"stmtrow sc-" + r.scope + (hi === r.i ? " hi" : "")} onMouseEnter={() => setHi(r.i)} onMouseLeave={() => setHi(null)}
+          onClick={() => { setHi(r.i); if (r.box && showPdf) document.getElementById(`stmtbox-${doc.id}-${r.i}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); }}>
+          <div className="grow">
+            <b className="one">{r.cp || r.purpose || "Buchung"}</b>
+            <small className="muted block one">{fmtDate(r.date)}{r.purpose && r.cp ? " · " + r.purpose : ""}</small>
+            <div className="stmtflags">
+              {r.t ? <span className="stpill st-paid" title="In den Konten vorhanden">✓ Buchung</span> : <span className="stpill st-draft">keine Buchung</span>}
+              {r.beleg ? <span className="stpill st-paid">📎 Beleg</span> : r.scope === "firma" && r.amount < 0 ? <span className="stpill st-over">Beleg fehlt</span> : null}
+              {r.t?.ask && <span className={"stpill " + (r.t.ask.state === "geklärt" ? "st-paid" : "st-open")}>❓ Frage</span>}
+              {r.src && <small className="muted">{r.src}</small>}
+              {r.reason && <small className="muted one">· {r.reason}</small>}
+            </div>
+          </div>
+          <div className="stmtright">
+            <b className={r.amount > 0 ? "pos" : ""}>{fmtMoney(r.amount)}</b>
+            <div className="seg stmtseg" onClick={(e) => e.stopPropagation()}>{TX_SCOPES.map(([k, ic, lb]) => <button key={k} className={(r.scope === k ? "on " : "") + "sc-" + k} title={lb} aria-label={lb} onClick={() => setScope(r, k)}>{ic}<span> {lb}</span></button>)}</div>
+            {r.t && <button className="link small" onClick={(e) => { e.stopPropagation(); openTx(r.t); }}>Buchung öffnen ›</button>}
+          </div>
+        </div>
+      ))}
+      {!rows.length && <MEmpty>Keine Zeilen erkannt.</MEmpty>}
+    </div>
+  );
+  return createPortal(
+    <Win id="stmt" onClose={onClose} dirty={false} defW={1100} className="stmtwin">
+      <div className="panelhead"><b className="clamp">{doc.title}</b>
+        <ExportMenu label="⬇︎" className="btn" items={[{ head: "Markiertes PDF" }, { label: "⬇︎ Speichern", sub: "Original mit Farben + Zusammenfassung", run: () => exportPdf(false) }, { label: "↗︎ Teilen / Mail", run: () => exportPdf(true) }]} />
+        <XBtn /></div>
+      <div className="stmtbar">
+        <span className="stpill sc-firma">🏢 {cnt("firma")} Firma</span><span className="stpill sc-privat">👤 {cnt("privat")} Privat</span><span className="stpill sc-unklar">❓ {cnt("unklar")} unklar</span>
+        {noBeleg > 0 && <span className="stpill st-over">{noBeleg} Beleg fehlt</span>}
+        {noTx > 0 && <span className="stpill st-draft">{noTx} ohne Buchung</span>}
+        <span className="grow" />
+        <div className="seg">{[["pdf", "PDF"], ["beides", "Beides"], ["liste", "Liste"]].filter(([k]) => !mob || k !== "beides").map(([k, l]) => <button key={k} className={(mob && view === "beides" ? k === "liste" : view === k) ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div>
+        <button className="btn sm" disabled={busy} onClick={reAi}>{busy ? "…" : "✨ KI neu prüfen"}</button>
+        <button className="btn sm" disabled={busy} onClick={reMatch} title="Zeilen erneut mit den Buchungen abgleichen">⇄ Abgleichen</button>
+      </div>
+      <div className={"stmtbody" + (showPdf && showList && !mob ? " two" : "")}>
+        {showPdf && !(mob && view === "beides") && (
+          <div className="stmtpdf">
+            {!pages && <div className="dpload">Auszug wird geladen …</div>}
+            {pages?.map((src, p) => (
+              <div key={p} className="stmtpage">
+                <img src={src} alt={`Seite ${p + 1}`} />
+                {rows.filter((r) => r.box?.p === p).map((r) => (
+                  <button key={r.i} id={`stmtbox-${doc.id}-${r.i}`} className={"stmtbox sc-" + r.scope + (hi === r.i ? " hi" : "")} title={`${r.cp} ${fmtMoney(r.amount)} – ${r.label} (antippen zum Wechseln)`}
+                    style={{ top: r.box.t * 100 + "%", height: (r.box.b - r.box.t) * 100 + "%", left: r.box.l * 100 + "%", width: (r.box.r - r.box.l) * 100 + "%" }}
+                    onMouseEnter={() => setHi(r.i)} onMouseLeave={() => setHi(null)} onClick={() => cycle(r)} />
+                ))}
+              </div>
+            ))}
+            {pages && !rows.some((r) => r.box) && <p className="muted small center-text">Die Zeilen konnten im PDF nicht gefunden werden (z. B. eingescannter Auszug). Die Liste und der Export funktionieren trotzdem.</p>}
+          </div>
+        )}
+        {(showList || (mob && view === "beides")) && list}
+      </div>
+      <small className="muted stmtfoot">Farbe antippen wechselt Firma → Privat → Unklar. Änderungen gelten auch für die Buchung in den Konten.</small>
+    </Win>, document.querySelector(".app") || document.body);
+}
+/* Kontoauszug hochladen: auslesen → Konto wählen → abgleichen → KI-Zuordnung */
+function StmtImportWin({ file, accounts, txs, getTxs, importTxs, saveDoc, updateTxs, categories, token, notify, onDone, onClose }) {
+  const [st, setSt] = useState({ step: "read" }), [accId, setAccId] = useState(""), [addMissing, setAddMissing] = useState(true), [useAi, setUseAi] = useState(true);
+  const bankAccs = accounts.filter((a) => !["cash", "broker"].includes(a.kind));
+  const blobRef = useRef(null);
+  useEffect(() => { (async () => {
+    try {
+      let blob = file.type === "application/pdf" ? file : await prepareFile(file);
+      blobRef.current = blob;
+      let send = blob;
+      if (send.type === "application/pdf" && send.size > 3.6 * 1024 * 1024) send = await shrinkPdf(send, 3.6 * 1024 * 1024, 25);
+      const r = await fetch("/api/statement", { method: "POST", headers: { "content-type": "application/json", "x-app-token": token || "" }, body: JSON.stringify({ data: await blobToBase64(send), mediaType: send.type || "application/pdf" }) });
+      const j = await r.json().catch(() => ({ error: "HTTP " + r.status }));
+      if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+      const lines = (j.transactions || []).filter((t) => t.kind !== "broker" && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && typeof t.amount === "number")
+        .map((t) => ({ date: t.date, amount: Math.round(t.amount * 100) / 100, counterparty: t.counterparty || "", purpose: t.purpose || "", iban: (t.iban || "").replace(/\s/g, "") }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      if (!lines.length) throw new Error("Im Auszug wurden keine Buchungen gefunden");
+      const iban = (j.account_iban || "").replace(/\s/g, "");
+      const guess = bankAccs.find((a) => iban && a.iban && a.iban === iban) || bankAccs.find((a) => j.institution && norm(a.name).includes(norm(j.institution).split(" ")[0]))
+        || [...bankAccs].map((a) => ({ a, n: matchStmtLines(lines, txs, a.id).filter((l) => l.txId).length })).sort((x, y) => y.n - x.n)[0]?.a;
+      setAccId(guess?.id || bankAccs[0]?.id || "");
+      setSt({ step: "review", lines, inst: j.institution || "", iban });
+    } catch (e) { setSt({ step: "error", err: e.message }); }
+  })(); }, []);
+  const matched = st.lines && accId ? matchStmtLines(st.lines, txs, accId) : [];
+  const missing = matched.filter((l) => !l.txId);
+  async function run() {
+    setSt((s) => ({ ...s, step: "work", msg: "Gleiche mit den Konten ab …" }));
+    try {
+      const acc = accounts.find((a) => a.id === accId);
+      if (addMissing && missing.length) await importTxs(accId, missing.map(({ txId, ...l }) => ({ ...l, currency: "EUR", kind: "bank", bookingText: "", fromStmt: true })));
+      await new Promise((r) => setTimeout(r, 60));
+      const all = getTxs();
+      let lines = matchStmtLines(st.lines, all, accId);
+      setSt((s) => ({ ...s, msg: "Suche die Zeilen im PDF …" }));
+      lines = await stmtLayout(blobRef.current, lines);
+      const tm = new Map(all.map((t) => [t.id, t]));
+      if (useAi) {
+        setSt((s) => ({ ...s, msg: "KI markiert Firmenausgaben …" }));
+        try {
+          const res = await classifyItems(lines.map((l, i) => ({ i, date: l.date, amount: l.amount, counterparty: l.counterparty, purpose: l.purpose, category: tm.get(l.txId)?.category || "", account: acc?.name || "", accountUse: acc?.use || "" })), token);
+          lines = lines.map((l, i) => (res[i] ? { ...l, scope: res[i].scope, scopeSrc: "ki", reason: res[i].reason || "" } : l));
+        } catch (e) { notify?.("KI-Zuordnung nicht möglich (" + e.message + ") – Zuordnung nach Konto-Verwendung"); }
+      }
+      // KI-Ergebnis auf Buchungen übertragen, die noch nicht selbst zugeordnet sind
+      const upd = lines.filter((l) => l.txId && l.scope && !(tm.get(l.txId)?.scope && !tm.get(l.txId)?.scopeSrc)).map((l) => ({ ...tm.get(l.txId), scope: l.scope, scopeSrc: "ki", scopeWhy: l.reason || undefined }));
+      if (upd.length) await updateTxs(upd);
+      const from = lines[0].date, to = lines[lines.length - 1].date, blob = blobRef.current, id = uid();
+      const cat = categories.find((c) => /kontoausz/i.test(c)) || categories.find((c) => /bank|konto/i.test(c)) || "Sonstiges";
+      const doc = { id, createdAt: new Date().toISOString(), fileName: file.name, mimeType: blob.type, size: blob.size, title: stmtTitle(acc?.name || st.inst || "Konto", from, to), category: cat, docType: "Kontoauszug",
+        tags: ["kontoauszug"], deadlines: [], sender: st.inst || acc?.name || "", documentDate: to, amount: null, direction: "keine", paid: false, notes: "", status: "done", scope: acc?.use === "firma" ? "firma" : "privat",
+        summary: `Kontoauszug ${acc?.name || ""} mit ${lines.length} Buchungen`, stmt: { accountId: accId, from, to, months: monthsBetween(from, to), lines, at: new Date().toISOString() } };
+      try { doc.thumb = await makeThumb(blob); } catch {}
+      await db.putFile(id, blob); await saveDoc(doc);
+      notify?.(`Auszug gespeichert · ${lines.filter((l) => l.txId).length}/${lines.length} Zeilen zugeordnet${lines.some((l) => l.box) ? "" : " · keine Positionen im PDF gefunden"}`);
+      onDone(doc);
+    } catch (e) { setSt((s) => ({ ...s, step: "error", err: e.message })); }
+  }
+  return createPortal(
+    <Win id="stmtimp" onClose={onClose} dirty={false} small defW={560}>
+      <div className="panelhead"><b>Kontoauszug hinzufügen</b><XBtn /></div>
+      <p className="muted small one">📄 {file.name}</p>
+      {st.step === "read" && <div className="dpload">Claude liest den Auszug aus …</div>}
+      {st.step === "work" && <div className="dpload">{st.msg}</div>}
+      {st.step === "error" && <div className="lookbox err">Fehler: {st.err}<br /><small className="muted">Für das Auslesen braucht es den Claude-Schlüssel in Vercel und den App-Token.</small></div>}
+      {st.step === "review" && (<>
+        <div className="lookbox ok">{st.lines.length} Buchungen erkannt · {fmtDate(st.lines[0].date)} – {fmtDate(st.lines[st.lines.length - 1].date)}{st.inst ? " · " + st.inst : ""}</div>
+        <label>Konto<PSelect value={accId} onChange={(e) => setAccId(e.target.value)}>{bankAccs.map((a) => <option key={a.id} value={a.id}>{a.name}{a.use ? ` (${a.use === "firma" ? "Firma" : a.use === "gemischt" ? "privat & Firma" : "privat"})` : ""}</option>)}</PSelect></label>
+        <p className="small">{matched.length - missing.length} Zeilen passen zu vorhandenen Buchungen{missing.length ? `, ${missing.length} fehlen in der App` : " ✓"}.</p>
+        {missing.length > 0 && <label className="check"><input type="checkbox" checked={addMissing} onChange={(e) => setAddMissing(e.target.checked)} /> Fehlende {missing.length} Buchungen ins Konto übernehmen</label>}
+        <label className="check"><input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} /> ✨ Firmenausgaben mit KI markieren</label>
+        <small className="muted block">Schon selbst zugeordnete Buchungen bleiben unverändert. Das Original-PDF wird unter Dokumente abgelegt.</small>
+        <div className="actions"><button className="btn primary" disabled={!accId} onClick={run}>Übernehmen</button><button className="btn" onClick={onClose}>Abbrechen</button></div>
+      </>)}
+    </Win>, document.querySelector(".app") || document.body);
+}
+
+/* Steuerberater: Monatsabschluss · Kontoauszüge · Prüfen · Klärungsliste · Paket */
+const STB_TABS = [["monate", "🚦", "Monate"], ["auszuege", "📄", "Kontoauszüge"], ["pruefen", "🔎", "Prüfen"], ["fragen", "❓", "Klärungsliste"], ["paket", "📦", "Paket"], ["setup", "⚙︎", "Einstellungen"]];
+function stbData(txs, accounts, docs) {
+  const accMap = new Map(accounts.map((a) => [a.id, a])), docMap = new Map(docs.map((d) => [d.id, d]));
+  const rel = txs.filter((t) => t.kind !== "broker" && accMap.get(t.accountId)?.kind !== "broker");
+  const rows = rel.map((t) => { const acc = accMap.get(t.accountId), doc = t.docId ? docMap.get(t.docId) : null, info = txScopeInfo(t, acc, doc);
+    return { t, acc, doc, ...info, transfer: t.category === "Umbuchung", biz: bizAmt(t, info.scope) }; });
+  const stmts = docs.filter(isStmt);
+  return { rows, stmts, accMap };
+}
+const stmtNeeded = (a, need) => (need[a.id] != null ? !!need[a.id] : a.use === "firma" || a.use === "gemischt");
+function stbMonth(m, D, need) {
+  const rows = D.rows.filter((r) => r.t.date.startsWith(m));
+  const accs = [...new Set(rows.map((r) => r.t.accountId))].map((id) => D.accMap.get(id)).filter((a) => a && !["cash", "broker"].includes(a.kind));
+  const stm = accs.map((a) => ({ a, need: stmtNeeded(a, need), doc: D.stmts.find((d) => d.stmt.accountId === a.id && (d.stmt.months || []).includes(m)) })).filter((x) => x.need || x.doc);
+  const noBeleg = rows.filter((r) => r.scope === "firma" && r.t.amount < 0 && !r.t.docId && !r.transfer);
+  const unklar = rows.filter((r) => r.scope === "unklar" && !r.transfer);
+  const asks = rows.filter((r) => r.t.ask && r.t.ask.state !== "geklärt");
+  const missStmt = stm.filter((s) => s.need && !s.doc);
+  const firma = rows.filter((r) => r.scope === "firma" && !r.transfer);
+  const issues = missStmt.length + noBeleg.length + unklar.length + asks.length;
+  return { m, rows, stm, noBeleg, unklar, asks, missStmt, firma, issues, inc: firma.filter((r) => r.biz > 0).reduce((s, r) => s + r.biz, 0), out: firma.filter((r) => r.biz < 0).reduce((s, r) => s - r.biz, 0) };
+}
+function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs, getTxs, categories, token, notify, setTab, onOpen, openTx, setAccounts }) {
+  const mob = useMobileBeta();
+  const [sec, setSec] = useLsState("stbSec", "monate");
+  const thisYear = todayISO().slice(0, 4);
+  const [year, setYear] = useState(thisYear);
+  const [done, setDone] = useLsState("stbDone", {});
+  const [need, setNeed] = useLsState("stbStmtNeed", {});
+  const [bizDesc, setBizDesc] = useLsState("stbBizDesc", "");
+  const [stbMail, setStbMail] = useLsState("stbMail", "");
+  const [stmtOpen, setStmtOpen] = useState(null), [impFiles, setImpFiles] = useState([]);
+  const [filt, setFilt] = useState({ m: todayISO().slice(0, 4), kind: "offen" });
+  const fileRef = useRef();
+  const D = useMemo(() => stbData(txs, accounts, docs), [txs, accounts, docs]);
+  const years = [...new Set([thisYear, ...txs.map((t) => t.date.slice(0, 4))])].sort().reverse().slice(0, 6);
+  const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`).filter((m) => m <= todayISO().slice(0, 7)).reverse();
+  const M = useMemo(() => months.map((m) => stbMonth(m, D, need)), [D, year, need]);
+  const openAsks = D.rows.filter((r) => r.t.ask && r.t.ask.state !== "geklärt");
+  const goCheck = (m, kind) => { setFilt({ m, kind }); setSec("pruefen"); };
+  const curStmt = stmtOpen && docs.find((d) => d.id === stmtOpen);
+
+  const head = (
+    <div className="anahead stbhead">
+      <div className="chips anaaccs">{STB_TABS.map(([k, i, l]) => <button key={k} className={"chip" + (sec === k ? " on" : "")} onClick={() => setSec(k)}>{i} {l}{k === "fragen" && openAsks.length ? <span className="cnt">{openAsks.length}</span> : null}</button>)}</div>
+      {["monate", "auszuege"].includes(sec) && <div className="chips">{years.map((y) => <button key={y} className={"chip" + (year === y ? " on" : "")} onClick={() => setYear(y)}>{y}</button>)}</div>}
+    </div>
+  );
+  const upload = (<>
+    <input ref={fileRef} type="file" accept="application/pdf,image/*" multiple hidden onChange={(e) => { const l = [...e.target.files]; e.target.value = ""; if (l.length) setImpFiles(l); }} />
+    <button className="btn primary" onClick={() => fileRef.current.click()}>＋ Kontoauszug hochladen</button>
+  </>);
+
+  /* ---------- 3 Monatsabschluss-Ampel ---------- */
+  const monate = (
+    <div className="stbmonths">
+      {M.map((x) => {
+        const st = done[x.m] ? "done" : !x.rows.length ? "empty" : x.missStmt.length ? "bad" : x.issues ? "warn" : "ok";
+        const label = { done: "abgeschlossen ✓", empty: "keine Buchungen", bad: x.missStmt.length === 1 ? "Auszug fehlt" : `${x.missStmt.length} Auszüge fehlen`, warn: `${x.issues} offen`, ok: "bereit ✓" }[st];
+        return (
+          <section key={x.m} className={"tile stbmonth st-" + st}>
+            <div className="stbmh"><span className={"stbdot " + st} /><b>{monthLabel(x.m)}</b><span className="grow" />
+              <small className="muted">{x.firma.length ? `Firma: +${fmtMoney(x.inc)} / −${fmtMoney(x.out)}` : ""}</small>
+              <span className={"stpill " + ({ done: "st-paid", ok: "st-paid", bad: "st-over", warn: "st-open", empty: "st-draft" }[st])}>{label}</span></div>
+            {x.rows.length > 0 && <div className="stbchecks">
+              {x.stm.map(({ a, need, doc }) => (
+                <div key={a.id} className="stbcheck">{doc ? "✅" : need ? "⚠️" : "➖"} Auszug {a.name}
+                  {doc ? <button className="link small" onClick={() => setStmtOpen(doc.id)}>ansehen</button> : need ? <button className="link small" onClick={() => fileRef.current.click()}>hochladen</button> : <small className="muted"> nicht nötig</small>}</div>
+              ))}
+              <div className={"stbcheck" + (x.noBeleg.length ? " click" : "")} onClick={() => x.noBeleg.length && goCheck(x.m, "beleg")}>{x.noBeleg.length ? "⚠️" : "✅"} {x.noBeleg.length ? `${x.noBeleg.length} Firmenausgabe${x.noBeleg.length > 1 ? "n" : ""} ohne Beleg` : "Belege zu Firmenausgaben vollständig"}{x.noBeleg.length > 0 && <span className="muted"> ›</span>}</div>
+              <div className={"stbcheck" + (x.unklar.length ? " click" : "")} onClick={() => x.unklar.length && goCheck(x.m, "unklar")}>{x.unklar.length ? "⚠️" : "✅"} {x.unklar.length ? `${x.unklar.length} Buchung${x.unklar.length > 1 ? "en" : ""} Privat/Firma unklar` : "Alle Buchungen zugeordnet"}{x.unklar.length > 0 && <span className="muted"> ›</span>}</div>
+              {x.asks.length > 0 && <div className="stbcheck click" onClick={() => setSec("fragen")}>❓ {x.asks.length} offene Frage{x.asks.length > 1 ? "n" : ""} an den Steuerberater <span className="muted">›</span></div>}
+              <div className="row stbmacts">
+                <button className="link small" onClick={() => goCheck(x.m, "firma")}>Firmenbuchungen ({x.firma.length})</button>
+                {done[x.m] ? <button className="link small" onClick={() => setDone((d) => { const n = { ...d }; delete n[x.m]; return n; })}>Abschluss aufheben</button>
+                  : <button className="link small" onClick={() => (!x.issues || confirm(`Im ${monthLabel(x.m)} sind noch ${x.issues} Punkte offen. Trotzdem als abgeschlossen markieren?`)) && setDone((d) => ({ ...d, [x.m]: todayISO() }))}>Als abgeschlossen markieren</button>}
+              </div>
+            </div>}
+          </section>
+        );
+      })}
+      {!M.length && <MEmpty>Für {year} gibt es noch keine Monate.</MEmpty>}
+    </div>
+  );
+
+  /* ---------- 1 + 2 Kontoauszüge ---------- */
+  const stmtsY = D.stmts.filter((d) => (d.stmt.months || []).some((m) => m.startsWith(year)) || (d.stmt.to || "").startsWith(year)).sort((a, b) => (b.stmt.to || "").localeCompare(a.stmt.to || ""));
+  const auszuege = (
+    <div className="stbstmts">
+      <div className="row stbtoolbar">{upload}<small className="muted">PDF oder Foto · die KI liest die Zeilen, gleicht sie mit deinen Konten ab und markiert Firmenausgaben.</small></div>
+      {stmtsY.map((d) => {
+        const rows = stmtRows(d, txs, accounts, docs), c = (s) => rows.filter((r) => r.scope === s).length, nb = rows.filter((r) => r.scope === "firma" && r.amount < 0 && !r.beleg).length;
+        return (
+          <div key={d.id} className="tile stbstmt click" onClick={() => setStmtOpen(d.id)}>
+            <Thumb d={d} />
+            <div className="grow"><b className="one">{d.title}</b>
+              <small className="muted block">{D.accMap.get(d.stmt.accountId)?.name || "Konto"} · {rows.length} Zeilen · {rows.filter((r) => r.t).length} mit Buchung</small>
+              <div className="stbbar">{["firma", "privat", "unklar"].map((s) => c(s) ? <span key={s} className={"sc-" + s} style={{ flex: c(s) }} title={`${c(s)} ${s}`} /> : null)}</div>
+              <small className="block"><span className="scf">■ {c("firma")} Firma</span> · <span className="scp">■ {c("privat")} Privat</span> · <span className="scu">■ {c("unklar")} unklar</span>{nb ? <span className="red"> · {nb} Beleg fehlt</span> : ""}</small>
+            </div>
+            <span className="muted">›</span>
+          </div>
+        );
+      })}
+      {!stmtsY.length && <MEmpty>Noch keine Kontoauszüge für {year}. Lade die Original-PDFs deiner Bank hoch – sie werden unter Dokumente abgelegt und hier mit den Buchungen verbunden.</MEmpty>}
+    </div>
+  );
+
+  /* ---------- Prüfen (Zuordnen, Belege, KI) ---------- */
+  const allMonths = [...new Set(D.rows.map((r) => r.t.date.slice(0, 7)))].sort().reverse();
+  const KINDS = [["offen", "Offen"], ["unklar", "❓ Unklar"], ["beleg", "📎 Beleg fehlt"], ["firma", "🏢 Firma"], ["privat", "👤 Privat"], ["alle", "Alle"]];
+  const pr = D.rows.filter((r) => !r.transfer && (!filt.m || r.t.date.startsWith(filt.m)) && ({
+    offen: r.scope === "unklar" || (r.scope === "firma" && r.t.amount < 0 && !r.t.docId), unklar: r.scope === "unklar", beleg: r.scope === "firma" && r.t.amount < 0 && !r.t.docId,
+    firma: r.scope === "firma", privat: r.scope === "privat", alle: true }[filt.kind])).sort((a, b) => b.t.date.localeCompare(a.t.date));
+  const [aiBusy, setAiBusy] = useState(false), [askFor, setAskFor] = useState(null), [askTxt, setAskTxt] = useState("");
+  async function aiCheck() {
+    const open = pr.filter((r) => !(r.t.scope && !r.t.scopeSrc)).slice(0, 300);
+    if (!open.length) return notify("Alle angezeigten Buchungen sind schon selbst zugeordnet");
+    setAiBusy(true);
+    try {
+      const res = await classifyItems(open.map((r, i) => ({ i, date: r.t.date, amount: r.t.amount, counterparty: r.t.counterparty, purpose: (r.t.purpose || "").slice(0, 140), category: r.t.category, account: r.acc?.name || "", accountUse: r.acc?.use || "" })), token);
+      const upd = open.map((r, i) => res[i] && { ...r.t, scope: res[i].scope, scopeSrc: "ki", scopeWhy: res[i].reason || undefined }).filter(Boolean);
+      if (upd.length) await updateTxs(upd);
+      notify(`KI hat ${upd.length} Buchungen eingeschätzt`);
+    } catch (e) { notify("KI-Zuordnung nicht möglich: " + e.message); }
+    finally { setAiBusy(false); }
+  }
+  const setSc = (r, scope) => updateTx({ ...r.t, scope, scopeSrc: undefined });
+  const pruefen = (
+    <div className="stbcheckpage">
+      <div className="row stbtoolbar">
+        <PSelect value={filt.m} onChange={(e) => setFilt({ ...filt, m: e.target.value })}><option value="">Gesamter Zeitraum</option>{[...new Set(allMonths.map((m) => m.slice(0, 4)))].map((y) => <option key={y} value={y}>Jahr {y}</option>)}{allMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</PSelect>
+        <div className="chips">{KINDS.map(([k, l]) => <button key={k} className={"chip" + (filt.kind === k ? " on" : "")} onClick={() => setFilt({ ...filt, kind: k })}>{l}</button>)}</div>
+        <span className="grow" />
+        <button className="btn sm" disabled={aiBusy || !pr.length} onClick={aiCheck}>{aiBusy ? "KI prüft …" : `✨ KI einschätzen (${Math.min(300, pr.filter((r) => !(r.t.scope && !r.t.scopeSrc)).length)})`}</button>
+      </div>
+      <small className="muted block">{pr.length} Buchungen · Firma-Summe {fmtMoney(pr.filter((r) => r.scope === "firma").reduce((s, r) => s + r.biz, 0))}</small>
+      <div className="stmtlist">
+        {pr.slice(0, 400).map((r) => (
+          <div key={r.t.id} className={"stmtrow sc-" + r.scope}>
+            <div className="grow click" onClick={() => openTx(r.t)}>
+              <b className="one">{r.t.counterparty || r.t.purpose || "Buchung"}</b>
+              <small className="muted block one">{fmtDate(r.t.date)} · {r.acc?.name || "Konto"} · {r.t.category}</small>
+              <div className="stmtflags">
+                {r.t.docId ? <span className="stpill st-paid">📎 Beleg</span> : r.scope === "firma" && r.t.amount < 0 ? <span className="stpill st-over">Beleg fehlt</span> : null}
+                {r.scope === "firma" && bizPctOf(r.t, "firma") < 100 && <span className="stpill st-open">✂️ {bizPctOf(r.t, "firma")} % Firma</span>}
+                {r.t.ask && <span className={"stpill " + (r.t.ask.state === "geklärt" ? "st-paid" : "st-open")}>❓ Frage</span>}
+                {r.src && <small className="muted">{r.src}</small>}{r.t.scopeWhy && <small className="muted one">· {r.t.scopeWhy}</small>}
+              </div>
+            </div>
+            <div className="stmtright">
+              <b className={r.t.amount > 0 ? "pos" : ""}>{fmtMoney(r.t.amount)}</b>
+              <div className="seg stmtseg">{TX_SCOPES.map(([k, ic, lb]) => <button key={k} className={(r.scope === k ? "on " : "") + "sc-" + k} title={lb} aria-label={lb} onClick={() => setSc(r, k)}>{ic}<span> {lb}</span></button>)}</div>
+              <div className="row">
+                {!r.t.ask && <button className="link small" onClick={() => { setAskFor(r.t); setAskTxt(""); }}>❓ Frage</button>}
+                <button className="link small" onClick={() => openTx(r.t)}>Öffnen ›</button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {!pr.length && <MEmpty>{filt.kind === "offen" ? "Nichts offen 🎉 – alle Buchungen sind zugeordnet und alle Firmenausgaben haben einen Beleg." : "Keine Buchungen für diese Auswahl."}</MEmpty>}
+        {pr.length > 400 && <p className="muted small center-text">Die ersten 400 von {pr.length} – Monat wählen, um einzuschränken.</p>}
+      </div>
+      {askFor && createPortal(<Win id="stbask" onClose={() => setAskFor(null)} small defW={480}>
+        <div className="panelhead"><b>Frage an den Steuerberater</b><button className="btn primary" disabled={!askTxt.trim()} onClick={async () => { await updateTx({ ...askFor, ask: { q: askTxt.trim(), state: "offen", at: todayISO() } }); setAskFor(null); notify("Zur Klärungsliste hinzugefügt"); }}>Hinzufügen</button><XBtn /></div>
+        <p className="small"><b>{askFor.counterparty || askFor.purpose}</b> · {fmtDate(askFor.date)} · {fmtMoney(askFor.amount)}</p>
+        <textarea rows={3} autoFocus value={askTxt} onChange={(e) => setAskTxt(e.target.value)} placeholder="z. B. Bürostuhl – kann ich den als Firmenausgabe absetzen?" />
+      </Win>, document.querySelector(".app") || document.body)}
+    </div>
+  );
+
+  /* ---------- 5 Klärungsliste ---------- */
+  const [showDone, setShowDone] = useState(false);
+  const asks = D.rows.filter((r) => r.t.ask && (showDone || r.t.ask.state !== "geklärt")).sort((a, b) => b.t.date.localeCompare(a.t.date));
+  const askRows = (l) => l.map((r) => [r.t.date, r.t.counterparty || r.t.purpose || "", r.t.amount, (TX_SCOPES.find((s) => s[0] === r.scope) || [])[2], r.t.ask.q, r.t.ask.a || "", r.t.ask.state]);
+  const askPdf = async (l) => tablePdf({ title: "Klärungsliste für den Steuerberater", subtitle: `${({ ...CO_DEFAULT, ...ls.get("company", {}) }).name || ""} · Stand ${fmtDate(todayISO())}`, landscape: true,
+    columns: [{ label: "Datum", w: 1 }, { label: "Empfänger", w: 2.2 }, { label: "Betrag €", w: 1, align: "right" }, { label: "derzeit", w: 1 }, { label: "Frage", w: 4 }, { label: "Antwort", w: 3.2 }, { label: "Status", w: 1 }],
+    rows: askRows(l), note: "Bitte die Antworten in die Spalte „Antwort“ schreiben oder per Mail zurückschicken." });
+  const askText = (l) => l.map((r, i) => `${i + 1}. ${fmtDate(r.t.date)} · ${r.t.counterparty || r.t.purpose} · ${fmtMoney(r.t.amount)}\n   Frage: ${r.t.ask.q}${r.t.ask.a ? `\n   Antwort: ${r.t.ask.a}` : ""}`).join("\n\n");
+  const fragen = (
+    <div className="stbasks">
+      <div className="row stbtoolbar">
+        <label className="check"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> auch geklärte anzeigen</label>
+        <span className="grow" />
+        <ExportMenu label="↗︎ Senden" className="btn" items={[{ head: `${openAsks.length} offene Fragen` },
+          { label: "🖨 Als PDF speichern", run: async () => saveBlob(await askPdf(openAsks), `Klaerungsliste-${todayISO()}.pdf`) },
+          { label: "↗︎ PDF teilen", run: async () => sharePdf(await askPdf(openAsks), `Klaerungsliste-${todayISO()}.pdf`, "Klärungsliste", stbMail) },
+          { label: "✉️ Als Mail-Text", sub: stbMail || "Adresse unter Einstellungen hinterlegen", run: () => { location.href = `mailto:${encodeURIComponent(stbMail)}?subject=${encodeURIComponent("Fragen zu meinen Buchungen")}&body=${encodeURIComponent("Hallo,\n\nich habe folgende Fragen zu meinen Buchungen:\n\n" + askText(openAsks) + "\n\nDanke!")}`; } }]} />
+      </div>
+      {asks.map((r) => <AskCard key={r.t.id} r={r} updateTx={updateTx} openTx={openTx} />)}
+      {!asks.length && <MEmpty>Keine offenen Fragen. Fragen legst du in einer Buchung über „❓ Frage an den Steuerberater“ an oder unter „Prüfen“.</MEmpty>}
+    </div>
+  );
+
+  /* ---------- 4 Steuerberater-Paket ---------- */
+  const paket = <StbPackage D={D} txs={txs} accounts={accounts} docs={docs} notify={notify} openAsks={openAsks} />;
+
+  /* ---------- Einstellungen ---------- */
+  const bankAccs = accounts.filter((a) => !["cash", "broker"].includes(a.kind));
+  const setup = (
+    <div className="stbsetup">
+      <section className="tile">
+        <div className="tilehead"><b>Konten: wofür werden sie verwendet?</b></div>
+        <small className="muted block">Bestimmt den Vorschlag für Firma/Privat je Buchung – einzelne Buchungen kannst du jederzeit umstellen. Für Firmenkonten und gemischte Konten wird standardmäßig jeden Monat ein Auszug erwartet.</small>
+        {bankAccs.map((a) => (
+          <div key={a.id} className="stbaccrow">
+            <b className="grow one">{a.name}</b>
+            <div className="seg">{[["privat", "👤 Privat"], ["firma", "🏢 Firma"], ["gemischt", "❓ Beides"]].map(([k, l]) => <button key={k} className={(a.use || "privat") === k ? "on" : ""} onClick={() => setAccounts((x) => x.map((y) => (y.id === a.id ? { ...y, use: k } : y)))}>{l}</button>)}</div>
+            <label className="check small"><input type="checkbox" checked={stmtNeeded(a, need)} onChange={(e) => setNeed((n) => ({ ...n, [a.id]: e.target.checked }))} /> Auszug je Monat nötig</label>
+          </div>
+        ))}
+      </section>
+      <section className="tile">
+        <div className="tilehead"><b>Für die KI</b></div>
+        <label>Was macht deine Firma?<textarea rows={3} value={bizDesc} onChange={(e) => setBizDesc(e.target.value)} placeholder="z. B. Elektro-Kleinbetrieb, Kunden in OÖ, Material vom Großhandel, Firmenauto" /></label>
+        <small className="muted">Hilft der KI, Firmenausgaben richtig zu erkennen. Wird nur beim Einschätzen mitgeschickt.</small>
+      </section>
+      <section className="tile">
+        <div className="tilehead"><b>Steuerberater</b></div>
+        <label>E-Mail-Adresse<input type="email" value={stbMail} onChange={(e) => setStbMail(e.target.value.trim())} placeholder="kanzlei@beispiel.at" /></label>
+      </section>
+      <small className="muted block">Die Zuordnungen sind eine Hilfe für die Zusammenarbeit mit deinem Steuerberater – keine Steuerberatung.</small>
+    </div>
+  );
+
+  return (
+    <div className="anapage stbpage">
+      {head}
+      {sec === "monate" && <>{<div className="row stbtoolbar">{upload}<span className="grow" /><small className="muted">{openAsks.length ? `${openAsks.length} offene Fragen · ` : ""}Grün = bereit für den Steuerberater</small></div>}{monate}</>}
+      {sec === "auszuege" && auszuege}
+      {sec === "pruefen" && pruefen}
+      {sec === "fragen" && fragen}
+      {sec === "paket" && paket}
+      {sec === "setup" && setup}
+      {impFiles[0] && <StmtImportWin key={impFiles[0].name + impFiles.length} file={impFiles[0]} accounts={accounts} txs={txs} getTxs={getTxs} importTxs={importTxs} saveDoc={saveDoc} updateTxs={updateTxs} categories={categories} token={token} notify={notify}
+        onClose={() => setImpFiles((l) => l.slice(1))} onDone={(d) => { setImpFiles((l) => { if (l.length === 1) setStmtOpen(d.id); return l.slice(1); }); }} />}
+      {curStmt && <StmtWin doc={curStmt} txs={txs} accounts={accounts} docs={docs} saveDoc={saveDoc} updateTx={updateTx} updateTxs={updateTxs} openTx={(t) => { setStmtOpen(null); openTx(t); }} notify={notify} token={token} onClose={() => setStmtOpen(null)} />}
+    </div>
+  );
+}
+function AskCard({ r, updateTx, openTx }) {
+  const [a, setA] = useState(r.t.ask.a || ""), [q, setQ] = useState(r.t.ask.q || "");
+  const save = (patch) => updateTx({ ...r.t, ask: { ...r.t.ask, ...patch } });
+  const dirty = a !== (r.t.ask.a || "") || q !== r.t.ask.q;
+  return (
+    <section className={"tile stbask" + (r.t.ask.state === "geklärt" ? " done" : "")}>
+      <div className="stbmh click" onClick={() => openTx(r.t)}><b className="grow one">{r.t.counterparty || r.t.purpose || "Buchung"}</b><small className="muted">{fmtDate(r.t.date)}</small><b className={r.t.amount > 0 ? "pos" : ""}>{fmtMoney(r.t.amount)}</b><span className="muted">›</span></div>
+      <label className="small">Frage<textarea rows={2} value={q} onChange={(e) => setQ(e.target.value)} /></label>
+      <label className="small">Antwort vom Steuerberater<textarea rows={2} value={a} onChange={(e) => setA(e.target.value)} placeholder="z. B. 60/40 passt" /></label>
+      <div className="row">
+        {dirty && <button className="btn sm primary" onClick={() => save({ q: q.trim() || r.t.ask.q, a: a.trim() })}>Speichern</button>}
+        {r.t.ask.state !== "geklärt"
+          ? <button className="btn sm" onClick={() => save({ q: q.trim() || r.t.ask.q, a: a.trim(), state: "geklärt", doneAt: todayISO() })}>✓ Geklärt</button>
+          : <button className="btn sm" onClick={() => save({ state: "offen" })}>Wieder öffnen</button>}
+        <span className="grow" />
+        <button className="link small red" onClick={() => confirm("Frage entfernen?") && updateTx({ ...r.t, ask: undefined })}>Entfernen</button>
+      </div>
+    </section>
+  );
+}
+/* Steuerberater-Paket: alles für einen Zeitraum in einer ZIP-Datei */
+const STB_PARTS = [["uebersicht", "📋 Übersicht (erste Seite)"], ["auszuege", "📄 Kontoauszüge, markiert"], ["buchungen", "📊 Buchungsliste Firma (Excel + CSV)"], ["belege", "🧾 Belege zu Firmenbuchungen"],
+  ["rechnungen", "📤 Ausgangsrechnungen + offene Posten"], ["ear", "📈 Einnahmen-Ausgaben-Rechnung (Jahr)"], ["fahrtenbuch", "🚗 Fahrtenbuch"], ["kassa", "💶 Kassabuch"], ["anlagen", "🛡️ Anlagen (Besitz „Firma“)"], ["klaerung", "❓ Klärungsliste + fehlende Belege"]];
+function stbPeriods() {
+  const y = +todayISO().slice(0, 4), out = [];
+  for (const yy of [y, y - 1]) { out.push([String(yy), `Jahr ${yy}`]); for (let q = 4; q >= 1; q--) out.push([`${yy}-Q${q}`, `${q}. Quartal ${yy}`]); }
+  for (let i = 0; i < 14; i++) { const m = addMon(todayISO().slice(0, 7), -i); out.push([m, monthLabel(m)]); }
+  return out.filter(([k]) => !/Q/.test(k) || (() => { const [yy, q] = k.split("-Q"); return `${yy}-${String((q - 1) * 3 + 1).padStart(2, "0")}` <= todayISO().slice(0, 7); })());
+}
+function periodRange(p) {
+  if (/^\d{4}$/.test(p)) return [p + "-01-01", p + "-12-31"];
+  if (/Q/.test(p)) { const [y, q] = p.split("-Q"); const m1 = (q - 1) * 3 + 1; return [`${y}-${String(m1).padStart(2, "0")}-01`, `${y}-${String(m1 + 2).padStart(2, "0")}-31`]; }
+  return [p + "-01", p + "-31"];
+}
+function StbPackage({ D, txs, accounts, docs, notify, openAsks }) {
+  const per = stbPeriods();
+  const [p, setP] = useLsState("stbPer", String(+todayISO().slice(0, 4)));
+  const [parts, setParts] = useLsState("stbParts", Object.fromEntries(STB_PARTS.map(([k]) => [k, true])));
+  const [busy, setBusy] = useState("");
+  const [from, to] = periodRange(p), inP = (d) => (d || "") >= from && (d || "") <= to, year = from.slice(0, 4);
+  const rowsP = D.rows.filter((r) => inP(r.t.date) && !r.transfer);
+  const firma = rowsP.filter((r) => r.scope === "firma"), unklar = rowsP.filter((r) => r.scope === "unklar"), noBeleg = firma.filter((r) => r.t.amount < 0 && !r.t.docId);
+  const stm = D.stmts.filter((d) => (d.stmt.from || "") <= to && (d.stmt.to || "") >= from);
+  const label = per.find((x) => x[0] === p)?.[1] || p, tag = p.replace(/\s/g, "");
+  async function build() {
+    setBusy("Paket wird erstellt …");
+    try {
+      const files = [], co = { ...CO_DEFAULT, ...ls.get("company", {}) }, list = ls.get("invoices", []), fb = ls.get("fbook", FB_EMPTY);
+      const txRow = (r) => [r.t.date, r.acc?.name || "", r.t.counterparty || "", (r.t.purpose || "").slice(0, 200), r.t.category || "", r.t.amount, (TX_SCOPES.find((s) => s[0] === r.scope) || [])[2], bizPctOf(r.t, r.scope), r.biz, r.doc ? docFileName(r.doc) : r.scope === "firma" && r.t.amount < 0 ? "FEHLT" : "", r.t.ask ? `${r.t.ask.q}${r.t.ask.a ? " → " + r.t.ask.a : ""}` : r.t.scopeWhy || r.t.note || ""];
+      const TXH = ["Datum", "Konto", "Empfänger / Auftraggeber", "Zweck", "Kategorie", "Betrag €", "Zuordnung", "Firmenanteil %", "Firmenanteil €", "Beleg-Datei", "Hinweis"];
+      const sum = (l) => l.reduce((s, r) => s + r.biz, 0);
+      if (parts.uebersicht) {
+        const months = monthsRange(from.slice(0, 7), to.slice(0, 7) > todayISO().slice(0, 7) ? todayISO().slice(0, 7) : to.slice(0, 7));
+        files.push({ name: "00 Übersicht.pdf", data: await tablePdf({ title: `Unterlagen für den Steuerberater – ${label}`, subtitle: `${co.name || ""}${co.owner ? " · " + co.owner : ""} · erstellt am ${fmtDate(todayISO())} mit FinDocu`,
+          kpis: [["Firmen-Einnahmen", fmtMoney(sum(firma.filter((r) => r.biz > 0)))], ["Firmen-Ausgaben", fmtMoney(-sum(firma.filter((r) => r.biz < 0)))], ["Firmenbuchungen", String(firma.length)], ["ohne Beleg", String(noBeleg.length)]],
+          columns: [{ label: "Monat", w: 1.6 }, { label: "Auszüge", w: 2.6 }, { label: "Firma €", w: 1.2, align: "right" }, { label: "ohne Beleg", w: 1, align: "right" }, { label: "unklar", w: 0.9, align: "right" }, { label: "Status", w: 1.3 }],
+          rows: months.map((m) => { const x = stbMonth(m, D, ls.get("stbStmtNeed", {})); return [monthLabel(m), x.stm.length ? x.stm.map((s) => `${s.a.name}: ${s.doc ? "ja" : s.need ? "FEHLT" : "–"}`).join(", ") : "–", x.inc - x.out, x.noBeleg.length, x.unklar.length, ls.get("stbDone", {})[m] ? "abgeschlossen" : x.issues ? `${x.issues} offen` : x.rows.length ? "bereit" : "–"]; }),
+          note: "Inhalt:\n" + STB_PARTS.filter(([k]) => parts[k]).map(([, l]) => "– " + l.replace(/^\S+\s/, "")).join("\n") + `\nUnklare Buchungen: ${unklar.length} · offene Fragen: ${openAsks.length}\nZuordnung Firma/Privat mit KI-Unterstützung erstellt und in FinDocu geprüft – keine Steuerberatung.` }) });
+      }
+      if (parts.auszuege) for (const d of stm) { setBusy(`Markiere ${d.title} …`); const b = await db.getFile(d.id); if (b) files.push({ name: `01 Kontoauszüge/${(d.title || "Kontoauszug").replace(/[\\/:*?"<>|]/g, "-")} markiert.pdf`, data: await stmtMarkedPdf(d, b, txs, accounts, docs) }); }
+      if (parts.buchungen) {
+        files.push({ name: `02 Buchungen Firma ${tag}.xlsx`, data: xlsxBlob([{ name: "Firma", head: TXH, rows: firma.map(txRow) }, { name: "Unklar", head: TXH, rows: unklar.map(txRow) }, { name: "Alle Buchungen", head: TXH, rows: rowsP.map(txRow) }]) });
+        files.push({ name: `02 Buchungen Firma ${tag}.csv`, data: csvBlob(TXH, firma.map(txRow)) });
+      }
+      if (parts.belege) { setBusy("Sammle Belege …"); const seen = new Set();
+        for (const r of firma) { if (!r.doc || seen.has(r.doc.id)) continue; seen.add(r.doc.id); const b = await db.getFile(r.doc.id); if (b) files.push({ name: `03 Belege/${r.t.date.slice(0, 7)}/${r.t.date} ${fileSafe(r.t.counterparty || r.doc.title).slice(0, 40)} ${String(Math.abs(r.t.amount).toFixed(2)).replace(".", ",")}${docFileName(r.doc).match(/\.[a-z0-9]+$/i)?.[0] || ".pdf"}`, data: b }); }
+        for (const d of docs.filter((d) => d.scope === "firma" && d.direction === "ausgabe" && !d.deletedAt && !seen.has(d.id) && inP(d.documentDate || d.createdAt))) { const b = await db.getFile(d.id); if (b) { seen.add(d.id); files.push({ name: `03 Belege/ohne Buchung/${docFileName(d)}`, data: b }); } }
+      }
+      if (parts.rechnungen) { setBusy("Erstelle Rechnungen …");
+        const yi = list.filter((x) => x.kind === "rechnung" && x.number && invState(x) !== "entwurf" && inP(x.date));
+        files.push({ name: `04 Ausgangsrechnungen/Rechnungsausgangsbuch ${tag}.csv`, data: csvBlob(INV_HEAD, yi.map(invRow)) });
+        files.push({ name: `04 Ausgangsrechnungen/Offene Posten ${todayISO()}.pdf`, data: await openItemsPdf(list) });
+        for (const x of yi) files.push({ name: "04 Ausgangsrechnungen/" + invFileName(x), data: await buildInvoicePdf(x, co) });
+      }
+      if (parts.ear) { const E = earData(year, list, docs, fb); files.push({ name: `05 EAR ${year}.xlsx`, data: xlsxBlob(earSheets(year, E)) }); files.push({ name: `05 EAR ${year}.pdf`, data: await earPdf(year, E, co.name) }); }
+      if (parts.fahrtenbuch) { const rate = +(fb.settings?.kmRate ?? 0.5);
+        for (const v of fb.vehicles || []) { const e = (fb.entries || []).filter((x) => x.vid === v.id); if (!e.some((x) => inP(x.date))) continue;
+          files.push({ name: `06 Fahrtenbuch/${fileSafe(v.name)} ${year}.pdf`, data: await fbPdf(v, e, year, rate) });
+          files.push({ name: `06 Fahrtenbuch/${fileSafe(v.name)} ${tag}.xlsx`, data: xlsxBlob(fbSheets(v, e.filter((x) => inP(x.date)), rate)) }); } }
+      if (parts.kassa) { const kassen = ls.get("kassen", []), ent = ls.get("kassaEntries", []);
+        for (const k of kassen) { const l = ent.filter((e) => e.kasse === k.id && inP(e.date)).sort((a, b) => a.date.localeCompare(b.date) || (a.no || 0) - (b.no || 0)); if (!l.length) continue;
+          const open = kbBalAt(ent, k, from, true); let bal = open; const rows = l.map((e) => { bal = kbR2(bal + kbSigned(e)); return [kbNo(e), e.date, e.beleg || (e.eigen ? "Eigenbeleg" : e.docId ? "Dokument" : ""), e.text + (e.stornoBy ? " (storniert)" : ""), e.cat, e.vat ?? "", e.kind === "ein" ? e.amount : "", e.kind === "aus" ? e.amount : "", bal]; });
+          files.push({ name: `07 Kassabuch/${fileSafe(k.name)} ${tag}.pdf`, data: await tablePdf({ title: `Kassabuch ${k.name} – ${label}`, subtitle: co.name || "", landscape: true, kpis: [["Anfangsbestand", fmtMoney(open)], ["Endbestand", fmtMoney(bal)]],
+            columns: [{ label: "Nr.", w: 1 }, { label: "Datum", w: 1 }, { label: "Beleg", w: 1.3 }, { label: "Text", w: 4 }, { label: "Kategorie", w: 2 }, { label: "USt %", w: 0.7, align: "right" }, { label: "Einnahmen €", w: 1.2, align: "right" }, { label: "Ausgaben €", w: 1.2, align: "right" }, { label: "Saldo €", w: 1.2, align: "right" }], rows }) }); } }
+      if (parts.anlagen) { const as = ls.get("assets", []).filter((a) => (a.scope || "privat") === "firma");
+        if (as.length) files.push({ name: "08 Anlagen Firma.xlsx", data: xlsxBlob([{ name: "Anlagen", head: ["Bezeichnung", "Marke", "Kategorie", "Kaufdatum", "Preis €", "Händler", "Seriennummer", "Notiz"], rows: as.map((a) => [a.name, a.brand || "", a.cat || "", a.date || "", Number(a.price) || "", a.dealer || "", a.serial || "", a.note || ""]) }]) }); }
+      if (parts.klaerung) {
+        if (noBeleg.length) files.push({ name: "09 Fehlende Belege.pdf", data: await tablePdf({ title: `Firmenausgaben ohne Beleg – ${label}`, landscape: true, columns: [{ label: "Datum", w: 1 }, { label: "Konto", w: 1.6 }, { label: "Empfänger", w: 2.4 }, { label: "Zweck", w: 3.4 }, { label: "Betrag €", w: 1.1, align: "right" }], rows: noBeleg.map((r) => [r.t.date, r.acc?.name || "", r.t.counterparty || "", (r.t.purpose || "").slice(0, 120), r.t.amount]) }) });
+        const ql = D.rows.filter((r) => r.t.ask && (r.t.ask.state !== "geklärt" || inP(r.t.date)));
+        if (ql.length) files.push({ name: "10 Klärungsliste.pdf", data: await tablePdf({ title: "Klärungsliste", landscape: true, columns: [{ label: "Datum", w: 1 }, { label: "Empfänger", w: 2.2 }, { label: "Betrag €", w: 1, align: "right" }, { label: "Frage", w: 4 }, { label: "Antwort", w: 3.2 }, { label: "Status", w: 1 }], rows: ql.map((r) => [r.t.date, r.t.counterparty || "", r.t.amount, r.t.ask.q, r.t.ask.a || "", r.t.ask.state]) }) });
+      }
+      setBusy("Packe ZIP …");
+      saveBlob(await zipBlob(files), `Steuerberater ${fileSafe(co.name || "")} ${tag}.zip`.replace(/\s+/g, " "));
+      notify(`Paket mit ${files.length} Dateien erstellt`);
+    } catch (e) { notify("Paket fehlgeschlagen: " + e.message); }
+    finally { setBusy(""); }
+  }
+  return (
+    <div className="stbpkg">
+      <section className="tile">
+        <div className="tilehead"><b>Zeitraum</b></div>
+        <PSelect value={p} onChange={(e) => setP(e.target.value)}>{per.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</PSelect>
+        <div className="stbkpis">
+          <div><small className="muted">Firmenbuchungen</small><b>{firma.length}</b></div>
+          <div><small className="muted">ohne Beleg</small><b className={noBeleg.length ? "red" : ""}>{noBeleg.length}</b></div>
+          <div><small className="muted">unklar</small><b className={unklar.length ? "warnc" : ""}>{unklar.length}</b></div>
+          <div><small className="muted">Kontoauszüge</small><b>{stm.length}</b></div>
+        </div>
+      </section>
+      <section className="tile">
+        <div className="tilehead"><b>Inhalt</b></div>
+        {STB_PARTS.map(([k, l]) => <label key={k} className="check"><input type="checkbox" checked={!!parts[k]} onChange={(e) => setParts({ ...parts, [k]: e.target.checked })} /> {l}</label>)}
+      </section>
+      {(unklar.length > 0 || noBeleg.length > 0) && <div className="lookbox warn">Noch {unklar.length} unklare Buchungen und {noBeleg.length} Firmenausgaben ohne Beleg – sie kommen als Liste ins Paket.</div>}
+      <button className="btn primary big" disabled={!!busy} onClick={build}>{busy || "⬇︎ ZIP erstellen"}</button>
+      <small className="muted block">Die Datei wird auf diesem Gerät gespeichert. Von dort kannst du sie per Mail, Cloud oder USB-Stick an den Steuerberater weitergeben.</small>
+    </div>
   );
 }
 
@@ -6837,11 +7602,12 @@ function AccountSheet({ init, onSave, onClose, onDelete, hasAtmAccount, txs = []
   const [opening, setOpening] = useState(cur != null ? String(cur.toFixed(2)).replace(".", ",") : "");
   const [atm, setAtm] = useState(init ? !!init.atm : !hasAtmAccount);
   const [iban, setIban] = useState(init?.iban || "");
+  const [use, setUse] = useState(init?.use || "privat");
   const defaultName = (k) => (k === "cash" ? "Geldbörse" : k === "savings" ? "Sparbuch" : k === "card" ? "Kreditkarte" : k === "wallet" ? "PayPal" : "");
   function save() {
     const val = opening === "" ? null : Number(String(opening).replace(/\./g, "").replace(",", "."));
     const changed = !init || (cur == null ? val != null : val == null || Math.abs(val - cur) > 0.004);
-    const base = { ...(init || { id: uid() }), kind, name: name.trim(), iban: iban.replace(/\s/g, "").toUpperCase() };
+    const base = { ...(init || { id: uid() }), kind, name: name.trim(), iban: iban.replace(/\s/g, "").toUpperCase(), ...(kind !== "broker" ? { use } : {}) };
     if (kind === "cash") base.atm = atm;
     if (changed) Object.assign(base, val == null ? { opening: kind === "cash" ? 0 : null, openingDate: "", openingAt: "" } : { opening: val, openingDate: todayISO(), openingAt: new Date().toISOString() });
     onSave(base);
@@ -6861,6 +7627,8 @@ function AccountSheet({ init, onSave, onClose, onDelete, hasAtmAccount, txs = []
           </div>
           <label>Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. BAWAG Giro, Sparbuch Raika" /></label>
           {kind !== "cash" && <label>IBAN (optional)<input value={iban} onChange={(e) => setIban(e.target.value)} placeholder="AT.." /></label>}
+          {kind !== "broker" && <div className="fieldlbl">Verwendung <small className="muted">– Vorschlag für Firma/Privat je Buchung</small>
+            <div className="seg">{[["privat", "👤 Privat"], ["firma", "🏢 Firma"], ["gemischt", "❓ Beides"]].map(([k, l]) => <button key={k} type="button" className={use === k ? "on" : ""} onClick={() => setUse(k)}>{l}</button>)}</div></div>}
           <label>{kind === "cash" ? "Bargeldbestand jetzt" : "Kontostand jetzt (optional)"}
             <input inputMode="decimal" placeholder={kind === "cash" ? "z. B. 120,00" : "leer = kein Kontostand anzeigen"} value={opening} onChange={(e) => setOpening(e.target.value)} />
           </label>
@@ -7250,6 +8018,7 @@ function applyDesign(design, theme) {
   set("--neg", design.neg ? (dark ? mixWhite(design.neg, 0.18) : design.neg) : null);
   document.body.classList.toggle("outneg", !!design.outNeg);
   applyUiStyle(design.style || "klassisch");
+  applyAppFonts(design);
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = surf.bg || (dark ? "#0d1117" : "#f3f5f9");
 }
 /* Farbwähler-Kreis: live Vorschau beim Ziehen, „change“ (Picker geschlossen) = übernehmen */
@@ -7338,6 +8107,9 @@ function DesignSettings({ design, setDesign, theme }) {
       <h4 className="subhead">Stil</h4>
       <p className="muted small">Ändert Schriftart, Ecken, Schatten, Kartenform, Dichte und Grundfarben der ganzen App. „Aurora“, „Kompakt Pro“ und „Großer Kontrast“ bringen eigene Farben mit; bei den anderen gilt zusätzlich der Farbstil darunter.</p>
       <StylePicker value={design.style} onPick={(k) => pick("style", k)} />
+      <h4 className="subhead">Schriftart</h4>
+      <p className="muted small">Schrift für Text und Überschriften der ganzen App – unabhängig vom Stil wählbar. Die Größen stellst du unter „Schriftgrößen“ ein.</p>
+      <FontPicker design={design} pick={pick} />
       <h4 className="subhead">Farbstil</h4>
       <p className="muted small">Farbstil der App – Voreinstellungen angelehnt an bekannte Finanz- und Dokumenten-Apps. Auf die Kreise tippen, um einzelne Farben anzupassen (Akzent · Zweitfarbe · Hintergrund {theme === "dark" ? "Nacht" : "Tag"}).</p>
       <div className="presets">
@@ -8045,7 +8817,8 @@ function nextInvNumber(list, kind, co, date) {
 // Ein-/Ausklappen in einem Schritt: Box wächst bzw. schrumpft oben, der Inhalt bleibt an derselben Stelle stehen (kein Springen)
 const fineMouse = typeof matchMedia !== "undefined" && matchMedia("(hover:hover) and (pointer:fine)").matches;
 // v0.80.1: Einklappen des Kopfbereichs beim Scrollen abgeschaltet (auf Wunsch entfernt)
-const HDR_COLLAPSE = true; // v0.92: wieder aktiv (Vorschlag 4) – auch auf iPad/Touch
+const HDR_COLLAPSE = false; // v0.97.3: auf Wunsch in allen Menüs abgeschaltet (Code bleibt bis zur Rückfrage erhalten)
+if (typeof document !== "undefined") document.documentElement.classList.remove("hdrmin", "lbscrolled");
 const hdrScroll = (e) => {
   if (!HDR_COLLAPSE) return;
   const el = e.currentTarget; if (el._hdrBusy) return;
@@ -8869,6 +9642,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
   const [articles, setArticles] = useLsState("articles", []);
   const [co, setCo] = useLsState("company", { ...CO_DEFAULT, name: me?.company || "", owner: me?.name || "" });
   const [edit, setEdit] = useState(null), [coOpen, setCoOpen] = useState(false), [mdOpen, setMdOpen] = useState(false), [remind, setRemind] = useState(null);
+  useEffect(() => { const id = ls.get("invOpenReq", null); if (!id) return; ls.set("invOpenReq", null); const x = list.find((i) => i.id === id); if (x) setEdit(x); }, []);
   const [payFor2, setPayFor2] = useState(null);
   const unpay = async (x) => {
     if (x.paidTx && book) { const created = x.paidTxCreated; if (created ? confirm("Die dabei angelegte Buchung ebenfalls löschen?") : true) await book.unlink(x.paidTx, created); else await book.unlink(x.paidTx, false); }
@@ -9698,6 +10472,70 @@ function applyUiStyle(id) {
   const st = UI_STYLES.find((x) => x[0] === id); const fam = (st?.[3] || []).map((f) => "family=" + STYLE_FONTS[f]).join("&");
   let l = document.getElementById("sty-fonts");
   if (fam) { if (!l) { l = document.createElement("link"); l.id = "sty-fonts"; l.rel = "stylesheet"; document.head.appendChild(l); } const href = `https://fonts.googleapis.com/css2?${fam}&display=swap`; if (l.href !== href) l.href = href; }
+}
+/* ======================= Schriftarten (v0.97.2) ======================= */
+// [id, Name, CSS-Familie, Google-Fonts-Angabe (null = eingebaut/System), Gruppe]
+const APP_FONTS = [
+  ["outfit", "Outfit", '"Outfit Variable","Outfit",system-ui,sans-serif', null, "Modern"],
+  ["system", "System", '-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif', null, "Modern"],
+  ["inter", "Inter", "Inter,system-ui,sans-serif", "Inter:wght@400;500;600;700;800", "Modern"],
+  ["dmsans", "DM Sans", '"DM Sans",system-ui,sans-serif', "DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700", "Modern"],
+  ["manrope", "Manrope", "Manrope,system-ui,sans-serif", "Manrope:wght@400;500;600;700;800", "Modern"],
+  ["poppins", "Poppins", "Poppins,system-ui,sans-serif", "Poppins:wght@400;500;600;700", "Modern"],
+  ["montserrat", "Montserrat", "Montserrat,system-ui,sans-serif", "Montserrat:wght@400;500;600;700", "Modern"],
+  ["grotesk", "Space Grotesk", '"Space Grotesk",system-ui,sans-serif', "Space+Grotesk:wght@400;500;600;700", "Modern"],
+  ["roboto", "Roboto", "Roboto,system-ui,sans-serif", "Roboto:wght@400;500;700", "Klassisch"],
+  ["opensans", "Open Sans", '"Open Sans",system-ui,sans-serif', "Open+Sans:wght@400;500;600;700", "Klassisch"],
+  ["lato", "Lato", "Lato,system-ui,sans-serif", "Lato:wght@400;700;900", "Klassisch"],
+  ["source", "Source Sans 3", '"Source Sans 3",system-ui,sans-serif', "Source+Sans+3:wght@400;500;600;700", "Klassisch"],
+  ["worksans", "Work Sans", '"Work Sans",system-ui,sans-serif', "Work+Sans:wght@400;500;600;700", "Klassisch"],
+  ["plex", "IBM Plex Sans", '"IBM Plex Sans",system-ui,sans-serif', "IBM+Plex+Sans:wght@400;500;600;700", "Klassisch"],
+  ["nunito", "Nunito", "Nunito,system-ui,sans-serif", "Nunito:wght@400;600;700;800", "Weich"],
+  ["quicksand", "Quicksand", "Quicksand,system-ui,sans-serif", "Quicksand:wght@400;500;600;700", "Weich"],
+  ["atkinson", "Atkinson Hyperlegible", '"Atkinson Hyperlegible",system-ui,sans-serif', "Atkinson+Hyperlegible:wght@400;700", "Gut lesbar"],
+  ["lexend", "Lexend", "Lexend,system-ui,sans-serif", "Lexend:wght@400;500;600;700", "Gut lesbar"],
+  ["merriweather", "Merriweather", "Merriweather,Georgia,serif", "Merriweather:wght@400;700;900", "Serif"],
+  ["lora", "Lora", "Lora,Georgia,serif", "Lora:wght@400;500;600;700", "Serif"],
+  ["fraunces", "Fraunces", "Fraunces,Georgia,serif", "Fraunces:wght@400;500;600;700", "Serif"],
+  ["robotoslab", "Roboto Slab", '"Roboto Slab",Georgia,serif', "Roboto+Slab:wght@400;500;700", "Serif"],
+  ["mono", "JetBrains Mono", '"JetBrains Mono",ui-monospace,monospace', "JetBrains+Mono:wght@400;500;700", "Mono"]
+];
+const fontById = (id) => APP_FONTS.find((f) => f[0] === id);
+function loadFonts(ids, linkId) {
+  const fam = [...new Set(ids)].map(fontById).filter((f) => f?.[3]).map((f) => "family=" + f[3]).join("&");
+  let l = document.getElementById(linkId);
+  if (!fam) { l?.remove(); return; }
+  if (!l) { l = document.createElement("link"); l.id = linkId; l.rel = "stylesheet"; document.head.appendChild(l); }
+  const href = `https://fonts.googleapis.com/css2?${fam}&display=swap`; if (l.href !== href) l.href = href;
+}
+function applyAppFonts(design) {
+  const r = document.documentElement, body = fontById(design.font), head = design.fontHead === "same" || !design.fontHead ? body : fontById(design.fontHead);
+  r.classList.toggle("ufont", !!body); r.classList.toggle("uhfont", !!head);
+  body ? r.style.setProperty("--uf", body[2]) : r.style.removeProperty("--uf");
+  head ? r.style.setProperty("--uhf", head[2]) : r.style.removeProperty("--uhf");
+  loadFonts([body?.[0], head?.[0]].filter(Boolean), "user-fonts");
+}
+function FontPicker({ design, pick }) {
+  useEffect(() => { loadFonts(APP_FONTS.map((f) => f[0]), "font-preview"); return () => document.getElementById("font-preview")?.remove(); }, []);
+  const cur = design.font || "", head = design.fontHead || "same";
+  const card = (id, name, fam, group, on, onClick) => (
+    <button key={id || "stil"} type="button" className={"fontcard" + (on ? " on" : "")} aria-pressed={on} onClick={onClick}>
+      <span className="fontpv" style={{ fontFamily: fam }}><b>Ag</b><span>Konten € 1.284,50</span></span>
+      <b className="one">{name}</b><small className="muted">{group}</small>
+    </button>);
+  return (<>
+    <div className="fontgrid">
+      {card("", "Wie Stil", undefined, "Standard", !cur, () => pick("font", ""))}
+      {APP_FONTS.map(([id, name, fam, , g]) => card(id, name, fam, g, cur === id, () => pick("font", id)))}
+    </div>
+    <label className="fontheadsel">Überschriften
+      <PSelect value={head} onChange={(e) => pick("fontHead", e.target.value)}>
+        <option value="same">wie Text</option>
+        {APP_FONTS.map(([id, name, , , g]) => <option key={id} value={id}>{name} ({g})</option>)}
+      </PSelect>
+    </label>
+    <p className="muted small">„Wie Stil“ nimmt die Schrift des gewählten Stils. Outfit und System sind eingebaut; die anderen werden beim ersten Mal von Google Fonts geladen (Internet nötig, danach vom Browser zwischengespeichert). Ohne Internet wird eine ähnliche Systemschrift verwendet.</p>
+  </>);
 }
 function StylePicker({ value, onPick }) {
   return (<div className="stylegrid">{UI_STYLES.map(([k, name, sub, , p]) => (
@@ -13872,4 +14710,105 @@ html.sty-kontrast .lbtab.on small,html.sty-kontrast .chip.on small,html.sty-kont
 .fitscroll b.invamt,.fitscroll .frow .right>b,.fitscroll .fbtlright b,.fitscroll .kbr span.r,.fitscroll .ctamt{font-size:17px!important;font-weight:500!important}
 .fitscroll .grow small.muted,.fitscroll small.muted.block,.fitscroll .ctsub,.fitscroll .kbr span.muted,.fitscroll .kbcdate,.fitscroll .fbtlright small,.fitscroll .contactrow small{font-size:16px!important}
 .fitscroll .right small,.fitscroll .invmain~* small,.fitscroll .ctlist .right small{font-size:13px!important}
+
+/* ---------- v0.97: Firma/Privat, Kontoauszüge, Steuerberater ---------- */
+.fieldlbl{display:flex;flex-direction:column;gap:6px;margin:10px 0 4px;font-size:14px}
+.lookbox.warn{background:color-mix(in srgb,var(--warn,#f59e0b) 16%,transparent)}
+html .seg button.sc-firma.on{background:#f59e0b!important;color:#1f1300!important;border-color:#f59e0b!important}
+html .seg button.sc-privat.on{background:#3b82f6!important;color:#fff!important;border-color:#3b82f6!important}
+html .seg button.sc-unklar.on{background:#e57373!important;color:#fff!important;border-color:#e57373!important}
+.txscope{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:10px}
+.txscope .seg button{padding:6px 12px;font-size:14px;white-space:nowrap}
+.txscope small{font-size:12px;text-align:center}
+.txinv{display:flex;align-items:center;gap:10px}.txinv .click{cursor:pointer}
+.txbelacts{gap:6px;flex-wrap:wrap;margin-top:6px}.txbelacts .btn.on{border-color:var(--acc);color:var(--acc)}
+.txswap{margin-top:8px;padding:10px;border-radius:12px;background:var(--card2)}
+.txsplit input[type=range]{flex:1;accent-color:#f59e0b}.txsplit .pctin{width:70px!important;flex:none!important;text-align:right}
+.txsplit .chips{flex-wrap:wrap}
+.txask{cursor:pointer;margin:2px 0}.txask .stpill{margin-left:6px}
+.txsc{font-size:13px}
+.stpill.sc-firma{background:#f59e0b2e;color:#b45309}.stpill.sc-privat{background:#3b82f622;color:#2563eb}.stpill.sc-unklar{background:#e5737333;color:#c0392b}
+html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5fd}html.dark .stpill.sc-unklar{color:#fca5a5}
+.chip .cnt{margin-left:6px;background:var(--red);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}
+.stbhead{display:flex;flex-direction:column;gap:8px}
+.stbtoolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 10px}
+.stbtoolbar .chips{flex-wrap:wrap}
+.stbmonths{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
+.stbmonth{padding:14px}
+.stbmh{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.stbmh b{font-size:16px}
+.stbdot{width:12px;height:12px;border-radius:50%;flex:none;background:var(--mut)}
+.stbdot.ok,.stbdot.done{background:#16a34a}.stbdot.warn{background:#f59e0b}.stbdot.bad{background:#ef4444}.stbdot.empty{background:var(--line)}
+.stbmonth.st-empty{opacity:.6}
+.stbchecks{display:flex;flex-direction:column;gap:4px;margin-top:10px}
+.stbcheck{padding:6px 10px;border-radius:9px;background:var(--card2);font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
+.stbmacts{justify-content:space-between;margin-top:4px}
+.stbstmts{display:flex;flex-direction:column;gap:10px}
+.stbstmt{display:flex;align-items:center;gap:12px;padding:12px}
+.stbstmt .thumb,.stbstmt img{width:52px;height:68px;object-fit:cover;border-radius:6px}
+.stbbar{display:flex;height:8px;border-radius:5px;overflow:hidden;margin:6px 0 4px;background:var(--card2)}
+.stbbar .sc-firma{background:#f59e0b}.stbbar .sc-privat{background:#64b5f6}.stbbar .sc-unklar{background:#e57373}
+.scf{color:#d97706}.scp{color:#2563eb}.scu{color:#dc2626}
+.stmtlist{display:flex;flex-direction:column;gap:6px}
+.stmtrow{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line)}
+.stmtrow.sc-firma{border-left-color:#f59e0b}.stmtrow.sc-privat{border-left-color:#64b5f6}.stmtrow.sc-unklar{border-left-color:#e57373}
+.stmtrow.hi{box-shadow:0 0 0 2px var(--acc)}
+.stmtrow .grow{min-width:0}.stmtrow .grow.click{cursor:pointer}
+.stmtflags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:4px}
+.stmtright{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none}
+.stmtright > b{font-size:16px}
+.stmtseg button{padding:4px 8px;font-size:13px;white-space:nowrap}
+.stmtright .row{display:flex;gap:14px;justify-content:flex-end;align-items:center}
+@media (max-width:700px){.stmtseg button span{display:none}.stmtseg button{padding:5px 9px}.stmtrow{padding:9px 10px}}
+.stmtwin .panelhead b{flex:1;min-width:0}
+.stmtbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+.stmtbody{display:block}.stmtbody.two{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start}
+.stmtbody.two .stmtpdf,.stmtbody.two .stmtlist{max-height:calc(100vh - 230px);overflow:auto}
+.stmtpdf{display:flex;flex-direction:column;gap:10px}
+.stmtpage{position:relative;border-radius:6px;overflow:hidden;box-shadow:0 1px 6px #0002;background:#fff}
+.stmtpage img{display:block;width:100%;height:auto}
+.stmtbox{position:absolute;border:0;padding:0;margin:0;cursor:pointer;border-left:3px solid;border-radius:2px;mix-blend-mode:multiply}
+.stmtbox.sc-firma{background:#ffd54f70;border-color:#f59e0b}.stmtbox.sc-privat{background:#90caf955;border-color:#3b82f6}.stmtbox.sc-unklar{background:#ef9a9a70;border-color:#e53935}
+.stmtbox.hi{outline:2px solid var(--acc);outline-offset:1px}
+.stmtfoot{display:block;margin-top:8px}
+.stbcheckpage .stbtoolbar .selbtn{min-width:170px}
+.stbasks{display:flex;flex-direction:column;gap:10px}
+.stbask{padding:12px}.stbask.done{opacity:.7}.stbask .stbmh{cursor:pointer;margin-bottom:6px}
+.stbask textarea{width:100%}
+.stbsetup{display:flex;flex-direction:column;gap:12px;max-width:760px}
+.stbaccrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line)}
+.stbaccrow:last-child{border-bottom:0}
+.stbpkg{display:flex;flex-direction:column;gap:12px;max-width:760px}
+.stbpkg .check{display:flex;gap:8px;align-items:center;padding:4px 0}
+.stbkpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.stbkpis > div{background:var(--card2);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column}
+.stbkpis b{font-size:20px}
+@media (max-width:700px){.stbmonths{grid-template-columns:1fr}.stbkpis{grid-template-columns:repeat(2,1fr)}.stbaccrow .seg{width:100%}}
+.btn.big{padding:14px 18px;font-size:16px}
+
+/* v0.97.1: Verlauf im Buchungsfenster, Vertragsvorschau */
+.txhisttog .chev{display:inline-block;transition:transform .2s}.txhisttog.open .chev{transform:rotate(180deg)}
+.txhist{display:flex;flex-direction:column;border-top:1px solid var(--line);margin-top:2px}
+.txhrow{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);cursor:pointer;font-size:15px}
+.txhrow:hover{background:var(--card2)}.txhrow.cur{background:color-mix(in srgb,var(--acc) 12%,transparent);cursor:default;border-radius:8px}
+.txhdate{flex:none;width:92px;color:var(--mut)}
+.txhrow b{flex:none;font-variant-numeric:tabular-nums}
+.txhdoc{flex:none;width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--card);cursor:pointer;font-size:14px;padding:0}
+.txhdoc.none{border:0;background:none;cursor:default}
+.txhfoot{display:flex;align-items:center;gap:10px;padding:8px 4px 2px}
+.txctdocs{display:flex;flex-direction:column;gap:8px}
+@media (max-width:700px){.txhdate{width:84px;font-size:14px}.txhrow{font-size:14px}}
+
+/* v0.97.2: eigene Schriftarten (überschreibt Stil-Schriften) */
+html.ufont body,html.ufont button,html.ufont input,html.ufont select,html.ufont textarea,html.ufont .app{font-family:var(--uf)!important}
+html.uhfont header.top h1,html.uhfont .app h1,html.uhfont .app h2,html.uhfont .app h3,html.uhfont .app h4,html.uhfont .tilehead b,html.uhfont .panelhead>b,html.uhfont .hero-v,html.uhfont .kpiv,html.uhfont .cdname,html.uhfont .subhead,html.uhfont .ssectitle,html.uhfont .setdrilltitle,html.uhfont .hubtile b{font-family:var(--uhf)!important}
+.fontgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:8px 0 12px}
+.fontcard{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:10px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--txt);cursor:pointer;text-align:left;font:inherit;min-width:0}
+.fontcard.on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)}
+.fontcard>b{font-size:14px;max-width:100%}.fontcard small{font-size:12px}
+.fontpv{display:flex;flex-direction:column;gap:2px;width:100%;padding:8px 10px;border-radius:10px;background:var(--card2);margin-bottom:4px;overflow:hidden}
+.fontpv b{font-size:26px;line-height:1.1;font-weight:700}.fontpv span{font-size:13px;white-space:nowrap}
+.fontheadsel{max-width:360px}
+@media (max-width:700px){.fontgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 `;

@@ -2,6 +2,31 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.97.3 – Kopfbereich klappt nicht mehr ein
+
+- Das Ein- und Ausklappen des Kopfbereichs beim Scrollen (Fahrzeugkarte, Kennzahlen, Ablagefeld, kleiner Titel) ist in allen Menüs und auf allen Geräten abgeschaltet. Der Code ist nur deaktiviert (`HDR_COLLAPSE`, `LB_MINI`), noch nicht gelöscht.
+
+## v0.97.2 – Schriftarten wählbar
+
+- Einstellungen → Design → **Schriftart**: 23 Schriften (Modern, Klassisch, Weich, Gut lesbar, Serif, Mono) mit Vorschau, getrennt für Text und Überschriften; „Wie Stil“ behält die Schrift des Stils. Outfit und System sind eingebaut, die übrigen kommen von Google Fonts (Internet beim ersten Laden nötig). Wird pro Konto über den Sync übernommen.
+
+## v0.97.1 – Buchungsverlauf zum Aufklappen, Vertrags- und Belegvorschau
+
+- Buchungsfenster (Konten): „Letzte Buchungen anzeigen“ klappt die letzten 15 Buchungen desselben Empfängers direkt auf und zu (je 15 weitere nachladbar, Zustand wird gemerkt). Antippen einer Zeile wechselt zu dieser Buchung, 📎 zeigt deren Beleg in der Vorschau. „In der Liste anzeigen“ filtert wie bisher.
+- Zugehöriger Vertrag öffnet jetzt eine Vorschau mit Anbieter, Betrag, Laufzeit, Kündigungsfrist und den verknüpften Dokumenten (mit Vorschau); „In Verträgen öffnen“ springt weiter.
+
+## v0.97.0 – Steuerberater, Kontoauszüge mit KI, Buchungsfenster neu
+
+- **Buchungsfenster:** Umschalter Firma / Privat / Unklar je Buchung (Vorschlag aus Beleg, Konto-Verwendung oder KI), **Aufteilen** in Prozent (z. B. 60 % Firma), Beleg-**Vorschau im eigenen Fenster**, Beleg **tauschen**, Beleg lösen ohne dass das Fenster schließt, verknüpfte **Rechnung anklickbar und lösbar**, **Frage an den Steuerberater**.
+- **Konten:** neues Feld „Verwendung“ (Privat / Firma / Beides); Firmen- und unklare Buchungen sind in der Liste markiert.
+- **Neuer Reiter „Steuerberater“** (Bereich Firma):
+  - **Monate:** Ampel je Monat – Auszüge vorhanden, Firmenausgaben ohne Beleg, unklare Buchungen, offene Fragen; Monat abschließen.
+  - **Kontoauszüge:** Original-PDF hochladen → KI liest die Zeilen, gleicht sie mit den Buchungen ab (fehlende können übernommen werden) und markiert Firma (gelb) / Privat (blau) / Unklar (rot) direkt im PDF. Antippen wechselt die Farbe; Export als markiertes PDF mit Zusammenfassung.
+  - **Prüfen:** offene, unklare und belegfehlende Buchungen, „✨ KI einschätzen“.
+  - **Klärungsliste:** Fragen + Antworten des Steuerberaters, als PDF oder Mail senden.
+  - **Paket:** ZIP für Jahr / Quartal / Monat mit Übersicht, markierten Auszügen, Buchungsliste Firma (Excel/CSV), Belegen, Ausgangsrechnungen, EAR, Fahrtenbuch, Kassabuch, Anlagen, fehlenden Belegen und Klärungsliste.
+- Neue Vercel-Funktion `api/classify.js` (nutzt den vorhandenen `ANTHROPIC_API_KEY`).
+
 ## v0.96.2 – Verknüpfungen geprüft
 - Datenprüfung (Demo-Daten): alle Verweise Buchung↔Konto/Dokument/Rechnung, Rechnung↔Zahlung/Beleg/Kunde, Dokument↔Datei/Rechnung, Vertrag/Besitz/Fahrtenbuch/Kassabuch↔Dokument, Lager↔Artikel/Inventur sind vollständig und gegenseitig.
 - Kunden-Zuordnung eindeutig: feste ID → Kundennummer → Name (vorher passten Rechnungen bei gleichnamigen Kunden zu beiden).
