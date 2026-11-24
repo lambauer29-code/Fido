@@ -1556,12 +1556,15 @@ function AppMain() {
   const [subs, setSubs] = useState(() => ls.get("subs", { confirmed: [], dismissed: [] }));
   const fileInput = useRef();
   const queue = useRef(Promise.resolve());
+  const unlinkDocRefsRef = useRef(null);
 
   useEffect(() => {
     (async () => {
       const all = await db.allDocs();
       const cutoff = Date.now() - TRASH_DAYS * 864e5;
-      for (const d of all.filter((d) => d.deletedAt && new Date(d.deletedAt).getTime() < cutoff)) { await db.delDoc(d.id); await db.delFile(d.id); }
+      const old = all.filter((d) => d.deletedAt && new Date(d.deletedAt).getTime() < cutoff);
+      for (const d of old) { await db.delDoc(d.id); await db.delFile(d.id); }
+      if (old.length) setTimeout(() => unlinkDocRefsRef.current?.(old.map((d) => d.id)), 3000);
       const kept = all.filter((d) => !(d.deletedAt && new Date(d.deletedAt).getTime() < cutoff))
         .map((x) => (x.status === "processing" ? { ...x, status: "error", error: "Abgebrochen" } : x));
       setDocs(kept);
@@ -1827,9 +1830,20 @@ function AppMain() {
     const all = [...txsRef.current, tx]; txsRef.current = all; setTxs(all); await db.putTxs([tx]);
     return tx;
   }
+  // Verweise auf gelöschte Buchungen lösen: Rechnung (Zahlung) und Fahrtenbuch
+  function unlinkTxRefs(ids, ask = true) {
+    const set = new Set(ids); if (!set.size) return;
+    const inv = ls.get("invoices", []), hit = inv.filter((x) => x.paidTx && set.has(x.paidTx));
+    if (hit.length) {
+      const reopen = !ask || confirm(hit.length === 1 ? `Diese Buchung ist die Zahlung zu Rechnung ${hit[0].number}.\n\nRechnung wieder auf „offen“ setzen?` : `${hit.length} Buchungen sind Zahlungen zu Rechnungen.\n\nDiese Rechnungen wieder auf „offen“ setzen?`);
+      ls.set("invoices", inv.map((x) => (x.paidTx && set.has(x.paidTx) ? { ...x, paidTx: undefined, paidTxCreated: undefined, ...(reopen ? { status: "offen", paidAt: undefined, paidAccount: undefined, payMethod: undefined } : {}) } : x)));
+    }
+    const fb = ls.get("fbook", null); if (fb?.entries?.some((e) => e.txId && set.has(e.txId))) ls.set("fbook", { ...fb, entries: fb.entries.map((e) => (e.txId && set.has(e.txId) ? { ...e, txId: null } : e)) });
+  }
   async function deleteTx(t) {
+    unlinkTxRefs([t.id]);
     await db.delTxs([t.id]); setTxs((p) => p.filter((x) => x.id !== t.id));
-    if (t.docId) { const d = docs.find((x) => x.id === t.docId); if (d) await saveDoc({ ...d, paid: false, paidCash: false }); }
+    if (t.docId) { const d = docs.find((x) => x.id === t.docId); if (d && !d.invoiceId) await saveDoc({ ...d, paid: false, paidCash: false }); }
   }
   async function bookCash(doc) {
     if (!doc.amount?.total) return;
@@ -1843,6 +1857,8 @@ function AppMain() {
 
   async function deleteAccount(id) {
     const ids = txs.filter((t) => t.accountId === id).map((t) => t.id);
+    unlinkTxRefs(ids);
+    ls.set("invoices", ls.get("invoices", []).map((x) => (x.paidAccount === id ? { ...x, paidAccount: undefined } : x)));
     await db.delTxs(ids); setTxs((p) => p.filter((t) => t.accountId !== id)); setAccounts((a) => a.filter((x) => x.id !== id));
   }
 
@@ -1851,7 +1867,20 @@ function AppMain() {
     await db.putDoc(d);
   }
   async function trashDoc(doc) { await saveDoc({ ...doc, deletedAt: new Date().toISOString() }); setOpenId(null); notify("In den Papierkorb verschoben"); }
-  async function purgeDoc(id) { setDocs((p) => p.filter((d) => d.id !== id)); await db.delDoc(id); await db.delFile(id); }
+  unlinkDocRefsRef.current = (ids) => unlinkDocRefs(ids);
+  async function purgeDoc(id) { setDocs((p) => p.filter((d) => d.id !== id)); await db.delDoc(id); await db.delFile(id); await unlinkDocRefs([id]); }
+  // Verweise auf endgültig gelöschte Dokumente lösen: Buchungen, Rechnungs-Beleg, Verträge, Besitz, Fahrtenbuch, Kassabuch
+  async function unlinkDocRefs(ids) {
+    const set = new Set(ids); if (!set.size) return;
+    const ch = txsRef.current.filter((t) => t.docId && set.has(t.docId)).map((t) => ({ ...t, docId: undefined }));
+    if (ch.length) { const m = new Map(ch.map((t) => [t.id, t])); const l = txsRef.current.map((t) => m.get(t.id) || t); txsRef.current = l; setTxs(l); await db.putTxs(ch); }
+    const upd = (k, f, d = []) => { const v = ls.get(k, d); const n = f(v); if (JSON.stringify(n) !== JSON.stringify(v)) ls.set(k, n); };
+    upd("invoices", (l) => l.map((x) => (x.belegDoc && set.has(x.belegDoc) ? { ...x, belegDoc: undefined } : x)));
+    upd("contractList", (l) => l.map((c) => (c.docIds?.some((i) => set.has(i)) ? { ...c, docIds: c.docIds.filter((i) => !set.has(i)) } : c)));
+    upd("besitz", (l) => l.map((a) => (a.docId && set.has(a.docId) ? { ...a, docId: null } : a)));
+    upd("kassaEntries", (l) => l.map((e) => (e.docId && set.has(e.docId) ? { ...e, docId: null } : e)));
+    upd("fbook", (o) => (o?.entries ? { ...o, entries: o.entries.map((e) => (e.docId && set.has(e.docId) ? { ...e, docId: null } : e)) } : o), null);
+  }
 
   async function analyze(doc, blob) {
     await saveDoc({ ...doc, status: "processing", error: null });
@@ -8877,7 +8906,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
   const save = (inv0, saveCust) => {
     // Kunde fest verknüpfen (Kunden-ID in der Rechnung) – neu angelegte Kunden bekommen sofort eine ID
     let inv = inv0;
-    if (inv.customer?.name && !inv.customer.id) { const ex = customers.find((c) => custMatch(c, inv)); const cid = ex?.id || (saveCust ? uid() : null); if (cid) inv = { ...inv, customer: { ...inv.customer, id: cid } }; }
+    if (inv.customer?.name && !inv.customer.id) { const ex = custOf(inv, customers); const cid = ex?.id || (saveCust ? uid() : null); if (cid) inv = { ...inv, customer: { ...inv.customer, id: cid } }; }
     setList((l) => (l.some((x) => x.id === inv.id) ? l.map((x) => (x.id === inv.id ? inv : x)) : [inv, ...l]));
     if (saveCust && inv.customer?.name) setCustomers((l) => (l.some((c) => c.id === inv.customer.id || c.name === inv.customer.name) ? l : [...l, { ...inv.customer, id: inv.customer.id || uid() }]));
     if (inv.repeat && !inv.fromTemplate) {
@@ -9543,11 +9572,11 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
   const wide = false; // v0.94: Kundendatei am Desktop als schwebendes Fenster
   const selC = list.find((c) => c.id === selId) || null;
   useEdgeBack(() => setSelId(null), !!selC && mob);
-  const unmatched = invoices.filter((i) => i.customer?.name?.trim() && !list.some((c) => custMatch(c, i)));
+  const unmatched = invoices.filter((i) => i.customer?.name?.trim() && !custOf(i, list));
   const assign = (invId, c) => setInvoices((l) => l.map((x) => (x.id === invId ? { ...x, customer: { ...(x.customer || {}), id: c.id } } : x)));
   const save = (c) => setList((l) => (l.some((x) => x.id === c.id) ? l.map((x) => (x.id === c.id ? c : x)) : [...l, c]));
   const nextNo = () => "K-" + String(list.reduce((m, c) => Math.max(m, parseInt(String(c.number || "").replace(/\D/g, ""), 10) || 0), 0) + 1).padStart(3, "0");
-  const invOf = (c) => invoices.filter((i) => i.kind === "rechnung" && custMatch(c, i) && !["entwurf", "storniert"].includes(i.status));
+  const invOf = (c) => invoices.filter((i) => i.kind === "rechnung" && custOf(i, list)?.id === c.id && !["entwurf", "storniert"].includes(i.status));
   const shown = list.filter((c) => type === "alle" || (c.type || "Kunde") === type)
     .filter((c) => !q || norm(`${c.name} ${c.contact} ${c.email} ${c.phone} ${c.address} ${c.number}`).includes(norm(q)))
     .sort((a, b) => (a.name || "").localeCompare(b.name || "", "de"));
@@ -9556,7 +9585,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       c.address && `ADR;TYPE=WORK:;;${c.address.replace(/\n/g, ";")};;;;`, c.web && `URL:${c.web}`, "END:VCARD"].filter(Boolean).join("\r\n");
     downloadFiles([new File([v], safeName(c.name) + ".vcf", { type: "text/vcard" })]);
   };
-  const detail = selC && <CustomerDetail c={selC} invoices={invoices} typeOf={typeOf} back={mob} onBack={() => setSelId(null)} onEdit={() => setEdit(selC)} setTab={setTab} vcard={vcard} />;
+  const detail = selC && <CustomerDetail c={selC} customers={list} invoices={invoices} typeOf={typeOf} back={mob} onBack={() => setSelId(null)} onEdit={() => setEdit(selC)} setTab={setTab} vcard={vcard} />;
   return (
     <div className="ctpage">
       {mob && selC ? <div className="mpage custpage">{detail}</div> : mob ? (
@@ -9773,6 +9802,11 @@ function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, previ
 }
 /* ======================= Kundendatei (v0.93): Übersicht · Rechnungen · Angebote · Mahnungen · Konto ======================= */
 // Rechnung gehört zum Kunden: feste ID, sonst Kundennummer, sonst Name
+// Eindeutige Zuordnung Rechnung → Kunde: 1. feste ID (wenn der Kunde noch existiert) · 2. Kundennummer · 3. Name (bei Namensgleichheit der erste)
+function custOf(inv, list) { const k = inv?.customer; if (!k || !list?.length) return null;
+  if (k.id) { const c = list.find((x) => x.id === k.id); if (c) return c; }
+  const no = String(k.number || "").trim(); if (no) { const c = list.find((x) => String(x.number || "").trim() === no); if (c) return c; }
+  const n = norm(k.name || ""); return n ? list.find((x) => norm(x.name || "") === n) || null : null; }
 const custMatch = (c, inv) => { const k = inv?.customer; if (!k || !c) return false; if (k.id) return k.id === c.id;
   return !!(c.number && k.number && String(c.number).trim() === String(k.number).trim()) || (!!c.name && norm(k.name || "") === norm(c.name)); };
 function custLedger(invs) {
@@ -9786,11 +9820,11 @@ function custLedger(invs) {
   let bal = 0; for (const e of ev) { bal = r2(bal + e.amt); e.bal = bal; }
   return ev;
 }
-function CustomerDetail({ c, invoices, typeOf, back, onBack, onEdit, setTab, vcard }) {
+function CustomerDetail({ c, customers = [], invoices, typeOf, back, onBack, onEdit, setTab, vcard }) {
   const [sub, setSub] = useState("uebersicht");
   useEffect(() => setSub("uebersicht"), [c.id]);
   const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
-  const mine = invoices.filter((i) => custMatch(c, i)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const mine = invoices.filter((i) => (customers.length ? custOf(i, customers)?.id === c.id : custMatch(c, i))).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const rech = mine.filter((i) => i.kind === "rechnung"), ang = mine.filter((i) => i.kind === "angebot");
   const valid = rech.filter((i) => !["entwurf", "storniert"].includes(i.status));
   const open = valid.filter((i) => ["offen", "überfällig"].includes(invState(i))), over = open.filter((i) => invState(i) === "überfällig");

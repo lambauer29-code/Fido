@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.96.2 – Verknüpfungen geprüft
+- Datenprüfung (Demo-Daten): alle Verweise Buchung↔Konto/Dokument/Rechnung, Rechnung↔Zahlung/Beleg/Kunde, Dokument↔Datei/Rechnung, Vertrag/Besitz/Fahrtenbuch/Kassabuch↔Dokument, Lager↔Artikel/Inventur sind vollständig und gegenseitig.
+- Kunden-Zuordnung eindeutig: feste ID → Kundennummer → Name (vorher passten Rechnungen bei gleichnamigen Kunden zu beiden).
+- Buchung löschen, die Zahlung einer Rechnung ist: Rückfrage „Rechnung wieder auf offen setzen?“, Verweis wird gelöst (vorher blieb die Rechnung „bezahlt“ mit Verweis ins Leere). Fahrtenbuch-Verweis wird ebenfalls gelöst.
+- Konto löschen: dieselbe Bereinigung für alle Buchungen des Kontos.
+- Dokument endgültig löschen (auch automatisch nach 30 Tagen im Papierkorb): Verweise in Buchungen, Rechnungs-Beleg, Verträgen, Besitz & Garantie, Fahrtenbuch und Kassabuch werden entfernt.
+
 ## v0.96.1
 - Einheitliche Listen-Schrift wie bei Konten (Titel 17 px, Unterzeile 16 px, Betrag 17 px) in Rechnungen, Kunden, Artikel, Lager & Inventur, Mahnungen, Verträge, Fixkosten & Abos, Kassabuch und Fahrtenbuch (vorher 20/17/20 px). Die Schriftgrößen-Einstellung (Design) wirkt weiterhin zusätzlich.
 
