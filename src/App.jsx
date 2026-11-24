@@ -513,7 +513,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], steuer: ["🧑‍💼", "Steuerberater"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], inventur: ["📋", "Lager & Inventur"], besitz: ["🛡️", "Besitz & Garantie"], kassa: ["📒", "Kassabuch"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], journal: ["📓", "Journal"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], steuer: ["🧑‍💼", "Steuerberater"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], inventur: ["📋", "Lager & Inventur"], besitz: ["🛡️", "Besitz & Garantie"], kassa: ["📒", "Kassabuch"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -682,7 +682,7 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
 }
 const DEFAULT_NAV = {
   tabs: [
-    { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: true, parent: "docs" },
+    { key: "home", side: true, phone: true }, { key: "docs", side: true, phone: true }, { key: "deadlines", side: true, phone: true, parent: "docs" }, { key: "journal", side: true, phone: true, parent: "docs" },
     { key: "accounts", side: true, phone: true }, { key: "cash", side: true, phone: true }, { key: "analyse", side: true, phone: true }, { key: "vermoegen", side: true, phone: true }, { key: "fahrtenbuch", side: true, phone: true }, { key: "invoices", side: true, phone: true }, { key: "kunden", side: true, phone: true }, { key: "mahnungen", side: true, phone: true }, { key: "firma", side: true, phone: true }, { key: "steuer", side: true, phone: true }, { key: "artikel", side: true, phone: true }, { key: "inventur", side: true, phone: true }, { key: "besitz", side: true, phone: true }, { key: "kassa", side: true, phone: true }, { key: "vertraege", side: true, phone: true }, { key: "contracts", side: true, phone: true }, { key: "settings", side: true, phone: true }, { key: "backup", side: true, phone: true, parent: "settings" }
   ],
   groups: [
@@ -737,6 +737,7 @@ const TAB_SVG = {
   "hub:mehr": <><rect x="4" y="4" width="6" height="6" rx="1.5" /><rect x="14" y="4" width="6" height="6" rx="1.5" /><rect x="4" y="14" width="6" height="6" rx="1.5" /><rect x="14" y="14" width="6" height="6" rx="1.5" /></>,
   home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h5v-6h4v6h5V9.5" /></>,
   docs: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h6" /></>,
+  journal: <><path d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6z" /><path d="M6 3v18" /><path d="M10 8h5M10 12h5M10 16h3" /></>,
   deadlines: <><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5" /><path d="M5 3 2.5 5.5M19 3l2.5 2.5" /></>,
   accounts: <><path d="M3 10 12 4l9 6" /><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8" /><path d="M3 20h18" /></>,
   analyse: <><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M21 20H3" /></>,
@@ -2066,7 +2067,7 @@ function AppMain() {
       const c = j.contract;
       const done = ({
         ...doc,
-        status: "done", error: null,
+        status: "done", error: null, confirmed: false,
         title: j.title || doc.fileName,
         category: categories.includes(j.category) ? j.category : "Sonstiges",
         docType: j.doc_type || "Sonstiges",
@@ -2250,7 +2251,9 @@ function AppMain() {
           acc={selAcc} setAcc={setSelAcc} sel={effSel} allSel={allSel} setSel={setSelAccs} accActions={accActions} hiddenAccs={hiddenAccs} visAccounts={visAccounts} groups={groups} toggleGroup={toggleGroup} newAccReq={newAccReq} clearNewAccReq={() => setNewAccReq(false)} />}
         {tab === "docs" && <DocList saveDoc={saveDoc} onFiles={onFiles} docBusy={docBusy} trashDoc={trashDoc} reanalyze={reanalyze} docs={active} categories={categories} onOpen={setOpenId} area={docAreaSel} setArea={setDocAreaSel}
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup}
-          deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null} />}
+          deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null}
+          journalTab={{ label: tabLabel(nav, "journal") || "Journal", open: () => setTab("journal") }} />}
+        {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify} />}
         {tab === "deadlines" && <Deadlines docs={dlDocs} onOpen={openDl} saveDoc={saveDl} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "cash" && <ExpensePage accounts={visAccounts} txs={txs} categories={TX_CATS(categories)} onSave={saveExpense} onScan={scanFor} addCategory={addCategory} notify={notify}
           onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
@@ -5096,6 +5099,249 @@ function useProgressiveAuto(list, step = 60) {
   }, [more, n]);
   return list.length > n ? list.slice(0, n) : list;
 }
+/* ======================= Journal (v0.99): Drei-Spalten-Journal · Prüf-Modus · Monats-Zeitleiste · iPhone-Vollbild ======================= */
+const jDate = (d) => (d.documentDate || d.createdAt || "").slice(0, 10);
+const jMonth = (d) => jDate(d).slice(0, 7);
+const jSigned = (d) => { const t = d.amount?.total; if (t == null || isNaN(t)) return null; return d.direction === "einnahme" ? Math.abs(t) : d.direction === "ausgabe" ? -Math.abs(t) : 0; };
+const jUnconf = (d) => d.confirmed === false;
+const J_FILTERS = [["alle", "▤", "Alle"], ["unbest", "○", "Unbestätigt"], ["unbez", "€", "Unbezahlt"], ["ohnebu", "⬚", "Ohne Buchung"], ["neu", "⇣", "Neu (7 Tage)"]];
+// Werte der KI im PDF suchen → farbige Markierungen (nur PDFs mit Textebene)
+async function docMarks(blob, d) {
+  if (!blob || blob.type !== "application/pdf") return [];
+  const want = [];
+  const money = (v, kind, label) => { if (v == null || isNaN(v) || !+v) return; const a = Math.abs(+v); const de = a.toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    want.push({ kind, label, vars: [...new Set([de, de.replace(/[.\s ]/g, ""), a.toFixed(2), a.toFixed(2).replace(".", ","), a.toLocaleString("en-US", { minimumFractionDigits: 2 })])] }); };
+  money(d.amount?.total, "total", "Betrag"); money(d.amount?.vat, "vat", "USt"); money(d.amount?.net, "net", "Netto");
+  const dt = d.documentDate; if (/^\d{4}-\d{2}-\d{2}$/.test(dt || "")) { const [y, m, dd] = dt.split("-"); want.push({ kind: "date", label: "Datum", vars: [`${dd}.${m}.${y}`, `${+dd}.${+m}.${y}`, `${dd}.${m}.${y.slice(2)}`, dt, `${dd}/${m}/${y}`] }); }
+  if (!want.length) return [];
+  try {
+    const pdf = await (await loadPdfjs()).getDocument({ data: await blob.arrayBuffer() }).promise, out = [];
+    for (let p = 1; p <= Math.min(pdf.numPages, 12); p++) {
+      const pg = await pdf.getPage(p), vp = pg.getViewport({ scale: 1 }), tc = await pg.getTextContent();
+      for (const it of tc.items) {
+        const s = (it.str || "").trim(); if (!s) continue;
+        for (const w of want) {
+          if ((w.n || 0) >= 4) continue;
+          const v = w.vars.find((x) => s === x || s.endsWith(" " + x) || s.startsWith(x + " ") || (x.length >= 6 && s.includes(x)));
+          if (!v) continue;
+          const h = Math.abs(it.transform[3]) || 9, x = it.transform[4], y = it.transform[5], wd = it.width || s.length * h * 0.5;
+          const frac = s.length > v.length ? Math.max(0, s.indexOf(v)) / s.length : 0, fw = s.length > v.length ? v.length / s.length : 1;
+          out.push({ p: p - 1, kind: w.kind, label: w.label, l: (x + wd * frac - 2) / vp.width, r: (x + wd * (frac + fw) + 2) / vp.width, t: 1 - (y + h * 1.05) / vp.height, b: 1 - (y - h * 0.3) / vp.height });
+          w.n = (w.n || 0) + 1;
+        }
+      }
+    }
+    return out;
+  } catch { return []; }
+}
+function JournalPreview({ d, compact = false, onSwipe }) {
+  const [pages, setPages] = useState(null), [marks, setMarks] = useState([]), [err, setErr] = useState("");
+  const sw = useRef(null);
+  useEffect(() => { let dead = false; setPages(null); setMarks([]); setErr("");
+    db.getFile(d.id).then(async (b) => { if (dead) return; if (!b) { setErr("Datei nicht gefunden"); setPages([]); return; }
+      const imgs = await blobToImages(b, Math.min(1600, Math.round((compact ? 700 : 1000) * (window.devicePixelRatio || 1))), 12); if (dead) return; setPages(imgs);
+      const m = await docMarks(b, d); if (!dead) setMarks(m); }).catch((e) => { if (!dead) { setErr(e.message); setPages([]); } });
+    return () => { dead = true; }; }, [d.id, d.amount?.total, d.documentDate]);
+  const ts = (e) => { sw.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
+  const te = (e) => { const s = sw.current; sw.current = null; if (!s || !onSwipe) return; const dx = e.changedTouches[0].clientX - s.x, dy = e.changedTouches[0].clientY - s.y; if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) onSwipe(dx < 0 ? 1 : -1); };
+  return (
+    <div className="jprev" onTouchStart={ts} onTouchEnd={te}>
+      {!pages && <div className="dpload">Beleg wird geladen …</div>}
+      {err && <p className="muted small center-text">{err}</p>}
+      {pages?.map((src, p) => (
+        <div key={p} className="jpage">
+          <img src={src} alt={`Seite ${p + 1}`} />
+          {marks.filter((m) => m.p === p).map((m, i) => <span key={i} className={"jmark jm-" + m.kind} title={m.label} style={{ left: m.l * 100 + "%", width: (m.r - m.l) * 100 + "%", top: m.t * 100 + "%", height: (m.b - m.t) * 100 + "%" }} />)}
+        </div>
+      ))}
+      {!!marks.length && <div className="jlegend">{[["date", "Datum"], ["total", "Betrag"], ["net", "Netto"], ["vat", "USt"]].filter(([k]) => marks.some((m) => m.kind === k)).map(([k, l]) => <span key={k}><i className={"jm-" + k} />{l}</span>)}</div>}
+    </div>
+  );
+}
+function JournalFields({ d, saveDoc, categories, senders, tx, onConfirm, onDetails, onOriginal, pos }) {
+  const [f, setF] = useState(null);
+  useEffect(() => { setF({ title: d.title || "", date: d.documentDate || "", total: d.amount?.total != null ? (+d.amount.total).toFixed(2).replace(".", ",") : "", net: d.amount?.net != null ? (+d.amount.net).toFixed(2).replace(".", ",") : "", vat: d.amount?.vat != null ? (+d.amount.vat).toFixed(2).replace(".", ",") : "", sender: d.sender || "", tags: (d.tags || []).join(", "), notes: d.notes || "" }); }, [d.id]);
+  if (!f) return null;
+  const num = (v) => { const x = parseFloat(String(v).replace(/\s/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".")); return isFinite(x) ? Math.round(x * 100) / 100 : null; };
+  const commit = (patch) => saveDoc({ ...d, ...patch });
+  const blurSave = () => {
+    const amt = num(f.total), n = { ...d, title: f.title.trim() || d.title, documentDate: f.date || d.documentDate, sender: f.sender.trim(), notes: f.notes, tags: f.tags.split(",").map((t) => norm(t).trim()).filter(Boolean) };
+    n.amount = amt == null ? (f.total.trim() ? d.amount : null) : { ...(d.amount || { currency: "EUR" }), total: amt, net: num(f.net), vat: num(f.vat) };
+    if (JSON.stringify(n) !== JSON.stringify(d)) saveDoc(n);
+  };
+  const inp = (k, props = {}) => <input value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} onBlur={blurSave} {...props} />;
+  return (
+    <div className="jfields">
+      {pos && <div className="jpos muted small">{pos}</div>}
+      <div className="seg jdir">{[["ausgabe", "Ausgabe"], ["einnahme", "Einnahme"], ["keine", "Nur Info"]].map(([k, l]) => <button key={k} className={(d.direction || "keine") === k ? "on" : ""} onClick={() => commit({ direction: k })}>{l}</button>)}</div>
+      <label>Titel{inp("title")}</label>
+      <div className="grid2"><label>Datum{inp("date", { type: "date" })}</label><label>Betrag €{inp("total", { inputMode: "decimal", className: "jamt" })}</label></div>
+      <div className="grid2 jx"><label>Netto €{inp("net", { inputMode: "decimal" })}</label><label>USt €{inp("vat", { inputMode: "decimal" })}</label></div>
+      <label className="jx">Kontakt / Absender{inp("sender", { list: "jsenders" })}</label>
+      <datalist id="jsenders">{senders.slice(0, 200).map((s) => <option key={s} value={s} />)}</datalist>
+      <label className="jx">Kategorie<PSelect value={d.category || "Sonstiges"} onChange={(e) => commit({ category: e.target.value })}>{[...new Set([...categories, d.category].filter(Boolean))].map((c) => <option key={c}>{c}</option>)}</PSelect></label>
+      <div className="seg jscope jx">{SCOPES.map(([k, i, l]) => <button key={k} className={docScope(d) === k ? "on" : ""} onClick={() => commit({ scope: k, scopeManual: true })}>{i} {l}</button>)}</div>
+      <label className="jx">Schlagwörter{inp("tags", { placeholder: "z. B. auto, versicherung" })}</label>
+      <label className="jx">Notiz<textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} onBlur={blurSave} /></label>
+      {d.direction === "ausgabe" && <label className="check jx"><input type="checkbox" checked={!!d.paid} onChange={(e) => commit({ paid: e.target.checked, paidDate: e.target.checked ? d.paidDate || todayISO() : undefined })} /> Bezahlt{d.paidDate ? ` am ${fmtDate(d.paidDate)}` : ""}</label>}
+      <div className="jtx jx">{tx ? <span className="pos">✓ Buchung {fmtDate(tx.date)} · {fmtMoney(tx.amount)}</span> : d.amount?.total && d.direction !== "keine" ? <span className="muted">keine Buchung verknüpft</span> : null}</div>
+      <div className="jbtns">
+        <button className="btn primary jconfirm" onClick={() => { blurSave(); onConfirm(); }}>{jUnconf(d) ? "✓ Bestätigen & weiter" : "Weiter ›"}</button>
+        <div className="row"><button className="btn sm" onClick={onDetails}>Alle Details</button><button className="btn sm" onClick={onOriginal}>Original</button></div>
+      </div>
+    </div>
+  );
+}
+function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
+  const mob = useMobileBeta(), [boxW, setBoxW] = useState(1400), narrow = boxW < 1180;
+  const [mode, setMode] = useLsState("jMode", "journal");                       // journal | pruefen | monate
+  const [filt, setFilt] = useLsState("jFilt", "alle");
+  const [sel, setSel] = useLsState("jSel", { y: todayISO().slice(0, 4), m: "" });
+  const [facet, setFacet] = useState(null);                                        // { k: "cat"|"contact"|"tag", v }
+  const [openY, setOpenY] = useLsState("jOpenY", { [todayISO().slice(0, 4)]: true });
+  const [cur, setCur] = useState(null), [side, setSide] = useState(false), [phoneOpen, setPhoneOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const txByDoc = useMemo(() => { const m = new Map(); for (const t of txs) if (t.docId) m.set(t.docId, t); return m; }, [txs]);
+  const base = useMemo(() => docs.filter((d) => !d.deletedAt && !d.stmt), [docs]);
+  const week = new Date(Date.now() - 7 * 864e5).toISOString();
+  const test = { alle: () => true, unbest: jUnconf, unbez: (d) => d.direction === "ausgabe" && d.amount?.total && !d.paid, ohnebu: (d) => d.amount?.total && d.direction !== "keine" && !txByDoc.has(d.id) && !d.paidCash, neu: (d) => (d.createdAt || "") >= week };
+  const cnt = (k) => base.filter(test[k]).length;
+  const years = useMemo(() => [...new Set(base.map((d) => jDate(d).slice(0, 4)).filter(Boolean))].sort().reverse(), [base]);
+  const effFilt = mode === "pruefen" ? "unbest" : filt;
+  const list = useMemo(() => {
+    const qn = norm(q);
+    return base.filter((d) => test[effFilt](d)
+      && (mode === "pruefen" || !sel.y || (sel.y === "ohne" ? !jDate(d) : jDate(d).startsWith(sel.y + (sel.m ? "-" + sel.m : ""))))
+      && (!facet || (facet.k === "cat" ? d.category === facet.v : facet.k === "contact" ? (facet.v ? (d.sender || "") === facet.v : !d.sender) : (d.tags || []).includes(facet.v)))
+      && (!qn || norm(`${d.title} ${d.sender} ${d.category} ${(d.tags || []).join(" ")} ${d.amount?.total ?? ""}`).includes(qn)))
+      .sort((a, b) => jDate(b).localeCompare(jDate(a)) || (b.createdAt || "").localeCompare(a.createdAt || ""));
+  }, [base, effFilt, sel, facet, q, mode, txByDoc]);
+  const listV = useProgressiveAuto(list, 80);
+  const curDoc = list.find((d) => d.id === cur) || (mob ? null : list[0]) || null;
+  useEffect(() => { if (!mob && !list.some((d) => d.id === cur)) setCur(list[0]?.id || null); }, [list, mob]);
+  const idx = curDoc ? list.findIndex((d) => d.id === curDoc.id) : -1;
+  const go = (dir) => { const n = list[idx + dir]; if (n) { setCur(n.id); setTimeout(() => document.querySelector(`.jrow[data-id="${n.id}"]`)?.scrollIntoView({ block: "nearest" }), 0); } };
+  const confirm = async () => {
+    if (!curDoc) return;
+    const nextId = list[idx + 1]?.id || list[idx - 1]?.id || null;
+    if (jUnconf(curDoc)) await saveDoc({ ...curDoc, confirmed: true, confirmedAt: new Date().toISOString() });
+    if (mode === "pruefen") { if (nextId) setCur(nextId); else { notify?.("Alle Belege geprüft ✓"); setPhoneOpen(false); } } else go(1);
+  };
+  useEffect(() => {
+    if (mob) return;
+    const k = (e) => { if (e.target.closest("input,textarea,select,[contenteditable]") || document.querySelector(".win:not(.small) .panelhead")) return;
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") { e.preventDefault(); go(1); } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") { e.preventDefault(); go(-1); } else if (e.key === "Enter") { e.preventDefault(); confirm(); } };
+    addEventListener("keydown", k); return () => removeEventListener("keydown", k);
+  });
+  // Höhe: Spalten füllen den Bildschirm bis unten
+  const boxRef = useRef(null), [boxH, setBoxH] = useState(null);
+  useEffect(() => { if (mob) return; const f = () => { const r = boxRef.current?.getBoundingClientRect(); if (r) { setBoxH(Math.max(420, Math.round(innerHeight - r.top - 14))); setBoxW(Math.round(r.width)); } }; f(); addEventListener("resize", f); const t = setTimeout(f, 300);
+    const ro = boxRef.current ? new ResizeObserver(f) : null; ro?.observe(boxRef.current); return () => { removeEventListener("resize", f); clearTimeout(t); ro?.disconnect(); }; }, [mob, mode]);
+  const sum = list.reduce((s, d) => s + (jSigned(d) || 0), 0);
+  const senders = useMemo(() => { const m = {}; base.forEach((d) => { if (d.sender) m[d.sender] = (m[d.sender] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([s]) => s); }, [base]);
+  const catCnt = useMemo(() => { const m = {}; base.forEach((d) => { m[d.category] = (m[d.category] || 0) + 1; }); return m; }, [base]);
+  const tagCnt = useMemo(() => { const m = {}; base.forEach((d) => (d.tags || []).forEach((t) => { m[t] = (m[t] || 0) + 1; })); return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 20); }, [base]);
+  const monthsOf = (y) => [...new Set(base.filter((d) => jDate(d).startsWith(y)).map((d) => jMonth(d).slice(5, 7)))].sort();
+  const pickYM = (y, m = "") => { setSel({ y, m }); setFacet(null); if (mode === "monate" && m) setMode("journal"); setSide(false); };
+
+  const modeBar = (
+    <div className="jmodes">
+      <div className="seg">{[["journal", "📓 Journal"], ["pruefen", `✓ Prüfen${cnt("unbest") ? " (" + cnt("unbest") + ")" : ""}`], ["monate", "🗓 Monate"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); if (k === "pruefen") { const f = base.filter(jUnconf).sort((a, b) => jDate(b).localeCompare(jDate(a)))[0]; setCur(f?.id || null); if (mob && f) setPhoneOpen(true); } }}>{l}</button>)}</div>
+      {mode !== "monate" && <SearchBox className="sbplain jsearch" icon={false} value={q} onChange={setQ} placeholder="Belege durchsuchen" />}
+      {!mob && narrow && mode !== "monate" && <button className="btn sm" onClick={() => setSide(!side)}>☰ Filter</button>}
+    </div>
+  );
+  const sidebar = (
+    <nav className={"jside" + (side ? " open" : "")}>
+      {J_FILTERS.map(([k, ic, l]) => <button key={k} className={"jsi" + (filt === k && mode !== "pruefen" ? " on" : "")} onClick={() => { setFilt(k); if (mode === "pruefen") setMode("journal"); setSide(false); }}><span className="jic">{ic}</span><span className="grow">{l}</span>{k !== "alle" && cnt(k) > 0 && <span className="jcnt">{cnt(k)}</span>}</button>)}
+      <h5>Journal</h5>
+      {years.map((y) => (<React.Fragment key={y}>
+        <button className={"jsi" + (sel.y === y && !sel.m ? " on" : "")} onClick={() => { setOpenY({ ...openY, [y]: !openY[y] }); pickYM(y); }}><span className="jic">{openY[y] ? "▾" : "▸"}</span><span className="grow">📁 {y}</span></button>
+        {openY[y] && monthsOf(y).map((m) => <button key={m} className={"jsi jsub" + (sel.y === y && sel.m === m ? " on" : "")} onClick={() => pickYM(y, m)}><span className="grow">{MONTHS_DE[+m - 1]}</span><span className="jcnt">{base.filter((d) => jMonth(d) === y + "-" + m).length}</span></button>)}
+      </React.Fragment>))}
+      {base.some((d) => !jDate(d)) && <button className={"jsi" + (sel.y === "ohne" ? " on" : "")} onClick={() => pickYM("ohne")}><span className="jic">📁</span><span className="grow">Ohne Datum</span></button>}
+      <button className={"jsi" + (!sel.y ? " on" : "")} onClick={() => pickYM("")}><span className="jic">∞</span><span className="grow">Alle Jahre</span></button>
+      <h5>Kontakte</h5>
+      <button className={"jsi" + (facet?.k === "contact" && !facet.v ? " on" : "")} onClick={() => setFacet(facet?.k === "contact" && !facet.v ? null : { k: "contact", v: "" })}><span className="jic">🏢</span><span className="grow">Nicht zugewiesen</span></button>
+      {senders.slice(0, 12).map((s) => <button key={s} className={"jsi" + (facet?.k === "contact" && facet.v === s ? " on" : "")} onClick={() => setFacet(facet?.v === s ? null : { k: "contact", v: s })}><span className="jic">·</span><span className="grow one">{s}</span></button>)}
+      <h5>Kategorien</h5>
+      {categories.filter((c) => catCnt[c]).map((c) => <button key={c} className={"jsi" + (facet?.k === "cat" && facet.v === c ? " on" : "")} onClick={() => setFacet(facet?.v === c && facet.k === "cat" ? null : { k: "cat", v: c })}><span className="jic"><CatGlyph c={c} /></span><span className="grow one">{c}</span><span className="jcnt">{catCnt[c]}</span></button>)}
+      {!!tagCnt.length && <h5>Schlagwörter</h5>}
+      {tagCnt.map(([t, n]) => <button key={t} className={"jsi" + (facet?.k === "tag" && facet.v === t ? " on" : "")} onClick={() => setFacet(facet?.v === t && facet.k === "tag" ? null : { k: "tag", v: t })}><span className="jic">#</span><span className="grow one">{t}</span><span className="jcnt">{n}</span></button>)}
+    </nav>
+  );
+  const row = (d) => { const v = jSigned(d); return (
+    <button key={d.id} data-id={d.id} className={"jrow" + (curDoc?.id === d.id ? " on" : "")} onClick={() => { setCur(d.id); if (mob) setPhoneOpen(true); }}>
+      <span className={"jdot" + (jUnconf(d) ? " un" : "")} title={jUnconf(d) ? "unbestätigt" : "bestätigt"} />
+      <span className="grow"><span className="jrd">{jDate(d) ? fmtDate(jDate(d)).slice(0, 6) + fmtDate(jDate(d)).slice(8) : "–"}</span><small className="one">{d.sender || d.title}</small></span>
+      <span className="jra"><b className={v > 0 ? "pos" : ""}>{v != null && v !== 0 ? fmtMoney(Math.abs(v)).replace("€ ", "") : d.amount?.total ? fmtMoney(d.amount.total).replace("€ ", "") : ""}</b>{v != null && v !== 0 && <i className={v > 0 ? "up" : "down"}>{v > 0 ? "▴" : "▾"}</i>}
+        {d.amount?.currency && d.amount.currency !== "EUR" && <small className="muted block">{d.amount.currency}</small>}</span>
+    </button>); };
+  const fields = curDoc && <JournalFields key={curDoc.id} d={curDoc} saveDoc={saveDoc} categories={categories} senders={senders} tx={txByDoc.get(curDoc.id)} onConfirm={confirm}
+    onDetails={() => onOpen(curDoc.id)} onOriginal={async () => { const b = await db.getFile(curDoc.id); if (b) openPdf(b, curDoc.fileName || "Beleg.pdf", curDoc.title); }}
+    pos={mode === "pruefen" ? `${idx + 1} von ${list.length} unbestätigt` : `${idx + 1} von ${list.length}`} />;
+
+  /* ---------- 3 · Monats-Zeitleiste ---------- */
+  if (mode === "monate") {
+    const ms = {}; base.forEach((d) => { const k = jMonth(d) || "ohne"; (ms[k] = ms[k] || []).push(d); });
+    const keys = Object.keys(ms).filter((k) => !sel.y || sel.y === "ohne" || k.startsWith(sel.y)).sort().reverse();
+    return (
+      <div className="jpage-wrap">{modeBar}
+        <div className="chips jyears">{["", ...years].map((y) => <button key={y || "alle"} className={"chip" + (sel.y === y ? " on" : "")} onClick={() => setSel({ y, m: "" })}>{y || "Alle"}</button>)}</div>
+        <div className="jmonths">{keys.map((k) => { const l = ms[k], out = l.filter((d) => (jSigned(d) || 0) < 0).reduce((s, d) => s - jSigned(d), 0), inc = l.filter((d) => (jSigned(d) || 0) > 0).reduce((s, d) => s + jSigned(d), 0), un = l.filter(jUnconf).length;
+          const cats = {}; l.forEach((d) => { if ((jSigned(d) || 0) < 0) cats[d.category] = (cats[d.category] || 0) - jSigned(d); }); const top = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+          return (<button key={k} className="tile jmonth" onClick={() => { if (k === "ohne") pickYM("ohne"); else { setSel({ y: k.slice(0, 4), m: k.slice(5, 7) }); setOpenY({ ...openY, [k.slice(0, 4)]: true }); setMode("journal"); } }}>
+            <div className="jmh"><b>{k === "ohne" ? "Ohne Datum" : MONTHS_DE[+k.slice(5, 7) - 1] + " " + k.slice(0, 4)}</b><span className={"stpill " + (un ? "st-open" : "st-paid")}>{un ? `${un} unbestätigt` : "alle bestätigt"}</span></div>
+            <div className="jmk"><span>{l.length} Belege</span>{out > 0 && <b className="neg">−{fmtMoney(out)}</b>}{inc > 0 && <b className="pos">+{fmtMoney(inc)}</b>}</div>
+            {out > 0 && <div className="jbar">{top.slice(0, 5).map(([c, v]) => <span key={c} title={`${c}: ${fmtMoney(v)}`} style={{ flex: v, background: catMeta(c).color }} />)}</div>}
+            <small className="muted one">{top.slice(0, 3).map(([c, v]) => `${c} ${fmtMoney(v).replace(",00", "")}`).join(" · ")}</small>
+          </button>); })}
+          {!keys.length && <MEmpty>Keine Belege.</MEmpty>}</div>
+      </div>);
+  }
+  /* ---------- 4 · iPhone ---------- */
+  if (mob) {
+    const groups = mGroup(listV, (d) => jMonth(d));
+    return (
+      <div className="jpage-wrap jmob">{modeBar}
+        <div className="chips jchips">{J_FILTERS.map(([k, ic, l]) => <button key={k} className={"chip" + (effFilt === k ? " on" : "")} onClick={() => { setFilt(k); if (mode === "pruefen") setMode("journal"); }}>{l}{k !== "alle" && cnt(k) ? ` ${cnt(k)}` : ""}</button>)}</div>
+        {mode !== "pruefen" && <div className="chips jyears">{["", ...years].map((y) => <button key={y || "alle"} className={"chip" + (sel.y === y && !sel.m ? " on" : "")} onClick={() => setSel({ y, m: "" })}>{y || "Alle"}</button>)}{sel.m && <button className="chip on" onClick={() => setSel({ ...sel, m: "" })}>{MONTHS_DE[+sel.m - 1]} ✕</button>}</div>}
+        <div className="jmlist">{groups.map(([m, l]) => <React.Fragment key={m}>
+          <div className="jmhead"><span>{m ? MONTHS_DE[+m.slice(5, 7) - 1] + " " + m.slice(0, 4) : "Ohne Datum"}</span><span className="muted">{fmtMoney(l.reduce((s, d) => s + (jSigned(d) || 0), 0))}</span></div>
+          {l.map(row)}</React.Fragment>)}
+          {!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege für diese Auswahl."}</MEmpty>}</div>
+        {phoneOpen && curDoc && createPortal(
+          <div className="jphone">
+            <div className="jphead"><button className="link" onClick={() => setPhoneOpen(false)}>‹ Journal</button><b className="one">{curDoc.title}</b>
+              <span className="jpnav"><button className="iconbtn" disabled={idx <= 0} onClick={() => go(-1)} aria-label="Vorheriger">‹</button><button className="iconbtn" disabled={idx >= list.length - 1} onClick={() => go(1)} aria-label="Nächster">›</button></span></div>
+            <JournalPreview d={curDoc} compact onSwipe={go} />
+            <JPhoneSheet>{fields}</JPhoneSheet>
+          </div>, document.querySelector(".app") || document.body)}
+      </div>);
+  }
+  /* ---------- 1 + 2 · Drei-Spalten-Journal / Prüf-Modus ---------- */
+  return (
+    <div className="jpage-wrap">{modeBar}
+      <div ref={boxRef} className={"jgrid" + (narrow ? " narrow" : "") + (mode === "pruefen" ? " pruef" : "")} style={boxH ? { height: boxH } : undefined}>
+        {mode !== "pruefen" && sidebar}
+        {side && narrow && <div className="jscrim" onClick={() => setSide(false)} />}
+        <div className="jlist">
+          <div className="jlhead">{mode === "pruefen" ? <b>Zu prüfen</b> : <b>{facet ? (facet.v || "Nicht zugewiesen") : sel.m ? MONTHS_DE[+sel.m - 1] + " " + sel.y : sel.y === "ohne" ? "Ohne Datum" : sel.y || "Alle Jahre"}</b>}<small className="muted">{list.length}</small></div>
+          <div className="jlscroll">{listV.map(row)}{!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege."}</MEmpty>}</div>
+          <div className="jlsum"><span className="muted">Summe</span><b className={sum >= 0 ? "pos" : "neg"}>{fmtMoney(sum)}</b></div>
+        </div>
+        <div className="jcenter">{curDoc ? <JournalPreview d={curDoc} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}</div>
+        <div className="jinsp">{fields}</div>
+      </div>
+      {mode === "pruefen" && <small className="muted block jhint">Tastatur: ↑/↓ wechseln · Enter = Bestätigen &amp; weiter</small>}
+    </div>
+  );
+}
+function JPhoneSheet({ children }) {
+  const [open, setOpen] = useState(false);
+  return <div className={"jpsheet" + (open ? " open" : "")}><button className="jpgrab" onClick={() => setOpen(!open)} aria-label={open ? "Felder verkleinern" : "Alle Felder"}><span />{open ? "Weniger" : "Alle Felder"}</button><div className="jpsbody">{children}</div></div>;
+}
+
 /* Zeile der Dokumentenliste – nur neu zeichnen, wenn sich das Dokument selbst ändert (v0.98.1) */
 const DocListRow = React.memo(function DocListRow({ d, pickMode, picked, prevOpen, h }) {
   const H = h.current;
@@ -5124,7 +5370,7 @@ const DocListRow = React.memo(function DocListRow({ d, pickMode, picked, prevOpe
     </div></SwipeRow>
     </div>);
 }, (a, b) => a.d === b.d && a.pickMode === b.pickMode && a.picked === b.picked && a.prevOpen === b.prevOpen && a.cats === b.cats);
-function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, onFiles, docBusy }) {
+function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, journalTab, onFiles, docBusy }) {
   const [showDrop, setShowDrop] = useLsState("docDrop", true);
   const [chipCfg, setChipCfg] = useLsState("docChips", { order: [], hidden: [] });
   const [q, setQ] = useState("");
@@ -5210,6 +5456,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
       <div className="lbchips">{["", ...MONTHS_DE.map((_, i) => String(i + 1).padStart(2, "0"))].map((m) => <button key={m || "alle"} className={"chip" + (month === m ? " on" : "")} onClick={() => setMonth(m)}>{m ? MONTHS_DE[Number(m) - 1].slice(0, 3) : "Alle"}</button>)}</div>
     </>}
     actions={[{ k: "pick", icon: "☑", title: pick ? "Auswahl beenden" : "Auswählen", sub: "mehrere exportieren, taggen, löschen", run: () => setPick(pick ? null : new Set()) },
+      journalTab && { k: "journal", icon: "📓", title: journalTab.label, sub: "Belege prüfen, Monate, Vorschau", run: journalTab.open },
       deadlineTab && { k: "frist", icon: "⏰", title: deadlineTab.label, run: deadlineTab.open }, ...[...(onFiles ? [{ k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }] : []), { head: "Export" }, ...exp2pick(docExp.slice(1))]]} />;
   const tagDocs = async (sel) => { const f = kitTagPrompt(sel); if (!f || !saveDoc) return; for (const d of sel) await saveDoc({ ...d, tags: f(d) }); };
   const status = (d) => d.status === "processing" ? <span className="muted small">⏳ wird analysiert …</span> : d.status === "error" ? <span className="err">⚠️ {d.error}{reanalyze && <button className="retry" onClick={(e) => { e.stopPropagation(); reanalyze(d); }}>↻ Neu analysieren</button>}</span> : null;
@@ -12534,7 +12781,7 @@ img{max-width:100%}
 @media (min-width:768px){
   :root{--side:224px}
   .app{max-width:none;margin:0;padding:22px 28px 48px calc(var(--side) + 28px)}
-  main,.top{max-width:1240px}
+  main,.top{max-width:none}
   nav.bottom{top:0;bottom:0;right:auto;width:var(--side);flex-direction:column;align-items:stretch;gap:2px;padding:18px 10px 24px;border-top:0;border-right:1px solid var(--line);background:var(--card);overflow-y:auto}
   .brand{display:flex!important;align-items:center;gap:10px;padding:2px 10px 20px}
   .brand img{width:38px;height:38px;border-radius:10px;box-shadow:0 2px 8px #0b63f633}
@@ -15231,4 +15478,74 @@ html.dark .scpick.sc-firma .scpickbtn{color:#fbbf24!important}html.dark .scpick.
 .ctstatepick .ctstate{cursor:pointer;display:inline-flex;align-items:center;gap:4px}
 .ctacts{display:flex;align-items:center;gap:6px}
 @media (max-width:700px){.scpick .scpickbtn{min-height:32px;padding:4px 10px;font-size:13px}.stmtctl{gap:4px}}
+
+/* ======================= v0.99: Journal ======================= */
+.jpage-wrap{display:flex;flex-direction:column;gap:10px}
+.jmodes{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.jmodes .seg button{white-space:nowrap}.jmodes .jsearch{flex:1;min-width:200px;max-width:420px}
+.jgrid{display:grid;grid-template-columns:230px 270px minmax(0,1fr) 310px;gap:10px;min-height:420px}
+.jgrid.pruef{grid-template-columns:270px minmax(0,1fr) 330px}
+.jgrid.narrow{grid-template-columns:240px minmax(0,1fr) 290px;position:relative}
+.jgrid.narrow .jside{position:absolute;left:0;top:0;bottom:0;z-index:20;width:250px;transform:translateX(-110%);transition:transform .2s;box-shadow:0 10px 40px #0004}
+.jgrid.narrow .jside.open{transform:none}.jgrid.narrow .jside:not(.open){visibility:hidden;pointer-events:none}.jgrid.narrow .jside{transition:transform .2s,visibility .2s}
+.jscrim{position:absolute;inset:0;z-index:19;background:#0003;border-radius:16px}
+.jside,.jlist,.jinsp,.jcenter{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:auto;min-height:0}
+.jside{padding:10px 8px;display:flex;flex-direction:column;gap:1px}
+.jside h5{margin:12px 8px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.jsi{display:flex;align-items:center;gap:8px;padding:6px 8px;border:0;background:none;color:var(--txt);font:inherit;font-size:14px;border-radius:9px;cursor:pointer;text-align:left;min-width:0}
+.jsi:hover{background:var(--card2)}.jsi.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);font-weight:600}
+.jsi.jsub{padding-left:30px}.jsi .jic{width:18px;text-align:center;flex:none;display:inline-flex;justify-content:center}.jsi .jic .catimg{width:16px;height:16px}
+.jcnt{font-size:11px;background:var(--card2);color:var(--mut);border-radius:9px;padding:1px 7px;flex:none}
+.jlist{display:flex;flex-direction:column;padding:0}
+.jlhead{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+.jlscroll{flex:1;overflow:auto;min-height:0}
+.jlsum{display:flex;justify-content:space-between;padding:10px 12px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+.jrow{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--txt);font:inherit;text-align:left;cursor:pointer}
+.jrow:hover{background:var(--card2)}.jrow.on{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+.jrow .grow{min-width:0;display:flex;flex-direction:column}.jrow small{color:var(--mut);font-size:12px}
+.jrd{font-size:14px;font-variant-numeric:tabular-nums}
+.jra{text-align:right;flex:none;font-variant-numeric:tabular-nums}.jra b{font-size:15px}.jra i{font-style:normal;margin-left:3px;font-size:11px}.jra i.down{color:var(--red)}.jra i.up{color:var(--ok,#16a34a)}
+.jdot{width:9px;height:9px;border-radius:50%;flex:none;border:2px solid var(--line)}.jdot.un{background:#3b82f6;border-color:#3b82f6}
+.jcenter{background:var(--card2);padding:0}
+.jprev{display:flex;flex-direction:column;gap:0;padding:12px;min-height:100%}
+.jpage{position:relative;background:#fff;box-shadow:0 1px 6px #0002;border-radius:3px}
+.jpage+.jpage{margin-top:14px}.jpage+.jpage::before{content:"";position:absolute;left:0;right:0;top:-8px;border-top:2px dashed var(--mut);opacity:.5}
+.jpage img{display:block;width:100%;height:auto}
+.jmark{position:absolute;border-radius:3px;mix-blend-mode:multiply;pointer-events:none}
+.jm-total{background:#a78bfa66;box-shadow:0 0 0 1.5px #8b5cf6}.jm-date{background:#86efac88;box-shadow:0 0 0 1.5px #22c55e}.jm-vat{background:#fde04788;box-shadow:0 0 0 1.5px #eab308}.jm-net{background:#93c5fd88;box-shadow:0 0 0 1.5px #3b82f6}
+.jlegend{position:sticky;bottom:6px;align-self:center;display:flex;gap:12px;font-size:12px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin-top:10px}
+.jlegend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-2px}
+.jinsp{padding:12px}
+.jfields{display:flex;flex-direction:column;gap:8px}
+.jfields label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--mut)}
+.jfields input,.jfields textarea{font-size:14px}
+.jfields .jamt{font-weight:700;text-align:right}
+.jfields .grid2{gap:8px}.jfields label.check{flex-direction:row;align-items:center;color:var(--txt);font-size:14px}
+.jfields .seg button{padding:6px 8px;font-size:13px}
+.jpos{text-align:center}
+.jtx{font-size:13px}
+.jbtns{display:flex;flex-direction:column;gap:8px;margin-top:6px;position:sticky;bottom:-12px;background:var(--card);padding:8px 0 4px}
+.jbtns .row{gap:6px}.jbtns .row .btn{flex:1}
+.jconfirm{min-height:44px;font-size:15px}
+.jhint{text-align:right}
+.jyears,.jchips{flex-wrap:nowrap;overflow-x:auto}
+.jmonths{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.jmonth{display:flex;flex-direction:column;gap:8px;text-align:left;cursor:pointer;font:inherit;color:var(--txt);padding:14px}
+.jmh{display:flex;justify-content:space-between;align-items:center;gap:8px}.jmh b{font-size:16px}
+.jmk{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;font-size:14px}
+.jbar{display:flex;height:8px;border-radius:5px;overflow:hidden;background:var(--card2)}.jbar span{min-width:3px}
+/* iPhone */
+.jmob .jmlist{background:var(--card);border-radius:16px;overflow:hidden;border:1px solid var(--line)}
+.jmhead{display:flex;justify-content:space-between;padding:10px 14px 6px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);background:var(--card2)}
+.jmob .jrow{padding:12px 14px}
+.jphone{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+.jphead{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
+.jphead b{flex:1;min-width:0;text-align:center;font-size:15px}.jpnav{display:flex;gap:4px}.jpnav .iconbtn{width:34px;height:34px;font-size:20px}
+.jphone .jprev{flex:1;overflow:auto;padding:10px 10px 200px}
+.jpsheet{position:fixed;left:0;right:0;bottom:0;z-index:61;background:var(--card);border-radius:20px 20px 0 0;box-shadow:0 -10px 30px #0003;max-height:60dvh;display:flex;flex-direction:column;transition:max-height .25s ease}
+.jpsheet.open{max-height:88dvh}
+.jpgrab{border:0;background:none;color:var(--acc);font:inherit;font-size:13px;font-weight:600;padding:6px 0 2px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
+.jpgrab span{width:40px;height:5px;border-radius:3px;background:var(--mut);opacity:.45}
+.jpsbody{overflow:auto;padding:4px 14px calc(env(safe-area-inset-bottom) + 12px)}
+.jpsheet:not(.open) .jx,.jpsheet:not(.open) .jfields .jbtns .row{display:none!important}
+.jpsheet .jbtns{position:static;padding:4px 0 0}
 `;

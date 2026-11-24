@@ -2,6 +2,20 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.1 – Volle Fensterbreite am Desktop
+
+Der Inhaltsbereich war am Desktop auf 1240 px Breite begrenzt. Jetzt wächst er mit dem Browserfenster mit (Dokumente, Übersicht, Rechnungen, Journal usw.).
+
+## v0.99.0 – Journal für Belege
+
+Neuer Reiter **Journal** (unter Dokumente; am iPhone über Dokumente → „⋯“ → Journal) mit allen vier Ansichten:
+1. **Drei-Spalten-Journal** (Mac, iPad quer): links Filter (Alle, Unbestätigt, Unbezahlt, Ohne Buchung, Neu), Journal nach Jahr/Monat, Kontakte, Kategorien, Schlagwörter; Mitte Belegliste mit Summe; rechts große Vorschau aller Seiten und daneben die Felder zum direkten Bearbeiten. Auf schmaleren Bildschirmen klappt die Filterspalte über „☰ Filter“ ein.
+2. **Prüf-Modus „Bestätigen & weiter“:** neue, von der KI gelesene Belege sind „unbestätigt“ (blauer Punkt) und werden der Reihe nach geprüft; Tastatur ↑/↓ und Enter.
+3. **Monate:** Monatskarten mit Anzahl, Ausgaben/Einnahmen, Kategorie-Balken und Prüfstatus; Antippen öffnet den Monat im Journal.
+4. **iPhone:** Monatsliste → Beleg im Vollbild, Felder als Karte unten (hochziehbar), Wischen oder ‹ › für den nächsten Beleg.
+
+**Dokumentenvorschau mit Markierungen:** In PDFs mit Text markiert FinDocu, wo die KI Datum (grün), Betrag (violett), Netto (blau) und USt (gelb) gefunden hat. Bisherige Belege gelten als bestätigt; nur neu ausgelesene starten als unbestätigt.
+
 ## v0.98.3 – Dropdown-Menüs in den Zeilen
 
 - **Steuerberater (Prüfen, Kontoauszug):** statt der drei Knöpfe Firma/Privat/Unklar ein farbiges Dropdown mit der aktuellen Zuordnung (inkl. „Aufteilen …“); „Buchung öffnen“, „Frage an den Steuerberater“ und „Im PDF zeigen“ im „⋯“-Menü.
