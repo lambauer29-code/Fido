@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.97.5 – Fahrzeugkarte im Fahrtenbuch kompakt
+
+- Fahrzeugkarte nach Vorschlag 2: Name, Modell und Kilometerstand in einer Kopfzeile, vier kleine Kennzahl-Kacheln, Schnellaktionen als schmale Knöpfe. Desktop ca. 210 px statt ca. 380 px hoch, iPhone ca. 185 px; Kennzahlen jetzt auch am iPhone sichtbar.
+
+## v0.97.4 – Hochgeladene Symbole anpassen
+
+- Beim Hochladen eines eigenen Symbols öffnet sich „Symbol anpassen“: Größe (Zoom), Verschieben durch Ziehen, Einpassen/Füllen/Zentrieren, 90° drehen, leere/weiße Ränder abschneiden, Abstand zum Rand, Hintergrund (transparent, weiß, schwarz, eigene Farbe), runde Vorschau in drei Größen.
+- Gilt überall, wo Symbole hochgeladen werden: Fahrtenbuch-Symbole, Sync-Anbieter, Konten, Kategorien und Kontaktarten, Fahrzeuge.
+
 ## v0.97.3 – Kopfbereich klappt nicht mehr ein
 
 - Das Ein- und Ausklappen des Kopfbereichs beim Scrollen (Fahrzeugkarte, Kennzahlen, Ablagefeld, kleiner Titel) ist in allen Menüs und auf allen Geräten abgeschaltet. Der Code ist nur deaktiviert (`HDR_COLLAPSE`, `LB_MINI`), noch nicht gelöscht.

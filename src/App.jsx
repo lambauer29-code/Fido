@@ -500,10 +500,107 @@ function AccIcon({ a, className = "ki", force = false }) {
   if (a.icon) return <span className={className + " custom"}>{a.icon}</span>;
   return <span className={className}>{kindIcon(a.kind)}</span>;
 }
+
+function loadImgEl(file) {
+  return new Promise((res, rej) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => res(im); im.onerror = () => { URL.revokeObjectURL(u); rej(new Error("Bild konnte nicht gelesen werden")); }; im.src = u; });
+}
+// Ränder (transparent oder fast weiß) abschneiden → neues Canvas
+function trimImage(src) {
+  const W = src.naturalWidth || src.width, H = src.naturalHeight || src.height, k = Math.min(1, 1200 / Math.max(W, H));
+  const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(W * k)); c.height = Math.max(1, Math.round(H * k));
+  const g = c.getContext("2d"); g.drawImage(src, 0, 0, c.width, c.height);
+  const d = g.getImageData(0, 0, c.width, c.height).data; let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) { const i = (y * c.width + x) * 4; if (d[i + 3] > 12 && !(d[i] > 245 && d[i + 1] > 245 && d[i + 2] > 245)) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+  if (x1 < 0) return null;
+  const o = document.createElement("canvas"); o.width = x1 - x0 + 1; o.height = y1 - y0 + 1; o.getContext("2d").drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height); return o;
+}
+const ICON_BGS = [["", "Transparent"], ["#ffffff", "Weiß"], ["#000000", "Schwarz"]];
+function drawIcon(g, size, img, st) {
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, inner = size * (1 - 2 * st.pad);
+  g.clearRect(0, 0, size, size);
+  if (st.bg) { g.fillStyle = st.bg; g.fillRect(0, 0, size, size); }
+  const rw = st.rot % 180 ? h : w, rh = st.rot % 180 ? w : h, sc = st.zoom * Math.min(inner / rw, inner / rh);
+  g.save(); g.translate(size / 2 + st.fx * size, size / 2 + st.fy * size); g.rotate((st.rot * Math.PI) / 180);
+  g.imageSmoothingQuality = "high"; g.drawImage(img, (-w * sc) / 2, (-h * sc) / 2, w * sc, h * sc); g.restore();
+}
+function IconEditHost() {
+  const [job, setJob] = useState(null);
+  useEffect(() => { iconEditUi = setJob; return () => { iconEditUi = null; }; }, []);
+  return job ? <IconEditWin key={job.file.name + job.file.size + job.file.lastModified} job={job} onDone={(v) => { job.res(v); setJob(null); }} /> : null;
+}
+function IconEditWin({ job, onDone }) {
+  const [orig, setOrig] = useState(null), [img, setImg] = useState(null), [err, setErr] = useState("");
+  const coverZoom = (im) => { const w = im.naturalWidth || im.width, h = im.naturalHeight || im.height; return Math.max(w, h) / Math.min(w, h); };
+  const [st, setSt] = useState({ zoom: 1, fx: 0, fy: 0, rot: 0, pad: 0, bg: "", trim: false });
+  const [round, setRound] = useState(!!job.round);
+  const cv = useRef(null), drag = useRef(null), V = 260;
+  useEffect(() => { loadImgEl(job.file).then((im) => { setOrig(im); setImg(im); setSt((x) => ({ ...x, zoom: job.contain ? 1 : coverZoom(im) })); }).catch((e) => setErr(e.message)); }, []);
+  useEffect(() => { if (!img || !cv.current) return; const c = cv.current, dpr = window.devicePixelRatio || 1; c.width = c.height = V * dpr; const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); drawIcon(g, V, img, st); }, [img, st]);
+  const set = (p) => setSt((x) => ({ ...x, ...p }));
+  const toggleTrim = () => { if (st.trim) { setImg(orig); set({ trim: false, fx: 0, fy: 0, zoom: 1 }); } else { const t = trimImage(orig); if (!t) return; setImg(t); set({ trim: true, fx: 0, fy: 0, zoom: 1 }); } };
+  const out = (size = job.px) => { const c = document.createElement("canvas"); c.width = c.height = size; drawIcon(c.getContext("2d"), size, img, st); return c.toDataURL("image/png"); };
+  const [pv, setPv] = useState("");
+  useEffect(() => { if (img) { const t = setTimeout(() => setPv(out(96)), 60); return () => clearTimeout(t); } }, [img, st]);
+  const onDown = (e) => { e.currentTarget.setPointerCapture?.(e.pointerId); drag.current = { x: e.clientX, y: e.clientY, fx: st.fx, fy: st.fy }; };
+  const onMove = (e) => { const d = drag.current; if (!d) return; set({ fx: Math.max(-1, Math.min(1, d.fx + (e.clientX - d.x) / V)), fy: Math.max(-1, Math.min(1, d.fy + (e.clientY - d.y) / V)) }); };
+  const onUp = () => { drag.current = null; };
+  const onWheel = (e) => { e.preventDefault(); set({ zoom: Math.max(0.1, Math.min(6, st.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08))) }); };
+  useEffect(() => { const c = cv.current; if (!c) return; c.addEventListener("wheel", onWheel, { passive: false }); return () => c.removeEventListener("wheel", onWheel); });
+  const zPct = Math.round(st.zoom * 100);
+  return createPortal(
+    <Win id="iconedit" onClose={() => onDone(null)} dirty={false} small defW={660} className="iconeditwin">
+      <div className="panelhead"><b>{job.title || "Symbol anpassen"}</b>
+        <button className="btn primary" disabled={!img} onClick={() => onDone(out())}>Übernehmen</button><XBtn /></div>
+      {err && <div className="lookbox err">{err}</div>}
+      {!img && !err && <div className="dpload">Bild wird geladen …</div>}
+      {img && <div className="icedit">
+        <div className="icstage">
+          <div className={"icframe" + (round ? " round" : "")} style={{ width: V, height: V }}>
+            <canvas ref={cv} style={{ width: V, height: V }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
+          </div>
+          <small className="muted">Ziehen zum Verschieben · Mausrad oder Regler zum Zoomen</small>
+          <div className="icpvs">
+            {[56, 40, 28].map((z) => <span key={z} className={"icpv" + (round ? " round" : "")} style={{ width: z, height: z }}>{pv && <img src={pv} alt="" />}</span>)}
+            <span className="icpvlbl muted small">Vorschau</span>
+          </div>
+        </div>
+        <div className="iccontrols">
+          <label>Größe <b>{zPct} %</b>
+            <input type="range" min="10" max="600" step="1" value={zPct} onChange={(e) => set({ zoom: +e.target.value / 100 })} /></label>
+          <div className="row icbtns">
+            <button className="btn sm" onClick={() => set({ zoom: 1, fx: 0, fy: 0 })}>Einpassen</button>
+            <button className="btn sm" onClick={() => set({ zoom: coverZoom(st.rot % 180 ? { width: img.naturalHeight || img.height, height: img.naturalWidth || img.width } : img), fx: 0, fy: 0 })}>Füllen</button>
+            <button className="btn sm" onClick={() => set({ fx: 0, fy: 0 })}>Zentrieren</button>
+            <button className="btn sm" title="90° drehen" onClick={() => set({ rot: (st.rot + 90) % 360 })}>↻ Drehen</button>
+            <button className={"btn sm" + (st.trim ? " on" : "")} title="Leere oder weiße Ränder des Bildes abschneiden" onClick={toggleTrim}>✂︎ Ränder weg</button>
+          </div>
+          <label>Abstand zum Rand <b>{Math.round(st.pad * 100)} %</b>
+            <input type="range" min="0" max="30" step="1" value={Math.round(st.pad * 100)} onChange={(e) => set({ pad: +e.target.value / 100 })} /></label>
+          <div className="fieldlbl">Hintergrund
+            <div className="row icbg">
+              {ICON_BGS.map(([c, l]) => <button key={l} className={"icbgdot" + (st.bg === c ? " on" : "") + (c ? "" : " none")} style={c ? { background: c } : undefined} title={l} aria-label={l} onClick={() => set({ bg: c })} />)}
+              <ColorDot className={"icbgdot" + (st.bg && !ICON_BGS.some(([c]) => c === st.bg) ? " on" : "")} title="Eigene Farbe" value={st.bg && st.bg.startsWith("#") ? st.bg : "#14b8a6"} onInput={(c) => set({ bg: c })} onCommit={(c) => set({ bg: c })}>＋</ColorDot>
+            </div></div>
+          <label className="check"><input type="checkbox" checked={round} onChange={(e) => setRound(e.target.checked)} /> Vorschau rund (wie in der App)</label>
+          <div className="row icbtns">
+            <button className="btn sm" onClick={() => set({ zoom: job.contain ? 1 : coverZoom(img), fx: 0, fy: 0, rot: 0, pad: 0, bg: "" })}>Zurücksetzen</button>
+            <span className="grow" />
+            <button className="link" onClick={() => onDone(null)}>Abbrechen</button>
+          </div>
+        </div>
+      </div>}
+    </Win>, document.querySelector(".app") || document.body);
+}
 const accStyle = (a) => (a.color ? { color: a.color } : undefined);
 const ACC_COLORS = ["#4f8cff", "#0b63f6", "#00b3a4", "#16a34a", "#84cc16", "#eab308", "#f59e0b", "#ef4444", "#e8384f", "#ec4899", "#a855f7", "#64748b"];
 const ACC_EMOJIS = ["🏦", "💳", "💶", "🐷", "📈", "🌐", "🏠", "🚗", "💼", "🏢", "🎓", "💰", "🪙", "💎", "🧾", "🛒", "✈️", "❤️", "⭐", "🔒", "🅿️", "📱", "⚡", "🍀"];
-async function iconFromFile(file, px = 64, contain = false) {
+/* Eigenes Symbol hochladen: Anpass-Fenster (Zoom, Verschieben, Drehen, Rand, Hintergrund) – liefert PNG oder null (abgebrochen) */
+let iconEditUi = null;
+async function iconFromFile(file, px = 64, contain = false, opts = {}) {
+  if (iconEditUi && !opts.direct) return new Promise((res) => iconEditUi({ file, px: Math.max(px, 128), contain, round: opts.round ?? !contain, title: opts.title, res }));
+  return iconFromFileDirect(file, px, contain);
+}
+async function iconFromFileDirect(file, px = 64, contain = false) {
   const bmp = await createImageBitmap(file);
   const c = document.createElement("canvas"); c.width = c.height = px;
   const s = (contain ? Math.min : Math.max)(px / bmp.width, px / bmp.height), w = bmp.width * s, h = bmp.height * s;
@@ -544,9 +641,9 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
           {a.iconImg && !lib.some((x) => x.src === a.iconImg) && <button className="on" title="Eigenes Bild"><img src={a.iconImg} alt="" /></button>}
           <button className="upl" title="Bild hochladen (PNG, JPG, SVG) – wird zur Sammlung hinzugefügt" onClick={() => fileRef.current.click()}>＋</button>
           <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={async (e) => {
-            const files = [...e.target.files]; e.target.value = ""; let last = null; const add = [];
-            for (const f of files) { try { last = await iconFromFile(f); add.push({ id: uid(), src: last }); } catch {} }
-            if (!add.length) return alert("Bild konnte nicht gelesen werden");
+            const files = [...e.target.files]; e.target.value = ""; let last = null, bad = 0; const add = [];
+            for (const f of files) { try { const v = await iconFromFile(f); if (v) { last = v; add.push({ id: uid(), src: v }); } } catch { bad++; } }
+            if (!add.length) return bad && alert("Bild konnte nicht gelesen werden");
             setLib?.([...lib, ...add]); set({ iconImg: last, icon: undefined });
           }} />
         </div>
@@ -880,9 +977,9 @@ function CatStylePicker({ icon, color, img, onChange }) {
           {img && !lib.some((x) => x.src === img) && <button type="button" className="on"><img src={img} alt="" /></button>}
           <button type="button" className="upl" title="Bild hochladen (PNG, JPG, SVG) – wird zur Sammlung hinzugefügt" onClick={() => fileRef.current.click()}>＋</button>
           <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={async (e) => {
-            const files = [...e.target.files]; e.target.value = ""; let last = null; const add = [];
-            for (const f of files) { try { last = await iconFromFile(f); add.push({ id: uid(), src: last }); } catch {} }
-            if (!add.length) return alert("Bild konnte nicht gelesen werden");
+            const files = [...e.target.files]; e.target.value = ""; let last = null, bad = 0; const add = [];
+            for (const f of files) { try { const v = await iconFromFile(f); if (v) { last = v; add.push({ id: uid(), src: v }); } } catch { bad++; } }
+            if (!add.length) return bad && alert("Bild konnte nicht gelesen werden");
             setLib?.([...lib, ...add]); set({ img: last });
           }} />
         </div>
@@ -2244,6 +2341,7 @@ function AppMain() {
       )}
       {shareData && <ShareWin data={shareData} onClose={() => setShareData(null)} />}
       {pdfView && <PdfViewWin data={pdfView} onClose={() => setPdfView(null)} />}
+      <IconEditHost />
       {toast && <div className="toast">{toast}</div>}
       {appUpd.update && !appUpd.dismissed && <div className="syncbanner updbanner">
         {appUpd.pct != null ? <>⬇︎ Update wird installiert … {appUpd.pct}%</> : <>🎉 FinDocu {appUpd.update.version} ist da · <button className="link" onClick={appUpd.install}><b>Jetzt aktualisieren</b></button> <button className="link" aria-label="Später" onClick={appUpd.later}>✕</button></>}
@@ -2977,7 +3075,7 @@ function VehicleWin({ init, onSave, onDelete, onClose }) {
           <button className="btn sm" onClick={() => fileRef.current.click()}>🖼 Bild</button>
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={async (e) => {
             const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-            try { const src = await iconFromFile(f); setLib((l) => [...l, { id: uid(), src }]); set({ iconImg: src, icon: undefined }); setAddOpen(false); } catch { alert("Bild konnte nicht gelesen werden"); }
+            try { const src = await iconFromFile(f); if (!src) return; setLib((l) => [...l, { id: uid(), src }]); set({ iconImg: src, icon: undefined }); setAddOpen(false); } catch { alert("Bild konnte nicht gelesen werden"); }
           }} />
         </div>
       )}
@@ -3261,18 +3359,18 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
       </div>
       {showDrop && <DropField onFiles={dropFiles} onHide={() => setShowDrop(false)} busy={!!dropBusy || waitN > 0} title="Tank-, Lade- oder Werkstattbelege hierher ziehen" what={`PDF & Fotos · werden für „${v.name}“ eingetragen`} />}
       {dropBusy ? <ImportBar {...dropBusy} /> : waitN > 0 && <ImportBar title={`KI liest ${waitN} Beleg${waitN === 1 ? "" : "e"} aus …`} sub="Einträge werden danach automatisch angelegt" done={0} total={waitN} n={waitN} />}
-      <section className="tile fbcar">
+      <section className="tile fbcar fbcompact">
         <div className="fbcarhead">
           <span className="fbcaric"><VehIcon v={v} /></span>
-          <div className="grow"><b>{v.name}</b><small className="muted block">{[v.model, v.plate, v.fuel].filter(Boolean).join(" · ")}</small>
+          <div className="grow"><b>{v.name}</b><small className="muted block one">{[v.model, v.plate, v.fuel].filter(Boolean).join(" · ")}</small>
             {(v.tank || v.battery) && <div className="fbspecs">
               {vehHasFuel(v) && v.tank && <span>⛽ {String(v.tank).replace(".", ",")} l{st.avg ? ` · ~${Math.round((v.tank / st.avg) * 100)} km` : ""}</span>}
               {vehHasPlug(v) && v.battery && <span>🔋 {String(v.battery).replace(".", ",")} kWh{st.avgE ? ` · ~${Math.round((v.battery / st.avgE) * 100)} km elektrisch` : ""}</span>}
               {vehHasPlug(v) && (v.acKw || v.dcKw) && <span>⚡ {[v.acKw && `${String(v.acKw).replace(".", ",")} kW AC`, v.dcKw && `${String(v.dcKw).replace(".", ",")} kW DC`].filter(Boolean).join(" / ")}</span>}
             </div>}</div>
+          <div className="fbodo" title="Kilometerstand"><small className="muted">Kilometerstand</small><b>{kmFmt(st.odo)}</b></div>
           <button className="iconbtn" title="Fahrzeug bearbeiten" aria-label="Fahrzeug bearbeiten" onClick={() => setVEdit(v)}>✎</button>
         </div>
-        <div className="fbodo"><small className="muted">Kilometerstand</small><div className="kpiv big">{kmFmt(st.odo)}</div></div>
         <div className="fbstats">
           {vehHasFuel(v) && <div><small className="muted">Ø Verbrauch</small><b>{st.avg != null ? st.avg.toFixed(1).replace(".", ",") : "—"}</b><small className="muted">l/100 km{st.last != null ? ` · zuletzt ${st.last.toFixed(1).replace(".", ",")}` : ""}</small></div>}
           {vehHasPlug(v) && <div><small className="muted">Ø Strom</small><b>{st.avgE != null ? st.avgE.toFixed(1).replace(".", ",") : "—"}</b><small className="muted">kWh/100 km{st.lastE != null ? ` · zuletzt ${st.lastE.toFixed(1).replace(".", ",")}` : ""}</small></div>}
@@ -10565,7 +10663,7 @@ function IconSlotEditor({ storeKey, slots, round = true, hint }) {
   const [st, setSt] = useIconStore(storeKey);
   const set = (k, p) => { const n = { ...st, [k]: { ...(st[k] || {}), ...p } }; Object.keys(n[k]).forEach((x) => n[k][x] == null && delete n[k][x]); if (!Object.keys(n[k]).length) delete n[k]; setSt(n); };
   const up = (k) => { const i = document.createElement("input"); i.type = "file"; i.accept = "image/png,image/jpeg,image/svg+xml,image/webp,image/gif";
-    i.onchange = async () => { const f = i.files?.[0]; if (!f) return; try { set(k, { img: await iconFromFile(f, 128, !round) }); } catch { alert("Bild konnte nicht gelesen werden"); } }; i.click(); };
+    i.onchange = async () => { const f = i.files?.[0]; if (!f) return; try { const v = await iconFromFile(f, 128, !round, { round }); if (v) set(k, { img: v }); } catch { alert("Bild konnte nicht gelesen werden"); } }; i.click(); };
   return (<>{hint && <p className="muted small">{hint}</p>}
     <div className="icslots">{slots.map(([k, label, def, col]) => { const o = st[k] || {}; return (
       <div key={k} className="icslot">
@@ -14811,4 +14909,55 @@ html.uhfont header.top h1,html.uhfont .app h1,html.uhfont .app h2,html.uhfont .a
 .fontpv b{font-size:26px;line-height:1.1;font-weight:700}.fontpv span{font-size:13px;white-space:nowrap}
 .fontheadsel{max-width:360px}
 @media (max-width:700px){.fontgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v0.97.4: Symbol anpassen */
+.icedit{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;align-items:start}
+.icstage{display:flex;flex-direction:column;align-items:center;gap:8px}
+.icframe{position:relative;border-radius:18px;overflow:hidden;background:repeating-conic-gradient(#d9dde3 0 25%,#f4f6f8 0 50%) 0 0/16px 16px;box-shadow:inset 0 0 0 1px var(--line)}
+.icframe canvas{display:block;cursor:grab;touch-action:none}.icframe canvas:active{cursor:grabbing}
+.icframe.round::after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:50%;box-shadow:0 0 0 400px rgba(0,0,0,.38);outline:2px dashed #fff8;outline-offset:-2px}
+.icpvs{display:flex;align-items:center;gap:10px}
+.icpv{display:inline-flex;overflow:hidden;border-radius:10px;background:repeating-conic-gradient(#d9dde3 0 25%,#f4f6f8 0 50%) 0 0/8px 8px;box-shadow:0 0 0 1px var(--line)}
+.icpv.round{border-radius:50%}.icpv img{width:100%;height:100%}
+.iccontrols{display:flex;flex-direction:column;gap:10px;min-width:0}
+.iccontrols label{display:flex;flex-direction:column;gap:4px}
+.iccontrols label b{font-weight:600}
+.iccontrols input[type=range]{width:100%;accent-color:var(--acc)}
+.iccontrols label.check{flex-direction:row;align-items:center;gap:8px}
+.icbtns{flex-wrap:wrap;gap:6px}.icbtns .btn.on{border-color:var(--acc);color:var(--acc)}
+.icbg{gap:8px;align-items:center}
+.icbgdot{width:32px;height:32px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:14px;color:var(--mut);background:var(--card)}
+.icbgdot.none{background:repeating-conic-gradient(#d9dde3 0 25%,#fff 0 50%) 0 0/8px 8px}
+.icbgdot.on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)}
+@media (max-width:600px){.icedit{grid-template-columns:1fr}}
+
+/* v0.97.5: Fahrzeugkarte kompakt (Vorschlag 2) */
+.fbcompact{padding:12px 14px!important}
+.fbcompact .fbcarhead{gap:10px}
+.fbcompact .fbcaric{width:40px;height:40px;border-radius:12px;font-size:22px}.fbcompact .fbcaric .vehimg{width:26px;height:26px}
+.fbcompact .fbcarhead b{font-size:16px}
+.fbcompact .fbcarhead .grow{min-width:0}
+.fbcompact .fbspecs{margin-top:3px;gap:4px}.fbcompact .fbspecs span{font-size:11px;padding:1px 7px}
+.fbcompact .fbodo{margin:0;display:flex;flex-direction:column;align-items:flex-end;flex:none}
+.fbcompact .fbodo small{font-size:11px}.fbcompact .fbodo b{font-size:20px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.fbcompact .iconbtn{width:34px;height:34px}
+.fbcompact .fbstats{gap:6px;margin-top:10px}
+.fbcompact .fbstats>div{padding:6px 9px;border-radius:10px}
+.fbcompact .fbstats b{font-size:15px}
+.fbcompact .fbstats small:last-child{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fbcompact .fbquick{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.fbcompact .fbquick button{flex-direction:row;gap:6px;padding:6px 12px;border-radius:999px;font-size:13px;flex:none}
+.fbcompact .fbquick button span{font-size:16px;display:inline-flex}
+.fbcompact .fbquick .fbicoimg{width:18px;height:18px}
+@media (max-width:560px){
+  .fbcompact .fbodo b{font-size:17px}.fbcompact .fbodo small{display:none}
+  .fbcompact .fbstats>div{padding:5px 6px}.fbcompact .fbstats b{font-size:13px}.fbcompact .fbstats small{font-size:10.5px}
+  .fbcompact .fbstats small:last-child{display:none}
+  .fbcompact .fbquick{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:5px}
+  .fbcompact .fbquick button{flex-direction:column;gap:2px;padding:6px 2px;border-radius:12px;font-size:11px}
+  .fbcompact .fbquick button span{font-size:18px}
+}
+
+html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!important}
+@media (max-width:560px){html .fbcompact .fbspecs{display:none!important}}
 `;
