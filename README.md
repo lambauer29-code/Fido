@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.25 – Kontoauszüge: Ablagefeld
+- Kontoauszüge: Ablagefeld (Dateien oder Ordner hineinziehen oder klicken) statt „＋ Kontoauszug hochladen“
+- Auszug hinzufügen, Auszug bearbeiten und die Vorschau schließen nicht mehr bei einem Klick daneben (✕ oder Esc schließt)
+- Eigenes Augen-Symbol im Hinweistext
+
 ## v0.99.24 – Reiter Kontoauszüge
 - Eigener Reiter „Kontoauszüge“ in der Seitenleiste (unter Konten, am Handy unter Firma): heruntergeladenen Auszug hochladen, KI erkennt die Buchungen und markiert die Firmenzeilen
 - Monatsübersicht je Konto (vorhanden / unklare Zeilen / fehlt), Filter nach Konto und Jahr

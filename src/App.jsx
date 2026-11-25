@@ -193,7 +193,7 @@ function PdfViewWin({ data, onClose }) {
   const [pages, setPages] = useState(null);
   useEffect(() => { let dead = false; blobToImages(data.blob, Math.min(1600, Math.round(900 * (window.devicePixelRatio || 1)))).then((p) => !dead && setPages(p)).catch(() => setPages([])); return () => { dead = true; }; }, [data]);
   return (
-    <Win id="pdfview" defW={760} onClose={onClose} dirty={false} className="pdfviewwin">
+    <Win id="pdfview" defW={760} onClose={onClose} dirty={false} className="pdfviewwin" stay={!!data.stay}>
       <div className="panelhead"><b className="clamp">{data.title || data.name}</b>
         <button className="btn" title="Drucken" onClick={() => pages && printImages(pages, data.title)}><IcoPrint /></button>
         <button className="btn" title="Teilen / Sichern" onClick={() => sharePdf(data.blob, data.name, data.title, data.to)}><IcoShare /></button>
@@ -1365,7 +1365,7 @@ function MHero({ icon, title, sub, value, valueCls = "", pills = [] }) {
    dirty: true/false erzwingt, undefined = automatisch (sobald im Fenster etwas eingegeben wurde) */
 let detailOpen = 0, sheetDepth = 0, sheetScrollY = 0, lastListY = 0;
 if (typeof window !== "undefined") addEventListener("scroll", () => { if (!sheetDepth) lastListY = scrollY; }, { passive: true });
-function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern" }) {
+function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false }) {
   // v0.99.8: iPad bekommt dieselben Popups wie das iPhone (Karte von unten)
   const wide = useMedia("(min-width:768px)") && !IS_TABLET;
   useEdgeBack(() => reqRef.current?.(), !wide);
@@ -1382,11 +1382,12 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   const dirtyRef = useRef(isDirty); dirtyRef.current = isDirty;
   const requestClose = () => { if (dirtyRef.current) setAsk(true); else onClose(); };
   const reqRef = useRef(requestClose); reqRef.current = requestClose;
+  const stayRef = useRef(stay); stayRef.current = stay;   // v0.99.25: Klick daneben schließt nicht
   const zRef = useRef(0);
   useEffect(() => {
     let block = false;
     const down = (e) => {
-      const el = rootRef.current; if (!el || el.contains(e.target)) return;
+      const el = rootRef.current; if (!el || el.contains(e.target) || stayRef.current) return;
       if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost,.sharepop,.sidetip,.pickmenu,.sugmenu")) return;
       if (dirtyRef.current) block = true; // Klick nicht weiterreichen, sonst gehen Eingaben verloren
       reqRef.current();
@@ -7717,7 +7718,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
     </div>
   );
   return createPortal(
-    <Win id="stmt" onClose={onClose} dirty={false} defW={1100} className="stmtwin">
+    <Win id="stmt" onClose={onClose} dirty={false} defW={1100} className="stmtwin" stay>
       <div className="panelhead"><b className="clamp">{doc.title}</b>
         <ExportMenu label="⬇︎" className="btn" items={[{ head: "Markiertes PDF" }, { label: "⬇︎ Speichern", sub: "Original mit Farben + Zusammenfassung", run: () => exportPdf(false) }, { label: "↗︎ Teilen / Mail", run: () => exportPdf(true) }]} />
         <XBtn /></div>
@@ -7812,7 +7813,7 @@ function StmtImportWin({ file, accounts, txs, getTxs, importTxs, saveDoc, update
     } catch (e) { setSt((s) => ({ ...s, step: "error", err: e.message })); }
   }
   return createPortal(
-    <Win id="stmtimp" onClose={onClose} dirty={false} small defW={560}>
+    <Win id="stmtimp" onClose={onClose} dirty={false} small defW={560} stay>
       <div className="panelhead"><b>Kontoauszug hinzufügen</b><XBtn /></div>
       <p className="muted small one">📄 {file.name}</p>
       {st.step === "read" && <div className="dpload">Claude liest den Auszug aus …</div>}
@@ -8395,8 +8396,9 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
       {["monate", "auszuege"].includes(sec) && <div className="chips">{years.map((y) => <button key={y} className={"chip" + (year === y ? " on" : "")} onClick={() => setYear(y)}>{y}</button>)}</div>}
     </div>
   );
+  const uploadInput = <input ref={fileRef} type="file" accept="application/pdf,image/*" multiple hidden onChange={(e) => { const l = [...e.target.files]; e.target.value = ""; if (l.length) setImpFiles(l); }} />;
   const upload = (<>
-    <input ref={fileRef} type="file" accept="application/pdf,image/*" multiple hidden onChange={(e) => { const l = [...e.target.files]; e.target.value = ""; if (l.length) setImpFiles(l); }} />
+    {uploadInput}
     <button className="btn primary" onClick={() => fileRef.current.click()}>＋ Kontoauszug hochladen</button>
   </>);
 
@@ -8439,7 +8441,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
   function bankAccs0() { return accounts.filter((a) => !["cash", "broker"].includes(a.kind)); }
   const markedOf = async (d, o) => { const b = await db.getFile(d.id); if (!b) throw new Error("Originaldatei nicht gefunden"); return stmtMarkedPdf(d, b, txs, accounts, docs, o); };
   const stmtName = (d) => (d.title || "Kontoauszug").replace(/[\\/:*?"<>|]/g, "-") + " markiert.pdf";
-  const prevStmt = async (d) => { setStmBusy(d.id + "v"); try { await openPdf(await markedOf(d), stmtName(d), (d.title || "Kontoauszug") + " · markiert"); } catch (e) { notify(e.message); } finally { setStmBusy(""); } };
+  const prevStmt = async (d) => { setStmBusy(d.id + "v"); try { await openPdf(await markedOf(d), stmtName(d), (d.title || "Kontoauszug") + " · markiert", "", { stay: true }); } catch (e) { notify(e.message); } finally { setStmBusy(""); } };
   const printStmt = async (d) => { setStmBusy(d.id + "p"); try { notify("Druck wird vorbereitet …"); await printImages(await blobToImages(await markedOf(d), 1700, 200), d.title); } catch (e) { notify(e.message); } finally { setStmBusy(""); } };
   async function printAll() {
     if (!stmtsF.length) return;
@@ -8457,18 +8459,20 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
       const add = async (blob) => { const src = await PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true }); (await out.copyPages(src, src.getPageIndices())).forEach((pg) => out.addPage(pg)); };
       await add(cover);
       for (const d of list) { setStmBusy("all:" + (d.title || "")); try { await add(await markedOf(d, { summary: false })); } catch {} }
-      await openPdf(new Blob([await out.save()], { type: "application/pdf" }), `Kontoauszüge ${year} markiert.pdf`, `Kontoauszüge ${year} – markiert`);
+      await openPdf(new Blob([await out.save()], { type: "application/pdf" }), `Kontoauszüge ${year} markiert.pdf`, `Kontoauszüge ${year} – markiert`, "", { stay: true });
     } catch (e) { notify("Drucken fehlgeschlagen: " + e.message); } finally { setStmBusy(""); }
   }
   const nowM = todayISO().slice(0, 7);
   const auszuege = (
     <div className="stbstmts">
-      <div className="row stbtoolbar">{upload}
+      {uploadInput}
+      <DropField onFiles={(l) => setImpFiles(l)} title="Kontoauszüge hierher ziehen" what="PDF & Fotos" />
+      <div className="row stbtoolbar">
         {stmtAccs.length > 1 && <PSelect value={accF} onChange={(e) => setAccF(e.target.value)}><option value="">Alle Konten</option>{stmtAccs.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</PSelect>}
         <span className="grow" />
         {stmtsF.length > 0 && <button className="btn" disabled={!!stmBusy} onClick={printAll}>{stmBusy.startsWith("all") ? "Wird erstellt …" : `🖨️ Alle drucken (${stmtsF.length})`}</button>}
       </div>
-      <small className="muted block">Heruntergeladenen Kontoauszug (PDF) hochladen – die KI erkennt die Buchungen und markiert die Firmenzeilen. Mit 👁 ansehen, mit 🖨️ für den Steuerberater drucken.</small>
+      <small className="muted block">Heruntergeladenen Kontoauszug (PDF) hochladen – die KI erkennt die Buchungen und markiert die Firmenzeilen. Mit <span className="inlico"><IcoEye /></span> ansehen, mit 🖨️ für den Steuerberater drucken.</small>
       {stmtAccs.filter((a) => !accF || a.id === accF).map((a) => (
         <div key={a.id} className="tile stmtgrid">
           <b className="one">{a.name}</b>
@@ -10541,8 +10545,8 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   return new Blob([await pdf.save()], { type: "application/pdf" });
 }
 const invFileName = (inv, remind) => safeName(`${remind ? remindName(remind.level) : inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"} ${inv.customer?.name || ""}`) + ".pdf";
-async function openPdf(blob, name = "Dokument.pdf", title = "", to = "") {
-  if (pdfUi) return pdfUi({ blob, name, title: title || name.replace(/\.pdf$/, ""), to });
+async function openPdf(blob, name = "Dokument.pdf", title = "", to = "", o = {}) {
+  if (pdfUi) return pdfUi({ blob, name, title: title || name.replace(/\.pdf$/, ""), to, ...o });
   const u = URL.createObjectURL(blob); const w = window.open(u, "_blank"); if (!w) location.href = u; setTimeout(() => URL.revokeObjectURL(u), 120000);
 }
 async function sharePdf(blob, name, title, to = "") {
@@ -16675,4 +16679,6 @@ nav.bottom>button.navheadbtn:hover{color:var(--txt)!important}
 .smc.miss{background:color-mix(in srgb,#e24b4a 28%,transparent);color:var(--txt)}.smc.future{opacity:.35;cursor:default}.smc.none{cursor:default}
 @media (max-width:600px){.stmtmonths{grid-template-columns:repeat(6,minmax(0,1fr))}}
 .stmtacts{display:flex;gap:6px;align-items:center}.stmtacts .iconbtn{width:38px;height:38px;display:grid;place-items:center;font-size:17px}.stmtacts svg{width:18px;height:18px}
+.inlico{display:inline-flex;vertical-align:-3px}.inlico svg{width:16px;height:16px}
+.stbstmts>.docdrop{margin-bottom:2px;align-self:stretch;width:100%;box-sizing:border-box}
 `;
