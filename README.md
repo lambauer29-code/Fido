@@ -2,6 +2,16 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.12 – Journal: fix Prüfkarte
+
+- Das Journal verwendet jetzt fix die Prüfkarte (Variante C); die Auswahl in den Einstellungen ist entfernt.
+- „Weiter/Bestätigen“ und „✎ Bearbeiten“ stehen oben in der Karte, bündig mit dem Inhalt.
+- Klick auf die Belegvorschau öffnet das Original (wie bisher der Knopf „Original“, der entfernt wurde) – auch am iPhone.
+
+## v0.99.11 – Fahrtenbuch ohne Sofortvorschau
+
+Ein Eintrag im Fahrtenbuch klappt beim Anklicken keine Belegvorschau mehr auf, sondern öffnet direkt den Eintrag zum Bearbeiten. Den Beleg ansehen: Auge rechts in der Zeile (Laptop/iPad) bzw. Tipp auf 📎 neben dem Titel (iPhone) – öffnet die Vorschau als Popup.
+
 ## v0.99.10 – Journal: drei Detail-Varianten zur Auswahl
 
 Unter **Einstellungen → Journal** wählbar (gilt für Laptop, iPad und iPhone), kein doppeltes „Details“ + „Alle Details“ mehr:

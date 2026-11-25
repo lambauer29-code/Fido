@@ -3462,12 +3462,13 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
     const csv = "﻿" + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\r\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = `Fahrtenbuch_${v.name}_${year}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
-  const [prevId, setPrevId] = useState(null);
+  const [prevId, setPrevId] = useState(null), [winPrev, setWinPrev] = useState(null);   // v0.99.11: keine Sofortvorschau mehr, nur übers Auge
   const docOf = (x) => x.docId && docs.find((d) => d.id === x.docId && !d.deletedAt);
   const openEdit = (x) => setEdit({ ...x, liters: amtStr(x.liters), total: amtStr(x.total), price: x.price != null ? String(x.price).replace(".", ",") : "" });
   const delEntry = (x) => { if (confirm(`Eintrag „${x.type === "trip" ? `${x.from || "?"} → ${x.to}` : x.type === "fuel" ? (isElec(x.fuel) ? "Laden" : "Tanken") : x.cat}“ vom ${fmtDate(x.date)} löschen?`)) upd((o) => ({ entries: o.entries.filter((y) => y.id !== x.id) })); };
   const FbActs = ({ x }) => { const d = docOf(x); const st = (f) => (e) => { e.stopPropagation(); f(); }; return (
     <div className="dactions txacts" onClick={(e) => e.stopPropagation()}>
+      <button title={d ? "Beleg ansehen" : "Kein Beleg angehängt"} aria-label="Vorschau" disabled={!d} onClick={st(() => d && setWinPrev(d))}><IcoEye /></button>
       <button title="Eintrag bearbeiten" aria-label="Bearbeiten" onClick={st(() => openEdit(x))}><IcoEdit /></button>
       <button title={d ? "Beleg drucken" : "Kein Beleg angehängt"} aria-label="Drucken" disabled={!d} onClick={st(() => d && printDoc(d, notify))}><IcoPrint /></button>
       <button title={d ? "Beleg teilen" : "Kein Beleg angehängt"} aria-label="Teilen" disabled={!d} onClick={st(() => d && shareDocs([d]))}><IcoShare /></button>
@@ -3477,7 +3478,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
     const icon = x.type === "expense" ? (FB_EXP.find((c) => c[0] === x.cat)?.[1] || "🧾") : FB_ICON[x.type];
     return (
       <div key={x.id} className={"fbentry" + (prevId === x.id ? " open" : "")}>
-      <div className="frow click fbrow" onClick={() => (docOf(x) ? setPrevId(prevId === x.id ? null : x.id) : openEdit(x))}>
+      <div className="frow click fbrow" onClick={() => openEdit(x)}>
         <span className={"fbic " + x.type}>{x.type === "fuel" && isElec(x.fuel) ? "⚡" : icon}</span>
         <div className="grow">
           <b>{x.type === "fuel" ? `${isElec(x.fuel) ? "Laden" : "Tanken"} · ${amtStr(x.liters).replace(",00", "")} ${unitOf(x.fuel)}` : x.type === "trip" ? `${x.from || "?"} → ${x.to}` : x.cat}</b>
@@ -3538,7 +3539,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
           {view === "trip" && trips.length > 0 && <div className="tilehead"><b>Fahrten {year}</b><button className="link" onClick={exportCsv}>⬇︎ CSV fürs Finanzamt</button></div>}
           {view === "verlauf" && myRem.length > 0 && <FbRemStrip rems={myRem} remState={remState} onOpen={(r) => setRemEdit(r)} />}
           <FbTimeline list={mine.filter((x) => view === "verlauf" || x.type === view)} all={st.e} st={st} kmRate={kmRate} prevId={prevId} docOf={docOf}
-            onClick={(x) => (docOf(x) ? setPrevId(prevId === x.id ? null : x.id) : openEdit(x))} Acts={FbActs}
+            onClick={(x) => openEdit(x)} onPrev={setWinPrev} Acts={FbActs}
             preview={(x) => <div className="txprev"><DocPreview d={docOf(x)} onOpen={() => onOpen(docOf(x).id)} /></div>} />
           {!mine.filter((x) => view === "verlauf" || x.type === view).length && <p className="muted small">Noch keine Einträge – oben über ⛽ Tanken, 🛣️ Fahrt oder 🧾 Ausgabe erfassen.</p>}
         </section>
@@ -3589,6 +3590,11 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
         </div>
       </>)}
       </FitScroll>
+      {winPrev && createPortal(
+        <Win id="docprev" onClose={() => setWinPrev(null)} dirty={false} className="docprevwin">
+          <div className="panelhead"><b className="clamp">{winPrev.title}</b><XBtn /></div>
+          <DocPreview d={winPrev} onOpen={() => onOpen(winPrev.id)} />
+        </Win>, document.querySelector(".app") || document.body)}
       {edit && <FbEntryWin init={edit} vehicles={vehicles} accounts={accounts} txs={txs} docs={docs} onScan={onScan} onUpload={onUpload} onOpen={onOpen} lastKm={st.odo} fuelPrice={lastFuel?.price} onClose={() => setEdit(null)} onSave={(x) => { if (x.type === "trip") ls.set("fbPurpose", x.purpose); saveEntry(x); }}
         onDelete={(id) => { upd((o) => ({ entries: o.entries.filter((y) => y.id !== id) })); setEdit(null); }} />}
       {vEdit && <VehicleWin init={Object.fromEntries(Object.entries(vEdit).map(([k, val]) => [k, ["tank", "battery", "acKw", "dcKw"].includes(k) && val != null ? String(val).replace(".", ",") : val]))} onClose={() => setVEdit(null)} onSave={(nv) => { upd((o) => ({ vehicles: o.vehicles.some((y) => y.id === nv.id) ? o.vehicles.map((y) => (y.id === nv.id ? nv : y)) : [...o.vehicles, nv] })); setVid(nv.id); setVEdit(null); }}
@@ -5288,7 +5294,7 @@ async function docMarks(blob, d) {
     return out;
   } catch { return []; }
 }
-function JournalPreview({ d, compact = false, onSwipe }) {
+function JournalPreview({ d, compact = false, onSwipe, onOpen }) {
   const [pages, setPages] = useState(null), [marks, setMarks] = useState([]), [err, setErr] = useState("");
   const sw = useRef(null);
   useEffect(() => { let dead = false; setPages(null); setMarks([]); setErr("");
@@ -5303,7 +5309,7 @@ function JournalPreview({ d, compact = false, onSwipe }) {
       {!pages && <div className="dpload">Beleg wird geladen …</div>}
       {err && <p className="muted small center-text">{err}</p>}
       {pages?.map((src, p) => (
-        <div key={p} className="jpage">
+        <div key={p} className={"jpage" + (onOpen ? " jpclick" : "")} onClick={onOpen} title={onOpen ? "Original öffnen" : undefined}>
           <img src={src} alt={`Seite ${p + 1}`} />
           {marks.filter((m) => m.p === p).map((m, i) => <span key={i} className={"jmark jm-" + m.kind} title={m.label} style={{ left: m.l * 100 + "%", width: (m.r - m.l) * 100 + "%", top: m.t * 100 + "%", height: (m.b - m.t) * 100 + "%" }} />)}
         </div>
@@ -5351,7 +5357,7 @@ function JournalFields({ d, saveDoc, categories, senders, tx, onConfirm, onDetai
   );
 }
 function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det = {} }) {
-  const [jView] = useLsState("jView", "a");                                      // a = Weitere Felder · b = ganzes Formular · c = Prüfkarte
+  const jView = "c";                                                             // v0.99.12: fix Prüfkarte (C)
   const flushRef = useRef(null);
   const mobB = useMobileBeta(), slim = useMedia("(max-width:999px)"), mob = mobB || slim, [boxW, setBoxW] = useState(1400), narrow = boxW < 1180;
   const [mode, setMode] = useLsState("jMode", "journal");                       // journal | pruefen | monate
@@ -5496,7 +5502,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det 
           <div className="jphone">
             <div className="jphead"><button className="link" data-fback="1" aria-label="Zurück zum Journal" onClick={() => setPhoneOpen(false)}>‹ Journal</button><b className="one">{curDoc.title}</b>
               <span className="jpnav"><button className="iconbtn" disabled={idx <= 0} onClick={() => go(-1)} aria-label="Vorheriger">‹</button><button className="iconbtn" disabled={idx >= list.length - 1} onClick={() => go(1)} aria-label="Nächster">›</button></span></div>
-            <JournalPreview d={curDoc} compact onSwipe={go} />
+            <JournalPreview d={curDoc} compact onSwipe={go} onOpen={onOriginal} />
             <JPhoneSheet>{fields}</JPhoneSheet>
           </div>, document.querySelector(".app") || document.body)}
       </div>);
@@ -5511,7 +5517,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det 
           <div className="jlscroll">{listV.map(row)}{!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege."}</MEmpty>}</div>
           <div className="jlsum"><span className="muted">Summe</span><b className={sum >= 0 ? "pos" : "neg"}>{fmtMoney(sum)}</b></div>
         </div>
-        <div className="jcenter">{curDoc ? <JournalPreview d={curDoc} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}
+        <div className="jcenter">{curDoc ? <JournalPreview d={curDoc} onOpen={onOriginal} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}
           {curDoc && !detOn && <div className="jstrip">
             <div className="grow jstxt"><b className="one">{curDoc.title || curDoc.fileName}</b><small className="muted one">{[jDate(curDoc) && fmtDate(jDate(curDoc)), curDoc.sender, curDoc.category].filter(Boolean).join(" · ")}</small></div>
             {jSigned(curDoc) != null && <b className={"jsamt " + (jSigned(curDoc) >= 0 ? "pos" : "neg")}>{fmtMoney(jSigned(curDoc))}</b>}
@@ -5528,6 +5534,10 @@ function JournalCard({ d, tx, onConfirm, onEdit, onOriginal, pos }) {
   const v = jSigned(d);
   return (<div className="jcard">
     {pos && <div className="jpos muted small">{pos}</div>}
+    <div className="jbtns jcbtns">
+      <button className="btn primary jconfirm" onClick={() => onConfirm()}>{jUnconf(d) ? "✓ Bestätigen & weiter" : "Weiter ›"}</button>
+      <button className="btn sm" onClick={onEdit}>✎ Bearbeiten</button>
+    </div>
     <b className="jctitle">{d.title || d.fileName}</b>
     {v != null && <div className={"jcamt " + (v >= 0 ? "pos" : "neg")}>{v > 0 ? "+ " : ""}{fmtMoney(v)}</div>}
     <div className="jcmeta">
@@ -5540,21 +5550,6 @@ function JournalCard({ d, tx, onConfirm, onEdit, onOriginal, pos }) {
     </div>
     <div className="jtx">{tx ? <span className="pos">✓ Buchung {fmtDate(tx.date)} · {fmtMoney(tx.amount)}</span> : d.amount?.total && d.direction !== "keine" ? <span className="muted">keine Buchung verknüpft</span> : null}</div>
     {d.notes && <p className="muted small jcnote">{d.notes}</p>}
-    <div className="jbtns">
-      <button className="btn primary jconfirm" onClick={() => onConfirm()}>{jUnconf(d) ? "✓ Bestätigen & weiter" : "Weiter ›"}</button>
-      <div className="row"><button className="btn sm" onClick={onEdit}>✎ Bearbeiten</button><button className="btn sm" onClick={onOriginal}>Original</button></div>
-    </div>
-  </div>);
-}
-const J_VIEWS = [["a", "Weitere Felder aufklappen", "Rechts die wichtigsten Felder, darunter „Weitere Felder ▾“ für Buchung, Bezahlen, Vertrag und Fristen – alles an einer Stelle."],
-  ["b", "Ganzes Dokument rechts", "Die rechte Spalte ist das komplette Dokument-Formular wie im Popup, speichert automatisch."],
-  ["c", "Prüfkarte + Bearbeiten", "Rechts nur eine kleine Karte zum Anschauen und Bestätigen, „✎ Bearbeiten“ öffnet das volle Popup. Größere Vorschau."]];
-function JournalViewSetting() {
-  const [v, setV] = useLsState("jView", "a");
-  return (<div className="jviewset">
-    <p className="muted small">Wie die Details eines Belegs im Journal angezeigt werden (Laptop, iPad und iPhone).</p>
-    {J_VIEWS.map(([k, t, sub]) => <label key={k} className={"jvopt" + (v === k ? " on" : "")}><input type="radio" name="jview" checked={v === k} onChange={() => setV(k)} />
-      <span className="grow"><b>{k.toUpperCase()} · {t}</b><small className="muted block">{sub}</small></span></label>)}
   </div>);
 }
 function JPhoneSheet({ children }) {
@@ -8686,12 +8681,12 @@ function SetSec({ id, title, children }) {
   );
 }
 
-const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung"]], ["Daten & Ablage", ["import", "docgroups", "doccats", "journal", "rules", "kontaktarten", "fbicons", "trash"]],
+const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung"]], ["Daten & Ablage", ["import", "docgroups", "doccats", "rules", "kontaktarten", "fbicons", "trash"]],
   ["Navigation & Budgets", ["nav-tabs", "nav-mob", "nav-accounts", "budgets"]], ["Firma", ["meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel"]]];
-const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-mob": "Handy-Menü", journal: "Journal", "nav-accounts": "Konten & Gruppen" };
+const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-mob": "Handy-Menü", "nav-accounts": "Konten & Gruppen" };
 const SET_ICONS = { fbicons: "🚗", darstellung: "🌓", design: "🎨", applock: "🔒", datenschutz: "🛡️", verbindung: "🔌", import: "📥", docgroups: "🗂️", doccats: "🏷️", rules: "⚙️", kontaktarten: "👥", trash: "🗑️",
-  "nav-tabs": "📑", "nav-mob": "📱", journal: "📓", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
-const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-mob", "journal", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
+  "nav-tabs": "📑", "nav-mob": "📱", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
+const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-mob", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -9319,7 +9314,6 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
       </SetSec></>,
     "nav-tabs": <><NavSettings part="tabs" nav={nav} setNav={setNav} accounts={accounts} setAccounts={setAccounts} txs={txs} deleteAccount={deleteAccount} notify={notify} /></>,
-    "journal": <><SetSec id="journal" title="Journal"><JournalViewSetting /></SetSec></>,
     "nav-mob": <><SetSec id="nav-mob" title="Handy-Menü">
         <p className="muted small">Gilt fürs iPhone: welche Reiter in der Leiste unten stehen und wie sie in <b>Privat</b>, <b>Firma</b> und <b>Mehr</b> sortiert sind. Am Griff <b>⠿</b> ziehen – auch von einem Bereich in einen anderen – oder über <b>⋯</b> verschieben und ausblenden. Direkt am iPhone geht das auch über „⇄ Anordnen“ in Privat, Firma oder Mehr.</p>
         <MobNavEditor nav={nav} setNav={setNav} notify={notify} />
@@ -11343,7 +11337,7 @@ function FbRemStrip({ rems, remState, onOpen }) {
       <small className="fbremwhen">{[x.dk != null && (x.dk <= 0 ? `${kmFmt(-x.dk)} überzogen` : `in ${kmFmt(x.dk)}`), x.dd != null && (x.dd < 0 ? `seit ${-x.dd} Tagen fällig` : x.dd === 0 ? "heute" : `in ${x.dd} Tagen`)].filter(Boolean).join(" · ")}</small>
     </button>))}</div></div>);
 }
-function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, preview }) {
+function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, preview, onPrev }) {
   const [ics] = useIconStore("fbIcons");
   const consAt = new Map([...(st.cons || []), ...(st.consE || [])].map((c) => [c.date + ":" + c.km, c.v]));
   const kmOf = (x) => +(x.type === "trip" ? x.endKm : x.km) || 0;
@@ -11380,7 +11374,7 @@ function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, previ
       return (<div key={x.id} className={"fbtlrow" + (prevId === x.id ? " open" : "")}>
         <div className="frow click fbtlitem" onClick={() => onClick(x)}>
           <span className="fbtldot" style={{ background: col }} aria-hidden="true">{icon}</span>
-          <div className="grow"><b className="fbtltitle">{title}{docOf(x) && <span className="fbclip" title="Beleg angehängt"> 📎</span>}</b><small className="muted block">{sub.join(" · ")}</small></div>
+          <div className="grow"><b className="fbtltitle">{title}{docOf(x) && (onPrev ? <button type="button" className="fbclip fbclipbtn" title="Beleg ansehen" aria-label="Beleg ansehen" onClick={(e) => { e.stopPropagation(); onPrev(docOf(x)); }}>📎</button> : <span className="fbclip" title="Beleg angehängt"> 📎</span>)}</b><small className="muted block">{sub.join(" · ")}</small></div>
           <div className="right fbtlright"><b>{x.type === "trip" ? (x.purpose === "business" ? fmtMoney((x.endKm - x.startKm) * kmRate) : kmFmt(x.endKm - x.startKm)) : fmtMoney(+x.total || 0)}</b><small className="muted block">{fbDay(x.date)}</small></div>
           <Acts x={x} />
         </div>
@@ -15868,10 +15862,13 @@ button.jmhead{width:100%;border:0;font-family:inherit;cursor:pointer;align-items
 .jcard .jcamt{font-size:28px;font-weight:700}
 .jcard .jcmeta{display:flex;flex-direction:column;gap:6px;font-size:14px}
 .jcard .jcnote{white-space:pre-wrap;margin:0}
-.jcard .jbtns{margin-top:auto}
+.jcard .jcbtns{position:static;margin:0 0 4px;padding:0;background:none}
+.jcard .jcbtns .btn.sm{width:100%;min-height:40px}
+.jpclick{cursor:zoom-in}
 .jviewset{display:flex;flex-direction:column;gap:8px}
 .jvopt{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;cursor:pointer}
 .jvopt.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent)}
 .jvopt input{margin-top:3px}
 .jgrid.jv-c.det:not(.narrow){grid-template-columns:230px 270px minmax(0,1fr) 270px}.jgrid.jv-c.det.pruef:not(.narrow){grid-template-columns:270px minmax(0,1fr) 270px}
+.fbclipbtn{border:0;background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:8px;padding:2px 6px;margin-left:6px;font-size:14px;cursor:pointer;vertical-align:middle}
 `;
