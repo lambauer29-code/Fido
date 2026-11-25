@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.4 – Handy-Menü frei sortierbar, Journal auf iPhone & iPad
+
+- **Handy-Menü selbst anordnen:** In Privat, Firma und Mehr gibt es „⇄ Anordnen“: Reiter am Griff ⠿ ziehen, über ⋯ in einen anderen Bereich, in die Leiste unten verschieben oder ausblenden. Das ganze Menü (Leiste unten + alle Bereiche) zusätzlich unter Einstellungen → Handy-Menü. Leiste unten max. 5, „Mehr“ bleibt immer rechts; Bereiche, die nicht in der Leiste stehen, erscheinen unter „Mehr“.
+- **iPhone Journal:** „Alle Details“ öffnet sich jetzt über der Belegansicht und ist bedienbar.
+- **iPad quer / schmale Fenster:** Seitenleiste mit Jahren, Kontakten, Kategorien und Schlagwörtern ist immer sichtbar, Vorschau und Felder stehen rechts untereinander.
+- **iPad hoch:** Journal wie am iPhone (Liste, Beleg im Vollbild).
+
 ## v0.99.3 – Journal: Monate als Baum
 
 Die Monate stehen im Journal eingerückt unter ihrem Jahr und sind mit Baumlinien verbunden; beim gewählten Monat ist die Linie farbig.

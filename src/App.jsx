@@ -728,6 +728,39 @@ const HUB_TABS = {
 };
 const NAV_ROOTS = ["home", "docs", "hub:privat", "hub:firma", "hub:mehr"];
 const hubOf = (key) => Object.keys(HUB_TABS).find((h) => HUB_TABS[h].includes(key)) || "hub:mehr";
+/* v0.99.4: Handy-Menü frei sortierbar – nav.mob = { bar: [...], hubs: { "hub:privat": [...], ... }, hide: [...] } */
+const MOB_HUBS = ["hub:privat", "hub:firma", "hub:mehr"];
+const MOB_BAR_MAX = 5;
+function mobLayout(nav) {
+  const m = nav.mob || {};
+  const tabKeys = nav.tabs.filter((t) => !isNavDeco(t) && TAB_DEFS[t.key]).map((t) => t.key);
+  const ok = (k) => MOB_HUBS.includes(k) || tabKeys.includes(k);
+  const bar = [...new Set((m.bar || NAV_ROOTS).filter(ok))].filter((k) => k !== "hub:mehr").slice(0, MOB_BAR_MAX - 1);
+  bar.push("hub:mehr");
+  const used = new Set(bar), hubs = {};
+  for (const h of MOB_HUBS) hubs[h] = (m.hubs?.[h] || HUB_TABS[h]).filter((k) => tabKeys.includes(k) && !used.has(k) && (used.add(k), true));
+  for (const k of tabKeys) if (!used.has(k)) { hubs[hubOf(k)].push(k); used.add(k); }
+  const hide = new Set(m.hide || nav.tabs.filter((t) => !isNavDeco(t) && TAB_DEFS[t.key] && !(t.side || t.phone)).map((t) => t.key));
+  hide.delete("settings");
+  return { bar, hubs, hide };
+}
+const mobHubOf = (L, key) => { const h = MOB_HUBS.find((x) => L.hubs[x].includes(key)); return h && L.bar.includes(h) ? h : "hub:mehr"; };
+const mobSave = (L) => ({ bar: L.bar, hubs: L.hubs, hide: [...L.hide] });
+/* Reiter verschieben: Ziel "bar", ein Bereich oder "hide"/"show" */
+function mobMove(L, key, dest, notify) {
+  const n = { bar: [...L.bar], hubs: Object.fromEntries(MOB_HUBS.map((h) => [h, [...L.hubs[h]]])), hide: new Set(L.hide) };
+  if (dest === "hide") { if (key === "settings") return L; n.hide.add(key); return n; }
+  if (dest === "show") { n.hide.delete(key); return n; }
+  if (dest === "bar") {
+    if (n.bar.includes(key)) return L;
+    if (n.bar.length >= MOB_BAR_MAX) { notify?.(`Die Leiste unten ist voll (max. ${MOB_BAR_MAX}) – zuerst einen Reiter herausnehmen.`); return L; }
+    MOB_HUBS.forEach((h) => { n.hubs[h] = n.hubs[h].filter((k) => k !== key); });
+    n.bar.splice(n.bar.length - 1, 0, key); n.hide.delete(key); return n;
+  }
+  if (dest === "unbar") { n.bar = n.bar.filter((k) => k !== key); if (!MOB_HUBS.includes(key)) n.hubs["hub:mehr"].push(key); return n; }
+  n.bar = n.bar.filter((k) => k !== key); MOB_HUBS.forEach((h) => { n.hubs[h] = n.hubs[h].filter((k) => k !== key); });
+  n.hubs[dest].push(key); return n;
+}
 const tabLabel = (nav, key) => HUB_DEFS[key]?.[1] || nav.tabs.find((t) => t.key === key)?.label?.trim() || TAB_DEFS[key]?.[1] || "";
 const isNavDeco = (t) => !!t.sep || t.head != null;
 /* Reiter-Symbol: eigenes Bild > eigenes Emoji > Standard */
@@ -1634,6 +1667,7 @@ function AppMain() {
   const touchNav = useMedia("(max-width:700px), (pointer:coarse) and (max-width:1366px)");
   const [backStack, setBackStack] = useState([]);
   const backRef = useRef([]); backRef.current = backStack;
+  const mobLRef = useRef(null);
   const prevTabRef = useRef(tab), navMode = useRef(null), skipPop = useRef(false);
   useEffect(() => {
     const prev = prevTabRef.current; prevTabRef.current = tab;
@@ -1641,7 +1675,7 @@ function AppMain() {
     const nm = navMode.current; navMode.current = null;
     const mode = nm && Date.now() - nm.t < 350 ? nm.m : null;
     if (mode === "back") return;
-    if (mode === "root" || NAV_ROOTS.includes(tab) || !touchNav) { setBackStack([]); return; }
+    if (mode === "root" || mobLRef.current?.bar.includes(tab) || !touchNav) { setBackStack([]); return; }
     setBackStack((st) => [...st.filter((x) => x !== tab), prev].slice(-12));
     try { history.pushState({ fdNav: 1 }, ""); } catch {}
   }, [tab]);
@@ -1666,6 +1700,7 @@ function AppMain() {
   const setAccounts = (v) => setAccountsState((prev) => { const n = typeof v === "function" ? v(prev) : v; accountsRef.current = n; return n; });
   const [scanOpen, setScanOpen] = useState(false);
   const [nav, setNav] = useState(loadNav);
+  const mobL = useMemo(() => mobLayout(nav), [nav]); mobLRef.current = mobL;
   const categories = useMemo(() => flattenCats(nav.docGroups), [nav.docGroups]);
   CAT_AREA = Object.fromEntries(nav.docGroups.flatMap((g) => g.cats.map((c) => [c, g.area])));
   CAT_STYLE = nav.catStyle || {};
@@ -2233,7 +2268,7 @@ function AppMain() {
       </header>
 
       <main>
-        {tab.startsWith("hub:") && <HubPage hub={tab} nav={nav} setTab={setTab} docs={active} dlDocs={dlDocs} accounts={visAccounts} />}
+        {tab.startsWith("hub:") && <HubPage hub={tab} nav={nav} setNav={setNav} setTab={setTab} docs={active} dlDocs={dlDocs} accounts={visAccounts} notify={notify} />}
         {tab === "home" && <Home docs={active} dlDocs={dlDocs} txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={visAccounts.some((a) => a.kind === "cash")}
           accounts={visAccounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
           uniDrop={<>
@@ -2328,9 +2363,9 @@ function AppMain() {
 
       {phoneNav ? (
       <nav className="bottom mtabbar" aria-label="Hauptbereiche">
-        {NAV_ROOTS.map((k) => { const on = tab === k || (k.startsWith("hub:") && !NAV_ROOTS.includes(tab) && hubOf(tab) === k && tab !== "home") || (k === "home" && false);
+        {mobL.bar.map((k) => { const on = tab === k || (k.startsWith("hub:") && !mobL.bar.includes(tab) && !tab.startsWith("hub:") && mobHubOf(mobL, tab) === k);
           return <button key={k} className={on ? "on" : ""} aria-label={tabLabel(nav, k)} aria-current={on ? "page" : undefined} onClick={() => rootTab(k)}>
-            <TabIcon t={{ key: k }} /><span className="tl">{tabLabel(nav, k)}</span>{k === "home" && <Badge docs={dlDocs} />}</button>; })}
+            <TabIcon t={k.startsWith("hub:") ? { key: k } : (nav.tabs.find((t) => t.key === k) || { key: k })} /><span className="tl">{tabLabel(nav, k)}</span>{k === "home" && <Badge docs={dlDocs} />}</button>; })}
       </nav>) : (
       <nav className="bottom" onClickCapture={() => { navMode.current = { m: "root", t: Date.now() }; }} onPointerOver={(e) => {
         if (!sideMini || e.pointerType === "touch") return;
@@ -4624,19 +4659,69 @@ function AkteWin({ akte, categories, years, onClose, onSave, onDelete }) {
     </div>
   </Win>);
 }
+/* ======================= Handy-Menü anordnen (v0.99.4) ======================= */
+function MobNavEditor({ nav, setNav, notify, only = null, showBar = true }) {
+  const L = mobLayout(nav);
+  const save = (nl) => { if (nl !== L) setNav((n) => ({ ...n, mob: mobSave(nl) })); };
+  const lists = { bar: L.bar.filter((k) => k !== "hub:mehr"), ...L.hubs };
+  const dnd = useDnd((d, over) => {
+    const key = lists[d.list][d.index];
+    if (MOB_HUBS.includes(key) && over.list !== "bar") return notify?.("Bereiche wie Privat/Firma können nur in der Leiste unten stehen.");
+    if (over.list === "bar" && d.list !== "bar" && L.bar.length >= MOB_BAR_MAX) return notify?.(`Die Leiste unten ist voll (max. ${MOB_BAR_MAX}) – zuerst einen Reiter herausnehmen.`);
+    const m = moveBetween(lists, d.list, d.index, over.list, over.index);
+    const hide = new Set(L.hide); if (over.list === "bar") hide.delete(key);
+    save({ bar: [...m.bar, "hub:mehr"], hubs: Object.fromEntries(MOB_HUBS.map((h) => [h, m[h]])), hide });
+  });
+  const title = (k) => tabLabel(nav, k);
+  const targets = (k, from) => [
+    from !== "bar" && { k: "bar", icon: "⬇", title: "In die Leiste unten", run: () => save(mobMove(L, k, "bar", notify)) },
+    from === "bar" && !MOB_HUBS.includes(k) && { k: "unbar", icon: "▦", title: "Aus der Leiste nehmen", sub: "landet unter „Mehr“", run: () => save(mobMove(L, k, "unbar")) },
+    from === "bar" && MOB_HUBS.includes(k) && { k: "unbar", icon: "▦", title: "Aus der Leiste nehmen", sub: "Inhalt erscheint unter „Mehr“", run: () => save(mobMove(L, k, "unbar")) },
+    ...(MOB_HUBS.includes(k) ? [] : MOB_HUBS.filter((h) => h !== from).map((h) => ({ k: h, icon: HUB_DEFS[h][0], title: "Nach " + HUB_DEFS[h][1], run: () => save(mobMove(L, k, h)) }))),
+    from !== "bar" && k !== "settings" && (L.hide.has(k) ? { k: "show", icon: "👁", title: "Einblenden", run: () => save(mobMove(L, k, "show")) } : { k: "hide", icon: "🚫", title: "Ausblenden", run: () => save(mobMove(L, k, "hide")) })
+  ];
+  const section = (id, label, note) => {
+    const l = lists[id];
+    return (<div className="mobsec" key={id}>
+      <div className="mobsechead"><b>{label}</b>{note && <small className="muted">{note}</small>}</div>
+      <div data-mob-list={`${id}|${l.length}`} className={"moblist" + (dnd.drag?.over?.list === id ? " dropover" : "")}>
+        {l.map((k, i) => (<React.Fragment key={k}>
+          {dnd.lineAt("mob", id, i) && <div className="dropline" />}
+          <div className={"navcfg mobcfg" + (L.hide.has(k) && id !== "bar" ? " mobhid" : "") + (dnd.isDragging("mob", id, i) ? " dragging" : "")} data-mob-item={`${id}|${i}`}>
+            <Handle onDown={(e) => dnd.start(e, { kind: "mob", list: id, index: i, label: title(k) })} />
+            <span className="ki"><TabIcon t={nav.tabs.find((t) => t.key === k) || { key: k }} /></span>
+            <span className="grow one">{title(k)}{L.hide.has(k) && id !== "bar" && <small className="muted"> · ausgeblendet</small>}</span>
+            <MoreMenu items={targets(k, id)} />
+          </div></React.Fragment>))}
+        {dnd.lineAt("mob", id, l.length) && <div className="dropline" />}
+        {!l.length && <small className="muted mobempty">Hierher ziehen</small>}
+      </div>
+    </div>);
+  };
+  const off = MOB_HUBS.filter((h) => h !== "hub:mehr" && !L.bar.includes(h));
+  return (<div className="mobnav">
+    {showBar && section("bar", "Leiste unten", `${L.bar.length}/${MOB_BAR_MAX} · „Mehr“ steht immer rechts`)}
+    {MOB_HUBS.filter((h) => !only || only.includes(h)).map((h) => section(h, HUB_DEFS[h][1], h !== "hub:mehr" && !L.bar.includes(h) ? "nicht in der Leiste – erscheint unter „Mehr“" : ""))}
+    {showBar && off.length > 0 && <div className="actions">{off.map((h) => <button key={h} className="btn sm" onClick={() => save(mobMove(L, h, "bar", notify))}>＋ {HUB_DEFS[h][1]} in die Leiste</button>)}</div>}
+    {showBar && <div className="actions"><button className="link" onClick={() => confirm("Handy-Menü auf Standard zurücksetzen?") && setNav((n) => { const { mob, ...r } = n; return r; })}>Zurücksetzen</button></div>}
+    {dnd.ghost}
+  </div>);
+}
 /* ======================= Bereichs-Startseiten (iPhone, v0.88) ======================= */
-function HubPage({ hub, nav, setTab, docs, dlDocs, accounts }) {
+function HubPage({ hub, nav, setNav, setTab, docs, dlDocs, accounts, notify }) {
+  const [arrange, setArrange] = useState(false);
+  useEffect(() => setArrange(false), [hub]);
   const [list] = useLsState("invoices", []);
   const [kunden] = useLsState("customers", []);
   const [items] = useLsState("articles", []);
   const [cts] = useLsState("contractList", []);
   const [assets] = useLsState("assets", []);
   const { kassen, entries } = useKassa();
-  const visible = (k) => { const t = nav.tabs.find((x) => x.key === k); return t ? (t.side || t.phone) : !!TAB_DEFS[k]; };
-  // nicht zugeordnete, eingeblendete Reiter landen unter „Mehr“
-  const assigned = new Set([...NAV_ROOTS, ...Object.values(HUB_TABS).flat()]);
-  const extra = hub === "hub:mehr" ? nav.tabs.filter((t) => !assigned.has(t.key) && !isNavDeco(t) && (t.side || t.phone) && TAB_DEFS[t.key]).map((t) => t.key) : [];
-  const keys = [...HUB_TABS[hub], ...extra].filter(visible);
+  const L = mobLayout(nav);
+  // Bereiche, die nicht in der Leiste unten stehen, erscheinen unter „Mehr“
+  const offHubs = hub === "hub:mehr" ? MOB_HUBS.filter((h) => h !== "hub:mehr" && !L.bar.includes(h)) : [];
+  const keysOf = (h) => (L.hubs[h] || []).filter((k) => !L.hide.has(k));
+  const keys = keysOf(hub);
   const inv = list.filter((x) => x.kind === "rechnung");
   const openN = inv.filter((x) => ["offen", "überfällig"].includes(invState(x))).length, overN = inv.filter((x) => invState(x) === "überfällig").length;
   const dlOpen = (dlDocs || docs).flatMap((d) => (d.deadlines || []).filter((x) => !x.done)).filter((x) => daysUntil(x.date) <= 14).length;
@@ -4650,15 +4735,22 @@ function HubPage({ hub, nav, setTab, docs, dlDocs, accounts }) {
     contracts: ["laufende Kosten", ""], fahrtenbuch: ["Fahrten & km-Geld", ""], inventur: ["Bestand & Zählung", ""],
     settings: ["Darstellung, Daten, Firma", ""], backup: ["Sicherung & Sync", ""]
   };
+  const tile = (k) => { const t = nav.tabs.find((x) => x.key === k) || { key: k }; const [sv, tone] = sub[k] || ["", ""]; return (
+    <button key={k} className="hubtile" onClick={() => setTab(k)}>
+      <TabIcon t={t} />
+      <b>{tabLabel(nav, k)}</b>
+      {sv && <small className={tone}>{sv}</small>}
+    </button>); };
   return (<div className="hubpage">
-    <div className="hubgrid">
-      {keys.map((k) => { const t = nav.tabs.find((x) => x.key === k) || { key: k }; const [sv, tone] = sub[k] || ["", ""]; return (
-        <button key={k} className="hubtile" onClick={() => setTab(k)}>
-          <TabIcon t={t} />
-          <b>{tabLabel(nav, k)}</b>
-          {sv && <small className={tone}>{sv}</small>}
-        </button>); })}
-    </div>
+    {setNav && <div className="hubtools"><button className={"btn sm" + (arrange ? " primary" : "")} onClick={() => setArrange(!arrange)}>{arrange ? "✓ Fertig" : "⇄ Anordnen"}</button></div>}
+    {arrange ? <>
+      <MobNavEditor nav={nav} setNav={setNav} notify={notify} only={[hub, ...offHubs]} showBar={false} />
+      <p className="muted small">Am Griff <b>⠿</b> ziehen zum Sortieren, über <b>⋯</b> in einen anderen Bereich oder in die Leiste unten verschieben.</p>
+      <div className="actions"><button className="btn" onClick={() => { ls.set("openSettingsSec", "nav-mob"); setTab("settings"); }}>📱 Ganzes Handy-Menü bearbeiten</button></div>
+    </> : <>
+      <div className="hubgrid">{keys.map(tile)}</div>
+      {offHubs.map((h) => keysOf(h).length > 0 && <React.Fragment key={h}><h3 className="hubsub">{HUB_DEFS[h][1]}</h3><div className="hubgrid">{keysOf(h).map(tile)}</div></React.Fragment>)}
+    </>}
   </div>);
 }
 /* ======================= Übersicht als Kacheln (iPhone/iPad, v0.87) =======================
@@ -5193,7 +5285,7 @@ function JournalFields({ d, saveDoc, categories, senders, tx, onConfirm, onDetai
   );
 }
 function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
-  const mob = useMobileBeta(), [boxW, setBoxW] = useState(1400), narrow = boxW < 1180;
+  const mobB = useMobileBeta(), slim = useMedia("(max-width:999px)"), mob = mobB || slim, [boxW, setBoxW] = useState(1400), narrow = boxW < 1180;
   const [mode, setMode] = useLsState("jMode", "journal");                       // journal | pruefen | monate
   const [filt, setFilt] = useLsState("jFilt", "alle");
   const [sel, setSel] = useLsState("jSel", { y: todayISO().slice(0, 4), m: "" });
@@ -5250,7 +5342,6 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
     <div className="jmodes">
       <div className="seg">{[["journal", "📓 Journal"], ["pruefen", `✓ Prüfen${cnt("unbest") ? " (" + cnt("unbest") + ")" : ""}`], ["monate", "🗓 Monate"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); if (k === "pruefen") { const f = base.filter(jUnconf).sort((a, b) => jDate(b).localeCompare(jDate(a)))[0]; setCur(f?.id || null); if (mob && f) setPhoneOpen(true); } }}>{l}</button>)}</div>
       {mode !== "monate" && <SearchBox className="sbplain jsearch" icon={false} value={q} onChange={setQ} placeholder="Belege durchsuchen" />}
-      {!mob && narrow && mode !== "monate" && <button className="btn sm" onClick={() => setSide(!side)}>☰ Filter</button>}
     </div>
   );
   const sidebar = (
@@ -5326,7 +5417,6 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
     <div className="jpage-wrap">{modeBar}
       <div ref={boxRef} className={"jgrid" + (narrow ? " narrow" : "") + (mode === "pruefen" ? " pruef" : "")} style={boxH ? { height: boxH } : undefined}>
         {mode !== "pruefen" && sidebar}
-        {side && narrow && <div className="jscrim" onClick={() => setSide(false)} />}
         <div className="jlist">
           <div className="jlhead">{mode === "pruefen" ? <b>Zu prüfen</b> : <b>{facet ? (facet.v || "Nicht zugewiesen") : sel.m ? MONTHS_DE[+sel.m - 1] + " " + sel.y : sel.y === "ohne" ? "Ohne Datum" : sel.y || "Alle Jahre"}</b>}<small className="muted">{list.length}</small></div>
           <div className="jlscroll">{listV.map(row)}{!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege."}</MEmpty>}</div>
@@ -8444,11 +8534,11 @@ function SetSec({ id, title, children }) {
 }
 
 const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung"]], ["Daten & Ablage", ["import", "docgroups", "doccats", "rules", "kontaktarten", "fbicons", "trash"]],
-  ["Navigation & Budgets", ["nav-tabs", "nav-accounts", "budgets"]], ["Firma", ["meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel"]]];
-const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-accounts": "Konten & Gruppen" };
+  ["Navigation & Budgets", ["nav-tabs", "nav-mob", "nav-accounts", "budgets"]], ["Firma", ["meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel"]]];
+const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-mob": "Handy-Menü", "nav-accounts": "Konten & Gruppen" };
 const SET_ICONS = { fbicons: "🚗", darstellung: "🌓", design: "🎨", applock: "🔒", datenschutz: "🛡️", verbindung: "🔌", import: "📥", docgroups: "🗂️", doccats: "🏷️", rules: "⚙️", kontaktarten: "👥", trash: "🗑️",
-  "nav-tabs": "📑", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
-const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
+  "nav-tabs": "📑", "nav-mob": "📱", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
+const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-mob", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -8972,7 +9062,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
   const [secClosed, setSecClosed] = useState(() => ls.get("settingsClosed", null) ?? ["design", "datenschutz", "import", "nav-tabs", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "verbindung"]);
   useEffect(() => {
     const id = ls.get("openSettingsSec", null); if (!id) return; ls.set("openSettingsSec", null);
-    setSecClosed((l) => l.filter((x) => x !== id));
+    setSecClosed((l) => l.filter((x) => x !== id)); if (phoneSet && !only) setDrill(id);
     setTimeout(() => document.getElementById("sec-" + id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
   }, []);
   useEffect(() => ls.set("settingsOrder", secOrder), [secOrder]);
@@ -9076,6 +9166,10 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
       </SetSec></>,
     "nav-tabs": <><NavSettings part="tabs" nav={nav} setNav={setNav} accounts={accounts} setAccounts={setAccounts} txs={txs} deleteAccount={deleteAccount} notify={notify} /></>,
+    "nav-mob": <><SetSec id="nav-mob" title="Handy-Menü">
+        <p className="muted small">Gilt fürs iPhone: welche Reiter in der Leiste unten stehen und wie sie in <b>Privat</b>, <b>Firma</b> und <b>Mehr</b> sortiert sind. Am Griff <b>⠿</b> ziehen – auch von einem Bereich in einen anderen – oder über <b>⋯</b> verschieben und ausblenden. Direkt am iPhone geht das auch über „⇄ Anordnen“ in Privat, Firma oder Mehr.</p>
+        <MobNavEditor nav={nav} setNav={setNav} notify={notify} />
+      </SetSec></>,
     "nav-accounts": <><NavSettings part="accounts" nav={nav} setNav={setNav} accounts={accounts} setAccounts={setAccounts} txs={txs} deleteAccount={deleteAccount} notify={notify} /></>,
     "budgets": <><SetSec id="budgets" title="Budgets pro Monat">
         <p className="muted small">Leer lassen = kein Budget. Ausgaben werden nach Dokumentdatum gezählt.</p>
@@ -15486,9 +15580,11 @@ html.dark .scpick.sc-firma .scpickbtn{color:#fbbf24!important}html.dark .scpick.
 .jmodes{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.jmodes .seg button{white-space:nowrap}.jmodes .jsearch{flex:1;min-width:200px;max-width:420px}
 .jgrid{display:grid;grid-template-columns:230px 270px minmax(0,1fr) 310px;gap:10px;min-height:420px}
 .jgrid.pruef{grid-template-columns:270px minmax(0,1fr) 330px}
-.jgrid.narrow{grid-template-columns:240px minmax(0,1fr) 290px;position:relative}
-.jgrid.narrow .jside{position:absolute;left:0;top:0;bottom:0;z-index:20;width:250px;transform:translateX(-110%);transition:transform .2s;box-shadow:0 10px 40px #0004}
-.jgrid.narrow .jside.open{transform:none}.jgrid.narrow .jside:not(.open){visibility:hidden;pointer-events:none}.jgrid.narrow .jside{transition:transform .2s,visibility .2s}
+.jgrid.narrow{grid-template-columns:210px 250px minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1.25fr)}
+.jgrid.narrow>.jside,.jgrid.narrow>.jlist{grid-row:1/3}
+.jgrid.narrow>.jcenter{grid-column:3;grid-row:1}.jgrid.narrow>.jinsp{grid-column:3;grid-row:2}
+.jgrid.narrow.pruef{grid-template-columns:260px minmax(0,1fr)}.jgrid.narrow.pruef>.jcenter,.jgrid.narrow.pruef>.jinsp{grid-column:2}
+html.hasdetail .jphone{visibility:hidden}
 .jscrim{position:absolute;inset:0;z-index:19;background:#0003;border-radius:16px}
 .jside,.jlist,.jinsp,.jcenter{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:auto;min-height:0}
 .jside{padding:10px 8px;display:flex;flex-direction:column;gap:1px}
@@ -15552,4 +15648,16 @@ html.dark .scpick.sc-firma .scpickbtn{color:#fbbf24!important}html.dark .scpick.
 .jpsheet .jbtns{position:static;padding:4px 0 0}
 
 .jsh{display:flex;align-items:center;gap:6px;width:100%;margin:12px 0 4px;padding:4px 8px;border:0;background:none;cursor:pointer;font:inherit;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);border-radius:8px;text-align:left}.jsh:hover{background:var(--soft,#0000000d);color:var(--txt)}.jsh .jchev{font-size:11px;transition:transform .15s}.jsh.shut .jchev{transform:rotate(-90deg)}
+
+/* v0.99.4: Handy-Menü anordnen */
+.hubtools{display:flex;justify-content:flex-end;margin:-4px 0 10px}
+.hubsub{margin:18px 2px 8px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
+.mobnav{display:flex;flex-direction:column;gap:12px}
+.mobsechead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:0 2px 6px}.mobsechead b{font-size:14px}.mobsechead small{font-size:12px}
+.moblist{display:flex;flex-direction:column;gap:4px;min-height:44px;padding:4px;border-radius:14px;border:1px dashed transparent}
+.moblist.dropover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent)}
+.mobcfg{display:flex;align-items:center;gap:10px;padding:8px 6px 8px 4px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+.mobcfg .ki{width:30px;height:30px;display:grid;place-items:center;font-size:18px;color:var(--acc)}.mobcfg .ki .tabsvg{width:22px;height:22px}
+.mobcfg.mobhid{opacity:.5}.mobcfg .handle{touch-action:none;padding:6px 4px}
+.mobempty{padding:10px;text-align:center}
 `;
