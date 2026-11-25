@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.27 – Kontoauszug: gezoomtes PDF verschieben
+- Gezoomtes PDF mit gedrückter Maus in alle Richtungen verschieben (Hand-Cursor); Klick auf eine Zeile wechselt weiterhin Firma/Privat
+- Shift + Mausrad scrollt seitlich, Scrollbalken immer sichtbar, Wischen am Touchscreen in alle Richtungen
+
 ## v0.99.26 – Kontoauszug: fixierte Leiste & Zoom
 - Kontoauszug-Ansicht: Titel und Leiste (Firma/Privat/unklar, Ansicht, KI, Abgleichen) bleiben beim Scrollen oben fixiert
 - Zoom im PDF (50–400 %), auch in der Ansicht „Beides“; Strg + Mausrad / Trackpad-Zoom; Zoom wird gemerkt

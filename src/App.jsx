@@ -7672,9 +7672,24 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
     setZoom0(nz);
   };
   const zRef = useRef(zoom); zRef.current = zoom;
+  const setZoomRef = useRef(setZoom); setZoomRef.current = setZoom;
   useEffect(() => { const el = paneRef.current; if (!el) return;
-    const w = (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); setZoom(zRef.current * (e.deltaY < 0 ? 1.1 : 1 / 1.1), { x: e.clientX, y: e.clientY }); };
-    el.addEventListener("wheel", w, { passive: false }); return () => el.removeEventListener("wheel", w); });
+    const w = (e) => {
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); setZoomRef.current(zRef.current * (e.deltaY < 0 ? 1.1 : 1 / 1.1), { x: e.clientX, y: e.clientY }); return; }
+      // Shift + Mausrad = seitlich scrollen (auch wo der Browser das nicht selbst macht)
+      if (e.shiftKey && !e.deltaX && el.scrollWidth > el.clientWidth) { e.preventDefault(); el.scrollLeft += e.deltaY; }
+    };
+    // v0.99.27: mit gedrückter Maus ziehen = verschieben (wenn gezoomt)
+    let pan = null;
+    const down = (e) => { if (e.pointerType !== "mouse" || e.button !== 0 || el.scrollWidth <= el.clientWidth + 2 && el.scrollHeight <= el.clientHeight + 2) return;
+      pan = { x: e.clientX, y: e.clientY, l: el.scrollLeft, t: el.scrollTop, moved: false }; };
+    const move = (e) => { if (!pan) return; const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
+      if (!pan.moved && Math.hypot(dx, dy) < 5) return; if (!pan.moved) { pan.moved = true; el.classList.add("panning"); setLens(null); }
+      el.scrollLeft = pan.l - dx; el.scrollTop = pan.t - dy; e.preventDefault(); };
+    const up = () => { if (!pan) return; const m = pan.moved; pan = null; el.classList.remove("panning");
+      if (m) { const eat = (ev) => { ev.stopPropagation(); ev.preventDefault(); }; el.addEventListener("click", eat, { capture: true, once: true }); setTimeout(() => el.removeEventListener("click", eat, { capture: true }), 50); } };
+    el.addEventListener("wheel", w, { passive: false }); el.addEventListener("pointerdown", down); addEventListener("pointermove", move); addEventListener("pointerup", up);
+    return () => { el.removeEventListener("wheel", w); el.removeEventListener("pointerdown", down); removeEventListener("pointermove", move); removeEventListener("pointerup", up); }; }, [view, mob, !!pages]);
   const zctl = (cls) => (<div className={"stmtzoom " + cls} onClick={(e) => e.stopPropagation()}>
     <button type="button" title="Verkleinern" aria-label="Verkleinern" onClick={() => setZoom(zoom - 0.25)}>−</button>
     <button type="button" className="zval" title="Auf Breite" onClick={() => setZoom(1)}>{Math.round(zoom * 100)} %</button>
@@ -7682,7 +7697,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
     {cls === "inbar" && <button type="button" className="zfit" title="An Breite anpassen" onClick={() => setZoom(1)}>Breite</button>}
     {cls === "float" && canHover && <button type="button" className={"zlupe" + (lupeOn ? " on" : "")} title={lupeOn ? "Lupe aus" : "Lupe ein"} aria-label="Lupe" onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍</button>}
   </div>);
-  const lensMove = (e, p, src) => { if (zui !== "schwebend" || !lupeOn || !canHover) return; const img = e.currentTarget.querySelector("img"); if (!img) return; const r = img.getBoundingClientRect();
+  const lensMove = (e, p, src) => { if (zui !== "schwebend" || !lupeOn || !canHover || e.buttons) return; const img = e.currentTarget.querySelector("img"); if (!img) return; const r = img.getBoundingClientRect();
     setLens({ p, src, x: e.clientX, y: e.clientY, rx: (e.clientX - r.left) / r.width, ry: (e.clientY - r.top) / r.height, w: r.width, h: r.height }); };
   useEffect(() => { let dead = false; db.getFile(doc.id).then(async (b) => { blobRef.current = b; if (!b) return setPages([]); const p = await blobToImages(b, Math.min(2400, Math.round(1000 * (window.devicePixelRatio || 1)))); if (!dead) setPages(p); }).catch(() => setPages([])); return () => { dead = true; }; }, [doc.id]);
   const rows = stmtRows(doc, txs, accounts, docs);
@@ -7768,12 +7783,12 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
       <div className={"stmtbody" + (showPdf && showList && !mob ? " two" : "")}>
         {showPdf && !(mob && view === "beides") && (
           <div className="stmtpdfwrap">
-          <div className="stmtpdf" ref={paneRef} onMouseLeave={() => setLens(null)}>
+          <div className={"stmtpdf" + (zoom > 1 ? " zoomed" : "")} ref={paneRef} onMouseLeave={() => setLens(null)}>
             <div className="stmtzoomin" style={{ width: zoom * 100 + "%" }}>
             {!pages && <div className="dpload">Auszug wird geladen …</div>}
             {pages?.map((src, p) => (
               <div key={p} className="stmtpage" onMouseMove={(e) => lensMove(e, p, src)}>
-                <img src={src} alt={`Seite ${p + 1}`} />
+                <img src={src} alt={`Seite ${p + 1}`} draggable={false} />
                 {rows.filter((r) => r.box?.p === p).map((r) => (
                   <button key={r.i} id={`stmtbox-${doc.id}-${r.i}`} className={"stmtbox sc-" + r.scope + (hi === r.i ? " hi" : "")} title={`${r.cp} ${fmtMoney(r.amount)} – ${r.label} (antippen zum Wechseln)`}
                     style={{ top: r.box.t * 100 + "%", height: (r.box.b - r.box.t) * 100 + "%", left: r.box.l * 100 + "%", width: (r.box.r - r.box.l) * 100 + "%" }}
@@ -16740,4 +16755,15 @@ nav.bottom>button.navheadbtn:hover{color:var(--txt)!important}
 .stmtzoom .zlupe.on{background:color-mix(in srgb,var(--acc) 22%,transparent)}
 .stmtlens{position:fixed;width:320px;height:90px;border-radius:45px;border:3px solid var(--acc);background-color:#fff;background-repeat:no-repeat;pointer-events:none;z-index:9999;box-shadow:0 10px 30px #0006}
 @media (max-width:700px){.stmtsticky{margin:0 -14px;padding:0 14px 2px}}
+
+/* v0.99.27: Zoom – seitlich verschieben */
+.stmtpdf{touch-action:pan-x pan-y pinch-zoom;-webkit-overflow-scrolling:touch}
+.stmtpdf .stmtbox{touch-action:pan-x pan-y}
+.stmtpdf.zoomed{cursor:grab}.stmtpdf.panning,.stmtpdf.panning *{cursor:grabbing!important;user-select:none}
+.stmtpdf.zoomed .stmtbox{cursor:pointer}
+.stmtpdf::-webkit-scrollbar{width:10px;height:10px}
+.stmtpdf::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--mut) 55%,transparent);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+.stmtpdf::-webkit-scrollbar-track{background:transparent}
+.stmtpdf{scrollbar-width:thin}
+.stmtpage img{-webkit-user-drag:none;user-select:none}
 `;
