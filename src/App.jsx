@@ -5295,6 +5295,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   const [q, setQ] = useState("");
   const [detW, setDetW] = useLsState("jDetW", true), [detN, setDetN] = useLsState("jDetN", false);
   const [mClosed, setMClosed] = useLsState("jMClosed", []);
+  useEffect(() => { if (!phoneOpen) return; const c = document.documentElement.classList; c.add("jpopen"); return () => c.remove("jpopen"); }, [phoneOpen]);
   const txByDoc = useMemo(() => { const m = new Map(); for (const t of txs) if (t.docId) m.set(t.docId, t); return m; }, [txs]);
   const base = useMemo(() => docs.filter((d) => !d.deletedAt && !d.stmt), [docs]);
   const week = new Date(Date.now() - 7 * 864e5).toISOString();
@@ -5445,8 +5446,20 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   );
 }
 function JPhoneSheet({ children }) {
-  const [open, setOpen] = useState(false);
-  return <div className={"jpsheet" + (open ? " open" : "")}><button className="jpgrab" onClick={() => setOpen(!open)} aria-label={open ? "Felder verkleinern" : "Alle Felder"}><span />{open ? "Weniger" : "Alle Felder"}</button><div className="jpsbody">{children}</div></div>;
+  // v0.99.6: Karte mit Griff – ziehen (hoch/runter) oder antippen; rastet bei „wenig“ bzw. „alle Felder“ ein
+  const ref = useRef(null), drag = useRef(null);
+  const [h, setH] = useState(null), [dragging, setDragging] = useState(false);
+  const box = () => ref.current?.parentElement?.getBoundingClientRect().height || innerHeight;
+  const lo = () => Math.round(box() * 0.42), hi = () => Math.round(box() * 0.86);
+  const cur = h ?? lo(), open = cur > (lo() + hi()) / 2;
+  const down = (e) => { drag.current = { y: e.clientY, h: cur, moved: false }; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} };
+  const move = (e) => { const d = drag.current; if (!d) return; const dy = d.y - e.clientY; if (!d.moved && Math.abs(dy) > 6) { d.moved = true; setDragging(true); } if (d.moved) setH(Math.max(120, Math.min(hi(), d.h + dy))); };
+  const up = () => { const d = drag.current; drag.current = null; setDragging(false); if (!d) return;
+    if (!d.moved) return setH(open ? lo() : hi());
+    setH((x) => ((x ?? lo()) > (lo() + hi()) / 2 ? hi() : lo())); };
+  return <div ref={ref} className={"jpsheet" + (open ? " open" : "") + (dragging ? " drag" : "")} style={{ height: cur }}>
+    <div className="jpgrab" role="button" tabIndex={0} aria-label={open ? "Felder verkleinern" : "Alle Felder"} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}><span />{open ? "Weniger" : "Alle Felder ↑"}</div>
+    <div className="jpsbody">{children}</div></div>;
 }
 
 /* Zeile der Dokumentenliste – nur neu zeichnen, wenn sich das Dokument selbst ändert (v0.98.1) */
@@ -15659,14 +15672,16 @@ html.hasdetail .jphone{visibility:hidden}
 .jphone{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
 .jphead{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
 .jphead b{flex:1;min-width:0;text-align:center;font-size:15px}.jpnav{display:flex;gap:4px}.jpnav .iconbtn{width:34px;height:34px;font-size:20px}
-.jphone .jprev{flex:1;overflow:auto;padding:10px 10px 200px}
-.jpsheet{position:fixed;left:0;right:0;bottom:0;z-index:61;background:var(--card);border-radius:20px 20px 0 0;box-shadow:0 -10px 30px #0003;max-height:60dvh;display:flex;flex-direction:column;transition:max-height .25s ease}
-.jpsheet.open{max-height:88dvh}
-.jpgrab{border:0;background:none;color:var(--acc);font:inherit;font-size:13px;font-weight:600;padding:6px 0 2px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
+.jphone .jprev{flex:1;min-height:0;overflow:auto;padding:10px;overscroll-behavior:contain}
+.jpsheet{position:relative;flex:none;z-index:61;background:var(--card);border-radius:20px 20px 0 0;box-shadow:0 -10px 30px #0003;display:flex;flex-direction:column;transition:height .22s ease;margin-top:-14px}
+.jpsheet.drag{transition:none}
+.jpgrab{border:0;background:none;color:var(--acc);font-size:13px;font-weight:600;padding:10px 0 8px;touch-action:none;user-select:none;-webkit-user-select:none;flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
 .jpgrab span{width:40px;height:5px;border-radius:3px;background:var(--mut);opacity:.45}
-.jpsbody{overflow:auto;padding:4px 14px calc(env(safe-area-inset-bottom) + 12px)}
-.jpsheet:not(.open) .jx,.jpsheet:not(.open) .jfields .jbtns .row{display:none!important}
-.jpsheet .jbtns{position:static;padding:4px 0 0}
+.jpsbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 14px 0}
+.jpsheet .jbtns{position:sticky;bottom:0;padding:8px 0 calc(env(safe-area-inset-bottom) + 10px);margin-top:8px;z-index:2}
+.jpsheet:not(.open) .jbtns .row{display:none}
+html.jpopen,html.jpopen body{overflow:hidden!important;overscroll-behavior:none}
+.jphone{overscroll-behavior:none}
 
 .jsh{display:flex;align-items:center;gap:6px;width:100%;margin:12px 0 4px;padding:4px 8px;border:0;background:none;cursor:pointer;font:inherit;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);border-radius:8px;text-align:left}.jsh:hover{background:var(--soft,#0000000d);color:var(--txt)}.jsh .jchev{font-size:11px;transition:transform .15s}.jsh.shut .jchev{transform:rotate(-90deg)}
 

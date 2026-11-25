@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.7 – Schwebender Zurück-Pfeil am iPhone
+
+Am iPhone ersetzt ein runder, schwebender Zurück-Pfeil links im unteren Drittel alle Zurück-Knöpfe (z. B. „‹ Mehr“, „‹ Journal“, „‹ Zurück“ in Konten, Analyse, Einstellungen, Dokument-Unterseiten, Kundendetails). Er geht immer eine Ebene zurück; in der Journal-Belegansicht schwebt er über der Felder-Karte. In Popups bleibt „Abbrechen/Schließen“ wie gehabt, dort wird der Pfeil ausgeblendet. Wischen vom linken Rand funktioniert weiterhin.
+
+## v0.99.6 – Journal am iPhone: Belegansicht repariert
+
+- Solange ein Beleg im Journal offen ist, scrollt die Seite dahinter nicht mehr mit – die Ansicht springt in Safari nicht mehr und die Safari-Leiste verdeckt die Felder nicht.
+- Die Felder-Karte lässt sich am Griff **hoch- und runterziehen** oder antippen; sie rastet bei „wenig“ bzw. „alle Felder“ ein. Die Felder scrollen innerhalb der Karte, „Weiter/Bestätigen“ bleibt unten sichtbar.
+
 ## v0.99.5 – Journal: Details-Knopf, iPhone-Scrollen, Monate einklappbar
 
 - **„✎ Details“-Knopf** (Laptop & iPad) blendet die Felder zum Bearbeiten ein und aus. Ausgeblendet ist die Vorschau größer, darunter eine Leiste mit Titel, Datum, Betrag, „✎ Details“ und „Bestätigen/Weiter“.
