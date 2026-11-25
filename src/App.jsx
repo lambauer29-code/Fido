@@ -1216,6 +1216,7 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
                   <Handle onDown={(e) => dnd.start(e, { kind: "tab", list: "t", index: i, label: "Überschrift " + t.head })} />
                   <small className="muted hdlbl">Überschrift</small>
                   <EditText className="grow" value={t.head} placeholder="z. B. Finanzen" onSave={(v) => patchTab(i, { head: v })} />
+                  <label className="mini" title="In der Seitenleiste auf die Überschrift tippen, um alles darunter (bis zur nächsten Überschrift oder Linie) ein- und auszuklappen"><input type="checkbox" checked={!!t.fold} onChange={(e) => patchTab(i, { fold: e.target.checked, ...(e.target.checked ? {} : { closed: false }) })} />einklappbar</label>
                   <button className="iconbtn" title="Entfernen" onClick={() => setNav((n) => ({ ...n, tabs: n.tabs.filter((x) => x.key !== t.key) }))}>🗑</button>
                 </div>
               ) : (<>
@@ -2413,10 +2414,17 @@ function AppMain() {
         setSideTip(text ? { text, top: r.top + r.height / 2 } : null);
       }} onPointerLeave={() => setSideTip(null)}>
         <div className="brand"><img src="/icon.svg" alt="" /><div><b>FinDocu</b><small>Finanzen & Dokumente</small></div></div>
-        {nav.tabs.map((t) => {
-          if (t.sep) return <hr key={t.key} className="navsep side-only" />;
-          if (t.head != null) return <div key={t.key} className="navhead side-only">{t.head}</div>;
+        {(() => { let fold = false; return nav.tabs.map((t) => {
+          // v0.99.17: einklappbare Überschriften – alles bis zur nächsten Überschrift oder Linie klappt mit
+          if (t.sep) { fold = false; return <hr key={t.key} className="navsep side-only" />; }
+          if (t.head != null) {
+            fold = !!(t.fold && t.closed && !sideMini);
+            if (!t.fold) return <div key={t.key} className="navhead side-only">{t.head}</div>;
+            return <button key={t.key} type="button" className={"navhead navheadbtn side-only" + (t.closed ? " shut" : "")} aria-expanded={!t.closed} aria-label={t.head + (t.closed ? " ausklappen" : " einklappen")}
+              onClick={() => setNav((n) => ({ ...n, tabs: n.tabs.map((x) => (x.key === t.key ? { ...x, closed: !x.closed } : x)) }))}><span>{t.head}</span><i className="navheadchev">▾</i></button>;
+          }
           if (!(t.side || t.phone)) return null;
+          if (fold && tab !== t.key) return null;
           // Unterreiter: in der Seitenleiste unter dem Elternreiter, am Handy normal in der Leiste
           const parentShown = t.parent && nav.tabs.some((p) => p.key === t.parent && p.side);
           if (parentShown) return t.phone ? (
@@ -2467,7 +2475,7 @@ function AppMain() {
               )}
             </React.Fragment>
           );
-        })}
+        }); })()}
         <button className="sidetoggle side-only" onClick={() => setSideMini(!sideMini)} title={sideMini ? undefined : "Seitenleiste einklappen (⌘\\)"} aria-label={sideMini ? "Seitenleiste ausklappen (⌘\\)" : "Seitenleiste einklappen"}>
           <span className="tabico">{sideMini ? "»" : "«"}</span>
         </button>
@@ -15816,4 +15824,14 @@ button.jmhead{width:100%;border:0;font-family:inherit;cursor:pointer;align-items
 .jlht{display:flex;flex-direction:column;gap:1px;min-width:0}.jlht small{font-size:11px}
 .jlsumtop{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:16px}
 .jcard .jconfok{width:100%;min-height:42px;color:var(--pos,#2e9b5e);font-weight:700}
+
+/* v0.99.17: einklappbare Überschriften in der Seitenleiste */
+nav.bottom .navheadbtn{display:none;width:100%;border:0;background:none;cursor:pointer;text-align:left;font-family:inherit;border-radius:8px}
+@media (min-width:768px){nav.bottom .navheadbtn.side-only{display:flex;align-items:center;gap:6px}}
+nav.bottom .navheadbtn span{flex:1}
+nav.bottom .navheadbtn .navheadchev{font-style:normal;font-size:11px;transition:transform .15s}
+nav.bottom .navheadbtn.shut .navheadchev{transform:rotate(-90deg)}
+nav.bottom>button.navheadbtn{background:none!important;box-shadow:none!important;min-height:0!important;margin:0!important;padding:10px 14px 4px!important;font-size:11px!important;font-weight:700!important;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)!important;flex-direction:row!important;justify-content:flex-start!important}
+html.fg nav.bottom>button.navheadbtn{font-size:12.5px!important}
+nav.bottom>button.navheadbtn:hover{color:var(--txt)!important}
 `;

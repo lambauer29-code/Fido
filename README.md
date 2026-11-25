@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.17 – Seitenleiste: einklappbare Überschriften
+
+Unter Einstellungen → Seitenleiste hat jede Überschrift (z. B. „Firma“) den Schalter **einklappbar**. Ist er an, klappt ein Klick auf die Überschrift in der Seitenleiste alle Reiter darunter ein bzw. aus – bis zur nächsten Überschrift oder Linie. Der Zustand bleibt gespeichert; der gerade geöffnete Reiter bleibt sichtbar. Gilt für Laptop und iPad (Seitenleiste).
+
 ## v0.99.16 – Journal: Bearbeiten in der Mitte
 
 In der Prüfkarte (iPhone, iPad, Laptop) steht zwischen ‹ und › jetzt „✎ Bearbeiten“ statt „Weiter“. Bei noch unbestätigten Belegen erscheint darunter „✓ Bestätigen & weiter“; bei bestätigten Belegen blättert man mit ‹ ›.
