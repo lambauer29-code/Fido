@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.15 – Journal: ‹ Bestätigen › und Summe oben
+
+- Prüfkarte (alle Displaygrößen): eine Zeile „‹ · Bestätigen/Weiter · ›“ – ‹ und › blättern zum vorigen/nächsten Beleg ohne zu bestätigen. Die Pfeile oben im iPhone-Kopf sind entfernt; am iPad in der schmalen Leiste ebenso ‹ und ›.
+- Laptop/iPad: Die Summe steht jetzt oben neben dem Monat (größer als die Einzelbeträge), die Anzahl klein darunter; die Summenzeile unten entfällt.
+
+## v0.99.14 – Konto-Verknüpfungen
+
+Ein Klick auf ein Konto in **Vermögen**, **Übersicht**, **Ausgabe** oder in einer Buchung öffnet jetzt überall direkt dieses Konto – am iPhone die Kontodetails (statt nur der Kontenübersicht), am Laptop/iPad das ausgewählte Konto oben am Seitenanfang. Zurück führt am iPhone wieder in den Reiter, aus dem man gekommen ist.
+
 ## v0.99.13 – Aufgeräumt + Versionsanzeige
 
 - Code der Journal-Varianten A und B (Weitere Felder / ganzes Formular) entfernt – das Journal nutzt nur noch die Prüfkarte.

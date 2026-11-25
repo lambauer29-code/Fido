@@ -404,7 +404,7 @@ function applyTheme(t) {
 // v0.98.1: merkt lokale Änderungen und die letzte Bedienung – der Sync läuft dann nur, wenn nötig und nicht mitten im Scrollen/Tippen
 const ACT = { dirty: true, lastInput: 0, lastSync: 0 };
 if (typeof window !== "undefined") for (const ev of ["pointerdown", "touchstart", "keydown", "wheel", "scroll"]) addEventListener(ev, () => { ACT.lastInput = Date.now(); }, { passive: true, capture: true });
-const LS_QUIET = /^(win:|srch:|lastAuto|syncCfg|dev:|openSettingsSec|txOpenReq|invOpenReq|ctOpenReq|stbSec|txHistOpen)/;
+const LS_QUIET = /^(win:|srch:|lastAuto|syncCfg|dev:|openSettingsSec|txOpenReq|accOpenReq|invOpenReq|ctOpenReq|stbSec|txHistOpen)/;
 const ls = {
   get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); if (!LS_QUIET.test(k)) ACT.dirty = true; } catch {} }
@@ -2269,6 +2269,8 @@ function AppMain() {
   const effSel = allSel ? visIds : pickedVis;
   const selAcc = !allSel && effSel.length === 1 ? effSel[0] : "";
   const setSelAcc = (id) => setSelAccs(id ? [id] : []);
+  // v0.99.14: Konto aus anderen Reitern öffnen – am Handy direkt in die Kontodetails (nicht nur die Kontenübersicht)
+  const openAccountTab = (id) => { setSelAcc(id); if (id) ls.set("accOpenReq", id); setTab("accounts"); requestAnimationFrame(() => { scrollTo(0, 0); document.querySelector(".fitscroll,.main")?.scrollTo?.(0, 0); }); };
   const accActions = {
     onToggle: (id) => setSelAccs(() => { const n = effSel.includes(id) ? effSel.filter((x) => x !== id) : [...effSel, id]; return n.length === visIds.length ? [] : n; }),
     onOnly: (id) => { setSelAccs([id]); setTab("accounts"); },
@@ -2305,7 +2307,7 @@ function AppMain() {
       <main>
         {tab.startsWith("hub:") && <HubPage hub={tab} nav={nav} setNav={setNav} setTab={setTab} docs={active} dlDocs={dlDocs} accounts={visAccounts} notify={notify} />}
         {tab === "home" && <Home docs={active} dlDocs={dlDocs} txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} budgets={budgets} onOpen={setOpenId} setTab={setTab} fixExtra={fixExtra} hasCash={visAccounts.some((a) => a.kind === "cash")}
-          accounts={visAccounts} onManual={setManualTx} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }}
+          accounts={visAccounts} onManual={setManualTx} openAccount={openAccountTab}
           uniDrop={<>
             <DropField onFiles={smartImport} busy={!!(docBusy || accBusy)} title="Beliebige Dateien oder Ordner hierher ziehen" what="Dokumente, Kontoauszüge, vCards" isOk={() => true} accept="" />
             {docBusy && <ImportBar {...docBusy} />}{accBusy && <ImportBar {...accBusy} />}
@@ -2328,7 +2330,7 @@ function AppMain() {
         {tab === "cash" && <ExpensePage accounts={visAccounts} txs={txs} categories={TX_CATS(categories)} onSave={saveExpense} onScan={scanFor} addCategory={addCategory} notify={notify}
           onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
           suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")}
-          docs={active} onOpen={setOpenId} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
+          docs={active} onOpen={setOpenId} openAccount={openAccountTab} />}
         {tab === "analyse" && <Analysis txs={txs.filter((t) => !hiddenAccs.some((a) => a.id === t.accountId))} accounts={visAccounts} hasCash={visAccounts.some((a) => a.kind === "cash")} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
         {tab === "fahrtenbuch" && <Fahrtenbuch accounts={visAccounts} notify={notify} onBook={async (t) => { const tx = await addManualTx(t); return tx; }}
           txs={txs} docs={active} onScan={scanFor} onOpen={setOpenId}
@@ -2337,7 +2339,7 @@ function AppMain() {
         {tab === "steuer" && <StbPage txs={txs} accounts={accounts} setAccounts={setAccounts} docs={active} saveDoc={saveDoc} updateTx={updateTx} updateTxs={updateTxs} importTxs={importTxs} getTxs={() => txsRef.current}
           categories={categories} token={token} notify={notify} setTab={setTab} onOpen={setOpenId} openTx={(t) => setStbTx(t)} />}
         {tab === "firma" && <BizReport docs={active} setTab={setTab} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
-        {tab === "vermoegen" && <Wealth txs={txs} accounts={visAccounts} openAccount={(id) => { setSelAcc(id); setTab("accounts"); }} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
+        {tab === "vermoegen" && <Wealth txs={txs} accounts={visAccounts} openAccount={openAccountTab} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
         {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
         {tab === "artikel" && <ArticlesPage setTab={setTab} />}
@@ -2477,7 +2479,7 @@ function AppMain() {
       {stbTx && <TxSheet key={stbTx.id} t={txs.find((x) => x.id === stbTx.id) || stbTx} onSwitch={(x) => setStbTx(x)} onClose={() => setStbTx(null)}
         scanReceiptFor={scanReceiptFor} receiptFor={receiptFor} txs={txs} recurring={recurring} subs={subs} goTab={setTab} resetCp={resetCp} addCategory={addCategory} accounts={accounts}
         linkTx={linkTx} attachNew={attachNew} deleteTx={deleteTx} categories={TX_CATS(categories)} docs={active} onOpen={(id) => setOpenId(id)} updateTx={updateTx}
-        accName={(id) => accounts.find((a) => a.id === id)?.name || "Konto"} onAccount={(id) => { setSelAcc(id); setTab("accounts"); }} />}
+        accName={(id) => accounts.find((a) => a.id === id)?.name || "Konto"} onAccount={openAccountTab} />}
       {openDoc && (
         <Detail doc={openDoc} categories={categories} docGroups={nav.docGroups} addCategoryEx={addCategoryEx} onClose={() => setOpenId(null)} bookCash={bookCash} txs={txs} accounts={accounts} linkTx={linkTx}
           saveDoc={saveDoc} trashDoc={trashDoc} reanalyze={reanalyze} notify={notify} />
@@ -5409,7 +5411,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
     </button>); };
   const onOriginal = async () => { const b = await db.getFile(curDoc.id); if (b) openPdf(b, curDoc.fileName || "Beleg.pdf", curDoc.title); };
   const pos = curDoc && (mode === "pruefen" ? `${idx + 1} von ${list.length} unbestätigt` : `${idx + 1} von ${list.length}`);
-  const fields = curDoc && <JournalCard key={curDoc.id} d={curDoc} tx={txByDoc.get(curDoc.id)} onConfirm={confirm} onEdit={() => onOpen(curDoc.id)} pos={pos} />;
+  const fields = curDoc && <JournalCard key={curDoc.id} d={curDoc} tx={txByDoc.get(curDoc.id)} onConfirm={confirm} onEdit={() => onOpen(curDoc.id)} pos={pos}
+    onPrev={idx > 0 ? () => go(-1) : null} onNext={idx < list.length - 1 ? () => go(1) : null} />;
 
   /* ---------- 3 · Monats-Zeitleiste ---------- */
   if (mode === "monate") {
@@ -5449,7 +5452,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
         {phoneOpen && curDoc && createPortal(
           <div className="jphone">
             <div className="jphead"><button className="link" data-fback="1" aria-label="Zurück zum Journal" onClick={() => setPhoneOpen(false)}>‹ Journal</button><b className="one">{curDoc.title}</b>
-              <span className="jpnav"><button className="iconbtn" disabled={idx <= 0} onClick={() => go(-1)} aria-label="Vorheriger">‹</button><button className="iconbtn" disabled={idx >= list.length - 1} onClick={() => go(1)} aria-label="Nächster">›</button></span></div>
+</div>
             <JournalPreview d={curDoc} compact onSwipe={go} onOpen={onOriginal} />
             <JPhoneSheet>{fields}</JPhoneSheet>
           </div>, document.querySelector(".app") || document.body)}
@@ -5461,16 +5464,18 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
       <div ref={boxRef} className={"jgrid jv-c" + (narrow ? " narrow" : "") + (mode === "pruefen" ? " pruef" : "") + (detOn ? " det" : " nodet")} style={boxH ? { height: boxH } : undefined}>
         {mode !== "pruefen" && sidebar}
         <div className="jlist">
-          <div className="jlhead">{mode === "pruefen" ? <b>Zu prüfen</b> : <b>{facet ? (facet.v || "Nicht zugewiesen") : sel.m ? MONTHS_DE[+sel.m - 1] + " " + sel.y : sel.y === "ohne" ? "Ohne Datum" : sel.y || "Alle Jahre"}</b>}<small className="muted">{list.length}</small></div>
+          <div className="jlhead"><span className="jlht"><b>{mode === "pruefen" ? "Zu prüfen" : facet ? (facet.v || "Nicht zugewiesen") : sel.m ? MONTHS_DE[+sel.m - 1] + " " + sel.y : sel.y === "ohne" ? "Ohne Datum" : sel.y || "Alle Jahre"}</b><small className="muted">{list.length} {list.length === 1 ? "Beleg" : "Belege"}</small></span>
+            <b className={"jlsumtop " + (sum >= 0 ? "pos" : "neg")} title="Summe">{fmtMoney(sum)}</b></div>
           <div className="jlscroll">{listV.map(row)}{!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege."}</MEmpty>}</div>
-          <div className="jlsum"><span className="muted">Summe</span><b className={sum >= 0 ? "pos" : "neg"}>{fmtMoney(sum)}</b></div>
         </div>
         <div className="jcenter">{curDoc ? <JournalPreview d={curDoc} onOpen={onOriginal} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}
           {curDoc && !detOn && <div className="jstrip">
             <div className="grow jstxt"><b className="one">{curDoc.title || curDoc.fileName}</b><small className="muted one">{[jDate(curDoc) && fmtDate(jDate(curDoc)), curDoc.sender, curDoc.category].filter(Boolean).join(" · ")}</small></div>
             {jSigned(curDoc) != null && <b className={"jsamt " + (jSigned(curDoc) >= 0 ? "pos" : "neg")}>{fmtMoney(jSigned(curDoc))}</b>}
             <button className="btn sm" onClick={() => onOpen(curDoc.id)}>✎ Bearbeiten</button>
-            <button className="btn sm primary" onClick={() => confirm()}>{jUnconf(curDoc) ? "✓ Bestätigen" : "Weiter ›"}</button>
+            <button className="btn sm jnavb" disabled={idx <= 0} onClick={() => go(-1)} aria-label="Vorheriger Beleg">‹</button>
+            <button className="btn sm primary" onClick={() => confirm()}>{jUnconf(curDoc) ? "✓ Bestätigen" : "Weiter"}</button>
+            <button className="btn sm jnavb" disabled={idx >= list.length - 1} onClick={() => go(1)} aria-label="Nächster Beleg">›</button>
           </div>}</div>
         {detOn && <div className="jinsp">{fields}</div>}
       </div>
@@ -5478,12 +5483,16 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
     </div>
   );
 }
-function JournalCard({ d, tx, onConfirm, onEdit, pos }) {
+function JournalCard({ d, tx, onConfirm, onEdit, pos, onPrev, onNext }) {
   const v = jSigned(d);
   return (<div className="jcard">
     {pos && <div className="jpos muted small">{pos}</div>}
     <div className="jbtns jcbtns">
-      <button className="btn primary jconfirm" onClick={() => onConfirm()}>{jUnconf(d) ? "✓ Bestätigen & weiter" : "Weiter ›"}</button>
+      <div className="jnav3">
+        <button className="btn jnavb" disabled={!onPrev} onClick={onPrev} aria-label="Vorheriger Beleg" title="Zurück">‹</button>
+        <button className="btn primary jconfirm" onClick={() => onConfirm()}>{jUnconf(d) ? "✓ Bestätigen" : "Weiter"}</button>
+        <button className="btn jnavb" disabled={!onNext} onClick={onNext} aria-label="Nächster Beleg" title="Weiter ohne Bestätigen">›</button>
+      </div>
       <button className="btn sm" onClick={onEdit}>✎ Bearbeiten</button>
     </div>
     <b className="jctitle">{d.title || d.fileName}</b>
@@ -6289,7 +6298,12 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const isContract = (t) => recIds.has(t.id) || (t.counterparty && ctNames.some((n) => norm(t.counterparty).includes(n) || n.includes(norm(t.counterparty))));
   const openAcc = (id) => { setQ(""); setMonth(""); setColl(""); setMSearch(false); setLimit(150); if (id === "all") { setSel([]); setAcc?.(""); } else { setSel([id]); setAcc?.(id); } setMView(id); scrollTo(0, 0); };
   useEdgeBack(() => backAcc(), mobile && !!mView && !txOpen);
-  const backAcc = () => { setMView(null); setSel([]); setAcc?.(""); setQ(""); setMonth(""); setColl(""); scrollTo(0, 0); };
+  const fromReq = useRef(false);
+  useEffect(() => { const id = ls.get("accOpenReq", null); if (!id) return; ls.set("accOpenReq", null); if (mobile && accounts.some((a) => a.id === id)) { openAcc(id); fromReq.current = true; } }, []);
+  const backAcc = () => {
+    // aus einem anderen Reiter direkt ins Konto gesprungen → Zurück führt dorthin zurück
+    if (fromReq.current) { fromReq.current = false; const hb = document.querySelector("header.top [data-fback]"); if (hb) { setSel([]); setAcc?.(""); hb.click(); return; } }
+    setMView(null); setSel([]); setAcc?.(""); setQ(""); setMonth(""); setColl(""); scrollTo(0, 0); };
   if (mobile) {
     const mon = todayISO().slice(0, 7);
     const visIds = new Set(visAccounts.map((a) => a.id));
@@ -15791,4 +15805,14 @@ button.jmhead{width:100%;border:0;font-family:inherit;cursor:pointer;align-items
 .jgrid.jv-c.det:not(.narrow){grid-template-columns:230px 270px minmax(0,1fr) 270px}.jgrid.jv-c.det.pruef:not(.narrow){grid-template-columns:270px minmax(0,1fr) 270px}
 .fbclipbtn{border:0;background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:8px;padding:2px 6px;margin-left:6px;font-size:14px;cursor:pointer;vertical-align:middle}
 .appver{text-align:center;margin:18px 0 6px;opacity:.7}
+
+/* v0.99.15: Journal – ‹ Bestätigen › und Summe oben */
+.jnav3{display:flex;gap:6px;align-items:stretch}
+.jnav3 .jconfirm{flex:1}
+.jnavb{flex:none;width:52px;font-size:22px;font-weight:700;padding:0;display:grid;place-items:center}
+.jstrip .jnavb{width:38px;font-size:18px}
+.jnavb:disabled{opacity:.35}
+.jlhead{align-items:flex-end}
+.jlht{display:flex;flex-direction:column;gap:1px;min-width:0}.jlht small{font-size:11px}
+.jlsumtop{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:16px}
 `;
