@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.8 – iPad: Popups wie am iPhone, in der Größe veränderbar
+
+- Am iPad öffnen alle Popups (Dokument, Buchung, Rechnung, Vertrag, Fahrt, Kunde, Artikel, Lager, Gerät, Kassabuch, Journal-Details …) wie am iPhone als Karte von unten: Griff oben, „Abbrechen/Schließen – Titel – Speichern“, großer Speichern-Knopf unten, nach unten wischen schließt. Vorschau und Scanner bildschirmfüllend.
+- **Größe veränderbar:** am Griff oben hoch-/runterziehen ändert die Höhe (ganz nach unten = schließen), an den Griffleisten links/rechts ziehen ändert die Breite. Die Größe wird pro Popup gemerkt; Doppeltippen auf einen Griff stellt die Standardgröße wieder her.
+- Laptop und iPhone bleiben unverändert.
+
 ## v0.99.7 – Schwebender Zurück-Pfeil am iPhone
 
 Am iPhone ersetzt ein runder, schwebender Zurück-Pfeil links im unteren Drittel alle Zurück-Knöpfe (z. B. „‹ Mehr“, „‹ Journal“, „‹ Zurück“ in Konten, Analyse, Einstellungen, Dokument-Unterseiten, Kundendetails). Er geht immer eine Ebene zurück; in der Journal-Belegansicht schwebt er über der Felder-Karte. In Popups bleibt „Abbrechen/Schließen“ wie gehabt, dort wird der Pfeil ausgeblendet. Wischen vom linken Rand funktioniert weiterhin.

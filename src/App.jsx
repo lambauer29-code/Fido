@@ -1363,7 +1363,8 @@ function MHero({ icon, title, sub, value, valueCls = "", pills = [] }) {
 let detailOpen = 0, sheetDepth = 0, sheetScrollY = 0, lastListY = 0;
 if (typeof window !== "undefined") addEventListener("scroll", () => { if (!sheetDepth) lastListY = scrollY; }, { passive: true });
 function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern" }) {
-  const wide = useMedia("(min-width:768px)");
+  // v0.99.8: iPad bekommt dieselben Popups wie das iPhone (Karte von unten)
+  const wide = useMedia("(min-width:768px)") && !IS_TABLET;
   useEdgeBack(() => reqRef.current?.(), !wide);
   // iPad: Liste rückt zur Seite, solange ein Detail rechts offen ist (Split View)
   // Handy: Scrollposition der Liste merken und nach dem Schließen wiederherstellen (v0.97.7)
@@ -1418,6 +1419,32 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   zRef.current = z;
   // Handy-Sheet (v0.98): nach unten wischen schließt, Speichern-Leiste unten
   const [dragY, setDragY] = useState(0), drag = useRef(null), [bar, setBar] = useState(null);
+  // v0.99.8: iPad – Karte in Höhe (Griff oben) und Breite (Griffe links/rechts) veränderbar, Größe pro Popup gemerkt
+  const tabSheet = IS_TABLET && !wide;
+  const [tsz, setTsz] = useState(() => (IS_TABLET ? ls.get("tsheet:" + id, null) : null));
+  const [pr, setPr] = useState(null);
+  useLayoutEffect(() => {
+    if (!tabSheet) return; const el = rootRef.current; if (!el) return;
+    const f = () => { const r = el.getBoundingClientRect(); setPr((o) => (o && o.w === Math.round(r.width) && o.h === Math.round(r.height) ? o : { w: Math.round(r.width), h: Math.round(r.height) })); };
+    f(); const ro = new ResizeObserver(f); ro.observe(el); addEventListener("resize", f);
+    return () => { ro.disconnect(); removeEventListener("resize", f); };
+  }, [tabSheet]);
+  const tsDrag = (kind) => (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const sx = e.clientX, sy = e.clientY, s0 = { w: pr?.w || 760, h: pr?.h || Math.round(innerHeight * 0.6) }; let last = null, closeIt = false;
+    document.body.classList.add("win-moving");
+    const mv = (ev) => {
+      if (kind === "h") { const raw = s0.h - (ev.clientY - sy); closeIt = raw < 130; last = { ...(tsz || {}), h: Math.max(180, Math.min(innerHeight - 24, Math.round(raw))) }; }
+      else { const dx = (ev.clientX - sx) * (kind === "l" ? -2 : 2); last = { ...(tsz || {}), w: Math.max(420, Math.min(innerWidth - 16, Math.round(s0.w + dx))) }; }
+      setTsz(last);
+    };
+    const up = () => { document.body.classList.remove("win-moving"); removeEventListener("pointermove", mv); removeEventListener("pointerup", up); removeEventListener("pointercancel", up);
+      // Loslassen über dem Hintergrund darf das Popup nicht schließen
+      const eat = (ce) => { ce.stopPropagation(); ce.preventDefault(); }; addEventListener("click", eat, true); setTimeout(() => removeEventListener("click", eat, true), 350);
+      if (closeIt) { reqRef.current(); return; } if (last) ls.set("tsheet:" + id, last); };
+    addEventListener("pointermove", mv); addEventListener("pointerup", up); addEventListener("pointercancel", up);
+  };
+  const tsReset = (e) => { e.stopPropagation(); setTsz(null); ls.set("tsheet:" + id, null); };
   const tStart = (e) => { const el = rootRef.current; if (!el || wide) return; const t = e.target;
     if (t.closest("input,textarea,select,button,a,[contenteditable],.mapbox,canvas")) return;
     const top = el.getBoundingClientRect().top, y = e.touches[0].clientY;
@@ -1445,12 +1472,19 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   if (!wide) { const full = /scanner|docprevwin|pdfviewwin|stmtwin|iconeditwin/.test(className); return (
     <WinCtx.Provider value={requestClose}>
     <div className={"sheet msheet " + (full ? "mfull " : "") + className} onClick={requestClose}>
-      <div ref={rootRef} className={"panel" + (small ? " small-panel" : "") + (bar ? " hasbar" : "")} style={dragY > 0 ? { transform: `translateY(${dragY}px)`, transition: "none" } : undefined}
+      <div ref={rootRef} className={"panel" + (small ? " small-panel" : "") + (bar ? " hasbar" : "")} style={{ ...(dragY > 0 ? { transform: `translateY(${dragY}px)`, transition: "none" } : {}), ...(tabSheet && !full && tsz?.w ? { "--tw": tsz.w + "px" } : {}), ...(tabSheet && !full && tsz?.h ? { "--th": tsz.h + "px" } : {}) }}
         onClick={(e) => e.stopPropagation()} {...touchProps} onTouchStart={tStart} onTouchMove={tMove} onTouchEnd={tEnd} onTouchCancel={tEnd}>
         <div className="mgrab" aria-hidden="true" />
         {guard}{children}
         {bar && <div className="msheetbar"><button type="button" className="btn primary" disabled={bar.disabled} onClick={() => bar.el?.click()}>{bar.label}</button></div>}
       </div>
+      {tabSheet && !full && pr && !dragY && <>
+        <div className="tsgrab" style={{ bottom: pr.h - 30 }} onPointerDown={tsDrag("h")} onClick={(e) => e.stopPropagation()} onDoubleClick={tsReset} title="Ziehen: Höhe ändern · Doppeltippen: Standardgröße" />
+        {pr.w < innerWidth - 40 && <>
+          <div className="tsside" style={{ left: `calc(50% - ${pr.w / 2}px - 16px)`, bottom: Math.max(20, pr.h / 2 - 32) }} onPointerDown={tsDrag("l")} onClick={(e) => e.stopPropagation()} onDoubleClick={tsReset} title="Ziehen: Breite ändern"><i /></div>
+          <div className="tsside" style={{ left: `calc(50% + ${pr.w / 2}px + 2px)`, bottom: Math.max(20, pr.h / 2 - 32) }} onPointerDown={tsDrag("r")} onClick={(e) => e.stopPropagation()} onDoubleClick={tsReset} title="Ziehen: Breite ändern"><i /></div>
+        </>}
+      </>}
     </div>
     </WinCtx.Provider>); }
 
@@ -2250,7 +2284,7 @@ function AppMain() {
     <div className={"app tab-" + tab}>
       <style>{CSS}</style>
       <header className={"top" + (touchNav && backStack.length ? " hasback" : "")}>
-        {touchNav && backStack.length > 0 && <button className="navback" onClick={backBtn} aria-label={"Zurück zu " + tabLabel(nav, backStack[backStack.length - 1])}>
+        {touchNav && backStack.length > 0 && <button className="navback" data-fback="1" onClick={backBtn} aria-label={"Zurück zu " + tabLabel(nav, backStack[backStack.length - 1])}>
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
           <span>{tabLabel(nav, backStack[backStack.length - 1])}</span></button>}
         <h1 className={tabLabel(nav, tab).length > 14 ? "longh1" : ""}>{tabLabel(nav, tab)}</h1>
@@ -2361,6 +2395,7 @@ function AppMain() {
         onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
         suggestCat={(name) => (name && name.trim() ? (() => { const c = categorize({ counterparty: name, purpose: "", kind: "bank", amount: -1 }, rules, []); return c && c !== "Sonstiges" ? c : ""; })() : "")} />}
 
+      {phoneNav && <FloatBack />}
       {phoneNav ? (
       <nav className="bottom mtabbar" aria-label="Hauptbereiche">
         {mobL.bar.map((k) => { const on = tab === k || (k.startsWith("hub:") && !mobL.bar.includes(tab) && !tab.startsWith("hub:") && mobHubOf(mobL, tab) === k);
@@ -3939,7 +3974,7 @@ function Analysis({ txs, accounts, hasCash, editing = false, setEditing = () => 
     const mm = {}; sel.filter((t) => (t.category || "Sonstiges") === drill).forEach((t) => { const k = normName(t.counterparty || t.purpose || "Unbekannt"); mm[k] = (mm[k] || 0) + Math.abs(t.amount); });
     return (
       <div className="anapage">
-        <div className="anahead"><button className="btn sm" onClick={() => { setDrill(null); setDrillM(null); }}>‹ Zurück</button><b className="grow">{drill}</b><small className="muted">{periodLabel}</small></div>
+        <div className="anahead"><button className="btn sm" data-fback="1" onClick={() => { setDrill(null); setDrillM(null); }}>‹ Zurück</button><b className="grow">{drill}</b><small className="muted">{periodLabel}</small></div>
         <section className="tile anakpi"><CatIcon c={drill} size={44} /><div><small className="muted">{kind === "out" ? "Ausgaben" : "Einnahmen"}</small><div className="kpiv">{fmtMoney(byCat[drill] || 0)}</div>
           <small className="muted">{pct(byCat[drill] || 0, selTotal)} % vom Gesamt · {l.length} Buchungen</small> <Delta a={byCat[drill] || 0} b={pByCat[drill] || 0} good={kind === "out" ? "down" : "up"} /></div></section>
         <section className="tile"><div className="tilehead"><b>Verlauf</b><small>12 Monate</small></div><MiniBars data={hist} /></section>
@@ -4658,6 +4693,32 @@ function AkteWin({ akte, categories, years, onClose, onSave, onDelete }) {
       </div>
     </div>
   </Win>);
+}
+/* ======================= Schwebender Zurück-Pfeil am iPhone (v0.99.7) =======================
+   Alle Zurück-Knöpfe tragen data-fback; am Handy sind sie ausgeblendet. Der schwebende Pfeil löst den
+   zuletzt im Dokument stehenden (= innersten) sichtbaren Zurück-Knopf aus. In Popups bleibt Schließen/Abbrechen. */
+function FloatBack() {
+  const [tgt, setTgt] = useState(null);
+  useEffect(() => {
+    let raf = 0;
+    const find = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
+      const html = document.documentElement;
+      if (html.classList.contains("hasdetail")) return setTgt(null);
+      const l = [...document.querySelectorAll("[data-fback]")].filter((b) => b.isConnected && b.parentElement && b.parentElement.getClientRects().length > 0 && !b.closest(".win, .sheet"));
+      const b = l[l.length - 1] || null;
+      setTgt((o) => (o === b ? o : b));
+    }); };
+    find();
+    const mo = new MutationObserver(find);
+    mo.observe(document.body, { childList: true, subtree: true });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => { mo.disconnect(); cancelAnimationFrame(raf); };
+  }, []);
+  if (!tgt) return null;
+  const lbl = tgt.getAttribute("aria-label") || "Zurück";
+  return createPortal(<button className="floatback" aria-label={lbl} title={lbl} onClick={() => { navigator.vibrate?.(6); tgt.click(); }}>
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+  </button>, document.body);
 }
 /* ======================= Handy-Menü anordnen (v0.99.4) ======================= */
 function MobNavEditor({ nav, setNav, notify, only = null, showBar = true }) {
@@ -5415,7 +5476,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
         </MScroll>
         {phoneOpen && curDoc && createPortal(
           <div className="jphone">
-            <div className="jphead"><button className="link" onClick={() => setPhoneOpen(false)}>‹ Journal</button><b className="one">{curDoc.title}</b>
+            <div className="jphead"><button className="link" data-fback="1" aria-label="Zurück zum Journal" onClick={() => setPhoneOpen(false)}>‹ Journal</button><b className="one">{curDoc.title}</b>
               <span className="jpnav"><button className="iconbtn" disabled={idx <= 0} onClick={() => go(-1)} aria-label="Vorheriger">‹</button><button className="iconbtn" disabled={idx >= list.length - 1} onClick={() => go(1)} aria-label="Nächster">›</button></span></div>
             <JournalPreview d={curDoc} compact onSwipe={go} />
             <JPhoneSheet>{fields}</JPhoneSheet>
@@ -5452,6 +5513,8 @@ function JPhoneSheet({ children }) {
   const box = () => ref.current?.parentElement?.getBoundingClientRect().height || innerHeight;
   const lo = () => Math.round(box() * 0.42), hi = () => Math.round(box() * 0.86);
   const cur = h ?? lo(), open = cur > (lo() + hi()) / 2;
+  useEffect(() => { document.documentElement.style.setProperty("--jpsh", cur + "px"); }, [cur]);
+  useEffect(() => () => document.documentElement.style.removeProperty("--jpsh"), []);
   const down = (e) => { drag.current = { y: e.clientY, h: cur, moved: false }; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} };
   const move = (e) => { const d = drag.current; if (!d) return; const dy = d.y - e.clientY; if (!d.moved && Math.abs(dy) > 6) { d.moved = true; setDragging(true); } if (d.moved) setH(Math.max(120, Math.min(hi(), d.h + dy))); };
   const up = () => { const d = drag.current; drag.current = null; setDragging(false); if (!d) return;
@@ -5586,7 +5649,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
     <>
       {docBar}
       {subOpen && <div className="docsubbar">
-        <button className="navback" onClick={closeSub}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>{akte ? "Akten" : "Ordner"}</span></button>
+        <button className="navback" data-fback="1" onClick={closeSub}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>{akte ? "Akten" : "Ordner"}</span></button>
         <b className="docsubtitle">{akte ? <>{akte.icon} {akte.name}</> : <><CatGlyph c={cat} /> {cat}</>}</b>
         {akte && <button className="iconbtn" title="Akte bearbeiten" aria-label="Akte bearbeiten" onClick={() => setAkteEdit(akte)}><IcoEdit /></button>}
       </div>}
@@ -6291,7 +6354,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
     return (
       <div className="mkonten macc">
         <div className="mtopbar">
-          <button className="link mback" onClick={backAcc}>‹ Zurück</button>
+          <button className="link mback" data-fback="1" onClick={backAcc}>‹ Zurück</button>
           <b className="mtitle">{a ? a.name : "Alle Buchungen"}</b>
           <button className={"iconbtn" + (mSearch ? " on" : "")} aria-label="Suchen" onClick={() => { setMSearch(!mSearch); if (mSearch) setQ(""); }}>🔍</button>
           <details className="more mmore">
@@ -9338,7 +9401,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
     if (drill && sections[drill]) return (
       <SetCtx.Provider value={{ order, collapsed: [], dnd: secDnd, toggle: () => {} }}>
         <div className="settings setdrill">
-          <div className="docsubbar"><button className="navback" onClick={() => setDrill("")}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>Einstellungen</span></button></div>
+          <div className="docsubbar"><button className="navback" data-fback="1" onClick={() => setDrill("")}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>Einstellungen</span></button></div>
           <h2 className="setdrilltitle">{titleOf(drill)}</h2>
           {sections[drill]}
         </div>
@@ -11314,7 +11377,7 @@ function CustomerDetail({ c, customers = [], invoices, typeOf, back, onBack, onE
     </div>); };
   const tabs = [["uebersicht", "Übersicht"], ["rechnungen", "Rechnungen", rech.length], ["angebote", "Angebote", ang.length], ["mahnungen", "Mahnungen", rems.length], ["konto", "Konto"]];
   return (<div className="custdet">
-    {back && <div className="docsubbar"><button className="navback" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>Kunden</span></button></div>}
+    {back && <div className="docsubbar"><button className="navback" data-fback="1" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>Kunden</span></button></div>}
     <div className="cdhead">
       <span className="caticon avatar cdav" style={{ color: tp.color }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>
       <div className="grow"><b className="cdname">{c.name}</b><small className="muted block"><span style={{ color: tp.color }}><TypeGlyph t={tp} /> {tp.name}</span>{c.number ? " · " + c.number : ""}{cityOf(c.address) ? " · " + cityOf(c.address) : ""}</small></div>
@@ -14981,7 +15044,7 @@ nav.bottom.mtabbar>button{flex:1 1 0;min-width:0}
 .hubtile small.bad{color:var(--red)}.hubtile small.warn{color:var(--warn)}
 .hubtile:active{transform:scale(.98)}
 @media (min-width:701px){.hubgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (min-width:1000px) and (max-width:1366px) and (pointer:coarse){html.hasdetail .app{padding-right:calc(min(46vw,560px) + 20px)!important}html.hasdetail .win:not(.small){width:min(46vw,560px)!important}
+@media (min-width:1000px) and (max-width:1366px) and (pointer:coarse){html:not(.tablet).hasdetail .app{padding-right:calc(min(46vw,560px) + 20px)!important}html.hasdetail .win:not(.small){width:min(46vw,560px)!important}
   html.hasdetail .ditem .dcatcol,html.hasdetail .ditem .dactions,html.hasdetail .invrow .invacts,html.hasdetail .ctrow .ctacts{display:none!important}
   html.hasdetail .ditem .grow,html.hasdetail .invrow .invmain{min-width:0}}
 /* iPad: Details als Spalte rechts neben der Liste (Split View) */
@@ -15705,4 +15768,25 @@ button.jmhead{width:100%;border:0;font-family:inherit;cursor:pointer;align-items
 .jmhead .jmhl{display:flex;align-items:center;gap:8px}.jmhead .jchev{font-size:11px;transition:transform .15s;display:inline-block}
 .jmhead.shut .jchev{transform:rotate(-90deg)}.jmhead .jmn{font-weight:600;font-size:11px;padding:1px 7px;border-radius:9px;background:var(--line);color:var(--mut);letter-spacing:0}
 .jmall{display:flex;justify-content:center;gap:18px;padding:12px}
+
+/* v0.99.7: schwebender Zurück-Pfeil am iPhone (links, unteres Drittel) statt der Zurück-Knöpfe oben */
+@media (max-width:700px){
+  [data-fback]{display:none!important}
+  header.top.hasback{padding-top:calc(env(safe-area-inset-top) + 8px)}
+  .floatback{position:fixed;left:16px;bottom:calc(var(--navgap,96px) + 92px);z-index:70;width:50px;height:50px;border-radius:50%;display:grid;place-items:center;padding:0;cursor:pointer;
+    color:var(--acc);background:color-mix(in srgb,var(--card) 78%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.4);backdrop-filter:blur(14px) saturate(1.4);
+    border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);box-shadow:0 6px 20px #0004;-webkit-tap-highlight-color:transparent;transition:transform .12s}
+  .floatback:active{transform:scale(.92)}
+  html.jpopen .floatback{bottom:calc(var(--jpsh,40vh) + 14px)}
+}
+
+/* v0.99.8: iPad – Popups wie am iPhone, als Karte von unten, mittig mit begrenzter Breite */
+@media (min-width:701px){
+  html.tablet .msheet>.panel{width:var(--tw,100%)!important;max-width:var(--tw,760px)!important;margin:0 auto!important;height:var(--th,auto)!important;max-height:calc(100dvh - env(safe-area-inset-top) - 24px)!important}
+  html.tablet .msheet .tsgrab{position:absolute;left:50%;transform:translateX(-50%);width:240px;height:34px;z-index:12;touch-action:none;cursor:ns-resize}
+  html.tablet .msheet .tsside{position:absolute;width:14px;height:64px;z-index:12;touch-action:none;cursor:ew-resize;display:grid;place-items:center}
+  html.tablet .msheet .tsside i{width:5px;height:44px;border-radius:3px;background:color-mix(in srgb,#fff 55%,transparent);box-shadow:0 1px 4px #0006}
+  html.tablet .msheet.mfull>.panel{max-width:none!important}
+  html.tablet.win-open .topactions,html.tablet.win-open .fab{display:none}
+}
 `;
