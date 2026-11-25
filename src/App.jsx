@@ -154,6 +154,7 @@ function ShareWin({ data, onClose }) {
       <div className="spsep" />
       <button role="menuitem" onClick={() => { downloadFiles(files); setMsg("Im Ordner „Downloads“ gespeichert."); }}><span>⬇️</span>Herunterladen</button>
       {msg && <div className="spmsg">{msg}</div>}
+      <MenuCancel onClick={onClose} />
     </div>, document.body);
 }
 /* Drucken: Seiten als Bilder in einen unsichtbaren Rahmen legen und den Druckdialog öffnen (klappt auch in Safari) */
@@ -3273,8 +3274,9 @@ function PickMenu({ label, icon, items, extra = [], title, wide = false, click =
     if (!open) return;
     const out = (e) => { if (!ref.current?.contains(e.target) && !e.target.closest?.(".pickmenu")) setOpen(false); };
     const re = (e) => { if (e?.target?.closest?.(".pickmenu")) return; place(); };
-    document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true);
-    return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); };
+    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true); addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); removeEventListener("keydown", esc); };
   }, [open]);
   // click = nur durch Anklicken öffnen (kein Aufklappen beim Drüberfahren)
   const hov = click ? {} : { onPointerEnter: (e) => { lastPtr.current = e.pointerType; if (e.pointerType === "mouse") show(); }, onPointerLeave: (e) => { if (e.pointerType === "mouse") hide(); } };
@@ -3291,6 +3293,7 @@ function PickMenu({ label, icon, items, extra = [], title, wide = false, click =
             </button>))}
           {!!extra.filter(Boolean).length && <div className="menusep" />}
           {extra.filter(Boolean).map((x, i) => <button key={"x" + i} onClick={() => { setOpen(false); x.run(); }}>{x.label}</button>)}
+          <MenuCancel onClick={() => setOpen(false)} />
         </div>, document.querySelector(".app") || document.body)}
     </span>
   );
@@ -3329,8 +3332,9 @@ function VehPicker({ vehicles, v, onPick, onEdit, onAdd }) {
     if (!open) return;
     const out = (e) => { if (!ref.current?.contains(e.target) && !e.target.closest?.(".vehmenu")) setOpen(false); };
     const re = () => place();
-    document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true);
-    return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); };
+    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true); addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); removeEventListener("keydown", esc); };
   }, [open]);
   const hov = {}; // nur per Klick öffnen
   return (
@@ -3348,6 +3352,7 @@ function VehPicker({ vehicles, v, onPick, onEdit, onAdd }) {
           <div className="menusep" />
           <button onClick={() => { setOpen(false); onEdit(v); }}>✎ „{v.name}“ bearbeiten</button>
           <button onClick={() => { setOpen(false); onAdd(); }}>＋ Fahrzeug hinzufügen</button>
+          <MenuCancel onClick={() => setOpen(false)} />
         </div>, document.querySelector(".app") || document.body)}
     </span>
   );
@@ -3734,6 +3739,15 @@ function RangeCalendar({ from, to, max, onChange }) {
   );
 }
 /* ---------- Export-Menü (Chip mit Auswahl) ---------- */
+/* v0.99.28: einheitliche Menüs – „Abbrechen“ unten, Klick daneben / Esc schließt */
+const MenuCancel = ({ onClick }) => <button type="button" className="mcancel" onClick={(e) => { e.stopPropagation(); if (onClick) return onClick(); const d = e.currentTarget.closest("details"); if (d) d.open = false; }}>Abbrechen</button>;
+if (typeof window !== "undefined" && !window.__fdMenus) {
+  window.__fdMenus = true;
+  const closeAll = (except) => document.querySelectorAll("details.more[open]").forEach((d) => { if (d !== except) d.open = false; });
+  document.addEventListener("pointerdown", (e) => { const d = e.target.closest?.("details.more"); closeAll(d); }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAll(null); });
+  document.addEventListener("click", (e) => { const b = e.target.closest?.("details.more .moremenu button"); if (b && !b.disabled) { const d = b.closest("details"); setTimeout(() => { if (d) d.open = false; }, 0); } });
+}
 function ExportMenu({ items, label = "⬇︎ Export", className = "chip", title = "Exportieren" }) {
   const [busy, setBusy] = useState(false), [pos, setPos] = useState(null);
   const ref = useRef(null);
@@ -3755,7 +3769,7 @@ function ExportMenu({ items, label = "⬇︎ Export", className = "chip", title 
             e.currentTarget.closest("details").open = false; setBusy(true);
             try { await it.run(); } catch (err) { alert("Export fehlgeschlagen: " + (err.message || err)); } finally { setBusy(false); }
           }}>{it.label}{it.sub && <small className="muted block">{it.sub}</small>}</button>))}
-      </div>
+      <MenuCancel /></div>
     </details>
   );
 }
@@ -6216,7 +6230,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
                       {x.doc && <button onClick={(e) => { e.currentTarget.closest("details").open = false; printDoc(x.doc); }}>🖨 Vertrag drucken</button>}
                       {setSubs && <button onClick={(e) => { e.currentTarget.closest("details").open = false; tagFk([x]); }}># Tags bearbeiten</button>}
                       {!x.doc && setSubs && <button className="red" onClick={(e) => { e.currentTarget.closest("details").open = false; remove(x.r); }}>Aus der Liste entfernen</button>}
-                    </div>
+                    <MenuCancel /></div>
                   </details>
                 </div>
               </div>
@@ -6318,8 +6332,8 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const TxActs = ({ t }) => { const d = docOf(t); const st = (f) => (e) => { e.stopPropagation(); f(); }; return (
     <div className="dactions txacts" onClick={(e) => e.stopPropagation()}>
       <button title="Buchung bearbeiten" aria-label="Bearbeiten" onClick={st(() => setTxOpen(t))}><IcoEdit /></button>
-      <button title={d ? "Beleg drucken" : "Kein Beleg angehängt"} aria-label="Drucken" disabled={!d} onClick={st(() => d && printDoc(d))}><IcoPrint /></button>
-      <button title={d ? "Beleg teilen" : "Kein Beleg angehängt"} aria-label="Teilen" disabled={!d} onClick={st(() => d && shareDocs([d]))}><IcoShare /></button>
+      <button title={d ? "Beleg drucken" : "Buchungsbeleg drucken (kein Beleg angehängt)"} aria-label="Drucken" onClick={st(async () => d ? printDoc(d) : printImages(await blobToImages(await txBelegPdf(t, accounts)), txBelegName(t)))}><IcoPrint /></button>
+      <button title={d ? "Beleg teilen" : "Buchungsbeleg teilen (kein Beleg angehängt)"} aria-label="Teilen" onClick={st(async () => d ? shareDocs([d]) : sharePdf(await txBelegPdf(t, accounts), txBelegName(t) + ".pdf", txBelegName(t)))}><IcoShare /></button>
       <button title="Buchung löschen" aria-label="Löschen" className="del" onClick={st(() => confirm(`Buchung „${t.counterparty || t.purpose || "Buchung"}“ (${fmtMoney(t.amount, t.currency)}) löschen?`) && deleteTx(t))}><IcoTrash /></button>
     </div>); };
   async function onPick(file) {
@@ -6435,7 +6449,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
               <button onClick={(e) => { e.currentTarget.closest("details").open = false; fileRef.current?.click(); }}>📄 Kontoauszug importieren</button>
               <button onClick={(e) => { e.currentTarget.closest("details").open = false; setLogoOpen(true); }}>✨ Firmenlogos</button>
               {a && <button className="red" onClick={() => confirm(`Konto „${a.name}“ samt Umsätzen löschen?`) && (deleteAccount(a.id), backAcc())}>🗑 Konto löschen</button>}
-            </div>
+            <MenuCancel /></div>
           </details>
         </div>
         <input ref={fileRef} type="file" hidden multiple accept=".csv,.txt,.xml,.sta,.mt940,.940,.ofx,.qif,.pdf,.xlsx,.xls,.json" onChange={(e) => { const f = [...e.target.files]; e.target.value = ""; if (f.length) dropFiles(f); }} />
@@ -10606,6 +10620,17 @@ async function openPdf(blob, name = "Dokument.pdf", title = "", to = "", o = {})
   if (pdfUi) return pdfUi({ blob, name, title: title || name.replace(/\.pdf$/, ""), to, ...o });
   const u = URL.createObjectURL(blob); const w = window.open(u, "_blank"); if (!w) location.href = u; setTimeout(() => URL.revokeObjectURL(u), 120000);
 }
+/* v0.99.28: Buchungsbeleg – wenn bei einer Buchung kein Beleg hängt */
+const txBelegName = (t) => `Buchung ${t.date} ${(t.counterparty || t.purpose || "").slice(0, 40)}`.replace(/[\\/:*?"<>|]/g, "-").trim();
+async function txBelegPdf(t, accounts = []) {
+  const acc = accounts.find((a) => a.id === t.accountId), co = { ...CO_DEFAULT, ...ls.get("company", {}) };
+  const sc = { firma: "Firma", privat: "Privat", unklar: "unklar" }[t.scope] || "";
+  const rows = [["Datum", fmtDate(t.date)], ["Konto", acc?.name || ""], [t.amount < 0 ? "Empfänger" : "Auftraggeber", t.counterparty || ""], ["Verwendungszweck", t.purpose || ""],
+    ["Betrag", fmtMoney(t.amount, t.currency)], ["Kategorie", t.category || ""], sc && ["Zuordnung", sc + (t.bizPct && t.bizPct < 100 ? ` (${t.bizPct} % Firma)` : "")],
+    t.iban && ["IBAN", t.iban], t.note && ["Notiz", t.note], ["Beleg", "kein Originalbeleg angehängt"]].filter((r) => r && r[1]);
+  return tablePdf({ title: "Buchungsbeleg", subtitle: `${co.name ? co.name + " · " : ""}erstellt am ${fmtDate(todayISO())}`, columns: [{ label: "Feld", w: 1.4 }, { label: "Wert", w: 5 }], rows,
+    note: "Ersatzbeleg aus den Kontobewegungen in FinDocu – ersetzt keinen Originalbeleg." });
+}
 async function sharePdf(blob, name, title, to = "") {
   const f = new File([blob], name, { type: "application/pdf" });
   if (shareUi) return shareUi({ files: [f], title, docs: [{ title }], to });
@@ -11069,7 +11094,7 @@ function StatusMenu({ x, s, book, onPay, onUnpay, onPatch }) {
         {s === "bezahlt" && !x.paidTx && book?.accounts?.length > 0 && <button onClick={() => onPay(x)}>🔗 Buchung zuordnen</button>}
         {s !== "storniert" ? <button className="red" onClick={() => confirm(`Rechnung ${x.number} stornieren? Sie bleibt im Verlauf, zählt aber nicht mehr zum Umsatz.`) && onPatch(x.id, { status: "storniert" })}>Stornieren</button>
           : <button className="cur">Storniert</button>}
-      </div>
+      <MenuCancel /></div>
     </details>
   );
 }
@@ -11337,7 +11362,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                       <button onClick={() => copyAsNew(x)}>Als neue {x.kind === "angebot" ? "Angebot" : "Rechnung"} kopieren</button>
                       {s !== "entwurf" && onArchive && <button onClick={async () => { await onArchive(await buildInvoicePdf(x, co), invFileName(x), x); }}>In Dokumente ablegen</button>}
                       {s === "entwurf" && <button className="red" onClick={() => confirm("Entwurf löschen?") && setList((l) => l.filter((y) => y.id !== x.id))}>Entwurf löschen</button>}
-                    </div>
+                    <MenuCancel /></div>
                   </details>
                 </div>
               </div>
@@ -16766,4 +16791,19 @@ nav.bottom>button.navheadbtn:hover{color:var(--txt)!important}
 .stmtpdf::-webkit-scrollbar-track{background:transparent}
 .stmtpdf{scrollbar-width:thin}
 .stmtpage img{-webkit-user-drag:none;user-select:none}
+/* v0.99.28: Menüs im Stil des Teilen-Menüs + Abbrechen */
+html body .moremenu,html body .pickmenu{border-radius:16px!important;padding:8px!important;background:color-mix(in srgb,var(--card) 92%,transparent)!important;backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid var(--line)!important;box-shadow:0 18px 50px #0006,0 2px 8px #0003!important}
+html body .moremenu>button,html body .pickmenu>button{border-radius:10px;box-shadow:none!important}
+.mcancel{display:block;width:100%;margin-top:6px!important;padding:10px!important;border:0!important;border-top:1px solid var(--line)!important;border-radius:0 0 10px 10px!important;background:none!important;color:var(--mut)!important;font:inherit;font-weight:600;text-align:center!important;justify-content:center;cursor:pointer;box-shadow:none!important}
+.mcancel:hover{color:var(--txt)!important;background:var(--card2)!important}
+/* v0.99.28: Zeilen-Buttons überall wie in Dokumente (schlanke Icons) */
+html body :is(.invacts,.ctacts,.cdacts,.stmtacts,.fbrem,.rowmore) :is(.iconbtn,.rowmorebtn,.morebtn,.lbmore),
+html body .stbrfmts .stbprev{background:transparent!important;border:0!important;box-shadow:none!important;color:var(--mut);width:34px;height:34px;min-width:34px;min-height:34px;padding:0;border-radius:10px!important;display:inline-flex;align-items:center;justify-content:center}
+html body :is(.invacts,.ctacts,.cdacts,.stmtacts,.fbrem,.rowmore) :is(.iconbtn,.rowmorebtn,.morebtn,.lbmore):hover,
+html body .stbrfmts .stbprev:hover,html body .invacts .more[open]>summary{background:var(--card2)!important;color:var(--acc)}
+html body :is(.invacts,.ctacts,.cdacts,.stmtacts,.fbrem) svg{width:20px;height:20px}
+html body :is(.fbrem,.stbrfmts) .btn{background:transparent!important;box-shadow:none!important;border:0!important;color:var(--mut)}
+html body :is(.fbrem,.stbrfmts) .btn:hover{background:var(--card2)!important;color:var(--acc)}
+html body .cactions .chip{background:transparent!important;box-shadow:none!important;border:0!important;color:var(--mut);padding-left:6px;padding-right:8px}
+html body .cactions .chip:hover{background:var(--card2)!important;color:var(--acc)}
 `;

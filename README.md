@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.28 – Einheitliche Buttons & Menüs
+- Zeilen-Buttons in allen Reitern wie in Dokumente: schlanke Icons ohne Kästchen (Rechnungen, Mahnungen, Verträge, Fixkosten, Kunden, Kontoauszüge, Steuerberater, Fahrtenbuch)
+- Alle Dropdown-Menüs im Stil des Teilen-Menüs, mit „Abbrechen“ unten; Klick daneben oder Esc schließt, Klick auf einen Menüpunkt schließt immer
+- Konten: Buchungen ohne Beleg können als Buchungsbeleg (PDF) gedruckt und geteilt werden
+
 ## v0.99.27 – Kontoauszug: gezoomtes PDF verschieben
 - Gezoomtes PDF mit gedrückter Maus in alle Richtungen verschieben (Hand-Cursor); Klick auf eine Zeile wechselt weiterhin Firma/Privat
 - Shift + Mausrad scrollt seitlich, Scrollbalken immer sichtbar, Wischen am Touchscreen in alle Richtungen
