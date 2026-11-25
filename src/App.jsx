@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { version as APP_VER } from "../package.json";
 // v0.98.1: Intl-Formatierer wiederverwenden – jeder toLocale…-Aufruf legt sonst einen neuen an (am Handy sehr teuer)
 if (typeof Intl !== "undefined" && !Number.prototype.__fdFast) {
   const nfC = new Map(), dfC = new Map(), key = (l, o) => l + "|" + (o ? JSON.stringify(o) : "");
@@ -2322,8 +2323,7 @@ function AppMain() {
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup}
           deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null}
           journalTab={{ label: tabLabel(nav, "journal") || "Journal", open: () => setTab("journal") }} />}
-        {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify}
-          det={{ docGroups: nav.docGroups, addCategoryEx, bookCash, accounts, linkTx, trashDoc, reanalyze }} />}
+        {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify} />}
         {tab === "deadlines" && <Deadlines docs={dlDocs} onOpen={openDl} saveDoc={saveDl} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "cash" && <ExpensePage accounts={visAccounts} txs={txs} categories={TX_CATS(categories)} onSave={saveExpense} onScan={scanFor} addCategory={addCategory} notify={notify}
           onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
@@ -5318,47 +5318,7 @@ function JournalPreview({ d, compact = false, onSwipe, onOpen }) {
     </div>
   );
 }
-function JournalFields({ d, saveDoc, categories, senders, tx, onConfirm, onDetails, onOriginal, pos, extra }) {
-  const [more, setMore] = useLsState("jMore", false);
-  const [f, setF] = useState(null);
-  useEffect(() => { setF({ title: d.title || "", date: d.documentDate || "", total: d.amount?.total != null ? (+d.amount.total).toFixed(2).replace(".", ",") : "", net: d.amount?.net != null ? (+d.amount.net).toFixed(2).replace(".", ",") : "", vat: d.amount?.vat != null ? (+d.amount.vat).toFixed(2).replace(".", ",") : "", sender: d.sender || "", tags: (d.tags || []).join(", "), notes: d.notes || "" }); }, [d.id]);
-  if (!f) return null;
-  const num = (v) => { const x = parseFloat(String(v).replace(/\s/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".")); return isFinite(x) ? Math.round(x * 100) / 100 : null; };
-  const commit = (patch) => saveDoc({ ...d, ...patch });
-  const blurSave = () => {
-    const amt = num(f.total), n = { ...d, title: f.title.trim() || d.title, documentDate: f.date || d.documentDate, sender: f.sender.trim(), notes: f.notes, tags: f.tags.split(",").map((t) => norm(t).trim()).filter(Boolean) };
-    n.amount = amt == null ? (f.total.trim() ? d.amount : null) : { ...(d.amount || { currency: "EUR" }), total: amt, net: num(f.net), vat: num(f.vat) };
-    if (JSON.stringify(n) !== JSON.stringify(d)) saveDoc(n);
-    return n;
-  };
-  const inp = (k, props = {}) => <input value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} onBlur={blurSave} {...props} />;
-  return (
-    <div className="jfields">
-      {pos && <div className="jpos muted small">{pos}</div>}
-      <div className="seg jdir">{[["ausgabe", "Ausgabe"], ["einnahme", "Einnahme"], ["keine", "Nur Info"]].map(([k, l]) => <button key={k} className={(d.direction || "keine") === k ? "on" : ""} onClick={() => commit({ direction: k })}>{l}</button>)}</div>
-      <label>Titel{inp("title")}</label>
-      <div className="grid2"><label>Datum{inp("date", { type: "date" })}</label><label>Betrag €{inp("total", { inputMode: "decimal", className: "jamt" })}</label></div>
-      <div className="grid2 jx"><label>Netto €{inp("net", { inputMode: "decimal" })}</label><label>USt €{inp("vat", { inputMode: "decimal" })}</label></div>
-      <label className="jx">Kontakt / Absender{inp("sender", { list: "jsenders" })}</label>
-      <datalist id="jsenders">{senders.slice(0, 200).map((s) => <option key={s} value={s} />)}</datalist>
-      <label className="jx">Kategorie<PSelect value={d.category || "Sonstiges"} onChange={(e) => commit({ category: e.target.value })}>{[...new Set([...categories, d.category].filter(Boolean))].map((c) => <option key={c}>{c}</option>)}</PSelect></label>
-      <div className="seg jscope jx">{SCOPES.map(([k, i, l]) => <button key={k} className={docScope(d) === k ? "on" : ""} onClick={() => commit({ scope: k, scopeManual: true })}>{i} {l}</button>)}</div>
-      <label className="jx">Schlagwörter{inp("tags", { placeholder: "z. B. auto, versicherung" })}</label>
-      <label className="jx">Notiz<textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} onBlur={blurSave} /></label>
-      {d.direction === "ausgabe" && <label className="check jx"><input type="checkbox" checked={!!d.paid} onChange={(e) => commit({ paid: e.target.checked, paidDate: e.target.checked ? d.paidDate || todayISO() : undefined })} /> Bezahlt{d.paidDate ? ` am ${fmtDate(d.paidDate)}` : ""}</label>}
-      <div className="jtx jx">{tx ? <span className="pos">✓ Buchung {fmtDate(tx.date)} · {fmtMoney(tx.amount)}</span> : d.amount?.total && d.direction !== "keine" ? <span className="muted">keine Buchung verknüpft</span> : null}</div>
-      {extra && <button type="button" className={"jmore jx" + (more ? " open" : "")} onClick={() => { blurSave(); setMore(!more); }} aria-expanded={more}><span>Weitere Felder</span><small className="muted">Buchung · Bezahlen · Vertrag · Fristen</small><span className="jchev">▾</span></button>}
-      {extra && more && <div className="jx jextra">{extra}</div>}
-      <div className="jbtns">
-        <button className="btn primary jconfirm" onClick={() => onConfirm(blurSave())}>{jUnconf(d) ? "✓ Bestätigen & weiter" : "Weiter ›"}</button>
-        <div className="row">{!extra && onDetails && <button className="btn sm" onClick={onDetails}>Alle Details</button>}<button className="btn sm" onClick={onOriginal}>Original</button></div>
-      </div>
-    </div>
-  );
-}
-function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det = {} }) {
-  const jView = "c";                                                             // v0.99.12: fix Prüfkarte (C)
-  const flushRef = useRef(null);
+function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   const mobB = useMobileBeta(), slim = useMedia("(max-width:999px)"), mob = mobB || slim, [boxW, setBoxW] = useState(1400), narrow = boxW < 1180;
   const [mode, setMode] = useLsState("jMode", "journal");                       // journal | pruefen | monate
   const [filt, setFilt] = useLsState("jFilt", "alle");
@@ -5367,9 +5327,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det 
   const [openY, setOpenY] = useLsState("jOpenY", { [todayISO().slice(0, 4)]: true });
   const [cur, setCur] = useState(null), [side, setSide] = useState(false), [phoneOpen, setPhoneOpen] = useState(false);
   const [q, setQ] = useState("");
-  const [detW, setDetW] = useLsState("jDetW", true), [detN, setDetN] = useLsState("jDetN", false);
   const [mClosed, setMClosed] = useLsState("jMClosed", []);
-  const detOn = jView === "c" ? !narrow : (narrow ? detN : detW);
+  const detOn = !narrow;                                                         // breit: Prüfkarte rechts · schmal: Leiste unter der Vorschau
   useEffect(() => { if (!phoneOpen) return; const c = document.documentElement.classList; c.add("jpopen"); return () => c.remove("jpopen"); }, [phoneOpen]);
   const txByDoc = useMemo(() => { const m = new Map(); for (const t of txs) if (t.docId) m.set(t.docId, t); return m; }, [txs]);
   const base = useMemo(() => docs.filter((d) => !d.deletedAt && !d.stmt), [docs]);
@@ -5391,12 +5350,10 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det 
   useEffect(() => { if (!mob && !list.some((d) => d.id === cur)) setCur(list[0]?.id || null); }, [list, mob]);
   const idx = curDoc ? list.findIndex((d) => d.id === curDoc.id) : -1;
   const go = (dir) => { const n = list[idx + dir]; if (n) { setCur(n.id); setTimeout(() => document.querySelector(`.jrow[data-id="${n.id}"]`)?.scrollIntoView({ block: "nearest" }), 0); } };
-  const confirm = async (base) => {
+  const confirm = async () => {
     if (!curDoc) return;
     const nextId = list[idx + 1]?.id || list[idx - 1]?.id || null;
-    const fl = flushRef.current, extraP = (fl && fl.docId === curDoc.id ? fl() : null) || {}, m = { ...(base || curDoc), ...extraP };
-    if (jUnconf(m)) await saveDoc({ ...m, confirmed: true, confirmedAt: new Date().toISOString() });
-    else if (Object.keys(extraP).length) await saveDoc(m);
+    if (jUnconf(curDoc)) await saveDoc({ ...curDoc, confirmed: true, confirmedAt: new Date().toISOString() });
     if (mode === "pruefen") { if (nextId) setCur(nextId); else { notify?.("Alle Belege geprüft ✓"); setPhoneOpen(false); } } else go(1);
   };
   useEffect(() => {
@@ -5422,7 +5379,6 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det 
     <div className="jmodes">
       <div className="seg">{[["journal", "📓 Journal"], ["pruefen", `✓ Prüfen${cnt("unbest") ? " (" + cnt("unbest") + ")" : ""}`], ["monate", "🗓 Monate"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); if (k === "pruefen") { const f = base.filter(jUnconf).sort((a, b) => jDate(b).localeCompare(jDate(a)))[0]; setCur(f?.id || null); if (mob && f) setPhoneOpen(true); } }}>{l}</button>)}</div>
       {mode !== "monate" && !mob && <SearchBox className="sbplain jsearch" icon={false} value={q} onChange={setQ} placeholder="Belege durchsuchen" />}
-      {mode !== "monate" && !mob && jView !== "c" && <button className={"btn sm jdetbtn" + ((narrow ? detN : detW) ? " on" : "")} onClick={() => (narrow ? setDetN(!detN) : setDetW(!detW))} title="Details einblenden und bearbeiten">{(narrow ? detN : detW) ? "✕ Details" : "✎ Details"}</button>}
     </div>
   );
   const sidebar = (
@@ -5453,15 +5409,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det 
     </button>); };
   const onOriginal = async () => { const b = await db.getFile(curDoc.id); if (b) openPdf(b, curDoc.fileName || "Beleg.pdf", curDoc.title); };
   const pos = curDoc && (mode === "pruefen" ? `${idx + 1} von ${list.length} unbestätigt` : `${idx + 1} von ${list.length}`);
-  const detEl = (part) => <Detail key={curDoc.id + part} doc={curDoc} categories={categories} txs={txs} saveDoc={saveDoc} notify={notify} inline part={part} flushRef={flushRef} {...det} onClose={() => {}} />;
-  const fields = curDoc && (jView === "c"
-    ? <JournalCard key={curDoc.id} d={curDoc} tx={txByDoc.get(curDoc.id)} onConfirm={confirm} onEdit={() => onOpen(curDoc.id)} onOriginal={onOriginal} pos={pos} />
-    : jView === "b"
-    ? <div className="jfull" key={curDoc.id}>{pos && <div className="jpos muted small">{pos}</div>}{detEl("all")}
-        <div className="jbtns"><button className="btn primary jconfirm" onClick={() => confirm()}>{jUnconf(curDoc) ? "✓ Bestätigen & weiter" : "Weiter ›"}</button>
-          <div className="row"><button className="btn sm" onClick={onOriginal}>Original</button></div></div></div>
-    : <JournalFields key={curDoc.id} d={curDoc} saveDoc={saveDoc} categories={categories} senders={senders} tx={txByDoc.get(curDoc.id)} onConfirm={confirm}
-        onOriginal={onOriginal} pos={pos} extra={det.linkTx ? detEl("extra") : null} onDetails={det.linkTx ? null : () => onOpen(curDoc.id)} />);
+  const fields = curDoc && <JournalCard key={curDoc.id} d={curDoc} tx={txByDoc.get(curDoc.id)} onConfirm={confirm} onEdit={() => onOpen(curDoc.id)} pos={pos} />;
 
   /* ---------- 3 · Monats-Zeitleiste ---------- */
   if (mode === "monate") {
@@ -5510,7 +5458,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det 
   /* ---------- 1 + 2 · Drei-Spalten-Journal / Prüf-Modus ---------- */
   return (
     <div className="jpage-wrap">{modeBar}
-      <div ref={boxRef} className={"jgrid jv-" + jView + (narrow ? " narrow" : "") + (mode === "pruefen" ? " pruef" : "") + (detOn ? " det" : " nodet")} style={boxH ? { height: boxH } : undefined}>
+      <div ref={boxRef} className={"jgrid jv-c" + (narrow ? " narrow" : "") + (mode === "pruefen" ? " pruef" : "") + (detOn ? " det" : " nodet")} style={boxH ? { height: boxH } : undefined}>
         {mode !== "pruefen" && sidebar}
         <div className="jlist">
           <div className="jlhead">{mode === "pruefen" ? <b>Zu prüfen</b> : <b>{facet ? (facet.v || "Nicht zugewiesen") : sel.m ? MONTHS_DE[+sel.m - 1] + " " + sel.y : sel.y === "ohne" ? "Ohne Datum" : sel.y || "Alle Jahre"}</b>}<small className="muted">{list.length}</small></div>
@@ -5521,7 +5469,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det 
           {curDoc && !detOn && <div className="jstrip">
             <div className="grow jstxt"><b className="one">{curDoc.title || curDoc.fileName}</b><small className="muted one">{[jDate(curDoc) && fmtDate(jDate(curDoc)), curDoc.sender, curDoc.category].filter(Boolean).join(" · ")}</small></div>
             {jSigned(curDoc) != null && <b className={"jsamt " + (jSigned(curDoc) >= 0 ? "pos" : "neg")}>{fmtMoney(jSigned(curDoc))}</b>}
-            <button className="btn sm" onClick={() => (jView === "c" ? onOpen(curDoc.id) : narrow ? setDetN(true) : setDetW(true))}>{jView === "c" ? "✎ Bearbeiten" : "✎ Details"}</button>
+            <button className="btn sm" onClick={() => onOpen(curDoc.id)}>✎ Bearbeiten</button>
             <button className="btn sm primary" onClick={() => confirm()}>{jUnconf(curDoc) ? "✓ Bestätigen" : "Weiter ›"}</button>
           </div>}</div>
         {detOn && <div className="jinsp">{fields}</div>}
@@ -5530,7 +5478,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det 
     </div>
   );
 }
-function JournalCard({ d, tx, onConfirm, onEdit, onOriginal, pos }) {
+function JournalCard({ d, tx, onConfirm, onEdit, pos }) {
   const v = jSigned(d);
   return (<div className="jcard">
     {pos && <div className="jpos muted small">{pos}</div>}
@@ -8437,7 +8385,7 @@ function PayQR({ doc, notify }) {
     </div>
   );
 }
-function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash, txs = [], accounts = [], linkTx, inline = false, part = "all", flushRef }) {
+function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash, txs = [], accounts = [], linkTx }) {
   const [linkOpen, setLinkOpen] = useState(false), [prevOpen, setPrevOpen] = useState(false);
   const [newCat, setNewCat] = useState(false);
   const [lq, setLq] = useState("");
@@ -8453,16 +8401,6 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
     return () => u && URL.revokeObjectURL(u);
   }, [doc.id]);
 
-  // v0.99.10: im Journal eingebettet – speichert automatisch, nur geänderte Felder (verträgt sich mit den Schnellfeldern)
-  const patchOf = (a, b) => { const o = {}; for (const k of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) if (JSON.stringify(a?.[k]) !== JSON.stringify(b?.[k])) o[k] = a?.[k]; return o; };
-  const latest = useRef(null);
-  useEffect(() => { latest.current = { d, doc }; });
-  useEffect(() => { if (!inline) return; const p = patchOf(d, doc); if (!Object.keys(p).length) return; const t = setTimeout(() => saveDoc({ ...doc, ...p }), 700); return () => clearTimeout(t); }, [d]);
-  useEffect(() => () => { if (!inline || !latest.current) return; const { d: od, doc: odoc } = latest.current; const p = patchOf(od, odoc); if (Object.keys(p).length && !latest.current.flushed) saveDoc({ ...odoc, ...p }); }, [doc.id]);
-  const tok = useRef({});
-  if (flushRef) flushRef.current = Object.assign(() => { const p = patchOf(d, doc); if (latest.current) latest.current.flushed = true; setD({ ...doc, ...p }); return p; }, { docId: doc.id, tok: tok.current });
-  useEffect(() => () => { if (flushRef?.current?.tok === tok.current) flushRef.current = null; }, []);
-  const ex = inline && part === "extra";
   const set = (patch) => setD((x) => ({ ...x, ...patch }));
   const setC = (patch) => set({ contract: { provider: d.sender || "", active: true, ...d.contract, ...patch } });
   const setP = (patch) => set({ payment: { recipient: d.sender || "", ...d.payment, ...patch } });
@@ -8472,20 +8410,21 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
   const safeName = (d.title || "dokument").replace(/[\\/:*?"<>|]/g, "-");
   const numIn = (v) => { const s = String(v).replace(",", "."); return s === "" ? null : Number(s); };
 
-  const body = (<>
-        {!inline && <div className="panelhead">
+  return (
+    <Win id="detail" onClose={onClose} center dirty={dirty}>
+        <div className="panelhead">
           <b>Dokument</b>
           <button className="btn detprevbtn" title="Vorschau öffnen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>
           <button className="btn primary" disabled={!dirty} onClick={() => saveDoc(d)}>Speichern</button>
           <XBtn />
-        </div>}
+        </div>
 
-        {!inline && url && (doc.mimeType.startsWith("image/")
+        {url && (doc.mimeType.startsWith("image/")
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
           : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b className="clamp">{doc.fileName || doc.title}</b></div></div>)}
-        {!ex && <div className="seg scopeseg" style={{ margin: "6px 0 6px" }} role="group" aria-label="Privat oder Firma">
+        <div className="seg scopeseg" style={{ margin: "6px 0 6px" }} role="group" aria-label="Privat oder Firma">
           {SCOPES.map(([k, i, l]) => <button key={k} className={docScope(d) === k ? "on" : ""} onClick={() => set({ scope: k, scopeManual: true })}>{i} {l}</button>)}
-        </div>}
+        </div>
         <div className="seg areaseg" style={{ margin: "6px 0 10px" }}>
           {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={docArea(d) === k ? "on" : ""} onClick={() => set({ areaManual: k })}>{i} {l}</button>)}
         </div>
@@ -8494,8 +8433,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         {doc.status === "error" && <div className="err">Analyse fehlgeschlagen: {doc.error}</div>}
         {doc.status === "processing" && <div className="muted">Wird analysiert …</div>}
 
-        {ex && <label>Typ<input value={d.docType || ""} onChange={(e) => set({ docType: e.target.value })} /></label>}
-        {!ex && <><label>Titel<input value={d.title || ""} onChange={(e) => set({ title: e.target.value })} /></label>
+        <label>Titel<input value={d.title || ""} onChange={(e) => set({ title: e.target.value })} /></label>
         <div className="grid2">
           <label>Kategorie
             <PSelect value={d.category} onChange={(e) => (e.target.value === "__new" ? setNewCat(true) : set({ category: e.target.value }))}>
@@ -8508,10 +8446,10 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
           <label>Typ<input value={d.docType || ""} onChange={(e) => set({ docType: e.target.value })} /></label>
           <label>Absender<input value={d.sender || ""} onChange={(e) => set({ sender: e.target.value })} /></label>
           <label>Datum<input type="date" value={d.documentDate || ""} onChange={(e) => set({ documentDate: e.target.value })} /></label>
-        </div></>}
+        </div>
         <label className="check"><input type="checkbox" checked={!!d.taxRelevant} onChange={(e) => set({ taxRelevant: e.target.checked })} /> 🧾 Steuerrelevant</label>
 
-        {!ex && <fieldset>
+        <fieldset>
           <legend>Betrag</legend>
           <div className="seg">
             {[["ausgabe", "Ausgabe"], ["einnahme", "Einnahme"], ["keine", "Nur Info"]].map(([k, l]) => (
@@ -8533,7 +8471,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
               {!doc.paid && <button className="btn" style={{ marginTop: 8 }} onClick={() => bookCash({ ...doc, ...d })}>💶 Bar bezahlt</button>}
             </div>
           )}
-        </fieldset>}
+        </fieldset>
 
 
         {(() => {
@@ -8608,9 +8546,9 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
           )}
         </fieldset>
 
-        {!ex && <label>Tags (mit Komma trennen)
+        <label>Tags (mit Komma trennen)
           <input value={(d.tags || []).join(", ")} onChange={(e) => set({ tags: e.target.value.split(",").map((t) => norm(t).trim()).filter(Boolean) })} />
-        </label>}
+        </label>
 
         <fieldset>
           <legend>Fristen</legend>
@@ -8627,7 +8565,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         </fieldset>
 
         {d.summary && <p className="summary">{d.summary}</p>}
-        {!ex && <label>Notizen<textarea rows={3} value={d.notes || ""} onChange={(e) => set({ notes: e.target.value })} /></label>}
+        <label>Notizen<textarea rows={3} value={d.notes || ""} onChange={(e) => set({ notes: e.target.value })} /></label>
 
         <div className="textinfo">
           {d.fullText ? <>
@@ -8653,9 +8591,8 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
             <div className="panelhead"><b className="clamp">{doc.title}</b><XBtn /></div>
             <DocPreview d={doc} onOpen={() => setPrevOpen(false)} />
           </Win>, document.querySelector(".app") || document.body)}
-  </>);
-  if (inline) return <div className={"detinline" + (ex ? " detextra" : "")}>{body}{!ex && <p className="muted small detauto">{dirty ? "Wird gespeichert …" : "✓ Änderungen werden automatisch gespeichert"}</p>}</div>;
-  return <Win id="detail" onClose={onClose} center dirty={dirty}>{body}</Win>;
+    </Win>
+  );
 }
 
 /* ---------- Einstellungen, Budgets, Papierkorb, Backup ---------- */
@@ -9474,6 +9411,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
             <span className="setico" aria-hidden="true">{SET_ICONS[id] || "⚙️"}</span><span className="grow">{titleOf(id)}</span>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
           </button>))}</div></section>)}
+      <p className="muted small appver">FinDocu Version {APP_VER}</p>
     </div>);
   }
   const ctx = { order, collapsed: secClosed, dnd: secDnd,
@@ -9489,6 +9427,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         <button className="link" onClick={() => setSecClosed(allClosed ? [] : order)}>{allClosed ? "Alle aufklappen" : "Alle zuklappen"}</button>
       </div>
       {order.map((id) => <React.Fragment key={id}>{sections[id]}</React.Fragment>)}
+      <p className="muted small appver">FinDocu Version {APP_VER}</p>
       {secDnd.lineAt("sec", "s", order.length) && <div className="dropline" />}
       {secDnd.ghost}
     </div>
@@ -15736,7 +15675,6 @@ html.dark .scpick.sc-firma .scpickbtn{color:#fbbf24!important}html.dark .scpick.
 .jgrid>.jcenter{display:flex;flex-direction:column}
 .jstrip{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:auto;padding:10px 12px;background:var(--card);border-top:1px solid var(--line)}
 .jstrip .jstxt{min-width:140px;display:flex;flex-direction:column}.jstrip .jsamt{font-size:16px;white-space:nowrap}
-.jdetbtn.on{background:color-mix(in srgb,var(--acc) 16%,var(--card));color:var(--acc)}
 html.hasdetail .jphone{visibility:hidden}
 html.hasdetail .jphone{visibility:hidden}
 .jscrim{position:absolute;inset:0;z-index:19;background:#0003;border-radius:16px}
@@ -15767,12 +15705,6 @@ html.hasdetail .jphone{visibility:hidden}
 .jlegend{position:sticky;bottom:6px;align-self:center;display:flex;gap:12px;font-size:12px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin-top:10px}
 .jlegend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-2px}
 .jinsp{padding:12px}
-.jfields{display:flex;flex-direction:column;gap:8px}
-.jfields label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--mut)}
-.jfields input,.jfields textarea{font-size:14px}
-.jfields .jamt{font-weight:700;text-align:right}
-.jfields .grid2{gap:8px}.jfields label.check{flex-direction:row;align-items:center;color:var(--txt);font-size:14px}
-.jfields .seg button{padding:6px 8px;font-size:13px}
 .jpos{text-align:center}
 .jtx{font-size:13px}
 .jbtns{display:flex;flex-direction:column;gap:8px;margin-top:6px;position:sticky;bottom:-12px;background:var(--card);padding:8px 0 4px}
@@ -15847,16 +15779,7 @@ button.jmhead{width:100%;border:0;font-family:inherit;cursor:pointer;align-items
   html.tablet.win-open .topactions,html.tablet.win-open .fab{display:none}
 }
 
-/* v0.99.10: Journal – drei Detail-Varianten */
-.jmore{display:flex;align-items:center;gap:8px;width:100%;margin:6px 0 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card2);color:var(--acc);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;text-align:left}
-.jmore small{flex:1;font-weight:400;font-size:12px}.jmore .jchev{transition:transform .15s}.jmore:not(.open) .jchev{transform:rotate(-90deg)}
-.jextra{margin-top:6px}
-.detinline{display:flex;flex-direction:column;gap:8px;min-width:0}
-.detinline fieldset{margin:8px 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px}
-.detinline .grid4{grid-template-columns:repeat(2,minmax(0,1fr))}
-.detinline .actions{flex-wrap:wrap}
-.detauto{text-align:center;margin:4px 0}
-.jfull{display:flex;flex-direction:column;gap:6px}
+/* v0.99.10/12: Journal – Prüfkarte */
 .jcard{display:flex;flex-direction:column;gap:10px;height:100%}
 .jcard .jctitle{font-size:17px;line-height:1.3}
 .jcard .jcamt{font-size:28px;font-weight:700}
@@ -15865,10 +15788,7 @@ button.jmhead{width:100%;border:0;font-family:inherit;cursor:pointer;align-items
 .jcard .jcbtns{position:static;margin:0 0 4px;padding:0;background:none}
 .jcard .jcbtns .btn.sm{width:100%;min-height:40px}
 .jpclick{cursor:zoom-in}
-.jviewset{display:flex;flex-direction:column;gap:8px}
-.jvopt{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;cursor:pointer}
-.jvopt.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent)}
-.jvopt input{margin-top:3px}
 .jgrid.jv-c.det:not(.narrow){grid-template-columns:230px 270px minmax(0,1fr) 270px}.jgrid.jv-c.det.pruef:not(.narrow){grid-template-columns:270px minmax(0,1fr) 270px}
 .fbclipbtn{border:0;background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:8px;padding:2px 6px;margin-left:6px;font-size:14px;cursor:pointer;vertical-align:middle}
+.appver{text-align:center;margin:18px 0 6px;opacity:.7}
 `;

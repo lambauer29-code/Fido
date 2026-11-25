@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.13 – Aufgeräumt + Versionsanzeige
+
+- Code der Journal-Varianten A und B (Weitere Felder / ganzes Formular) entfernt – das Journal nutzt nur noch die Prüfkarte.
+- Unten in den Einstellungen steht jetzt die laufende Version („FinDocu Version …“), damit man sieht, ob ein Update angekommen ist.
+
 ## v0.99.12 – Journal: fix Prüfkarte
 
 - Das Journal verwendet jetzt fix die Prüfkarte (Variante C); die Auswahl in den Einstellungen ist entfernt.
