@@ -10651,15 +10651,29 @@ async function sharePdf(blob, name, title, to = "") {
 const COUNTRIES = [["AT", "Österreich"], ["DE", "Deutschland"], ["CH", "Schweiz"], ["IT", "Italien"], ["LI", "Liechtenstein"], ["CZ", "Tschechien"], ["SK", "Slowakei"], ["HU", "Ungarn"], ["SI", "Slowenien"], ["NL", "Niederlande"], ["FR", "Frankreich"], ["PL", "Polen"]];
 const HOME_COUNTRY = "Österreich";
 const ccOf = (name) => (COUNTRIES.find(([c, n]) => n.toLowerCase() === String(name || "").trim().toLowerCase() || c === String(name || "").trim().toUpperCase()) || [])[0] || "";
-// „Straße Nr.\nPLZ Ort\nLand“ ↔ Felder
+// v0.99.32: Straße inkl. Stiege/Tür in österreichischer Kurzform „Landstraße 12/2/5“ (nur Tür: „12/5“, nur Stiege: „12/Stg. 2“)
+const streetLine = (p) => { const st = (p.street || "").trim(), sg = (p.stiege || "").trim(), tu = (p.tuer || "").trim();
+  return !st ? "" : sg && tu ? `${st}/${sg}/${tu}` : tu ? `${st}/${tu}` : sg ? `${st}/Stg. ${sg}` : st; };
+function streetParse(line) {
+  const t = String(line || "").trim(); let m;
+  if ((m = t.match(/^(.*?\d+\s?[a-zA-Z]?)\s*\/\s*Stg\.?\s*([\w-]+)(?:\s*\/\s*([\w-]+))?$/))) return { street: m[1], stiege: m[2], tuer: m[3] || "" };
+  if ((m = t.match(/^(.*?\d+\s?[a-zA-Z]?)\s*\/\s*([\w-]+)\s*\/\s*([\w-]+)$/))) return { street: m[1], stiege: m[2], tuer: m[3] };
+  if ((m = t.match(/^(.*?\d+\s?[a-zA-Z]?)\s*\/\s*([\w-]+)$/))) return { street: m[1], stiege: "", tuer: m[2] };
+  return { street: t, stiege: "", tuer: "" };
+}
+// „[Zusatz]\nStraße Nr/Stg/Tür\n[Postfach]\nPLZ Ort\n[Land]“ ↔ Felder
 function addrParse(s) {
   const l = String(s || "").split(/\n|,\s*(?=\d{4,5}\s)/).map((x) => x.trim()).filter(Boolean);
   const zi = l.findIndex((x) => /^(?:[A-Z]{1,2}[- ])?\d{4,5}\s+\S/.test(x));
-  if (zi < 0) return { street: l[0] || "", zip: "", city: l.slice(1).join(", "), country: "" };
+  const pre = zi < 0 ? l.slice(0, 1) : l.slice(0, zi);
+  const pf = pre.find((x) => /^(postfach|pf\.?)\s/i.test(x)) || "", rest = pre.filter((x) => x !== pf);
+  const st = rest.length ? rest[rest.length - 1] : "", extra = rest.slice(0, -1).join(", ");
+  const base = { ...streetParse(st), extra, postfach: pf.replace(/^(postfach|pf\.?)\s*/i, "") };
+  if (zi < 0) return { ...base, zip: "", city: l.slice(1).join(", "), country: "" };
   const m = l[zi].match(/^(?:[A-Z]{1,2}[- ])?(\d{4,5})\s+(.+)$/);
-  return { street: l.slice(0, zi).join(", "), zip: m[1], city: m[2], country: l.slice(zi + 1).join(" ") };
+  return { ...base, zip: m[1], city: m[2], country: l.slice(zi + 1).join(" ") };
 }
-const addrJoin = (p) => [p.street, [p.zip, p.city].filter(Boolean).join(" "), p.country && p.country !== HOME_COUNTRY ? p.country : ""].map((x) => (x || "").trim()).filter(Boolean).join("\n");
+const addrJoin = (p) => [p.extra, streetLine(p), p.postfach ? "Postfach " + p.postfach.trim() : "", [p.zip, p.city].filter(Boolean).join(" "), p.country && p.country !== HOME_COUNTRY ? p.country : ""].map((x) => (x || "").trim()).filter(Boolean).join("\n");
 async function addrSearch(q, signal) {
   const u = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lang=de&limit=6&lat=48.3&lon=14.3&layer=house&layer=street`;
   const j = await (await fetch(u, { signal })).json();
@@ -10673,8 +10687,11 @@ async function zipCity(zip, country) {
   const j = await r.json(); return j.places?.[0]?.["place name"] || "";
 }
 function AddressFields({ v, onChange, label = "Anschrift" }) {
-  const p = { street: "", zip: "", city: "", country: "", ...v };
+  const p = { street: "", zip: "", city: "", country: "", stiege: "", tuer: "", extra: "", postfach: "", ...v };
   const set = (patch) => onChange({ ...p, ...patch });
+  const hasOpt = !!(p.stiege || p.tuer || p.extra || p.postfach);
+  const [more, setMore] = useState(hasOpt);
+  useEffect(() => { if (hasOpt) setMore(true); }, [hasOpt]);
   const [sug, setSug] = useState([]), [open, setOpen] = useState(false), [busy, setBusy] = useState(false);
   const ab = useRef(null), tm = useRef(null), boxRef = useRef(null);
   const look = (q) => { clearTimeout(tm.current); if (q.trim().length < 4) { setSug([]); return; }
@@ -10695,6 +10712,16 @@ function AddressFields({ v, onChange, label = "Anschrift" }) {
         <MenuCancel onClick={() => setOpen(false)} />
       </div>}
     </div>
+    {!more ? <button type="button" className="link addrmore" onClick={() => setMore(true)}>＋ Stiege, Tür, Zusatz, Postfach</button> : <>
+      <div className="addrrow">
+        <label className="addrsm">Stiege<input value={p.stiege} placeholder="2" onChange={(e) => set({ stiege: e.target.value.replace(/\//g, "") })} /></label>
+        <label className="addrsm">Tür<input value={p.tuer} placeholder="5" onChange={(e) => set({ tuer: e.target.value.replace(/\//g, "") })} /></label>
+        <label className="grow">Postfach<input value={p.postfach} placeholder="z. B. 123" inputMode="numeric" onChange={(e) => set({ postfach: e.target.value })} /></label>
+      </div>
+      <label>Adresszusatz / c/o<input value={p.extra} placeholder="z. B. z. Hd. Frau Huber, c/o Firma X, Hinterhaus" onChange={(e) => set({ extra: e.target.value })} /></label>
+      {(p.stiege || p.tuer) && p.street && <small className="muted">Wird gedruckt als: <b>{streetLine(p)}</b></small>}
+      {!hasOpt && <button type="button" className="link addrmore" onClick={() => setMore(false)}>Weniger anzeigen</button>}
+    </>}
     <div className="addrrow">
       <label className="addrzip">PLZ<input value={p.zip} inputMode="numeric" placeholder="4020" autoComplete="postal-code" onFocus={(e) => { zip0.current = e.target.value.trim(); }} onChange={(e) => set({ zip: e.target.value.trim() })} onBlur={(e) => zipDone(e.target.value.trim())} /></label>
       <label className="grow">Ort<input value={p.city} placeholder="Linz" autoComplete="address-level2" onChange={(e) => set({ city: e.target.value })} /></label>
@@ -10717,7 +10744,8 @@ function CompanyFields({ v, setV }) {
   return (<>
     <fieldset><legend>Unternehmen</legend>
       {f("name", "Firmenname", "z. B. Mustermann e.U.")}{f("owner", "Inhaber/in (Unterschrift)", "z. B. Roland Mustermann")}
-      <AddressFields label="Firmenanschrift" v={{ street: v.street || "", zip: v.zip || "", city: v.city || "", country: v.country || "" }} onChange={(n) => setV({ ...v, street: n.street, zip: n.zip, city: n.city, country: n.country })} />
+      <AddressFields label="Firmenanschrift" v={{ ...streetParse(v.street), zip: v.zip || "", city: v.city || "", country: v.country || "", extra: v.addrExtra || "", postfach: v.postfach || "" }}
+        onChange={(n) => setV({ ...v, street: streetLine(n), zip: n.zip, city: n.city, country: n.country, addrExtra: n.extra, postfach: n.postfach })} />
       <div className="grid2">{f("email", "E-Mail", "", "email")}{f("phone", "Telefon")}</div>
       <div className="grid2">{f("web", "Website")}{f("fn", "Firmenbuchnr. (falls vorhanden)")}</div>
       <div className="grid2">{f("taxNo", "Steuernummer")}{f("uid", "UID-Nr. (nur falls vorhanden)", "ATU…")}</div>
@@ -16911,4 +16939,7 @@ html body .stbrfmts .stbprev{height:auto!important;min-height:0!important;align-
 .addrsrc{padding:4px 10px 0;font-size:11px}
 .addrspin{position:absolute;right:12px;bottom:12px;width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--acc);animation:spin .8s linear infinite}
 .txscope .scpick{display:inline-flex}
+
+/* v0.99.32: optionale Adressfelder */
+.addrsm{flex:0 0 90px}.addrmore{align-self:flex-start;font-size:13px;padding:0}
 `;

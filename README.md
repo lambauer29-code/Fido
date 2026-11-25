@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.32 – Adresse: Stiege, Tür, Zusatz, Postfach
+- Optionale Adressfelder über „＋ Stiege, Tür, Zusatz, Postfach“ (klappt automatisch auf, wenn schon Werte vorhanden sind)
+- Druck in österreichischer Kurzform: Landstraße 12/2/5 (nur Tür: 12/5, nur Stiege: 12/Stg. 2); Adresszusatz/c/o über der Straße, Postfach darunter
+
 ## v0.99.31 – Adressen & Zuordnung
 - Adressen überall getrennt: Straße & Hausnummer, PLZ, Ort, Land (Kunden, Rechnung, Firmendaten, Meine Daten)
 - Adresssuche beim Tippen der Straße (OpenStreetMap), PLZ füllt den Ort automatisch
