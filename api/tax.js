@@ -6,12 +6,19 @@ export const config = { maxDuration: 60 };
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-function promptActivity({ activity, kind, year, details }) {
+function promptActivity({ activity, kind, year, details, ctx }) {
+  const c = ctx || {};
+  const ctxTxt = `
+Daten aus der App (zum Zuordnen):
+Kategorien des Unternehmers (key = Vorzeichen + Kategorie, mit Jahressumme): ${JSON.stringify((c.cats || []).slice(0, 60))}
+Wertpapiere/Instrumente in den Depots: ${JSON.stringify((c.secs || []).slice(0, 80))}
+Anzahl Depots: ${c.depots || 0}, Fahrtenbuch-Fahrten: ${c.trips || 0}, Umsatz bisher: ${c.umsatz || 0} €`;
   return `Du bist Steuerexperte für Österreich. Heute ist ${today()}. Steuerjahr: ${year}.
 Ein Unternehmer (meist Einnahmen-Ausgaben-Rechner) beschreibt seine Tätigkeit so:
 Art: ${kind || "–"}
 Beschreibung: ${activity || "–"}
 Weitere Angaben: ${details || "–"}
+${ctxTxt}
 Bei Trading/Wertpapieren/Derivaten/Krypto beachte besonders: Einkünfte aus Kapitalvermögen (§ 27, § 27a, § 27b EStG), Sondersteuersatz 27,5 % auch im Betriebsvermögen, Ausnahme nicht verbriefte Derivate ohne KESt-Abzug (Tarif, VwGH-Rechtsprechung), Beilage E1kv mit Kennzahlen, gleitender Durchschnittspreis, Verlustausgleich, keine Abzugsfähigkeit von Anschaffungsnebenkosten/Werbungskosten bei 27,5 %, gewerblicher Handel bzw. Konzessionspflicht (WAG/FMA) bei Tätigkeit für Dritte, GmbH: KöSt.
 
 Recherchiere im Web (bevorzugt bmf.gv.at, findok.bmf.gv.at, usp.gv.at, wko.at, svs.at, ris.bka.gv.at) die AKTUELL gültigen Werte für ${year} und ordne die Tätigkeit ein.
@@ -27,6 +34,10 @@ Antworte NUR mit einem JSON-Objekt ohne weiteren Text:
  "kuLimit":Kleinunternehmergrenze brutto in Euro, "kuTolerance":Toleranzgrenze in Euro,
  "branchPausch":[{"name":"branchenspezifische Pauschalierung falls für diese Tätigkeit möglich","info":"1 Satz"}],
  "notes":["kurze wichtige Hinweise für genau diese Tätigkeit, max. 6"],
+ "kzMap":{"<key aus der Kategorienliste>":{"kz":"Kennzahl der Beilage E 1a (9040,9090,9100,9110,9120,9130,9150,9160,9170,9180,9190,9200,9220,9225,9230) oder skip (nicht absetzbar/privat/Anlage)","why":"max. 8 Wörter"}},
+ "settings":{"ku":true|false|null (Kleinunternehmerregelung sinnvoll/zutreffend?),"km":true|false|null (Kilometergeld statt Kfz-Kosten typisch?),"apl":"0|300|1200|null (Arbeitsplatzpauschale typisch?)","depots":"ausland|inland|null","why":{"ku":"kurz","km":"kurz","apl":"kurz","depots":"kurz"}},
+ "konten":{"9040":"Sachkonto nach österreichischem Einheitskontenrahmen (4-stellig)","9100":"…", "…":"nur für Kennzahlen, die für diese Tätigkeit vorkommen"},
+ "secClasses":{"<Name aus der Wertpapierliste>":"aktie|fonds|derivat|derivat_nv|krypto"},
  "profile":{"capital":true|false (Haupteinkünfte sind Kapitaleinkünfte wie Trading/Krypto),
    "forms":["z. B. E1","E1a","E1kv","U1","K1"],
    "taxRate":"kurz, z. B. 27,5 % Sondersteuersatz bzw. Tarif bei …",
@@ -63,13 +74,13 @@ export default async function handler(req, res) {
   const b = req.body || {};
   const year = String(b.year || new Date().getFullYear()).slice(0, 4);
   const prompt = b.mode === "activity"
-    ? promptActivity({ activity: String(b.activity || "").slice(0, 600), kind: String(b.kind || "").slice(0, 120), year, details: String(b.details || "").slice(0, 400) })
+    ? promptActivity({ activity: String(b.activity || "").slice(0, 600), kind: String(b.kind || "").slice(0, 120), year, details: String(b.details || "").slice(0, 400), ctx: b.ctx })
     : promptCheck({ year, data: b.data || {}, detail: !!b.detail });
   try {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: process.env.CLAUDE_MODEL || "claude-sonnet-5-5", max_tokens: 4000,
+      body: JSON.stringify({ model: process.env.CLAUDE_MODEL || "claude-sonnet-5-5", max_tokens: b.mode === "activity" ? 7000 : 4000,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: b.mode === "activity" ? 4 : 5 }],
         messages: [{ role: "user", content: prompt }] }),
       signal: AbortSignal.timeout(55000)

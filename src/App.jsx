@@ -7964,7 +7964,7 @@ function stbYearData(year, D, opt, map) {
   for (const r of D.rows) {
     if (!inY(r.t.date) || r.scope !== "firma" || r.transfer || !r.biz) continue;
     const t = r.t, income = r.biz > 0, key = (income ? "+" : "-") + (t.category || "Sonstiges");
-    const kz = t.kz || map[key] || kzGuess(t.category, t.counterparty, t.purpose, income);
+    const kz = t.kz || map[key] || aiKzOf(key) || kzGuess(t.category, t.counterparty, t.purpose, income);
     lines.push({ id: t.id, accId: r.acc?.id, docId: r.doc?.id, date: t.date, src: r.acc?.name || "Bank", partner: t.counterparty || "", text: (t.purpose || "").slice(0, 160), cat: t.category || "Sonstiges", mapKey: key, kz, amount: r.biz, beleg: r.doc ? (r.doc.title || "Beleg") : "", hasDoc: !!r.doc, pct: bizPctOf(t, r.scope) });
   }
   const kassen = ls.get("kassen", []), kent = ls.get("kassaEntries", []);
@@ -8018,20 +8018,21 @@ function stbYearData(year, D, opt, map) {
   return { yr, lines, used, byKz, inc, out, profit, gfb, invs, umsatz, umsatzM, kuLimit, variants, best, anl, afaSum, trips, km, kmEur, rate, veh, waren9100, priv, noDoc, unklar, ku: opt.ku };
 }
 const STB_REPORTS = [
-  ["gesamt", "📘", "Jahresbericht für den Steuerberater", "Alles auf einen Blick: Ergebnis, E1a-Kennzahlen, Gewinnfreibetrag, Pauschalierungsvergleich, Umsatzgrenze, Hinweise", ["pdf", "xlsx"]],
+  ["gesamt", "📘", "Jahresbericht für den Steuerberater", "Alles auf einen Blick: Ergebnis, E1a-Kennzahlen, Gewinnfreibetrag, Pauschalierungsvergleich, Umsatzgrenze, Hinweise", ["pdf", "xlsx", "csv"]],
   ["e1a", "🧮", "E 1a – Kennzahlen", "Einnahmen und Ausgaben je Kennzahl der Beilage E 1a, mit Einzelposten", ["pdf", "xlsx", "csv"]],
   ["journal", "📒", "Einnahmen-Ausgaben-Journal", "Alle Firmenbuchungen chronologisch mit Konto, Kennzahl und Beleg", ["pdf", "xlsx", "csv"]],
-  ["pausch", "⚖️", "Pauschalierungsvergleich", "EAR vs. Basispauschalierung vs. Kleinunternehmerpauschalierung", ["pdf"]],
-  ["umsatz", "📈", "Umsatz & Kleinunternehmergrenze", "Monatlicher Umsatz kumuliert gegen 55.000 € (Toleranz 60.500 €)", ["pdf", "xlsx"]],
-  ["anlagen", "🏷️", "Anlagenverzeichnis mit AfA", "Anschaffungsdatum, Kosten, Lieferant, Nutzungsdauer, AfA, Restbuchwert", ["pdf", "xlsx"]],
-  ["waren", "📦", "Wareneingangsbuch", "Wareneinkäufe (KZ 9100) mit laufender Nummer und Lieferant", ["pdf", "xlsx"]],
-  ["km", "🚗", "Kilometergeld-Aufstellung", "Geschäftliche Fahrten aus dem Fahrtenbuch × amtliches km-Geld", ["pdf", "xlsx"]],
-  ["privat", "👤", "Privatentnahmen & -einlagen", "Umbuchungen Firmenkonto ↔ privat und Privatbuchungen der Kassa", ["pdf", "xlsx"]],
-  ["offen", "📮", "Offene Posten (Forderungen)", "Unbezahlte Ausgangsrechnungen zum Stichtag", ["pdf"]],
-  ["fehlt", "⚠️", "Fehlende Belege & unklare Buchungen", "Was der Steuerberater sonst nachfragen würde", ["pdf"]]];
-STB_REPORTS.splice(1, 0, ["e1kv", "📈", "E 1kv – Kapitalerträge (Depots)", "Trading, Dividenden, Derivate, Krypto nach Kennzahlen der Beilage E 1kv", ["pdf", "xlsx"]]);
+  ["pausch", "⚖️", "Pauschalierungsvergleich", "EAR vs. Basispauschalierung vs. Kleinunternehmerpauschalierung", ["pdf", "xlsx", "csv"]],
+  ["umsatz", "📈", "Umsatz & Kleinunternehmergrenze", "Monatlicher Umsatz kumuliert gegen 55.000 € (Toleranz 60.500 €)", ["pdf", "xlsx", "csv"]],
+  ["anlagen", "🏷️", "Anlagenverzeichnis mit AfA", "Anschaffungsdatum, Kosten, Lieferant, Nutzungsdauer, AfA, Restbuchwert", ["pdf", "xlsx", "csv"]],
+  ["waren", "📦", "Wareneingangsbuch", "Wareneinkäufe (KZ 9100) mit laufender Nummer und Lieferant", ["pdf", "xlsx", "csv"]],
+  ["km", "🚗", "Kilometergeld-Aufstellung", "Geschäftliche Fahrten aus dem Fahrtenbuch × amtliches km-Geld", ["pdf", "xlsx", "csv"]],
+  ["privat", "👤", "Privatentnahmen & -einlagen", "Umbuchungen Firmenkonto ↔ privat und Privatbuchungen der Kassa", ["pdf", "xlsx", "csv"]],
+  ["offen", "📮", "Offene Posten (Forderungen)", "Unbezahlte Ausgangsrechnungen zum Stichtag", ["pdf", "xlsx", "csv"]],
+  ["fehlt", "⚠️", "Fehlende Belege & unklare Buchungen", "Was der Steuerberater sonst nachfragen würde", ["pdf", "xlsx", "csv"]]];
+STB_REPORTS.splice(1, 0, ["e1kv", "📈", "E 1kv – Kapitalerträge (Depots)", "Trading, Dividenden, Derivate, Krypto nach Kennzahlen der Beilage E 1kv", ["pdf", "xlsx", "csv"]]);
 const STB_REP_PRE = ["gesamt", "e1a", "journal", "anlagen", "km", "fehlt"];
 async function stbReport(k, fmt, Y, co) {
+  const X = (sheets) => (fmt === "csv" ? csvSheets(sheets) : xlsxBlob(sheets));   // v0.99.34: Excel und CSV für jeden Bericht
   if (k === "e1kv") return e1kvReport(fmt, Y.e1kv || e1kvData(Y.yr, [], []), co);
   const yr = Y.yr, who = `${co.name || "Firma"}${co.owner ? " · " + co.owner : ""}${co.taxNo ? " · StNr. " + co.taxNo : ""}`, sub = `${who} · Wirtschaftsjahr ${yr}`;
   const kzRows = E1A_KZ.map(([kz, l, d]) => [kz, l, d === "in" ? "Einnahme" : "Ausgabe", Y.byKz[kz]?.n || 0, Y.byKz[kz]?.sum || 0]).filter((r) => r[4] || ["9040"].includes(r[0]));
@@ -8052,7 +8053,7 @@ async function stbReport(k, fmt, Y, co) {
   const note = "Werte Stand 2026 (BMF/WKO): Kleinunternehmergrenze 55.000 € brutto, Grundfreibetrag 15 % bis 33.000 € Gewinn,\nGWG bis 1.000 €, Kilometergeld PKW 0,50 €/km (max. 30.000 km).\nEinnahmen/Ausgaben nach Zahlungsfluss (Bank + Kassabuch), Firmenanteil laut Zuordnung in FinDocu" + (Y.ku ? ", Bruttosystem." : ".") + "\nVorbereitung für den Steuerberater – keine Steuerberatung.";
   const P = (o) => tablePdf({ subtitle: sub, note, ...o });
   if (k === "gesamt") {
-    if (fmt === "xlsx") return xlsxBlob([{ name: "Ergebnis", head: ["Position", "Betrag €"], rows: [["Betriebseinnahmen", Y.inc], ["Betriebsausgaben", -Y.out], ["Gewinn", Y.profit], ["Grundfreibetrag (KZ 9221)", -Y.gfb], ["Gewinn nach Grundfreibetrag", r2e(Y.profit - Y.gfb)], ["Umsatz (Kleinunternehmergrenze)", Y.umsatz], ["Grenze", Y.kuLimit]] },
+    if (fmt !== "pdf") return X([{ name: "Ergebnis", head: ["Position", "Betrag €"], rows: [["Betriebseinnahmen", Y.inc], ["Betriebsausgaben", -Y.out], ["Gewinn", Y.profit], ["Grundfreibetrag (KZ 9221)", -Y.gfb], ["Gewinn nach Grundfreibetrag", r2e(Y.profit - Y.gfb)], ["Umsatz (Kleinunternehmergrenze)", Y.umsatz], ["Grenze", Y.kuLimit]] },
       { name: "E1a", head: ["KZ", "Bezeichnung", "Art", "Posten", "Betrag €"], rows: kzRows }, { name: "Journal", head: JH, rows: Y.used.map(jRow) }, { name: "Pauschalierung", head: VH, rows: vRows },
       { name: "Umsatz", head: UH, rows: uRows }, { name: "Anlagen", head: AH, rows: anlRows }, { name: "Wareneingang", head: WH, rows: wRows }, { name: "Kilometergeld", head: KH, rows: kmRows }, { name: "Privat", head: PH, rows: pRows }]);
     return P({ title: `Jahresbericht ${yr} für den Steuerberater`, kpis: [["Einnahmen", fmtMoney(Y.inc)], ["Ausgaben", fmtMoney(Y.out)], ["Gewinn", fmtMoney(Y.profit)], ["nach Grundfreibetrag", fmtMoney(Y.profit - Y.gfb)]],
@@ -8065,35 +8066,47 @@ async function stbReport(k, fmt, Y, co) {
   }
   if (k === "e1a") {
     if (fmt === "csv") return csvBlob(["KZ", "Bezeichnung", "Art", "Posten", "Betrag €"], kzRows);
-    if (fmt === "xlsx") return xlsxBlob([{ name: "E1a", head: ["KZ", "Bezeichnung", "Art", "Posten", "Betrag €"], rows: kzRows }, ...E1A_KZ.filter(([kz]) => Y.byKz[kz]?.n).map(([kz]) => ({ name: "KZ " + kz, head: JH, rows: Y.byKz[kz].lines.map(jRow) }))]);
+    if (fmt !== "pdf") return X([{ name: "E1a", head: ["KZ", "Bezeichnung", "Art", "Posten", "Betrag €"], rows: kzRows }, ...E1A_KZ.filter(([kz]) => Y.byKz[kz]?.n).map(([kz]) => ({ name: "KZ " + kz, head: JH, rows: Y.byKz[kz].lines.map(jRow) }))]);
     return P({ title: `Beilage E 1a – Kennzahlen ${yr}`, landscape: true, kpis: [["Einnahmen", fmtMoney(Y.inc)], ["Ausgaben", fmtMoney(Y.out)], ["Gewinn", fmtMoney(Y.profit)], ["Grundfreibetrag", fmtMoney(Y.gfb)]],
       columns: [{ label: "Datum", w: 1 }, { label: "Konto/Quelle", w: 1.6 }, { label: "Partner", w: 2.2 }, { label: "Text", w: 3.4 }, { label: "Kategorie", w: 1.8 }, { label: "Betrag €", w: 1.2, align: "right" }],
       sections: E1A_KZ.filter(([kz]) => Y.byKz[kz]?.n).map(([kz, l]) => ({ heading: `KZ ${kz} – ${l}`, rows: Y.byKz[kz].lines.map((x) => [x.date, x.src, x.partner, x.text, x.cat, Math.abs(x.amount)]), totals: ["", "", "", "", "Summe KZ " + kz, Y.byKz[kz].sum] })) });
   }
   if (k === "journal") {
     if (fmt === "csv") return csvBlob(JH, Y.lines.map(jRow));
-    if (fmt === "xlsx") return xlsxBlob([{ name: "Journal", head: JH, rows: Y.lines.map(jRow) }]);
+    if (fmt !== "pdf") return X([{ name: "Journal", head: JH, rows: Y.lines.map(jRow) }]);
     return P({ title: `Einnahmen-Ausgaben-Journal ${yr}`, landscape: true, columns: [{ label: "Datum", w: 1 }, { label: "Konto", w: 1.5 }, { label: "Partner", w: 2 }, { label: "Text", w: 3.2 }, { label: "Kategorie", w: 1.6 }, { label: "KZ", w: 0.6 }, { label: "Betrag €", w: 1.1, align: "right" }, { label: "Beleg", w: 1.6 }],
       rows: Y.lines.map(jRow), totals: ["", "", "", "", "", "", Y.profit, "Gewinn"] });
   }
+  if (k === "pausch" && fmt !== "pdf") return X([{ name: "Pauschalierung", head: VH, rows: vRows }]);
   if (k === "pausch") return P({ title: `Pauschalierungsvergleich ${yr}`, landscape: true, columns: [{ label: "Variante", w: 4 }, { label: "Einnahmen €", w: 1.2, align: "right" }, { label: "Betriebsausgaben €", w: 1.4, align: "right" }, { label: "Gewinn €", w: 1.2, align: "right" }, { label: "Grundfreibetrag €", w: 1.3, align: "right" }, { label: "Bemessung €", w: 1.2, align: "right" }],
     rows: vRows, note: Y.variants.map((v) => `${v.name}: ${v.note || "alle tatsächlichen Betriebsausgaben"}`).join("\n") + `\nGünstigste Variante: ${Y.best?.name || "–"}. Wechsel/Sperrfristen und Voraussetzungen mit dem Steuerberater klären.\n` + note });
-  if (k === "umsatz") { if (fmt === "xlsx") return xlsxBlob([{ name: "Umsatz", head: UH, rows: uRows }]);
+  if (k === "umsatz") { if (fmt !== "pdf") return X([{ name: "Umsatz", head: UH, rows: uRows }]);
     return P({ title: `Umsatz & Kleinunternehmergrenze ${yr}`, kpis: [["Umsatz", fmtMoney(Y.umsatz)], ["Grenze", fmtMoney(Y.kuLimit)], ["Rest", fmtMoney(Y.kuLimit - Y.umsatz)], ["Toleranz bis", fmtMoney(Y.kuLimit * 1.1)]],
       columns: [{ label: "Monat", w: 2 }, { label: "Umsatz €", w: 1.4, align: "right" }, { label: "kumuliert €", w: 1.4, align: "right" }, { label: "bis Grenze €", w: 1.4, align: "right" }], rows: uRows }); }
-  if (k === "anlagen") { if (fmt === "xlsx") return xlsxBlob([{ name: "Anlagen", head: AH, rows: anlRows }]);
+  if (k === "anlagen") { if (fmt !== "pdf") return X([{ name: "Anlagen", head: AH, rows: anlRows }]);
     return P({ title: `Anlagenverzeichnis ${yr}`, landscape: true, columns: [{ label: "Anlagegut", w: 3.4 }, { label: "Anschaffung", w: 1.1 }, { label: "Kosten €", w: 1.1, align: "right" }, { label: "Lieferant", w: 2.2 }, { label: "Nutzungsdauer", w: 1.2 }, { label: `AfA ${yr} €`, w: 1.1, align: "right" }, { label: "Restbuchwert €", w: 1.2, align: "right" }],
       rows: anlRows, totals: ["Summe", "", sumBy(Y.anl, (x) => Number(x.a.price) || 0), "", "", Y.afaSum, sumBy(Y.anl, (x) => (x.gwg ? 0 : x.book))], empty: "Keine Anlagegüter mit Zuordnung „Firma“ in Besitz & Garantie." }); }
-  if (k === "waren") { if (fmt === "xlsx") return xlsxBlob([{ name: "Wareneingang", head: WH, rows: wRows }]);
+  if (k === "waren") { if (fmt !== "pdf") return X([{ name: "Wareneingang", head: WH, rows: wRows }]);
     return P({ title: `Wareneingangsbuch ${yr}`, landscape: true, columns: [{ label: "Nr.", w: 0.6 }, { label: "Datum", w: 1 }, { label: "Lieferant", w: 2.6 }, { label: "Bezeichnung", w: 4 }, { label: "Betrag €", w: 1.2, align: "right" }, { label: "Beleg", w: 2 }], rows: wRows, totals: ["", "", "", "Summe", byKzSum(Y, "9100"), ""] }); }
-  if (k === "km") { if (fmt === "xlsx") return xlsxBlob([{ name: "Kilometergeld", head: KH, rows: kmRows }]);
+  if (k === "km") { if (fmt !== "pdf") return X([{ name: "Kilometergeld", head: KH, rows: kmRows }]);
     return P({ title: `Kilometergeld ${yr}`, landscape: true, kpis: [["Fahrten", String(Y.trips.length)], ["Kilometer", Y.km.toLocaleString("de-AT")], ["Satz", String(Y.rate).replace(".", ",") + " €/km"], ["Betrag (KZ 9160)", fmtMoney(Y.kmEur)]],
       columns: [{ label: "Datum", w: 1 }, { label: "Fahrzeug", w: 1.6 }, { label: "Kennz.", w: 1 }, { label: "Von", w: 1.8 }, { label: "Nach", w: 1.8 }, { label: "Zweck", w: 2.6 }, { label: "km", w: 0.7, align: "right" }, { label: "€", w: 0.9, align: "right" }], rows: kmRows, totals: ["", "", "", "", "", "Summe (max. 30.000 km)", Y.km, Y.kmEur] }); }
-  if (k === "privat") { if (fmt === "xlsx") return xlsxBlob([{ name: "Privat", head: PH, rows: pRows }]);
+  if (k === "privat") { if (fmt !== "pdf") return X([{ name: "Privat", head: PH, rows: pRows }]);
     return P({ title: `Privatentnahmen & -einlagen ${yr}`, columns: [{ label: "Datum", w: 1 }, { label: "Art", w: 2 }, { label: "Konto", w: 1.6 }, { label: "Text", w: 3.4 }, { label: "Betrag €", w: 1.2, align: "right" }], rows: pRows, totals: ["", "", "", "Saldo", sumBy(Y.priv, (x) => x.amount)], empty: "Keine Einträge." }); }
+  if (k === "offen" && fmt !== "pdf") { const l = ls.get("invoices", []).filter((x) => x.kind === "rechnung" && x.number && !["bezahlt", "entwurf", "storniert"].includes(invState(x)));
+    return X([{ name: "Offene Posten", head: ["Rechnung", "Datum", "Kunde", "fällig", "Betrag €", "Status"], rows: l.map((x) => [x.number, x.date, x.customer?.name || "", x.due || "", invTotal(x), invState(x)]) }]); }
   if (k === "offen") return openItemsPdf(ls.get("invoices", []));
+  if (k === "fehlt" && fmt !== "pdf") return X([{ name: "Ohne Beleg", head: ["Datum", "Konto", "Partner", "Text", "Betrag €"], rows: Y.noDoc.map((l) => [l.date, l.src, l.partner, l.text, l.amount]) },
+    { name: "Unklar", head: ["Datum", "Konto", "Partner", "Text", "Betrag €"], rows: Y.unklar.map((r) => [r.t.date, r.acc?.name || "", r.t.counterparty || "", (r.t.purpose || "").slice(0, 120), r.t.amount]) }]);
   if (k === "fehlt") return P({ title: `Fehlende Belege & unklare Buchungen ${yr}`, landscape: true, columns: [{ label: "Datum", w: 1 }, { label: "Konto", w: 1.6 }, { label: "Partner", w: 2.4 }, { label: "Text", w: 3.6 }, { label: "Betrag €", w: 1.1, align: "right" }],
     sections: [{ heading: "Firmenausgaben ohne Beleg", rows: Y.noDoc.map((l) => [l.date, l.src, l.partner, l.text, l.amount]), empty: "keine ✓" }, { heading: "Privat oder Firma unklar", rows: Y.unklar.map((r) => [r.t.date, r.acc?.name || "", r.t.counterparty || "", (r.t.purpose || "").slice(0, 120), r.t.amount]), empty: "keine ✓" }] });
+}
+// mehrere Tabellen in eine CSV (Excel Österreich: Strichpunkt, UTF-8)
+function csvSheets(sheets) {
+  if (sheets.length === 1) return csvBlob(sheets[0].head, sheets[0].rows);
+  const rows = [...sheets[0].rows];
+  for (const sh of sheets.slice(1)) rows.push([], [sh.name], sh.head, ...sh.rows);
+  return csvBlob(sheets[0].head, rows);
 }
 const byKzSum = (Y, kz) => Y.byKz[kz]?.sum || 0;
 function StbRSec({ id, title, sub, open, onTog, children }) {
@@ -8114,7 +8127,7 @@ function StbReports({ D, notify, setTab, accounts, txs = [] }) {
   const O = { ...STB_REP_DEF, ...opt };
   const [actP] = useLsState("stbActivity", {}), prof = actP?.info?.profile?.reports || {};
   const [kvV, setKvV] = useState(0);
-  useEffect(() => { const f = (e) => { if (/^e1kv/.test(e.detail?.key || "")) setKvV((n) => n + 1); }; addEventListener("findocu-ls", f); return () => removeEventListener("findocu-ls", f); }, []);
+  useEffect(() => { const f = (e) => { if (/^(e1kv|stbKzAi|stbKanzlei)/.test(e.detail?.key || "")) setKvV((n) => n + 1); }; addEventListener("findocu-ls", f); return () => removeEventListener("findocu-ls", f); }, []);
   const Y = useMemo(() => ({ ...stbYearData(year, D, O, map), e1kv: e1kvData(year, txs, accounts || []) }), [year, D, JSON.stringify(O), map, assetsV, txs, kvV]);
   const hasBroker = Y.e1kv.depots.length > 0;
   // v0.99.33: Berichte passend zum Tätigkeitsprofil
@@ -8122,15 +8135,16 @@ function StbReports({ D, notify, setTab, accounts, txs = [] }) {
   const REPS = STB_REPORTS.filter((r) => repOk(r[0]));
   const hidden = STB_REPORTS.filter((r) => !repOk(r[0]));
   const selV = sel.filter((k) => REPS.some((r) => r[0] === k));
+  const [zipCsv, setZipCsv] = useLsState("stbZipCsv", false);
   const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
   const tag = (k) => `${STB_REPORTS.find((r) => r[0] === k)[2]} ${year}`.replace(/[\\/:*?"<>|–]/g, "-");
   const title = (k) => STB_REPORTS.find((r) => r[0] === k)[2];
   const preview = async (k) => { setBusy(k + "prev"); try { await openPdf(await stbReport(k, "pdf", Y, co), `${tag(k)}.pdf`, `${title(k)} ${year}`); } catch (e) { notify("Vorschau fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
   const dl = async (k, fmt) => { if (!(await stbAiGate(Y, O, `${title(k)} (${fmt.toUpperCase()})`))) return; setBusy(k + fmt); try { saveBlob(await stbReport(k, fmt, Y, co), `${tag(k)}.${fmt}`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
-  const zipAll = async () => { if (!(await stbAiGate(Y, O, `${selV.length} Berichte als ZIP`))) return; setBusy("zip"); try { const files = []; for (const k of selV) { const r = REPS.find((x) => x[0] === k); if (!r) continue; for (const f of r[4]) files.push({ name: `${String(STB_REPORTS.indexOf(r) + 1).padStart(2, "0")} ${tag(k)}.${f}`, data: await stbReport(k, f, Y, co) }); }
+  const zipAll = async () => { if (!(await stbAiGate(Y, O, `${selV.length} Berichte als ZIP`))) return; setBusy("zip"); try { const files = []; for (const k of selV) { const r = REPS.find((x) => x[0] === k); if (!r) continue; for (const f of r[4].filter((f) => zipCsv || f !== "csv")) files.push({ name: `${String(STB_REPORTS.indexOf(r) + 1).padStart(2, "0")} ${tag(k)}.${f}`, data: await stbReport(k, f, Y, co) }); }
     saveBlob(await zipBlob(files), `Steuerberater Berichte ${fileSafe(co.name || "")} ${year}.zip`.replace(/\s+/g, " ")); notify(`${files.length} Dateien als ZIP erstellt`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
   const tog = (k) => setOpen({ ...open, [k]: !open[k] });
-  const cats = useMemo(() => { const m = new Map(); for (const l of Y.lines) if (l.mapKey) { const x = m.get(l.mapKey) || { key: l.mapKey, cat: l.cat, inc: l.amount > 0, n: 0, sum: 0, kz: map[l.mapKey] || kzGuess(l.cat, "", "", l.amount > 0) }; x.n++; x.sum = r2e(x.sum + Math.abs(l.amount)); m.set(l.mapKey, x); } return [...m.values()].sort((a, b) => b.sum - a.sum); }, [Y, map]);
+  const cats = useMemo(() => { const m = new Map(); for (const l of Y.lines) if (l.mapKey) { const x = m.get(l.mapKey) || { key: l.mapKey, cat: l.cat, inc: l.amount > 0, n: 0, sum: 0, kz: map[l.mapKey] || aiKzOf(l.mapKey) || kzGuess(l.cat, "", "", l.amount > 0), ai: !map[l.mapKey] && ls.get("stbKzAi", {})[l.mapKey] }; x.n++; x.sum = r2e(x.sum + Math.abs(l.amount)); m.set(l.mapKey, x); } return [...m.values()].sort((a, b) => b.sum - a.sum); }, [Y, map]);
   const pct = Math.min(100, Math.round((Y.umsatz / Y.kuLimit) * 100));
   const setAsset = (id, patch) => { ls.set("assets", ls.get("assets", []).map((a) => (a.id === id ? { ...a, ...patch } : a))); setAssetsV((v) => v + 1); };
   return (<div className="stbrep">
@@ -8146,7 +8160,9 @@ function StbReports({ D, notify, setTab, accounts, txs = [] }) {
       <small className="muted">{Y.umsatz <= Y.kuLimit ? `Noch ${fmtMoney(Y.kuLimit - Y.umsatz)} bis zur Grenze (brutto)` : +year >= 2025 && Y.umsatz <= Y.kuLimit * 1.1 ? "Über der Grenze, aber innerhalb der 10-%-Toleranz – ab nächstem Jahr umsatzsteuerpflichtig" : "Über der Grenze – Umsatzsteuerpflicht mit dem Steuerberater klären"}</small></div>
 
     <StbRSec open={open} onTog={tog} id="act" title="💼 Deine Tätigkeit" sub={O.ai && O.ai.year === year ? "Werte von KI übernommen" : ""}>
-      <StbActivity O={O} setOpt={setOpt} year={year} />
+      <StbActivity O={O} setOpt={setOpt} year={year} ctx={{ cats: cats.map((c) => ({ key: c.key, kategorie: c.cat, art: c.inc ? "Einnahme" : "Ausgabe", summe: c.sum })),
+        secs: [...new Map(txs.filter((t) => t.kind === "broker" && (t.isin || t.security)).map((t) => [t.isin || t.security, { k: t.isin || t.security, name: t.security || t.isin }])).values()].slice(0, 80),
+        depots: Y.e1kv.depots.length, depotIds: Y.e1kv.depots.map((d) => d.id), trips: Y.trips.length, umsatz: Y.umsatz }} />
     </StbRSec>
 
     <StbRSec open={open} onTog={tog} id="exp" title="📤 Berichte exportieren" sub={`${selV.length} ausgewählt`}>
@@ -8156,6 +8172,7 @@ function StbReports({ D, notify, setTab, accounts, txs = [] }) {
         <div className="stbrfmts">{fmts.map((f) => <button key={f} className="btn sm" disabled={!!busy} onClick={() => dl(k, f)}>{busy === k + f ? "…" : { pdf: "PDF", xlsx: "Excel", csv: "CSV" }[f]}</button>)}{fmts.includes("pdf") && <button className="btn sm stbprev" disabled={!!busy} title="Vorschau" aria-label={title(k) + " – Vorschau"} onClick={() => preview(k)}>{busy === k + "prev" ? "…" : <IcoEye />}</button>}</div>
       </div>))}</div>
       <div className="actions"><button className="btn primary" disabled={!selV.length || !!busy} onClick={zipAll}>{busy === "zip" ? "Wird erstellt …" : `📦 Ausgewählte als ZIP (${selV.length})`}</button>
+        <label className="check mini"><input type="checkbox" checked={zipCsv} onChange={(e) => setZipCsv(e.target.checked)} /> CSV-Dateien ins ZIP (sonst PDF + Excel)</label>
         {hidden.length > 0 && <small className="muted">Passend zu deiner Tätigkeit ausgeblendet: {hidden.map((r) => r[2]).join(", ")}</small>}
         <button className="link" onClick={() => setSel(sel.length === STB_REPORTS.length ? STB_REP_PRE : STB_REPORTS.map((r) => r[0]))}>{sel.length === STB_REPORTS.length ? "Standardauswahl" : "Alle auswählen"}</button></div>
     </StbRSec>
@@ -8198,22 +8215,34 @@ function StbReports({ D, notify, setTab, accounts, txs = [] }) {
     </StbRSec>
 
     <StbRSec open={open} onTog={tog} id="map" title="🔗 Zuordnung Kategorien → Kennzahlen" sub={`${cats.length} Kategorien`}>
-      <div className="stbmap">{cats.map((c) => <div key={c.key} className="stbmapr"><span className="grow">{c.inc ? "＋" : "−"} {c.cat}<small className="muted"> · {c.n}× · {fmtMoney(c.sum)}</small></span>
+      <div className="stbmap">{cats.map((c) => <div key={c.key} className="stbmapr"><span className="grow">{c.inc ? "＋" : "−"} {c.cat}<small className="muted"> · {c.n}× · {fmtMoney(c.sum)}</small>{c.ai && <small className="aitag" title={c.ai.why || ""}>✨ KI{c.ai.why ? ": " + c.ai.why : ""}</small>}</span>
         <PSelect value={map[c.key] || c.kz} onChange={(e) => setMap({ ...map, [c.key]: e.target.value })}>{E1A_KZ.filter((k) => (k[2] === "in") === c.inc).map(([kz, l]) => <option key={kz} value={kz}>{kz} · {l}</option>)}<option value={E1A_SKIP}>nicht absetzen / über AfA / privat</option></PSelect></div>)}</div>
-      {Object.keys(map).length > 0 && <button className="link" onClick={() => setMap({})}>Automatische Zuordnung wiederherstellen</button>}
+      {Object.keys(map).length > 0 && <button className="link" onClick={() => setMap({})}>Eigene Änderungen zurücksetzen (KI-/automatische Zuordnung)</button>}
+      {Object.keys(ls.get("stbKzAi", {})).length > 0 && <small className="muted">✨ = von der KI passend zu deiner Tätigkeit zugeordnet. Eine eigene Auswahl hat immer Vorrang.</small>}
     </StbRSec>
 
     <StbRSec open={open} onTog={tog} id="opt" title="⚙︎ Angaben für die Berechnung">
-      <label className="switchrow"><span><b>Kleinunternehmer (umsatzsteuerbefreit)</b><small className="muted block">Bruttosystem – Beträge inkl. USt</small></span><input type="checkbox" className="switch" checked={O.ku} onChange={(e) => setOpt({ ...O, ku: e.target.checked })} /></label>
-      <label className="switchrow"><span><b>Kilometergeld aus dem Fahrtenbuch</b><small className="muted block">Nur wenn das Fahrzeug nicht im Betriebsvermögen ist (sonst tatsächliche Kfz-Kosten)</small></span><input type="checkbox" className="switch" checked={O.km} onChange={(e) => setOpt({ ...O, km: e.target.checked })} /></label>
-      <label>Arbeitsplatzpauschale<PSelect value={O.apl} onChange={(e) => setOpt({ ...O, apl: e.target.value })}><option value="0">keine</option><option value="300">klein – 300 € (andere Arbeitsstätte vorhanden)</option><option value="1200">groß – 1.200 € (keine andere Arbeitsstätte)</option></PSelect></label>
-      <label>Art der Tätigkeit (für Pauschalierungen)<PSelect value={O.kuType} onChange={(e) => setOpt({ ...O, kuType: e.target.value })}><option value="gewerbe">Gewerbe / Handwerk – 45 % (KU-Pauschalierung)</option><option value="dienst">Dienstleistung – 20 % (KU-Pauschalierung)</option></PSelect></label>
+      <label className="switchrow"><span><b>Kleinunternehmer (umsatzsteuerbefreit)</b><small className="muted block">Bruttosystem – Beträge inkl. USt</small></span><input type="checkbox" className="switch" checked={O.ku} onChange={(e) => setOpt({ ...O, ku: e.target.checked, aiSet: { ...(O.aiSet || {}), ku: undefined } })} /></label>
+      {O.aiSet?.ku !== undefined && <small className="aitag">✨ KI{O.aiSet.ku ? ": " + O.aiSet.ku : ""}</small>}
+      <label className="switchrow"><span><b>Kilometergeld aus dem Fahrtenbuch</b><small className="muted block">Nur wenn das Fahrzeug nicht im Betriebsvermögen ist (sonst tatsächliche Kfz-Kosten)</small></span><input type="checkbox" className="switch" checked={O.km} onChange={(e) => setOpt({ ...O, km: e.target.checked, aiSet: { ...(O.aiSet || {}), km: undefined } })} /></label>
+      {O.aiSet?.km !== undefined && <small className="aitag">✨ KI{O.aiSet.km ? ": " + O.aiSet.km : ""}</small>}
+      <label>Arbeitsplatzpauschale<PSelect value={O.apl} onChange={(e) => setOpt({ ...O, apl: e.target.value, aiSet: { ...(O.aiSet || {}), apl: undefined } })}><option value="0">keine</option><option value="300">klein – 300 € (andere Arbeitsstätte vorhanden)</option><option value="1200">groß – 1.200 € (keine andere Arbeitsstätte)</option></PSelect></label>
+      {O.aiSet?.apl !== undefined && <small className="aitag">✨ KI{O.aiSet.apl ? ": " + O.aiSet.apl : ""}</small>}
+      <div className="actpick"><span className="grow"><small className="muted block">Art der Tätigkeit</small><b>{actP?.label || STB_KINDS.find((k) => k[0] === actP?.kind)?.[1] || "noch nicht gewählt"}</b>{actP?.det && Object.keys(actP.det).length ? <small className="muted block">{[CAP_OPTS.form.find((x) => x[0] === actP.det.form)?.[1], (actP.det.inst || []).map((k) => CAP_OPTS.inst.find((x) => x[0] === k)?.[1]).join(", "), CAP_OPTS.broker.find((x) => x[0] === actP.det.broker)?.[1]].filter(Boolean).join(" · ")}</small> : null}</span>
+        <button className="link" onClick={() => { setOpen({ ...open, act: true }); setTimeout(() => document.querySelector(".actsearch input")?.focus(), 60); }}>Ändern</button></div>
+      {(actP?.info?.profile?.capital || ACT_CATALOG.find((x) => x.id === actP?.cat)?.capital) ? <small className="muted">Pauschalierungen gelten nicht für Kapitaleinkünfte (Trading) – deshalb ausgeblendet.</small> : <>
+      <label>Satz für die KU-Pauschalierung<PSelect value={O.kuType} onChange={(e) => setOpt({ ...O, kuType: e.target.value })}><option value="gewerbe">Gewerbe / Handwerk – 45 % (KU-Pauschalierung)</option><option value="dienst">Dienstleistung – 20 % (KU-Pauschalierung)</option></PSelect></label>
       <label className="switchrow"><span><b>Beratende/unterrichtende Tätigkeit</b><small className="muted block">Basispauschalierung dann 6 % statt 15 %</small></span><input type="checkbox" className="switch" checked={O.basis6} onChange={(e) => setOpt({ ...O, basis6: e.target.checked })} /></label>
+      </>}
     </StbRSec>
     <p className="muted small">Vorbereitung für den Steuerberater nach österreichischem Recht (Stand 2026) – keine Steuerberatung. Grundlage: Firmenbuchungen (Bank + Kassabuch) laut Zuordnung Firma/Privat.</p>
   </div>);
 }
 /* ======================= v0.99.23: KI-Prüfung (Websuche, österreichisches Steuerrecht) & Kanzlei-Exporte ======================= */
+/* v0.99.35: KI-Vorschläge (Kennzahlen, Schalter, Kontenplan, Wertpapierklassen) */
+const lsSetEv = (key, val) => { ls.set(key, val); queueMicrotask(() => window.dispatchEvent(new CustomEvent("findocu-ls", { detail: { key } }))); };
+const E1A_OK = (kz) => kz === "skip" || E1A_KZ.some(([k]) => k === kz);
+const aiKzOf = (key) => { const x = ls.get("stbKzAi", {})[key]; return x && E1A_OK(x.kz) ? x.kz : ""; };
 const STB_KINDS = [["gewerbe", "Gewerbe / Handwerk"], ["handel", "Handel"], ["dienst", "Dienstleistung"], ["freiberuf", "Freier Beruf / Beratung"], ["neue_selbst", "Neue Selbständige (Werkvertrag)"],
   ["kuenstler", "Künstler/in, Schriftsteller/in"], ["vortrag", "Vortragende, Lehrende"], ["land_forst", "Land- und Forstwirtschaft"], ["andere", "Andere (beschreiben)"]];
 async function stbAiCall(body) {
@@ -8309,7 +8338,7 @@ function StbAiGateHost() {
     </div>
   </Win>);
 }
-function StbActivity({ O, setOpt, year }) {
+function StbActivity({ O, setOpt, year, ctx = {} }) {
   const [act, setAct] = useLsState("stbActivity", { kind: "", text: ls.get("stbBizDesc", ""), info: null });
   const [busy, setBusy] = useState(false), [err, setErr] = useState("");
   const info = act.info;
@@ -8320,15 +8349,34 @@ function StbActivity({ O, setOpt, year }) {
   const det = act.det || {};
   useEffect(() => { if (!sOpen) return; const out = (e) => { if (!sRef.current?.contains(e.target)) setSOpen(false); }; document.addEventListener("pointerdown", out); return () => document.removeEventListener("pointerdown", out); }, [sOpen]);
   const pick = (a) => { const n = a ? { ...act, cat: a.id, label: a.name, kind: a.kind, info: null } : { ...act, cat: "", label: q.trim(), kind: "andere", text: act.text || q.trim(), info: null }; setAct(n); setQ(n.label); setSOpen(false); if (!(a?.capital)) run(n); };
+  const tried = useRef({});
+  useEffect(() => { if (!act.info || busy || tried.current[year]) return; if (O.ai && O.ai.year === year) return; tried.current[year] = true; const t = setTimeout(() => run(), 400); return () => clearTimeout(t); }, [year]);
   const detTxt = (d) => [d.form && CAP_OPTS.form.find((x) => x[0] === d.form)?.[1], (d.inst || []).map((k) => CAP_OPTS.inst.find((x) => x[0] === k)?.[1]).join(", "), d.broker && CAP_OPTS.broker.find((x) => x[0] === d.broker)?.[1]].filter(Boolean).join(" · ");
   const run = async (a0) => {
     const A = a0 && a0.cat !== undefined ? a0 : act;
     if (!A.label && !A.kind && !A.text?.trim()) return setErr("Bitte Tätigkeit suchen oder beschreiben");
     setBusy(true); setErr("");
-    try { const r = await stbAiCall({ mode: "activity", year, kind: A.label || STB_KINDS.find((k) => k[0] === A.kind)?.[1] || "", activity: A.text, details: detTxt(A.det || {}) });
+    try { const r = await stbAiCall({ mode: "activity", year, kind: A.label || STB_KINDS.find((k) => k[0] === A.kind)?.[1] || "", activity: A.text, details: detTxt(A.det || {}),
+        ctx: { cats: ctx.cats || [], secs: (ctx.secs || []).map((x) => x.name), depots: ctx.depots || 0, trips: ctx.trips || 0, umsatz: ctx.umsatz || 0 } });
+      // 1) Kategorien → Kennzahlen
+      if (r.kzMap && typeof r.kzMap === "object") { const m = {}; for (const [k, v] of Object.entries(r.kzMap)) { const kz = String(v?.kz ?? v ?? "").trim(); if ((ctx.cats || []).some((c) => c.key === k) && E1A_OK(kz)) m[k] = { kz, why: String(v?.why || "").slice(0, 80) }; } lsSetEv("stbKzAi", m); }
+      // 2) Wertpapierklassen
+      if (r.secClasses && typeof r.secClasses === "object") { const m = {}; for (const [n, c] of Object.entries(r.secClasses)) { const x = (ctx.secs || []).find((s2) => s2.name === n || s2.k === n); if (x && E1KV_CLS.some(([k]) => k === c)) m[x.k] = c; } lsSetEv("e1kvClassAi", m); }
+      // 3) Kontenplan (nur wenn nicht selbst angepasst)
+      if (r.konten && typeof r.konten === "object") { const cur = ls.get("stbKanzlei", {}); if (!cur.konten || cur.aiKonten) { const k = {}; for (const [kz, kt] of Object.entries(r.konten)) if (KZ_KONTO_DEF[kz] && /^\d{4}$/.test(String(kt).trim())) k[kz] = String(kt).trim(); if (Object.keys(k).length) lsSetEv("stbKanzlei", { ...cur, konten: k, aiKonten: true }); } }
+      // 4) Depots Inland/Ausland (nur ohne eigene Einstellung)
+      const st = r.settings || {};
+      if (st.depots === "ausland" || st.depots === "inland") { const dep = ls.get("e1kvDepot", {}); let ch = false; for (const id of ctx.depotIds || []) if (!dep[id]) { dep[id] = st.depots; ch = true; } if (ch) lsSetEv("e1kvDepot", dep); }
       setAct((a) => ({ ...a, ...A, info: r }));
       const ai = { basisRate: aiNum(r.basisRate, 0.01, 0.3), basisMax: aiNum(r.basisMax, 1000, 500000), basisLimit: aiNum(r.basisLimit, 10000, 5e6), kuRate: aiNum(r.kuRate, 0.05, 0.6), kuMax: aiNum(r.kuMax, 1000, 100000), kuLimit: aiNum(r.kuLimit, 20000, 500000), kuTolerance: aiNum(r.kuTolerance, 20000, 600000), year };
-      setOpt({ ...O, kuType: r.kuType === "dienst" ? "dienst" : r.kuType === "gewerbe" ? "gewerbe" : O.kuType, basis6: typeof r.basis6 === "boolean" ? r.basis6 : O.basis6, ai });
+      // 5) Schalter (Kleinunternehmer, Kilometergeld, Arbeitsplatzpauschale)
+      const why = st.why || {}, aiSet = {};
+      const n = { ...O, kuType: r.kuType === "dienst" ? "dienst" : r.kuType === "gewerbe" ? "gewerbe" : O.kuType, basis6: typeof r.basis6 === "boolean" ? r.basis6 : O.basis6, ai };
+      if (typeof st.ku === "boolean") { n.ku = st.ku; aiSet.ku = why.ku || ""; }
+      if (typeof st.km === "boolean") { n.km = st.km; aiSet.km = why.km || ""; }
+      if (["0", "300", "1200"].includes(String(st.apl))) { n.apl = String(st.apl); aiSet.apl = why.apl || ""; }
+      if (st.depots) aiSet.depots = why.depots || "";
+      setOpt({ ...n, aiSet });
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   return (<>
@@ -8369,6 +8417,7 @@ function StbActivity({ O, setOpt, year }) {
       </div>}
       {!!info.notes?.length && <ul className="small ainotes">{info.notes.slice(0, 5).map((n, i) => <li key={i}>{n}</li>)}</ul>}
       {!!info.sources?.length && <details className="airules"><summary>Quellen ({info.sources.length})</summary>{info.sources.map((s, i) => <a key={i} className="small block one" href={s.url} target="_blank" rel="noreferrer">{s.title || s.url}</a>)}</details>}
+      {(() => { const n1 = Object.keys(ls.get("stbKzAi", {})).length, n2 = Object.keys(ls.get("e1kvClassAi", {})).length, k = ls.get("stbKanzlei", {}).aiKonten; return (n1 || n2 || k || O.aiSet) ? <small className="aitag block">✨ Von der KI eingestellt: {[n1 && `${n1} Kategorien → Kennzahlen`, n2 && `${n2} Wertpapierklassen`, k && "Kontenplan BMD/DATEV", O.aiSet && Object.keys(O.aiSet).filter((x) => O.aiSet[x] !== undefined).length && "Angaben (Kleinunternehmer, km-Geld, Arbeitsplatz, Depots)"].filter(Boolean).join(" · ")}</small> : null; })()}
       <small className="muted block">Übernommen in die Berichte{info.profile?.reports ? " – unpassende Berichte werden ausgeblendet" : ""}. KI-Recherche – keine Steuerberatung.</small>
       {O.ai && <button className="link small" onClick={() => setOpt({ ...O, ai: null })}>Eingebaute Standardwerte verwenden</button>}
     </div>}
@@ -8455,7 +8504,8 @@ function StbKanzlei({ Y, O, co, notify, accounts }) {
       {accIds.length > 1 && <><small className="muted">Eigenes Konto je Bankkonto (leer = {K.bank})</small>
         <div className="grid3">{accIds.map((id) => <label key={id}>{accounts.find((a) => a.id === id)?.name || "Konto"}<input value={K.accKonto[id] || ""} placeholder={K.bank} onChange={(e) => setCfg({ ...cfg, accKonto: { ...K.accKonto, [id]: e.target.value } })} /></label>)}</div></>}
       <small className="muted">Sachkonto je E1a-Kennzahl (Vorschlag nach dem österreichischen Einheitskontenrahmen – mit deinem Steuerberater abstimmen)</small>
-      <div className="stbkzk">{E1A_KZ.filter(([kz]) => KZ_KONTO_DEF[kz]).map(([kz, l]) => <label key={kz}><span><b>{kz}</b> {l}</span><input value={K.konten[kz]} onChange={(e) => setCfg({ ...cfg, konten: { ...(cfg.konten || {}), [kz]: e.target.value } })} /></label>)}</div>
+      <div className="stbkzk">{E1A_KZ.filter(([kz]) => KZ_KONTO_DEF[kz]).map(([kz, l]) => <label key={kz}><span><b>{kz}</b> {l}</span><input value={K.konten[kz]} onChange={(e) => setCfg({ ...cfg, aiKonten: false, konten: { ...K.konten, [kz]: e.target.value } })} /></label>)}</div>
+      {cfg.aiKonten && <small className="aitag">✨ Sachkonten von der KI passend zu deiner Tätigkeit vorgeschlagen – eigene Änderungen haben Vorrang</small>}
       {(cfg.konten || cfg.bank) && <button className="link small" onClick={() => setCfg({ berater: cfg.berater, mandant: cfg.mandant })}>Kontenplan zurücksetzen</button>}
     </div>}
   </>);
@@ -8531,7 +8581,8 @@ function e1kvData(year, txs, accounts) {
   const accN = Object.fromEntries(accounts.map((a) => [a.id, a.name]));
   const b = txs.filter((t) => t.kind === "broker" && t.date <= yr + "-12-31").sort((x, y) => x.date.localeCompare(y.date));
   const pos = {}, real = [], inc = [], warn = [];
-  const clsOf = (t) => { const k = `${t.isin || t.security || "?"}`; return cls[k] || e1kvGuess(t); };
+  const clsAi = ls.get("e1kvClassAi", {}), okC = (c) => E1KV_CLS.some(([k]) => k === c);
+  const clsOf = (t) => { const k = `${t.isin || t.security || "?"}`; return cls[k] || (okC(clsAi[k]) ? clsAi[k] : "") || e1kvGuess(t); };
   for (const t of b) {
     const key = `${t.accountId}|${t.isin || t.security || "?"}`, c = clsOf(t), inY = t.date.startsWith(yr), fee = Math.abs(t.fee || 0);
     const P = (pos[key] = pos[key] || { shares: 0, cost: 0 });
@@ -8568,7 +8619,7 @@ async function e1kvReport(fmt, K, co) {
   const rRows = K.real.map((r) => [r.date, K.accN[r.acc] || "", r.sec, (E1KV_CLS.find((c) => c[0] === r.cls) || [])[1] || r.cls, r.shares || "", r.direct ? "" : r.proceeds, r.direct ? "" : r.basis, r.pl]);
   const IH = ["Datum", "Depot", "Wertpapier", "Art", "Brutto €", "Quellensteuer €", "davon anrechenbar €"];
   const iRows = K.inc.map((i) => [i.date, K.accN[i.acc] || "", i.sec, i.type, i.gross, i.qst, i.qstAnr]);
-  if (fmt === "xlsx") return xlsxBlob([{ name: "E1kv", head: ["KZ", "Bezeichnung", "Betrag €"], rows: [...kzRows, ["", "Saldo 27,5 %", K.pot], ["", "geschätzte Steuer (27,5 % − anrechenbare QSt)", K.tax]] }, { name: "Realisiert", head: RH, rows: rRows }, { name: "Erträge", head: IH, rows: iRows }]);
+  if (fmt !== "pdf") return (fmt === "csv" ? csvSheets : xlsxBlob)([{ name: "E1kv", head: ["KZ", "Bezeichnung", "Betrag €"], rows: [...kzRows, ["", "Saldo 27,5 %", K.pot], ["", "geschätzte Steuer (27,5 % − anrechenbare QSt)", K.tax]] }, { name: "Realisiert", head: RH, rows: rRows }, { name: "Erträge", head: IH, rows: iRows }]);
   return tablePdf({ title: `Beilage E 1kv – Kapitalerträge ${K.yr}`, subtitle: sub, landscape: true,
     kpis: [["Saldo 27,5 %", fmtMoney(K.pot)], ["Quellensteuer anrechenbar", fmtMoney(K.kz["998"])], ["geschätzte Steuer", fmtMoney(K.tax)], ["Buchungen", String(K.count)]],
     columns: [{ label: "Datum", w: 1 }, { label: "Depot", w: 1.6 }, { label: "Wertpapier", w: 3 }, { label: "Klasse", w: 2.2 }, { label: "Stück", w: 0.8, align: "right" }, { label: "Erlös €", w: 1.1, align: "right" }, { label: "Anschaffung €", w: 1.2, align: "right" }, { label: "G/V €", w: 1.1, align: "right" }],
@@ -8595,7 +8646,7 @@ function StbE1kv({ txs, accounts, year }) {
       <PSelect value={d.mode} onChange={(e) => setDep({ ...dep, [d.id]: e.target.value })}><option value="ausland">Ausland / ohne KESt-Abzug → E 1kv</option><option value="inland">Inland, KESt wird abgezogen (endbesteuert)</option></PSelect></div>)}</div>
     {secs.length > 0 && <details className="airules"><summary>Wertpapier-Klassen ({secs.length}) – automatisch erkannt, bei Bedarf ändern</summary>
       <div className="stbmap">{secs.map((s) => <div key={s.k} className="stbmapr"><span className="grow one">{s.name}</span>
-        <PSelect value={cls[s.k] || s.guess} onChange={(e) => setCls({ ...cls, [s.k]: e.target.value })}>{E1KV_CLS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</PSelect></div>)}</div></details>}
+        <PSelect value={cls[s.k] || ls.get("e1kvClassAi", {})[s.k] || s.guess} onChange={(e) => setCls({ ...cls, [s.k]: e.target.value })}>{E1KV_CLS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</PSelect></div>)}</div></details>}
     <small className="muted">Gleitender Durchschnittspreis, Spesen nicht abzugsfähig, Quellensteuer max. 15 % anrechenbar. Ausschüttungsgleiche Erträge (KZ 937) thesaurierender Fonds sind nicht berechnet.</small>
   </>);
 }
@@ -17124,4 +17175,12 @@ html body .stbrfmts .stbprev{height:auto!important;min-height:0!important;align-
 .aiprof{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
 .aiprof>div{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:10px;background:var(--card2);font-size:13.5px}
 .aiprof .aiopen{grid-column:1/-1;background:color-mix(in srgb,#e0a030 14%,transparent)}
+
+/* v0.99.34 */
+.actpick{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--card2)}
+
+/* v0.99.35: KI-Markierungen */
+.aitag{display:inline-block;font-size:11.5px;color:var(--acc);margin-left:6px}
+.aitag.block{display:block;margin:0}
+.switchrow+.aitag,label+.aitag{margin:-4px 0 4px 0;display:block}
 `;

@@ -2,6 +2,18 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.35 – Steuerberater: KI stellt alles passend zur Tätigkeit ein
+- KI ordnet deine Kategorien passend zur Tätigkeit den E1a-Kennzahlen zu (mit Begründung, ✨ markiert; eigene Auswahl hat Vorrang)
+- KI setzt Kleinunternehmer, Kilometergeld, Arbeitsplatzpauschale und Inland/Ausland der Depots – jeweils mit Begründung, jederzeit änderbar
+- KI schlägt den Kontenplan für BMD/DATEV passend zur Tätigkeit vor (nur solange nicht selbst angepasst)
+- KI erkennt die Wertpapierklassen für die E 1kv (Aktie, Fonds, Derivat, CFD/Future, Krypto)
+- Beim Wechsel auf ein Jahr ohne KI-Werte prüft die App automatisch für dieses Jahr nach
+
+## v0.99.34 – Steuerberater: alle Formate
+- Jeder Bericht als PDF, Excel (.xlsx) und CSV (Strichpunkt, für Excel Österreich) – auch Pauschalierungsvergleich, Offene Posten, Fehlende Belege und E 1kv
+- ZIP enthält PDF + Excel, auf Wunsch zusätzlich CSV
+- „Angaben für die Berechnung“ zeigt die gewählte Tätigkeit (z. B. Trading auf eigene Rechnung mit den Angaben) mit „Ändern“; bei Trading werden die Pauschalierungs-Angaben ausgeblendet
+
 ## v0.99.33 – Steuerberater: Tätigkeitssuche & E 1kv
 - „Art der Tätigkeit“ als Suchfeld: eingebaute Liste mit 35 häufigen Tätigkeiten in Österreich (inkl. Trading, Krypto, Prop-Trading) oder freie Suche mit KI-Recherche im Internet
 - Bei Trading Rückfragen (Rechtsform, Instrumente, Broker im Ausland); die KI erstellt ein Steuerprofil: Einkunftsart, Formulare, Steuersatz, Gewerbe/Konzession, Absetzbares, Fristen, offene Fragen für den Steuerberater
