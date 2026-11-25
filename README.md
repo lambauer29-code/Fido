@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.31 – Adressen & Zuordnung
+- Adressen überall getrennt: Straße & Hausnummer, PLZ, Ort, Land (Kunden, Rechnung, Firmendaten, Meine Daten)
+- Adresssuche beim Tippen der Straße (OpenStreetMap), PLZ füllt den Ort automatisch
+- Bestehende Adressen werden automatisch in die Felder aufgeteilt
+- Konten › Buchung: Firma/Privat/Unklar zeigt nur die gewählte Zuordnung, Änderung über das Menü
+
 ## v0.99.30 – Journal: Leiste über dem Beleg
 - Titel, Betrag und ‹ ✎ › stehen jetzt über der Belegvorschau statt darunter
 - Einstellungen › Darstellung › „Journal: Leiste über dem Beleg“: schwebend auf dem Beleg (Standard) oder als eine Zeile darüber

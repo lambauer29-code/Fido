@@ -7303,7 +7303,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
         {t.kind !== "broker" && <button className="txcat" onClick={() => setCatOpen(!catOpen)}><CatGlyph c={t.category} /> {t.category} <span>✎</span></button>}
         {t.kind !== "broker" && !isTransfer && (
           <div className="txscope">
-            <div className="seg">{TX_SCOPES.map(([k, ic, lb]) => <button key={k} className={(si.scope === k ? "on " : "") + "sc-" + k} onClick={() => save({ ...t, scope: k, scopeSrc: undefined, ...(k !== "firma" ? { bizPct: undefined } : {}) })}>{ic} {lb}</button>)}</div>
+            <ScopePick scope={si.scope} onPick={(k) => save({ ...t, scope: k, scopeSrc: undefined, ...(k !== "firma" ? { bizPct: undefined } : {}) })} />
             <small className="muted">{si.set ? (si.src ? si.src : "selbst zugeordnet") : "Vorschlag: " + si.src}{t.scopeWhy ? " · " + t.scopeWhy : ""}{si.scope === "firma" && pctBiz < 100 ? ` · ${pctBiz} % Firma` : ""}</small>
           </div>
         )}
@@ -10023,8 +10023,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         <label>Name<input value={me.name} onChange={(e) => setMe({ ...me, name: e.target.value })} /></label>
         <label>Firma (für die Trennung Privat/Firma)<input value={me.company || ""} placeholder="z. B. Mustermann e.U." onChange={(e) => setMe({ ...me, company: e.target.value })} /></label>
         <small className="muted block">Dokumente, die an deine Firma gehen oder betrieblich sind, ordnet Claude automatisch „🏢 Firma“ zu – änderbar im Dokument.</small>
-        <label>Adresse<textarea rows={2} value={me.address} onChange={(e) => setMe({ ...me, address: e.target.value })} /></label>
-        <label>Ort<input value={me.city} onChange={(e) => setMe({ ...me, city: e.target.value })} /></label>
+        <AddressText label="Adresse" value={me.address || ""} onChange={(a, n) => setMe({ ...me, address: a, city: n.city || me.city })} />
       </SetSec></>,
     "rechnungen": <><SetSec id="rechnungen" title="Rechnungen"><InvoiceSettings me={me} /></SetSec></>,
     "rechnungsdesign": <><SetSec id="rechnungsdesign" title="Rechnungsdesign"><InvoiceDesignSettings /></SetSec></>,
@@ -10648,6 +10647,69 @@ async function sharePdf(blob, name, title, to = "") {
   if (navigator.canShare?.({ files: [f] })) { try { await navigator.share({ files: [f], title }); } catch {} } else downloadFiles([f]);
 }
 
+/* ======================= v0.99.31: Adresse – Straße, PLZ, Ort, Land getrennt + Suche im Internet ======================= */
+const COUNTRIES = [["AT", "Österreich"], ["DE", "Deutschland"], ["CH", "Schweiz"], ["IT", "Italien"], ["LI", "Liechtenstein"], ["CZ", "Tschechien"], ["SK", "Slowakei"], ["HU", "Ungarn"], ["SI", "Slowenien"], ["NL", "Niederlande"], ["FR", "Frankreich"], ["PL", "Polen"]];
+const HOME_COUNTRY = "Österreich";
+const ccOf = (name) => (COUNTRIES.find(([c, n]) => n.toLowerCase() === String(name || "").trim().toLowerCase() || c === String(name || "").trim().toUpperCase()) || [])[0] || "";
+// „Straße Nr.\nPLZ Ort\nLand“ ↔ Felder
+function addrParse(s) {
+  const l = String(s || "").split(/\n|,\s*(?=\d{4,5}\s)/).map((x) => x.trim()).filter(Boolean);
+  const zi = l.findIndex((x) => /^(?:[A-Z]{1,2}[- ])?\d{4,5}\s+\S/.test(x));
+  if (zi < 0) return { street: l[0] || "", zip: "", city: l.slice(1).join(", "), country: "" };
+  const m = l[zi].match(/^(?:[A-Z]{1,2}[- ])?(\d{4,5})\s+(.+)$/);
+  return { street: l.slice(0, zi).join(", "), zip: m[1], city: m[2], country: l.slice(zi + 1).join(" ") };
+}
+const addrJoin = (p) => [p.street, [p.zip, p.city].filter(Boolean).join(" "), p.country && p.country !== HOME_COUNTRY ? p.country : ""].map((x) => (x || "").trim()).filter(Boolean).join("\n");
+async function addrSearch(q, signal) {
+  const u = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lang=de&limit=6&lat=48.3&lon=14.3&layer=house&layer=street`;
+  const j = await (await fetch(u, { signal })).json();
+  return (j.features || []).map((f) => f.properties).filter((p) => p.street || p.name).map((p) => ({
+    street: [p.street || p.name, p.housenumber].filter(Boolean).join(" "), zip: p.postcode || "", city: p.city || p.town || p.village || p.locality || p.district || "", country: p.country || "" }))
+    .filter((x, i, a) => a.findIndex((y) => y.street === x.street && y.zip === x.zip) === i);
+}
+async function zipCity(zip, country) {
+  const cc = (ccOf(country) || "AT").toLowerCase();
+  const r = await fetch(`https://api.zippopotam.us/${cc}/${encodeURIComponent(zip)}`); if (!r.ok) return "";
+  const j = await r.json(); return j.places?.[0]?.["place name"] || "";
+}
+function AddressFields({ v, onChange, label = "Anschrift" }) {
+  const p = { street: "", zip: "", city: "", country: "", ...v };
+  const set = (patch) => onChange({ ...p, ...patch });
+  const [sug, setSug] = useState([]), [open, setOpen] = useState(false), [busy, setBusy] = useState(false);
+  const ab = useRef(null), tm = useRef(null), boxRef = useRef(null);
+  const look = (q) => { clearTimeout(tm.current); if (q.trim().length < 4) { setSug([]); return; }
+    tm.current = setTimeout(async () => { ab.current?.abort(); ab.current = new AbortController(); setBusy(true);
+      try { const r = await addrSearch([q, p.zip, p.city].filter(Boolean).join(" "), ab.current.signal); setSug(r); setOpen(r.length > 0); } catch {} finally { setBusy(false); } }, 380); };
+  useEffect(() => { if (!open) return; const out = (e) => { if (!boxRef.current?.contains(e.target)) setOpen(false); }; document.addEventListener("pointerdown", out); return () => document.removeEventListener("pointerdown", out); }, [open]);
+  const zip0 = useRef(p.zip);
+  const zipDone = async (zip) => { const changed = zip !== zip0.current; zip0.current = zip; if ((p.city && !changed) || !/^\d{4,5}$/.test(zip)) return; try { const c = await zipCity(zip, p.country); if (c) set({ zip, city: c }); } catch {} };
+  return (<fieldset className="addrf"><legend>{label}</legend>
+    <div className="addrst" ref={boxRef}>
+      <label>Straße &amp; Hausnummer<input value={p.street} placeholder="z. B. Landstraße 12" autoComplete="street-address"
+        onChange={(e) => { set({ street: e.target.value }); look(e.target.value); }} onFocus={() => sug.length && setOpen(true)} onKeyDown={(e) => e.key === "Escape" && setOpen(false)} /></label>
+      {busy && <span className="addrspin" aria-hidden="true" />}
+      {open && sug.length > 0 && <div className="addrsug" role="listbox">
+        {sug.map((x, i) => <button type="button" key={i} role="option" onClick={() => { onChange({ ...p, ...x, country: x.country || p.country }); setOpen(false); setSug([]); }}>
+          <b>{x.street}</b><small className="muted">{[x.zip, x.city].filter(Boolean).join(" ")}{x.country ? " · " + x.country : ""}</small></button>)}
+        <small className="muted addrsrc">Vorschläge: OpenStreetMap</small>
+        <MenuCancel onClick={() => setOpen(false)} />
+      </div>}
+    </div>
+    <div className="addrrow">
+      <label className="addrzip">PLZ<input value={p.zip} inputMode="numeric" placeholder="4020" autoComplete="postal-code" onFocus={(e) => { zip0.current = e.target.value.trim(); }} onChange={(e) => set({ zip: e.target.value.trim() })} onBlur={(e) => zipDone(e.target.value.trim())} /></label>
+      <label className="grow">Ort<input value={p.city} placeholder="Linz" autoComplete="address-level2" onChange={(e) => set({ city: e.target.value })} /></label>
+      <label className="addrland">Land<input value={p.country} placeholder={HOME_COUNTRY} list="fd-countries" autoComplete="country-name" onChange={(e) => set({ country: e.target.value })} /></label>
+    </div>
+    <datalist id="fd-countries">{COUNTRIES.map(([c, n]) => <option key={c} value={n} />)}</datalist>
+  </fieldset>);
+}
+// Wrapper für Adressen, die als mehrzeiliger Text gespeichert sind (Kunden, Rechnung, Meine Daten)
+function AddressText({ value, onChange, label }) {
+  const [p, setP] = useState(() => addrParse(value));
+  const last = useRef(value);
+  useEffect(() => { if (value !== last.current) { last.current = value; setP(addrParse(value)); } }, [value]);
+  return <AddressFields v={p} label={label} onChange={(n) => { setP(n); const s = addrJoin(n); last.current = s; onChange(s, n); }} />;
+}
 /* ---------- Firmendaten ---------- */
 function CompanyFields({ v, setV }) {
   const f = (k, label, ph = "", type = "text") => <label>{label}<input type={type} value={v[k] ?? ""} placeholder={ph} onChange={(e) => setV({ ...v, [k]: type === "number" ? Number(e.target.value) : e.target.value })} /></label>;
@@ -10655,7 +10717,7 @@ function CompanyFields({ v, setV }) {
   return (<>
     <fieldset><legend>Unternehmen</legend>
       {f("name", "Firmenname", "z. B. Mustermann e.U.")}{f("owner", "Inhaber/in (Unterschrift)", "z. B. Roland Mustermann")}
-      {f("street", "Straße & Nr.")}<div className="grid2">{f("zip", "PLZ")}{f("city", "Ort")}</div>
+      <AddressFields label="Firmenanschrift" v={{ street: v.street || "", zip: v.zip || "", city: v.city || "", country: v.country || "" }} onChange={(n) => setV({ ...v, street: n.street, zip: n.zip, city: n.city, country: n.country })} />
       <div className="grid2">{f("email", "E-Mail", "", "email")}{f("phone", "Telefon")}</div>
       <div className="grid2">{f("web", "Website")}{f("fn", "Firmenbuchnr. (falls vorhanden)")}</div>
       <div className="grid2">{f("taxNo", "Steuernummer")}{f("uid", "UID-Nr. (nur falls vorhanden)", "ATU…")}</div>
@@ -10855,7 +10917,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
         <legend>Kunde</legend>
         <label>Name / Firma<input list="custlist" value={inv.customer?.name || ""} onChange={(e) => pick(e.target.value)} placeholder="Name oder gespeicherten Kunden wählen" /></label>
         <datalist id="custlist">{customers.map((c) => <option key={c.id} value={c.name} />)}</datalist>
-        <label>Anschrift<textarea rows={3} value={inv.customer?.address || ""} onChange={(e) => setC({ address: e.target.value })} placeholder={"Straße Nr.\nPLZ Ort"} /></label>
+        <AddressText value={inv.customer?.address || ""} onChange={(a) => setC({ address: a })} />
         <div className="grid2">
           <label>E-Mail<input value={inv.customer?.email || ""} onChange={(e) => setC({ email: e.target.value })} /></label>
           <label>UID (bei Firmenkunden)<input value={inv.customer?.uid || ""} onChange={(e) => setC({ uid: e.target.value })} /></label>
@@ -11729,7 +11791,7 @@ function ContactEditor({ c: init, onSave, onDelete, onClose }) {
       <div className="typepick">{types.map((t) => <button key={t.id} className={"chip" + ((c.type || types[0]?.name) === t.name ? " on" : "")} style={(c.type || types[0]?.name) === t.name ? undefined : { color: t.color }} onClick={() => set({ type: t.name })}><TypeGlyph t={t} /> {t.name}</button>)}</div>
       <fieldset><legend>Kontakt</legend>
         <div className="grid2">{f("name", "Name / Firma", "z. B. Muster GmbH")}{f("contact", "Ansprechperson", "z. B. Frau Huber")}</div>
-        <label>Anschrift<textarea rows={3} value={c.address || ""} placeholder={"Straße Nr.\nPLZ Ort"} onChange={(e) => set({ address: e.target.value })} /></label>
+        <AddressText value={c.address || ""} onChange={(a) => set({ address: a })} />
         <div className="grid2">{f("email", "E-Mail", "", "email")}{f("phone", "Telefon", "", "tel")}</div>
         <div className="grid2">{f("mobile", "Mobil", "", "tel")}{f("web", "Website")}</div>
       </fieldset>
@@ -16835,4 +16897,18 @@ html body .stbrfmts .stbprev{height:auto!important;min-height:0!important;align-
 .jstrip.jsc{margin:10px 10px -66px;border:1px solid var(--line);border-radius:14px;padding:8px 10px 8px 14px;top:10px;background:color-mix(in srgb,var(--card) 82%,transparent);backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);box-shadow:0 8px 26px #0005}
 .jcenter.js-c>.jstrip+*{padding-top:66px}
 @media (max-width:900px){.jstrip.jsb .jstxt small{display:none}}
+
+/* v0.99.31: Adressfelder */
+.addrf{display:flex;flex-direction:column;gap:8px;border:0!important;padding:0!important;margin:4px 0 0!important;background:none!important;box-shadow:none!important;min-width:0}
+.addrf>legend{font-size:14px;font-weight:600;color:var(--txt);padding:0;margin:0 0 6px}
+.addrst{position:relative}
+.addrrow{display:flex;gap:10px;flex-wrap:wrap}.addrrow>label{min-width:0}
+.addrzip{flex:0 0 110px}.addrrow .grow{flex:1 1 160px}.addrland{flex:0 1 170px}
+@media (max-width:520px){.addrland{flex:1 1 100%}}
+.addrsug{position:absolute;left:0;right:0;top:100%;z-index:40;margin-top:4px;display:flex;flex-direction:column;padding:6px;border-radius:14px;border:1px solid var(--line);background:color-mix(in srgb,var(--card) 94%,transparent);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 14px 40px #0006}
+.addrsug>button:not(.mcancel){display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:0;background:none;color:var(--txt);font:inherit;text-align:left;padding:8px 10px;border-radius:10px;cursor:pointer}
+.addrsug>button:not(.mcancel):hover{background:var(--card2)}
+.addrsrc{padding:4px 10px 0;font-size:11px}
+.addrspin{position:absolute;right:12px;bottom:12px;width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--acc);animation:spin .8s linear infinite}
+.txscope .scpick{display:inline-flex}
 `;
