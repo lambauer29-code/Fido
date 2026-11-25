@@ -5472,9 +5472,9 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
           {curDoc && !detOn && <div className="jstrip">
             <div className="grow jstxt"><b className="one">{curDoc.title || curDoc.fileName}</b><small className="muted one">{[jDate(curDoc) && fmtDate(jDate(curDoc)), curDoc.sender, curDoc.category].filter(Boolean).join(" · ")}</small></div>
             {jSigned(curDoc) != null && <b className={"jsamt " + (jSigned(curDoc) >= 0 ? "pos" : "neg")}>{fmtMoney(jSigned(curDoc))}</b>}
-            <button className="btn sm" onClick={() => onOpen(curDoc.id)}>✎ Bearbeiten</button>
+            {jUnconf(curDoc) && <button className="btn sm" onClick={() => confirm()}>✓ Bestätigen</button>}
             <button className="btn sm jnavb" disabled={idx <= 0} onClick={() => go(-1)} aria-label="Vorheriger Beleg">‹</button>
-            <button className="btn sm primary" onClick={() => confirm()}>{jUnconf(curDoc) ? "✓ Bestätigen" : "Weiter"}</button>
+            <button className="btn sm primary" onClick={() => onOpen(curDoc.id)}>✎ Bearbeiten</button>
             <button className="btn sm jnavb" disabled={idx >= list.length - 1} onClick={() => go(1)} aria-label="Nächster Beleg">›</button>
           </div>}</div>
         {detOn && <div className="jinsp">{fields}</div>}
@@ -5490,10 +5490,10 @@ function JournalCard({ d, tx, onConfirm, onEdit, pos, onPrev, onNext }) {
     <div className="jbtns jcbtns">
       <div className="jnav3">
         <button className="btn jnavb" disabled={!onPrev} onClick={onPrev} aria-label="Vorheriger Beleg" title="Zurück">‹</button>
-        <button className="btn primary jconfirm" onClick={() => onConfirm()}>{jUnconf(d) ? "✓ Bestätigen" : "Weiter"}</button>
-        <button className="btn jnavb" disabled={!onNext} onClick={onNext} aria-label="Nächster Beleg" title="Weiter ohne Bestätigen">›</button>
+        <button className="btn primary jconfirm jedit" onClick={onEdit}>✎ Bearbeiten</button>
+        <button className="btn jnavb" disabled={!onNext} onClick={onNext} aria-label="Nächster Beleg" title="Nächster Beleg">›</button>
       </div>
-      <button className="btn sm" onClick={onEdit}>✎ Bearbeiten</button>
+      {jUnconf(d) && <button className="btn jconfok" onClick={() => onConfirm()}>✓ Bestätigen &amp; weiter</button>}
     </div>
     <b className="jctitle">{d.title || d.fileName}</b>
     {v != null && <div className={"jcamt " + (v >= 0 ? "pos" : "neg")}>{v > 0 ? "+ " : ""}{fmtMoney(v)}</div>}
@@ -15808,11 +15808,12 @@ button.jmhead{width:100%;border:0;font-family:inherit;cursor:pointer;align-items
 
 /* v0.99.15: Journal – ‹ Bestätigen › und Summe oben */
 .jnav3{display:flex;gap:6px;align-items:stretch}
-.jnav3 .jconfirm{flex:1}
+.jnav3 .jconfirm{flex:1;white-space:nowrap;min-width:0;padding-left:8px;padding-right:8px}
 .jnavb{flex:none;width:52px;font-size:22px;font-weight:700;padding:0;display:grid;place-items:center}
 .jstrip .jnavb{width:38px;font-size:18px}
 .jnavb:disabled{opacity:.35}
 .jlhead{align-items:flex-end}
 .jlht{display:flex;flex-direction:column;gap:1px;min-width:0}.jlht small{font-size:11px}
 .jlsumtop{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:16px}
+.jcard .jconfok{width:100%;min-height:42px;color:var(--pos,#2e9b5e);font-weight:700}
 `;

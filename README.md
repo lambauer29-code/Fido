@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.16 – Journal: Bearbeiten in der Mitte
+
+In der Prüfkarte (iPhone, iPad, Laptop) steht zwischen ‹ und › jetzt „✎ Bearbeiten“ statt „Weiter“. Bei noch unbestätigten Belegen erscheint darunter „✓ Bestätigen & weiter“; bei bestätigten Belegen blättert man mit ‹ ›.
+
 ## v0.99.15 – Journal: ‹ Bestätigen › und Summe oben
 
 - Prüfkarte (alle Displaygrößen): eine Zeile „‹ · Bestätigen/Weiter · ›“ – ‹ und › blättern zum vorigen/nächsten Beleg ohne zu bestätigen. Die Pfeile oben im iPhone-Kopf sind entfernt; am iPad in der schmalen Leiste ebenso ‹ und ›.
