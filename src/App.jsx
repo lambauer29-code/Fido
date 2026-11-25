@@ -7601,7 +7601,35 @@ async function classifyItems(items, token) {
   return Object.fromEntries((j.results || []).filter((x) => ["firma", "privat", "unklar"].includes(x.scope)).map((x) => [x.i, x]));
 }
 // Markiertes PDF: Original mit farbigen Zeilen + Zusammenfassung als letzte Seite(n)
-const PRINT_COL = { firma: [29, 158, 117], unklar: [239, 159, 39] };   // grün / gelb – privat bleibt unmarkiert
+/* v0.99.38: Farben für Kontoauszüge (Druck und auf Wunsch auch App-Ansicht) – Einstellungen › Darstellung */
+const STMT_COL_DEF = { firma: "#1d9e75", unklar: "#ef9f27", privat: "#64b5f6", privatMark: false, app: true };
+const STMT_COL_PRESETS = [["druck", "Grün / Gelb (nur Firma)", { firma: "#1d9e75", unklar: "#ef9f27", privat: "#64b5f6", privatMark: false }], ["app", "Orange / Blau / Rot (bisherige App-Farben)", { firma: "#f59e0b", unklar: "#e53935", privat: "#3b82f6", privatMark: true }],
+  ["marker", "Textmarker Gelb / Rosa", { firma: "#ffd400", unklar: "#ff6fae", privat: "#9e9e9e", privatMark: false }], ["blau", "Blau / Orange", { firma: "#2563eb", unklar: "#f97316", privat: "#9ca3af", privatMark: false }]];
+const stmtCols = () => ({ ...STMT_COL_DEF, ...ls.get("stmtColors", {}) });
+const hexRgb255 = (h) => { const x = String(h || "").replace("#", ""); return x.length === 6 ? [0, 2, 4].map((i) => parseInt(x.slice(i, i + 2), 16)) : [128, 128, 128]; };
+const PRINT_COL = new Proxy({}, { get: (_, k) => { const c = stmtCols(); if (k === "privat" && !c.privatMark) return undefined; return ["firma", "unklar", "privat"].includes(k) ? hexRgb255(c[k]) : undefined; } });
+function applyStmtColors() {
+  const c = stmtCols(), r = document.documentElement;
+  r.classList.toggle("stmtcol", !!c.app); r.classList.toggle("stmtcol-nopriv", !!c.app && !c.privatMark);
+  for (const k of ["firma", "unklar", "privat"]) r.style.setProperty("--stc-" + k, c[k]);
+}
+if (typeof window !== "undefined") { setTimeout(applyStmtColors, 0); window.addEventListener("findocu-ls", (e) => { if (e.detail?.key === "stmtColors") applyStmtColors(); }); }
+const stmtLegendTxt = () => { const c = stmtCols(); return c.privatMark ? "farbig markiert: Firma, Privat, unklar (siehe Legende)" : "farbig markiert: Firma und unklar, unmarkiert = privat"; };
+function StmtColorSetting() {
+  const [v, set] = useLsState("stmtColors", {});
+  const c = { ...STMT_COL_DEF, ...v };
+  const up = (patch) => set({ ...c, ...patch });
+  const row = (k, label) => <label key={k} className="stcrow"><input type="color" value={c[k]} onChange={(e) => up({ [k]: e.target.value })} /><span className="grow">{label}</span><code className="muted">{c[k]}</code></label>;
+  return (<div className="stcset">
+    <div className="switchrow"><span><b>Kontoauszug: Farben der Markierung</b><small className="muted block">Für den Druck/PDF der markierten Kontoauszüge – auf Wunsch gleich in der App.</small></span>
+      <PickMenu label="Vorlage" title="Farbvorlage" items={STMT_COL_PRESETS.map(([k, t, x]) => ({ k, title: t, on: x.firma === c.firma && x.unklar === c.unklar && x.privatMark === c.privatMark, run: () => up(x) }))} /></div>
+    {row("firma", "Firma")}{row("unklar", "Unklar")}
+    <label className="switchrow"><span><b>Privat auch markieren</b><small className="muted block">Aus: Privatzeilen bleiben im Druck unmarkiert</small></span><input type="checkbox" className="switch" checked={c.privatMark} onChange={(e) => up({ privatMark: e.target.checked })} /></label>
+    {c.privatMark && row("privat", "Privat")}
+    <label className="switchrow"><span><b>Gleiche Farben in der App-Ansicht</b><small className="muted block">Damit Markieren und Ausdruck gleich aussehen</small></span><input type="checkbox" className="switch" checked={c.app} onChange={(e) => up({ app: e.target.checked })} /></label>
+    <div className="stcprev">{[["firma", "03.03  Rexel Austria GmbH   −212,50"], ["privat", "03.03  BILLA AG   −34,10"], ["unklar", "03.03  Amazon EU   −59,90"]].map(([k, t]) => { const on = k !== "privat" || c.privatMark; return <div key={k} style={on ? { background: c[k] + "38", borderLeft: `3px solid ${c[k]}` } : { borderLeft: "3px solid transparent" }}>{t}</div>; })}</div>
+  </div>);
+}
 async function stmtMarkedPdf(doc, blob, txs, accounts, docs, o = {}) {
   const { PDFDocument, rgb, StandardFonts } = await import("pdf-lib");
   const rows = stmtRows(doc, txs, accounts, docs), summary = o.summary !== false;
@@ -7620,6 +7648,7 @@ async function stmtMarkedPdf(doc, blob, txs, accounts, docs, o = {}) {
       // Hinweis neben der Zeile: Kategorie · Beleg
       const cat = r.t?.category || tm.get(r.l?.txId)?.category || "";
       const note = r.scope === "unklar" ? "unklar" : [r.label?.match(/\d+ %/)?.[0], cat, r.amount < 0 ? (r.beleg ? "Beleg ok" : "Beleg fehlt") : ""].filter(Boolean).join(" · ");
+      if (r.scope === "privat") continue;   // Privat: nur Farbe, kein Hinweis
       const avail = b.l * W - 9, size = 5.6, yTop = H * (1 - b.t);
       const belegTxt = r.scope === "unklar" ? "unklar" : r.amount < 0 ? (r.beleg ? "Beleg ok" : "Beleg fehlt") : cat;
       const pick = (max) => [note, belegTxt].find((x) => x && reg.widthOfTextAtSize(pdfSafe(x), size) <= max) || fit(belegTxt || note, reg, size, max);
@@ -7632,7 +7661,7 @@ async function stmtMarkedPdf(doc, blob, txs, accounts, docs, o = {}) {
       pg.drawRectangle({ x: 0, y: 0, width: W, height: 14, color: rgb(1, 1, 1), opacity: 0.92 });
       let x = 14; const y = 4.6, sz = 6.3;
       const sq = (k, label) => { pg.drawRectangle({ x, y: y - 0.6, width: 6, height: 6, color: C(k), opacity: 0.8 }); x += 8; pg.drawText(label, { x, y, size: sz, font: reg, color: grey }); x += reg.widthOfTextAtSize(label, sz) + 10; };
-      sq("firma", "Firma"); sq("unklar", "unklar"); pg.drawText("unmarkiert = privat", { x, y, size: sz, font: reg, color: grey });
+      sq("firma", "Firma"); sq("unklar", "unklar"); if (PRINT_COL.privat) sq("privat", "Privat"); else pg.drawText("unmarkiert = privat", { x, y, size: sz, font: reg, color: grey });
       const inc = r2e(sumBy(f.filter((r) => r.biz > 0), (r) => r.biz)), outv = r2e(-sumBy(f.filter((r) => r.biz < 0), (r) => r.biz));
       const t = pdfSafe(f.length ? `Firma auf dieser Seite: ${f.length} Buchungen · Einnahmen ${fmtMoney(inc)} · Ausgaben ${fmtMoney(outv)}` : "Firma auf dieser Seite: keine Buchungen");
       pg.drawText(t, { x: W - 14 - font.widthOfTextAtSize(t, sz), y, size: sz, font, color: grey });
@@ -7648,7 +7677,7 @@ async function stmtMarkedPdf(doc, blob, txs, accounts, docs, o = {}) {
     kpis: [["Firma", fmtMoney(rows.filter((r) => r.scope === "firma").reduce((s, r) => s + r.biz, 0))], ["Privat", fmtMoney(sum("privat"))], ["Unklar", `${rows.filter((r) => r.scope === "unklar").length} Zeilen`], ["Firma ohne Beleg", String(rows.filter((r) => r.scope === "firma" && r.amount < 0 && !r.beleg).length)]],
     columns: [{ label: "Datum", w: 1 }, { label: "Empfänger / Auftraggeber", w: 2.6 }, { label: "Zweck", w: 3.2 }, { label: "Betrag €", w: 1.1, align: "right" }, { label: "Zuordnung", w: 1.3 }, { label: "Firmenanteil €", w: 1.2, align: "right" }, { label: "Beleg", w: 1 }, { label: "Hinweis", w: 2 }],
     rows: rows.map((r) => [r.date, r.cp, r.purpose, r.amount, r.label, r.scope === "firma" ? r.biz : "", r.beleg ? "ja" : r.scope === "firma" && r.amount < 0 ? "FEHLT" : "", r.reason]),
-    note: "Grün = Firma, Gelb = unklar, unmarkiert = privat. Zuordnung mit KI-Unterstützung erstellt und in FinDocu geprüft – keine Steuerberatung." });
+    note: stmtLegendTxt() + ". Zuordnung mit KI-Unterstützung erstellt und in FinDocu geprüft – keine Steuerberatung." });
   const src = await PDFDocument.load(await tbl.arrayBuffer());
   (await out.copyPages(src, src.getPageIndices())).forEach((p) => out.addPage(p));
   return new Blob([await out.save()], { type: "application/pdf" });
@@ -8760,7 +8789,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
         kpis: [["Auszüge", String(list.length)], ["Firma Einnahmen", fmtMoney(sumBy(info, (x) => x[4]))], ["Firma Ausgaben", fmtMoney(sumBy(info, (x) => x[5]))], ["ohne Beleg", String(sumBy(info, (x) => x[7]))]],
         columns: [{ label: "Konto", w: 2.2 }, { label: "Zeitraum", w: 2.2 }, { label: "Zeilen", w: 0.8, align: "right" }, { label: "Firma", w: 0.8, align: "right" }, { label: "Firma Einnahmen €", w: 1.5, align: "right" }, { label: "Firma Ausgaben €", w: 1.5, align: "right" }, { label: "unklar", w: 0.8, align: "right" }, { label: "ohne Beleg", w: 1, align: "right" }],
         rows: info, totals: ["Summe", "", sumBy(info, (x) => x[2]), sumBy(info, (x) => x[3]), sumBy(info, (x) => x[4]), sumBy(info, (x) => x[5]), sumBy(info, (x) => x[6]), sumBy(info, (x) => x[7])],
-        note: "Markierung: grün = Firma, gelb = unklar, unmarkiert = privat. Neben den Firmenzeilen stehen Kategorie und Beleg-Status, unten auf jeder Seite die Firmensumme.\nZuordnung mit KI-Unterstützung erstellt und in FinDocu geprüft – keine Steuerberatung." });
+        note: "Markierung: " + stmtLegendTxt() + ". Neben den Firmenzeilen stehen Kategorie und Beleg-Status, unten auf jeder Seite die Firmensumme.\nZuordnung mit KI-Unterstützung erstellt und in FinDocu geprüft – keine Steuerberatung." });
       const add = async (blob) => { const src = await PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true }); (await out.copyPages(src, src.getPageIndices())).forEach((pg) => out.addPage(pg)); };
       await add(cover);
       for (const d of list) { setStmBusy("all:" + (d.title || "")); try { await add(await markedOf(d, { summary: false })); } catch {} }
@@ -10197,6 +10226,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         <TabbarSetting />
         <CmpSetting />
         <StmtZoomSetting />
+        <StmtColorSetting />
         <JStripSetting />
         <small className="muted block tbsethead">Tag- und Nachtmodus</small>
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
@@ -17210,4 +17240,16 @@ html body .pickmenu.pm-sm .vehmi{font-size:16px;width:20px;text-align:center}
 html body .pickmenu.pm-sm .pickhead{font-size:10.5px;padding:4px 8px 2px}
 html body .pickmenu.pm-sm .mcancel{padding:7px!important;font-size:13px}
 .lupetog.on{color:var(--acc)!important;box-shadow:inset 0 0 0 1.5px var(--acc)!important}
+
+/* v0.99.38: Kontoauszug-Farben */
+html.stmtcol .stmtbox.sc-firma{background:color-mix(in srgb,var(--stc-firma) 32%,transparent);border-color:var(--stc-firma)}
+html.stmtcol .stmtbox.sc-unklar{background:color-mix(in srgb,var(--stc-unklar) 34%,transparent);border-color:var(--stc-unklar)}
+html.stmtcol .stmtbox.sc-privat{background:color-mix(in srgb,var(--stc-privat) 28%,transparent);border-color:var(--stc-privat)}
+html.stmtcol-nopriv .stmtbox.sc-privat{background:transparent;border-color:transparent;outline:1px dashed #9993;outline-offset:-1px}
+html.stmtcol .stmtbox.sc-privat:hover{outline:1px dashed var(--stc-privat)}
+.stcset{display:flex;flex-direction:column;gap:6px}
+.stcrow{display:flex!important;flex-direction:row!important;align-items:center;gap:10px}
+.stcrow input[type=color]{width:42px!important;height:30px;padding:0;border:0;background:none;cursor:pointer;flex:none}
+.stcprev{display:flex;flex-direction:column;gap:3px;padding:10px;border-radius:10px;background:#fff;color:#222;font:12px ui-monospace,Menlo,monospace}
+.stcprev>div{padding:3px 6px;white-space:pre}
 `;

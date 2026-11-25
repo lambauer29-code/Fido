@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.38 – Kontoauszug-Farben einstellbar
+- Einstellungen › Darstellung › „Kontoauszug: Farben der Markierung“: Farben für Firma, Unklar und (optional) Privat, mit Vorlagen und Vorschau
+- „Gleiche Farben in der App-Ansicht“ (Standard: an) – Markieren in der App und Ausdruck sehen jetzt gleich aus
+
 ## v0.99.37 – Kontoauszüge: kompakte Zuordnung & Lupe-Schalter
 - Firma/Privat/Unklar-Knopf und sein Menü im Stil der Status-Pills (kleiner, ohne Schatten)
 - Lupe ein/aus über „🔍 Lupe“ in der Leiste des Kontoauszugs – in beiden Zoom-Varianten, Standard: aus
