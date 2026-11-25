@@ -6,11 +6,13 @@ export const config = { maxDuration: 60 };
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-function promptActivity({ activity, kind, year }) {
+function promptActivity({ activity, kind, year, details }) {
   return `Du bist Steuerexperte für Österreich. Heute ist ${today()}. Steuerjahr: ${year}.
-Ein Einzelunternehmer (Einnahmen-Ausgaben-Rechner, meist Kleinunternehmer) beschreibt seine Tätigkeit so:
+Ein Unternehmer (meist Einnahmen-Ausgaben-Rechner) beschreibt seine Tätigkeit so:
 Art: ${kind || "–"}
 Beschreibung: ${activity || "–"}
+Weitere Angaben: ${details || "–"}
+Bei Trading/Wertpapieren/Derivaten/Krypto beachte besonders: Einkünfte aus Kapitalvermögen (§ 27, § 27a, § 27b EStG), Sondersteuersatz 27,5 % auch im Betriebsvermögen, Ausnahme nicht verbriefte Derivate ohne KESt-Abzug (Tarif, VwGH-Rechtsprechung), Beilage E1kv mit Kennzahlen, gleitender Durchschnittspreis, Verlustausgleich, keine Abzugsfähigkeit von Anschaffungsnebenkosten/Werbungskosten bei 27,5 %, gewerblicher Handel bzw. Konzessionspflicht (WAG/FMA) bei Tätigkeit für Dritte, GmbH: KöSt.
 
 Recherchiere im Web (bevorzugt bmf.gv.at, findok.bmf.gv.at, usp.gv.at, wko.at, svs.at, ris.bka.gv.at) die AKTUELL gültigen Werte für ${year} und ordne die Tätigkeit ein.
 Antworte NUR mit einem JSON-Objekt ohne weiteren Text:
@@ -24,7 +26,15 @@ Antworte NUR mit einem JSON-Objekt ohne weiteren Text:
  "basisRate":Anteil z. B. 0.15, "basisMax":Höchstbetrag in Euro, "basisLimit":Umsatzgrenze in Euro,
  "kuLimit":Kleinunternehmergrenze brutto in Euro, "kuTolerance":Toleranzgrenze in Euro,
  "branchPausch":[{"name":"branchenspezifische Pauschalierung falls für diese Tätigkeit möglich","info":"1 Satz"}],
- "notes":["kurze wichtige Hinweise für genau diese Tätigkeit, max. 5"],
+ "notes":["kurze wichtige Hinweise für genau diese Tätigkeit, max. 6"],
+ "profile":{"capital":true|false (Haupteinkünfte sind Kapitaleinkünfte wie Trading/Krypto),
+   "forms":["z. B. E1","E1a","E1kv","U1","K1"],
+   "taxRate":"kurz, z. B. 27,5 % Sondersteuersatz bzw. Tarif bei …",
+   "license":"Gewerbeberechtigung/Konzession nötig? kurz",
+   "deductible":"was ist absetzbar, kurz",
+   "deadlines":["wichtige Fristen, max. 4"],
+   "openQuestions":["Punkte, die mit dem Steuerberater zu klären sind, max. 4"],
+   "reports":{"e1a":true|false,"e1kv":true|false,"pausch":true|false,"waren":true|false,"km":true|false,"anlagen":true|false,"ku":true|false}},
  "sources":[{"title":"","url":""}]}
 Wenn ein Wert unsicher ist, setze null und erkläre es in notes.`;
 }
@@ -53,7 +63,7 @@ export default async function handler(req, res) {
   const b = req.body || {};
   const year = String(b.year || new Date().getFullYear()).slice(0, 4);
   const prompt = b.mode === "activity"
-    ? promptActivity({ activity: String(b.activity || "").slice(0, 600), kind: String(b.kind || "").slice(0, 80), year })
+    ? promptActivity({ activity: String(b.activity || "").slice(0, 600), kind: String(b.kind || "").slice(0, 120), year, details: String(b.details || "").slice(0, 400) })
     : promptCheck({ year, data: b.data || {}, detail: !!b.detail });
   try {
     const r = await fetch("https://api.anthropic.com/v1/messages", {

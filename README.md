@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.33 – Steuerberater: Tätigkeitssuche & E 1kv
+- „Art der Tätigkeit“ als Suchfeld: eingebaute Liste mit 35 häufigen Tätigkeiten in Österreich (inkl. Trading, Krypto, Prop-Trading) oder freie Suche mit KI-Recherche im Internet
+- Bei Trading Rückfragen (Rechtsform, Instrumente, Broker im Ausland); die KI erstellt ein Steuerprofil: Einkunftsart, Formulare, Steuersatz, Gewerbe/Konzession, Absetzbares, Fristen, offene Fragen für den Steuerberater
+- Berichte passen sich dem Profil an (z. B. bei Trading: E1a, Pauschalierung, Wareneingang, km-Geld ausgeblendet)
+- Neuer Bericht „E 1kv – Kapitalerträge (Depots)“ aus den Depot-Buchungen: gleitender Durchschnittspreis, KZ 863/898/994/892/995/896/174/176/998, anrechenbare Quellensteuer, geschätzte Steuer, Hinweis auf nicht verbriefte Derivate; Depot (Ausland/Inland mit KESt) und Wertpapierklasse einstellbar
+
 ## v0.99.32 – Adresse: Stiege, Tür, Zusatz, Postfach
 - Optionale Adressfelder über „＋ Stiege, Tür, Zusatz, Postfach“ (klappt automatisch auf, wenn schon Werte vorhanden sind)
 - Druck in österreichischer Kurzform: Landstraße 12/2/5 (nur Tür: 12/5, nur Stiege: 12/Stg. 2); Adresszusatz/c/o über der Straße, Postfach darunter

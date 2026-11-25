@@ -8029,8 +8029,10 @@ const STB_REPORTS = [
   ["privat", "👤", "Privatentnahmen & -einlagen", "Umbuchungen Firmenkonto ↔ privat und Privatbuchungen der Kassa", ["pdf", "xlsx"]],
   ["offen", "📮", "Offene Posten (Forderungen)", "Unbezahlte Ausgangsrechnungen zum Stichtag", ["pdf"]],
   ["fehlt", "⚠️", "Fehlende Belege & unklare Buchungen", "Was der Steuerberater sonst nachfragen würde", ["pdf"]]];
+STB_REPORTS.splice(1, 0, ["e1kv", "📈", "E 1kv – Kapitalerträge (Depots)", "Trading, Dividenden, Derivate, Krypto nach Kennzahlen der Beilage E 1kv", ["pdf", "xlsx"]]);
 const STB_REP_PRE = ["gesamt", "e1a", "journal", "anlagen", "km", "fehlt"];
 async function stbReport(k, fmt, Y, co) {
+  if (k === "e1kv") return e1kvReport(fmt, Y.e1kv || e1kvData(Y.yr, [], []), co);
   const yr = Y.yr, who = `${co.name || "Firma"}${co.owner ? " · " + co.owner : ""}${co.taxNo ? " · StNr. " + co.taxNo : ""}`, sub = `${who} · Wirtschaftsjahr ${yr}`;
   const kzRows = E1A_KZ.map(([kz, l, d]) => [kz, l, d === "in" ? "Einnahme" : "Ausgabe", Y.byKz[kz]?.n || 0, Y.byKz[kz]?.sum || 0]).filter((r) => r[4] || ["9040"].includes(r[0]));
   const jRow = (l) => [l.date, l.src, l.partner, l.text, l.cat, l.kz === E1A_SKIP ? "–" : l.kz, l.amount, l.beleg || (l.hasDoc ? "ja" : "FEHLT")];
@@ -8099,7 +8101,7 @@ function StbRSec({ id, title, sub, open, onTog, children }) {
     <button type="button" className="stbrsh" onClick={() => onTog(id)} aria-expanded={!!open[id]}><span className="ichev">▾</span><b>{title}</b>{sub && <small className="muted">{sub}</small>}</button>
     {open[id] && <div className="stbrsb">{children}</div>}</section>);
 }
-function StbReports({ D, notify, setTab, accounts }) {
+function StbReports({ D, notify, setTab, accounts, txs = [] }) {
   const thisY = todayISO().slice(0, 4);
   const years = [...new Set([thisY, String(+thisY - 1), ...D.rows.map((r) => r.t.date.slice(0, 4))])].sort().reverse().slice(0, 6);
   const [year, setYear] = useLsState("stbRepYear", String(+thisY - (+todayISO().slice(5, 7) <= 4 ? 1 : 0)));
@@ -8110,13 +8112,22 @@ function StbReports({ D, notify, setTab, accounts }) {
   const [kzOpen, setKzOpen] = useState(null), [busy, setBusy] = useState("");
   const [assetsV, setAssetsV] = useState(0);
   const O = { ...STB_REP_DEF, ...opt };
-  const Y = useMemo(() => stbYearData(year, D, O, map), [year, D, JSON.stringify(O), map, assetsV]);
+  const [actP] = useLsState("stbActivity", {}), prof = actP?.info?.profile?.reports || {};
+  const [kvV, setKvV] = useState(0);
+  useEffect(() => { const f = (e) => { if (/^e1kv/.test(e.detail?.key || "")) setKvV((n) => n + 1); }; addEventListener("findocu-ls", f); return () => removeEventListener("findocu-ls", f); }, []);
+  const Y = useMemo(() => ({ ...stbYearData(year, D, O, map), e1kv: e1kvData(year, txs, accounts || []) }), [year, D, JSON.stringify(O), map, assetsV, txs, kvV]);
+  const hasBroker = Y.e1kv.depots.length > 0;
+  // v0.99.33: Berichte passend zum Tätigkeitsprofil
+  const repOk = (k) => k === "e1kv" ? (hasBroker || prof.e1kv === true) : k === "pausch" ? prof.pausch !== false : k === "waren" ? prof.waren !== false : k === "km" ? prof.km !== false : k === "anlagen" ? prof.anlagen !== false : (k === "e1a" || k === "journal") ? prof.e1a !== false : k === "umsatz" ? prof.ku !== false : true;
+  const REPS = STB_REPORTS.filter((r) => repOk(r[0]));
+  const hidden = STB_REPORTS.filter((r) => !repOk(r[0]));
+  const selV = sel.filter((k) => REPS.some((r) => r[0] === k));
   const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
   const tag = (k) => `${STB_REPORTS.find((r) => r[0] === k)[2]} ${year}`.replace(/[\\/:*?"<>|–]/g, "-");
   const title = (k) => STB_REPORTS.find((r) => r[0] === k)[2];
   const preview = async (k) => { setBusy(k + "prev"); try { await openPdf(await stbReport(k, "pdf", Y, co), `${tag(k)}.pdf`, `${title(k)} ${year}`); } catch (e) { notify("Vorschau fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
   const dl = async (k, fmt) => { if (!(await stbAiGate(Y, O, `${title(k)} (${fmt.toUpperCase()})`))) return; setBusy(k + fmt); try { saveBlob(await stbReport(k, fmt, Y, co), `${tag(k)}.${fmt}`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
-  const zipAll = async () => { if (!(await stbAiGate(Y, O, `${sel.length} Berichte als ZIP`))) return; setBusy("zip"); try { const files = []; for (const k of sel) { const r = STB_REPORTS.find((x) => x[0] === k); if (!r) continue; for (const f of r[4]) files.push({ name: `${String(STB_REPORTS.indexOf(r) + 1).padStart(2, "0")} ${tag(k)}.${f}`, data: await stbReport(k, f, Y, co) }); }
+  const zipAll = async () => { if (!(await stbAiGate(Y, O, `${selV.length} Berichte als ZIP`))) return; setBusy("zip"); try { const files = []; for (const k of selV) { const r = REPS.find((x) => x[0] === k); if (!r) continue; for (const f of r[4]) files.push({ name: `${String(STB_REPORTS.indexOf(r) + 1).padStart(2, "0")} ${tag(k)}.${f}`, data: await stbReport(k, f, Y, co) }); }
     saveBlob(await zipBlob(files), `Steuerberater Berichte ${fileSafe(co.name || "")} ${year}.zip`.replace(/\s+/g, " ")); notify(`${files.length} Dateien als ZIP erstellt`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
   const tog = (k) => setOpen({ ...open, [k]: !open[k] });
   const cats = useMemo(() => { const m = new Map(); for (const l of Y.lines) if (l.mapKey) { const x = m.get(l.mapKey) || { key: l.mapKey, cat: l.cat, inc: l.amount > 0, n: 0, sum: 0, kz: map[l.mapKey] || kzGuess(l.cat, "", "", l.amount > 0) }; x.n++; x.sum = r2e(x.sum + Math.abs(l.amount)); m.set(l.mapKey, x); } return [...m.values()].sort((a, b) => b.sum - a.sum); }, [Y, map]);
@@ -8138,13 +8149,14 @@ function StbReports({ D, notify, setTab, accounts }) {
       <StbActivity O={O} setOpt={setOpt} year={year} />
     </StbRSec>
 
-    <StbRSec open={open} onTog={tog} id="exp" title="📤 Berichte exportieren" sub={`${sel.length} ausgewählt`}>
-      <div className="stbrlist">{STB_REPORTS.map(([k, ic, t, d, fmts]) => (<div key={k} className="stbritem">
+    <StbRSec open={open} onTog={tog} id="exp" title="📤 Berichte exportieren" sub={`${selV.length} ausgewählt`}>
+      <div className="stbrlist">{REPS.map(([k, ic, t, d, fmts]) => (<div key={k} className="stbritem">
         <input type="checkbox" checked={sel.includes(k)} onChange={(e) => setSel(e.target.checked ? [...sel, k] : sel.filter((x) => x !== k))} aria-label={t + " für ZIP auswählen"} />
         <span className="stbric">{ic}</span><div className="grow"><b>{t}</b><small className="muted block">{d}</small></div>
         <div className="stbrfmts">{fmts.map((f) => <button key={f} className="btn sm" disabled={!!busy} onClick={() => dl(k, f)}>{busy === k + f ? "…" : { pdf: "PDF", xlsx: "Excel", csv: "CSV" }[f]}</button>)}{fmts.includes("pdf") && <button className="btn sm stbprev" disabled={!!busy} title="Vorschau" aria-label={title(k) + " – Vorschau"} onClick={() => preview(k)}>{busy === k + "prev" ? "…" : <IcoEye />}</button>}</div>
       </div>))}</div>
-      <div className="actions"><button className="btn primary" disabled={!sel.length || !!busy} onClick={zipAll}>{busy === "zip" ? "Wird erstellt …" : `📦 Ausgewählte als ZIP (${sel.length})`}</button>
+      <div className="actions"><button className="btn primary" disabled={!selV.length || !!busy} onClick={zipAll}>{busy === "zip" ? "Wird erstellt …" : `📦 Ausgewählte als ZIP (${selV.length})`}</button>
+        {hidden.length > 0 && <small className="muted">Passend zu deiner Tätigkeit ausgeblendet: {hidden.map((r) => r[2]).join(", ")}</small>}
         <button className="link" onClick={() => setSel(sel.length === STB_REPORTS.length ? STB_REP_PRE : STB_REPORTS.map((r) => r[0]))}>{sel.length === STB_REPORTS.length ? "Standardauswahl" : "Alle auswählen"}</button></div>
     </StbRSec>
 
@@ -8155,6 +8167,10 @@ function StbReports({ D, notify, setTab, accounts }) {
     <StbRSec open={open} onTog={tog} id="ai" title="🛡️ KI-Prüfung (österreichisches Steuerrecht)">
       <StbAiStatus Y={Y} O={O} />
     </StbRSec>
+
+    {(hasBroker || prof.e1kv) && <StbRSec open={open} onTog={tog} id="e1kv" title="📈 Beilage E 1kv – Kapitalerträge" sub={`${Y.e1kv.depots.length} Depots`}>
+      <StbE1kv txs={txs} accounts={accounts || []} year={year} />
+    </StbRSec>}
 
     <StbRSec open={open} onTog={tog} id="kz" title="🧮 Beilage E 1a – Kennzahlen" sub={`${Y.used.length} Posten`}>
       <div className="stbkz">{E1A_KZ.filter(([kz]) => Y.byKz[kz]?.n || kz === "9040").map(([kz, l, dir]) => (<React.Fragment key={kz}>
@@ -8226,6 +8242,8 @@ function stbAiPayload(Y, O, detail) {
     kilometergeld: { fahrten: Y.trips.length, km: Y.km, satz: Y.rate, betrag: Y.kmEur },
     privat: { anzahl: Y.priv.length, saldo: r2e(sumBy(Y.priv, (x) => x.amount)) },
     ohneBeleg: { anzahl: Y.noDoc.length, summe: r2e(-sumBy(Y.noDoc, (l) => l.amount)) }, unklarePrivatFirma: Y.unklar.length,
+    ...(Y.e1kv?.depots?.length ? { e1kv: { kennzahlen: Y.e1kv.kz, saldo27_5: Y.e1kv.pot, geschaetzteSteuer: Y.e1kv.tax, depots: Y.e1kv.depots.map((x) => ({ name: detail ? x.name : "Depot", kestAbzug: x.mode === "inland" })), nichtVerbrieftDerivate: Y.e1kv.nv.length, hinweise: Y.e1kv.warn.length } } : {}),
+    profil: act.info?.profile || null,
   };
   if (detail) d.buchungen = Y.used.filter((l) => !l.auto).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 250)
     .map((l) => ({ datum: l.date, partner: l.partner, text: (l.text || "").slice(0, 80), kategorie: l.cat, kz: l.kz, betrag: l.amount, beleg: l.hasDoc }));
@@ -8295,21 +8313,42 @@ function StbActivity({ O, setOpt, year }) {
   const [act, setAct] = useLsState("stbActivity", { kind: "", text: ls.get("stbBizDesc", ""), info: null });
   const [busy, setBusy] = useState(false), [err, setErr] = useState("");
   const info = act.info;
-  const run = async () => {
-    if (!act.kind && !act.text?.trim()) return setErr("Bitte Art wählen oder Tätigkeit beschreiben");
+  // v0.99.33: Suchfeld mit eingebauter Liste + KI-Recherche
+  const [q, setQ] = useState(act.label || ""), [sOpen, setSOpen] = useState(false), sRef = useRef(null);
+  const hits = useMemo(() => actSearch(q), [q]);
+  const cat = ACT_CATALOG.find((a) => a.id === act.cat), isCap = !!(cat?.capital || info?.profile?.capital);
+  const det = act.det || {};
+  useEffect(() => { if (!sOpen) return; const out = (e) => { if (!sRef.current?.contains(e.target)) setSOpen(false); }; document.addEventListener("pointerdown", out); return () => document.removeEventListener("pointerdown", out); }, [sOpen]);
+  const pick = (a) => { const n = a ? { ...act, cat: a.id, label: a.name, kind: a.kind, info: null } : { ...act, cat: "", label: q.trim(), kind: "andere", text: act.text || q.trim(), info: null }; setAct(n); setQ(n.label); setSOpen(false); if (!(a?.capital)) run(n); };
+  const detTxt = (d) => [d.form && CAP_OPTS.form.find((x) => x[0] === d.form)?.[1], (d.inst || []).map((k) => CAP_OPTS.inst.find((x) => x[0] === k)?.[1]).join(", "), d.broker && CAP_OPTS.broker.find((x) => x[0] === d.broker)?.[1]].filter(Boolean).join(" · ");
+  const run = async (a0) => {
+    const A = a0 && a0.cat !== undefined ? a0 : act;
+    if (!A.label && !A.kind && !A.text?.trim()) return setErr("Bitte Tätigkeit suchen oder beschreiben");
     setBusy(true); setErr("");
-    try { const r = await stbAiCall({ mode: "activity", year, kind: STB_KINDS.find((k) => k[0] === act.kind)?.[1] || "", activity: act.text });
-      setAct((a) => ({ ...a, info: r }));
+    try { const r = await stbAiCall({ mode: "activity", year, kind: A.label || STB_KINDS.find((k) => k[0] === A.kind)?.[1] || "", activity: A.text, details: detTxt(A.det || {}) });
+      setAct((a) => ({ ...a, ...A, info: r }));
       const ai = { basisRate: aiNum(r.basisRate, 0.01, 0.3), basisMax: aiNum(r.basisMax, 1000, 500000), basisLimit: aiNum(r.basisLimit, 10000, 5e6), kuRate: aiNum(r.kuRate, 0.05, 0.6), kuMax: aiNum(r.kuMax, 1000, 100000), kuLimit: aiNum(r.kuLimit, 20000, 500000), kuTolerance: aiNum(r.kuTolerance, 20000, 600000), year };
       setOpt({ ...O, kuType: r.kuType === "dienst" ? "dienst" : r.kuType === "gewerbe" ? "gewerbe" : O.kuType, basis6: typeof r.basis6 === "boolean" ? r.basis6 : O.basis6, ai });
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   return (<>
     <div className="grid2">
-      <label>Art der Tätigkeit<PSelect value={act.kind || ""} onChange={(e) => setAct({ ...act, kind: e.target.value })}><option value="">– bitte wählen –</option>{STB_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</PSelect></label>
+      <div className="actsearch" ref={sRef}><label>Art der Tätigkeit<input value={q} placeholder="Suchen, z. B. Trading, Elektriker, Onlineshop …" onFocus={() => setSOpen(true)} onChange={(e) => { setQ(e.target.value); setSOpen(true); }} onKeyDown={(e) => { if (e.key === "Escape") setSOpen(false); if (e.key === "Enter") { e.preventDefault(); hits[0] && norm(hits[0].name).includes(norm(q)) ? pick(hits[0]) : q.trim() && pick(null); } }} /></label>
+        {sOpen && <div className="addrsug actsug" role="listbox">
+          {hits.map((a) => <button type="button" key={a.id} onClick={() => pick(a)}><b>{a.name}</b><small className="muted">{a.sub}</small></button>)}
+          {q.trim().length > 1 && <button type="button" className="actai" onClick={() => pick(null)}><b>✨ „{q.trim()}“ mit KI im Internet recherchieren</b><small className="muted">nach aktuellem österreichischem Recht</small></button>}
+          <MenuCancel onClick={() => setSOpen(false)} />
+        </div>}
+      </div>
       <label>Beschreibung (eigene Worte)<input value={act.text || ""} placeholder="z. B. Elektroinstallationen für Private, Material vom Großhandel" onChange={(e) => setAct({ ...act, text: e.target.value })} /></label>
     </div>
-    <div className="actions"><button className="btn" disabled={busy} onClick={run}>{busy ? "Recherchiere im Internet …" : info ? "🔎 Erneut mit KI prüfen" : "🔎 Mit KI prüfen & Werte übernehmen"}</button>{err && <small className="red">{err}</small>}</div>
+    {isCap && <div className="capq">
+      <small className="muted">Für Trading braucht die KI noch ein paar Angaben:</small>
+      <div className="chips">{CAP_OPTS.form.map(([k, l]) => <button key={k} type="button" className={"chip" + (det.form === k ? " on" : "")} onClick={() => setAct({ ...act, det: { ...det, form: k } })}>{l}</button>)}</div>
+      <div className="chips">{CAP_OPTS.inst.map(([k, l]) => { const on = (det.inst || []).includes(k); return <button key={k} type="button" className={"chip" + (on ? " on" : "")} onClick={() => setAct({ ...act, det: { ...det, inst: on ? det.inst.filter((x) => x !== k) : [...(det.inst || []), k] } })}>{l}</button>; })}</div>
+      <div className="chips">{CAP_OPTS.broker.map(([k, l]) => <button key={k} type="button" className={"chip" + (det.broker === k ? " on" : "")} onClick={() => setAct({ ...act, det: { ...det, broker: k } })}>{l}</button>)}</div>
+    </div>}
+    <div className="actions"><button className="btn" disabled={busy} onClick={() => run()}>{busy ? "Recherchiere im Internet …" : info ? "🔎 Erneut mit KI prüfen" : "🔎 Mit KI prüfen & Werte übernehmen"}</button>{err && <small className="red">{err}</small>}</div>
     {info && <div className="aiact">
       <b>{info.activity || "Tätigkeit"}</b><small className="muted"> · KI-Ergebnis vom {info.at ? fmtDate(info.at.slice(0, 10)) : "–"}</small>
       <div className="aiacg">
@@ -8320,9 +8359,17 @@ function StbActivity({ O, setOpt, year }) {
         {info.kuLimit && <span><small className="muted">Kleinunternehmergrenze</small>{fmtMoney(info.kuLimit)}{info.kuTolerance ? ` · Toleranz ${fmtMoney(info.kuTolerance)}` : ""}</span>}
       </div>
       {!!info.branchPausch?.filter((b) => b?.name).length && <div className="small"><b>Branchenpauschalierung:</b> {info.branchPausch.filter((b) => b?.name).map((b) => `${b.name}${b.info ? " – " + b.info : ""}`).join(" · ")}</div>}
+      {info.profile && <div className="aiprof">
+        {!!info.profile.forms?.length && <div><small className="muted">Formulare</small><b>{info.profile.forms.join(", ")}</b></div>}
+        {info.profile.taxRate && <div><small className="muted">Steuersatz</small><span>{info.profile.taxRate}</span></div>}
+        {info.profile.license && <div><small className="muted">Gewerbe / Konzession</small><span>{info.profile.license}</span></div>}
+        {info.profile.deductible && <div><small className="muted">Absetzbar</small><span>{info.profile.deductible}</span></div>}
+        {!!info.profile.deadlines?.length && <div><small className="muted">Fristen</small><span>{info.profile.deadlines.join(" · ")}</span></div>}
+        {!!info.profile.openQuestions?.length && <div className="aiopen"><small className="muted">Mit dem Steuerberater klären</small><span>{info.profile.openQuestions.map((x, i) => <span key={i} className="block">⚠ {x}</span>)}</span></div>}
+      </div>}
       {!!info.notes?.length && <ul className="small ainotes">{info.notes.slice(0, 5).map((n, i) => <li key={i}>{n}</li>)}</ul>}
       {!!info.sources?.length && <details className="airules"><summary>Quellen ({info.sources.length})</summary>{info.sources.map((s, i) => <a key={i} className="small block one" href={s.url} target="_blank" rel="noreferrer">{s.title || s.url}</a>)}</details>}
-      <small className="muted block">Übernommen in Pauschalierungsvergleich und Kleinunternehmergrenze. KI-Recherche – keine Steuerberatung.</small>
+      <small className="muted block">Übernommen in die Berichte{info.profile?.reports ? " – unpassende Berichte werden ausgeblendet" : ""}. KI-Recherche – keine Steuerberatung.</small>
       {O.ai && <button className="link small" onClick={() => setOpt({ ...O, ai: null })}>Eingebaute Standardwerte verwenden</button>}
     </div>}
   </>);
@@ -8424,6 +8471,132 @@ function StbAiStatus({ Y, O }) {
     {c && <StbAiFindings res={c.res} />}
     <div className="actions"><button className="btn" onClick={() => stbGateUi?.({ Y, O, what: "", resolve: () => bump((n) => n + 1) })}>{c ? "Neu prüfen" : "🛡️ Jetzt prüfen"}</button></div>
     <small className="muted">Läuft automatisch vor jedem Export – neu geprüft wird nur, wenn sich die Zahlen geändert haben.</small>
+  </>);
+}
+/* ======================= v0.99.33: Tätigkeitssuche + E 1kv (Kapitalerträge aus Depots) ======================= */
+// eingebaute Liste häufiger Tätigkeiten in Österreich (Auswahl → KI recherchiert das genaue Profil)
+const ACT_CATALOG = [
+  ["trading", "Trading auf eigene Rechnung", "Aktien, ETFs, Futures, CFDs, Optionen, Forex", "kuenstler,trading,daytrading,börse,aktien,futures,cfd,optionen,forex,devisen,wertpapier,depot,broker,trader", "andere", true],
+  ["krypto", "Krypto-Trading / Krypto-Investments", "Bitcoin, Ethereum, Staking", "krypto,crypto,bitcoin,btc,eth,coin,token,staking,mining", "andere", true],
+  ["prop", "Prop-Trading (Funded Account)", "Auszahlungen von Prop-Firmen", "prop,funded,challenge,ftmo,apex,topstep", "andere", true],
+  ["vermoegen", "Vermögensverwaltung für Kunden", "Konzession nötig (WAG/FMA)", "vermögensberatung,vermögensverwaltung,finanzberater,anlageberatung", "freiberuf", false],
+  ["handel", "Handel mit Waren", "Handelsgewerbe (freies Gewerbe)", "handel,händler,verkauf,waren,import,export,großhandel", "handel", false],
+  ["ecom", "Online-Handel / E-Commerce", "Onlineshop, Amazon, eBay, Etsy", "online,shop,ecommerce,amazon,ebay,etsy,dropshipping,versandhandel", "handel", false],
+  ["elektro", "Elektrotechnik", "reglementiertes Gewerbe", "elektro,elektriker,elektroinstallation,photovoltaik,pv", "gewerbe", false],
+  ["installateur", "Installateur (Gas, Wasser, Heizung)", "reglementiertes Gewerbe", "installateur,sanitär,heizung,klima,gas,wasser", "gewerbe", false],
+  ["bau", "Bau- und Baunebengewerbe", "Maurer, Trockenbau, Fliesen, Maler", "bau,maurer,trockenbau,fliesen,maler,anstreicher,bodenleger", "gewerbe", false],
+  ["kfz", "Kfz-Technik / Werkstatt", "reglementiertes Gewerbe", "kfz,auto,werkstatt,mechaniker,reifen", "gewerbe", false],
+  ["tischler", "Tischler / Holzbau", "reglementiertes Gewerbe", "tischler,schreiner,holz,zimmerei", "gewerbe", false],
+  ["friseur", "Friseur / Kosmetik / Fußpflege", "reglementiertes Gewerbe", "friseur,kosmetik,nagel,fußpflege,massage", "dienst", false],
+  ["gastro", "Gastronomie / Imbiss / Catering", "Gastgewerbe, Gastgewerbepauschalierung", "gastro,restaurant,imbiss,catering,café,bar,lokal", "gewerbe", false],
+  ["transport", "Transport / Taxi / Kurier", "Konzession für Güter-/Personenbeförderung", "transport,taxi,kurier,lieferdienst,spedition,umzug", "dienst", false],
+  ["reinigung", "Reinigung / Hausbetreuung", "Denkmal-, Fassaden- und Gebäudereinigung", "reinigung,putzen,hausbetreuung,hausmeister,winterdienst", "dienst", false],
+  ["it", "IT-Dienstleistung / Softwareentwicklung", "freies Gewerbe Dienstleistungen in der IT", "it,software,programmierer,entwickler,app,web,edv,computer,dev", "dienst", false],
+  ["design", "Grafik- / Webdesign", "freies Gewerbe", "grafik,design,webdesign,ux,logo", "dienst", false],
+  ["marketing", "Werbung / Social Media / Marketing", "Werbeagentur", "marketing,werbung,social,influencer,content,seo", "dienst", false],
+  ["influencer", "Influencer / Content Creator / YouTube", "Werbeeinnahmen, Kooperationen", "influencer,youtube,tiktok,instagram,creator,streamer,twitch", "dienst", false],
+  ["fotograf", "Fotografie / Video", "Berufsfotograf (reglementiert) oder Pressefotograf", "foto,fotograf,video,film,drohne", "dienst", false],
+  ["berater", "Unternehmensberatung / Coaching", "Basispauschalierung 6 % möglich", "berater,beratung,consulting,coach,coaching,trainer", "freiberuf", false],
+  ["vortrag", "Vortragende / Lehrende / Nachhilfe", "neue Selbständige, 6 % Pauschalierung", "vortrag,lehrer,nachhilfe,kurs,schulung,trainer,dozent", "vortrag", false],
+  ["schriftsteller", "Schriftsteller / Journalist / Übersetzer", "freiberuflich, Basispauschalierung 6 %", "autor,schriftsteller,journalist,übersetzer,texter,blogger", "kuenstler", false],
+  ["kuenstler", "Künstler / Musiker", "freiberuflich, Künstler-Sozialversicherungsfonds", "künstler,musiker,maler,dj,band,bildhauer", "kuenstler", false],
+  ["arzt", "Ärztin / Arzt", "freier Beruf, Ärztekammer", "arzt,ärztin,ordination,wahlarzt", "freiberuf", false],
+  ["therapie", "Psychotherapie / Physiotherapie / Gesundheitsberufe", "freier Beruf / neue Selbständige", "therapie,therapeut,physio,psycho,ergo,logo,hebamme,pflege", "freiberuf", false],
+  ["anwalt", "Rechtsanwalt / Notar / Steuerberater", "freier Beruf mit Kammer", "anwalt,notar,steuerberater,wirtschaftsprüfer", "freiberuf", false],
+  ["architekt", "Architekt / Ziviltechniker / Ingenieurbüro", "Kammer bzw. reglementiert", "architekt,ziviltechniker,ingenieur,planer,statiker", "freiberuf", false],
+  ["vermietung", "Vermietung (Wohnungen, Airbnb)", "Einkünfte aus Vermietung und Verpachtung", "vermietung,vermieten,airbnb,wohnung,miete,ferienwohnung", "andere", false],
+  ["landwirtschaft", "Land- und Forstwirtschaft", "LuF-Pauschalierung", "landwirt,bauer,forst,landwirtschaft,imker,wein", "land_forst", false],
+  ["pflege", "24-Stunden-Betreuung / Personenbetreuung", "freies Gewerbe Personenbetreuung", "24h,betreuung,personenbetreuung,pflegekraft", "dienst", false],
+  ["handelsvertreter", "Handelsvertreter", "Handelsvertreterpauschalierung", "handelsvertreter,vertreter,außendienst,provision", "gewerbe", false],
+  ["makler", "Immobilienmakler / Versicherungsmakler", "reglementiertes Gewerbe", "makler,immobilien,versicherung,vermittlung", "gewerbe", false],
+  ["sport", "Sportler / Trainer", "Sportlerpauschalierung möglich", "sport,sportler,fitness,personal trainer,yoga", "dienst", false],
+  ["hausverwaltung", "Hausverwaltung / Facility Management", "Immobilientreuhänder", "hausverwaltung,facility,verwaltung", "dienst", false]
+].map(([id, name, sub, kw, kind, capital]) => ({ id, name, sub, kw: kw.split(","), kind, capital }));
+const actSearch = (q) => { const n = norm(q).trim(); if (!n) return ACT_CATALOG.slice(0, 8);
+  return ACT_CATALOG.map((a) => ({ a, s: (norm(a.name).includes(n) ? 3 : 0) + a.kw.filter((k) => norm(k).startsWith(n) || n.split(/\s+/).some((w) => w.length > 2 && norm(k).startsWith(w))).length + (norm(a.sub).includes(n) ? 1 : 0) }))
+    .filter((x) => x.s > 0).sort((x, y) => y.s - x.s).slice(0, 8).map((x) => x.a); };
+const CAP_OPTS = { form: [["eu", "Einzelunternehmen / privat"], ["gmbh", "GmbH"]], inst: [["aktien", "Aktien/ETFs"], ["futures", "Futures"], ["cfd", "CFDs"], ["optionen", "Optionen"], ["forex", "Forex"], ["krypto", "Krypto"]], broker: [["ausland", "Broker im Ausland"], ["inland", "Österreichische Bank (KESt-Abzug)"]] };
+// ---------- E 1kv ----------
+const E1KV_CLS = [["aktie", "Aktie / Anleihe"], ["fonds", "Fonds / ETF"], ["derivat", "verbrieftes Derivat (Zertifikat, Optionsschein)"], ["derivat_nv", "nicht verbrieftes Derivat (CFD, Future, Option)"], ["krypto", "Kryptowährung"]];
+const e1kvGuess = (t) => { const s = norm(`${t.security || ""} ${t.type || ""} ${t.isin || ""}`);
+  if (/\b(btc|bitcoin|eth|ethereum|krypto|crypto|solana|xrp|cardano|usdt|usdc|doge)\b/.test(s)) return "krypto";
+  if (/\b(cfd|future|fut|e-?mini|micro|option|call|put|forex|fx)\b/.test(s)) return "derivat_nv";
+  if (/(zertifikat|optionsschein|turbo|knock|mini long|mini short|faktor)/.test(s)) return "derivat";
+  if (/(etf|ucits|fonds|fund|ishares|vanguard|xtrackers|amundi|spdr)/.test(s)) return "fonds";
+  return "aktie"; };
+const E1KV_KZ = [["863", "Dividenden, Zinsen aus Wertpapieren (Ausland)"], ["898", "Ausschüttungen Investmentfonds (Ausland)"], ["994", "Überschüsse aus realisierten Wertsteigerungen (Ausland)"], ["892", "Verluste aus realisierten Wertsteigerungen (Ausland)"],
+  ["995", "Überschüsse aus Derivaten (Ausland)"], ["896", "Verluste aus Derivaten (Ausland)"], ["174", "Überschüsse Kryptowährungen (ohne KESt-Abzug)"], ["176", "Verluste Kryptowährungen (ohne KESt-Abzug)"], ["998", "Anrechenbare ausländische Quellensteuer"]];
+function e1kvData(year, txs, accounts) {
+  const yr = String(year), dep = ls.get("e1kvDepot", {}), cls = ls.get("e1kvClass", {});
+  const accN = Object.fromEntries(accounts.map((a) => [a.id, a.name]));
+  const b = txs.filter((t) => t.kind === "broker" && t.date <= yr + "-12-31").sort((x, y) => x.date.localeCompare(y.date));
+  const pos = {}, real = [], inc = [], warn = [];
+  const clsOf = (t) => { const k = `${t.isin || t.security || "?"}`; return cls[k] || e1kvGuess(t); };
+  for (const t of b) {
+    const key = `${t.accountId}|${t.isin || t.security || "?"}`, c = clsOf(t), inY = t.date.startsWith(yr), fee = Math.abs(t.fee || 0);
+    const P = (pos[key] = pos[key] || { shares: 0, cost: 0 });
+    if (t.type === "Kauf") { P.shares += Math.abs(t.shares || 0); P.cost += Math.abs(t.amount) - fee; }  // Anschaffungsnebenkosten nicht absetzbar (§ 27a Abs 4 Z 2 EStG)
+    else if (t.type === "Verkauf") {
+      const sh = Math.abs(t.shares || 0), avg = P.shares > 1e-9 ? P.cost / P.shares : 0, basis = avg * Math.min(sh, P.shares || sh);
+      if (!P.shares) warn.push(`${t.date} ${t.security || t.isin}: Verkauf ohne erfassten Kauf – Anschaffungskosten fehlen`);
+      P.cost -= basis; P.shares = Math.max(0, P.shares - sh);
+      if (inY) real.push({ date: t.date, acc: t.accountId, sec: t.security || t.isin || "?", isin: t.isin || "", cls: c, shares: sh, proceeds: r2e(Math.abs(t.amount) + fee), basis: r2e(basis), pl: r2e(Math.abs(t.amount) + fee - basis) });
+    } else if (inY && (t.type === "Dividende" || t.type === "Zinsen")) { const tax = Math.abs(t.tax || 0), gross = r2e(Math.abs(t.amount) + tax); inc.push({ date: t.date, acc: t.accountId, sec: t.security || t.isin || t.type, cls: c, type: t.type, gross, qst: tax, qstAnr: r2e(Math.min(tax, gross * 0.15)) }); }
+    else if (inY && !["Einzahlung", "Auszahlung", "Gebühr", "Steuer", "Kauf", "Verkauf"].includes(t.type) && (t.security || t.isin) && t.amount) {
+      // z. B. CFD/Future-Abrechnungen als Gewinn/Verlust-Buchung
+      real.push({ date: t.date, acc: t.accountId, sec: t.security || t.isin, isin: t.isin || "", cls: c, shares: 0, proceeds: 0, basis: 0, pl: r2e(t.amount), direct: true });
+    }
+  }
+  const foreign = (id) => (dep[id] || "ausland") !== "inland";
+  const kz = Object.fromEntries(E1KV_KZ.map(([k]) => [k, 0]));
+  const add = (k, v) => { kz[k] = r2e(kz[k] + v); };
+  for (const r of real) { if (!foreign(r.acc)) continue;
+    if (r.cls === "krypto") add(r.pl >= 0 ? "174" : "176", r.pl);
+    else if (r.cls === "derivat" || r.cls === "derivat_nv") add(r.pl >= 0 ? "995" : "896", r.pl);
+    else add(r.pl >= 0 ? "994" : "892", r.pl); }
+  for (const i of inc) { if (!foreign(i.acc)) continue; add(i.cls === "fonds" ? "898" : "863", i.gross); add("998", i.qstAnr); }
+  const pot = r2e(["863", "898", "994", "892", "995", "896", "174", "176"].reduce((s, k) => s + kz[k], 0));
+  const tax = r2e(Math.max(0, Math.max(0, pot) * 0.275 - kz["998"]));
+  const nv = real.filter((r) => r.cls === "derivat_nv" && foreign(r.acc));
+  const depots = [...new Set(b.map((t) => t.accountId))].map((id) => ({ id, name: accN[id] || "Depot", mode: dep[id] || "ausland" }));
+  return { yr, real, inc, kz, pot, tax, nv, depots, warn, accN, foreign, count: b.filter((t) => t.date.startsWith(yr)).length };
+}
+async function e1kvReport(fmt, K, co) {
+  const sub = `${co.name || ""}${co.owner ? " · " + co.owner : ""} · Kalenderjahr ${K.yr}`;
+  const kzRows = E1KV_KZ.map(([k, l]) => [k, l, K.kz[k]]).filter((r) => r[2]);
+  const RH = ["Datum", "Depot", "Wertpapier", "Klasse", "Stück", "Erlös €", "Anschaffung €", "Gewinn/Verlust €"];
+  const rRows = K.real.map((r) => [r.date, K.accN[r.acc] || "", r.sec, (E1KV_CLS.find((c) => c[0] === r.cls) || [])[1] || r.cls, r.shares || "", r.direct ? "" : r.proceeds, r.direct ? "" : r.basis, r.pl]);
+  const IH = ["Datum", "Depot", "Wertpapier", "Art", "Brutto €", "Quellensteuer €", "davon anrechenbar €"];
+  const iRows = K.inc.map((i) => [i.date, K.accN[i.acc] || "", i.sec, i.type, i.gross, i.qst, i.qstAnr]);
+  if (fmt === "xlsx") return xlsxBlob([{ name: "E1kv", head: ["KZ", "Bezeichnung", "Betrag €"], rows: [...kzRows, ["", "Saldo 27,5 %", K.pot], ["", "geschätzte Steuer (27,5 % − anrechenbare QSt)", K.tax]] }, { name: "Realisiert", head: RH, rows: rRows }, { name: "Erträge", head: IH, rows: iRows }]);
+  return tablePdf({ title: `Beilage E 1kv – Kapitalerträge ${K.yr}`, subtitle: sub, landscape: true,
+    kpis: [["Saldo 27,5 %", fmtMoney(K.pot)], ["Quellensteuer anrechenbar", fmtMoney(K.kz["998"])], ["geschätzte Steuer", fmtMoney(K.tax)], ["Buchungen", String(K.count)]],
+    columns: [{ label: "Datum", w: 1 }, { label: "Depot", w: 1.6 }, { label: "Wertpapier", w: 3 }, { label: "Klasse", w: 2.2 }, { label: "Stück", w: 0.8, align: "right" }, { label: "Erlös €", w: 1.1, align: "right" }, { label: "Anschaffung €", w: 1.2, align: "right" }, { label: "G/V €", w: 1.1, align: "right" }],
+    sections: [{ heading: "Kennzahlen der Beilage E 1kv (ausländische Depots ohne KESt-Abzug)", rows: kzRows.map((r) => ["KZ " + r[0], "", r[1], "", "", "", "", r[2]]), totals: ["", "", "Saldo im 27,5 %-Topf", "", "", "", "", K.pot], empty: "keine Werte" },
+      { heading: "Realisierte Gewinne und Verluste (gleitender Durchschnittspreis)", rows: rRows, totals: ["", "", "Summe", "", "", "", "", sumBy(K.real, (r) => r.pl)], empty: "keine Verkäufe" },
+      { heading: "Dividenden und Zinsen (Bruttobetrag)", rows: K.inc.map((i) => [i.date, K.accN[i.acc] || "", i.sec + (i.qst ? ` · Quellensteuer ${fmtMoney(i.qst)} (anrechenbar ${fmtMoney(i.qstAnr)})` : ""), i.type, "", "", "", i.gross]), totals: ["", "", "Summe", "", "", "", "", sumBy(K.inc, (i) => i.gross)], empty: "keine Erträge" },
+      ...(K.nv.length ? [{ heading: "⚠ Nicht verbriefte Derivate (CFDs, Futures) – Steuersatz mit dem Steuerberater klären", rows: [["", "", `${K.nv.length} Positionen, Saldo ${fmtMoney(sumBy(K.nv, (r) => r.pl))}: ohne KESt-Abzug grundsätzlich Tarif, laut VwGH unionsrechtlich 27,5 % möglich – hier unter KZ 995/896 erfasst`, "", "", "", "", ""]] }] : []),
+      ...(K.warn.length ? [{ heading: "Hinweise", rows: K.warn.slice(0, 40).map((w) => ["", "", w, "", "", "", "", ""]) }] : [])],
+    note: "Berechnung aus den Depot-Buchungen in FinDocu: gleitender Durchschnittspreis je Depot und Wertpapier, Spesen nicht abzugsfähig, Quellensteuer max. 15 % anrechenbar.\nDepots mit automatischem KESt-Abzug (Inland) sind nicht enthalten. Ausschüttungsgleiche Erträge thesaurierender Fonds (KZ 937) sind nicht berechnet.\nVorbereitung für den Steuerberater – keine Steuerberatung." });
+}
+function StbE1kv({ txs, accounts, year }) {
+  const [dep, setDep] = useLsState("e1kvDepot", {}), [cls, setCls] = useLsState("e1kvClass", {});
+  const K = useMemo(() => e1kvData(year, txs, accounts), [year, txs, accounts, JSON.stringify(dep), JSON.stringify(cls)]);
+  const secs = useMemo(() => { const m = new Map(); for (const t of txs) if (t.kind === "broker" && (t.isin || t.security) && t.date.startsWith(year)) { const k = t.isin || t.security; if (!m.has(k)) m.set(k, { k, name: t.security || t.isin, guess: e1kvGuess(t) }); } return [...m.values()]; }, [txs, year]);
+  if (!K.depots.length) return <p className="muted small">Keine Depots mit Buchungen. Importiere die Jahresauszüge deiner Broker in den Konten (Depot) – dann wird hier die E 1kv berechnet.</p>;
+  return (<>
+    <div className="stbrkpis"><div><small className="muted">Saldo 27,5 %-Topf</small><b className={K.pot >= 0 ? "pos" : "neg"}>{fmtMoney(K.pot)}</b></div><div><small className="muted">Quellensteuer anrechenbar</small><b>{fmtMoney(K.kz["998"])}</b></div><div><small className="muted">geschätzte Steuer</small><b>{fmtMoney(K.tax)}</b></div><div><small className="muted">Buchungen {year}</small><b>{K.count}</b></div></div>
+    <div className="stbkz">{E1KV_KZ.filter(([k]) => K.kz[k]).map(([k, l]) => <div key={k} className="stbkzr tot" style={{ fontWeight: 400 }}><span className="kz">{k}</span><span className="grow">{l}</span><b>{fmtMoney(K.kz[k])}</b></div>)}
+      {!E1KV_KZ.some(([k]) => K.kz[k]) && <small className="muted">Keine Werte für {year}.</small>}</div>
+    {K.nv.length > 0 && <p className="small warn">⚠ {K.nv.length} Abrechnungen aus nicht verbrieften Derivaten (CFDs/Futures): ohne KESt-Abzug gilt grundsätzlich der Tarif, laut VwGH-Rechtsprechung ist 27,5 % möglich – unbedingt mit dem Steuerberater klären.</p>}
+    {K.warn.length > 0 && <details className="airules"><summary>{K.warn.length} Hinweise (z. B. fehlende Käufe)</summary>{K.warn.slice(0, 30).map((w, i) => <div key={i} className="small">{w}</div>)}</details>}
+    <small className="muted">Depots – automatischer KESt-Abzug?</small>
+    <div className="stbmap">{K.depots.map((d) => <div key={d.id} className="stbmapr"><span className="grow">{d.name}</span>
+      <PSelect value={d.mode} onChange={(e) => setDep({ ...dep, [d.id]: e.target.value })}><option value="ausland">Ausland / ohne KESt-Abzug → E 1kv</option><option value="inland">Inland, KESt wird abgezogen (endbesteuert)</option></PSelect></div>)}</div>
+    {secs.length > 0 && <details className="airules"><summary>Wertpapier-Klassen ({secs.length}) – automatisch erkannt, bei Bedarf ändern</summary>
+      <div className="stbmap">{secs.map((s) => <div key={s.k} className="stbmapr"><span className="grow one">{s.name}</span>
+        <PSelect value={cls[s.k] || s.guess} onChange={(e) => setCls({ ...cls, [s.k]: e.target.value })}>{E1KV_CLS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</PSelect></div>)}</div></details>}
+    <small className="muted">Gleitender Durchschnittspreis, Spesen nicht abzugsfähig, Quellensteuer max. 15 % anrechenbar. Ausschüttungsgleiche Erträge (KZ 937) thesaurierender Fonds sind nicht berechnet.</small>
   </>);
 }
 const STB_TABS = [["monate", "🚦", "Monate"], ["auszuege", "📄", "Kontoauszüge"], ["pruefen", "🔎", "Prüfen"], ["fragen", "❓", "Klärungsliste"], ["berichte", "📑", "Berichte"], ["paket", "📦", "Paket"], ["setup", "⚙︎", "Einstellungen"]];
@@ -8705,7 +8878,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
       {sec === "auszuege" && auszuege}
       {sec === "pruefen" && pruefen}
       {sec === "fragen" && fragen}
-      {sec === "berichte" && <StbReports D={D} notify={notify} setTab={setTab} accounts={accounts} />}
+      {sec === "berichte" && <StbReports D={D} notify={notify} setTab={setTab} accounts={accounts} txs={txs} />}
       <StbAiGateHost />
       {sec === "paket" && paket}
       {sec === "setup" && setup}
@@ -16942,4 +17115,13 @@ html body .stbrfmts .stbprev{height:auto!important;min-height:0!important;align-
 
 /* v0.99.32: optionale Adressfelder */
 .addrsm{flex:0 0 90px}.addrmore{align-self:flex-start;font-size:13px;padding:0}
+
+/* v0.99.33: Tätigkeitssuche */
+.actsearch{position:relative}
+.actsug{max-height:380px;overflow:auto}
+.actsug .actai b{color:var(--acc)}
+.capq{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}
+.aiprof{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.aiprof>div{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:10px;background:var(--card2);font-size:13.5px}
+.aiprof .aiopen{grid-column:1/-1;background:color-mix(in srgb,#e0a030 14%,transparent)}
 `;
