@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.36 – Rechnungsdesign auch für Berichte
+- Alle Berichte-PDFs (Steuerberater, Kontoauszüge-Deckblatt, Buchungsbeleg, Offene Posten …) übernehmen Logo, Akzentfarbe und Schrift aus dem Rechnungsdesign
+- Eigenes Briefpapier als Hintergrund bei Berichten im Hochformat (Querformat-Tabellen mit Logo statt Briefpapier); Inhalt beginnt unter dem Briefkopf, freier Rand unten wie eingestellt
+
 ## v0.99.35 – Steuerberater: KI stellt alles passend zur Tätigkeit ein
 - KI ordnet deine Kategorien passend zur Tätigkeit den E1a-Kennzahlen zu (mit Begründung, ✨ markiert; eigene Auswahl hat Vorrang)
 - KI setzt Kleinunternehmer, Kilometergeld, Arbeitsplatzpauschale und Inland/Ausland der Depots – jeweils mit Begründung, jederzeit änderbar

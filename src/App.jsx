@@ -16,7 +16,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import QRCode from "qrcode";
 import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrinkPdf } from "./scan.js";
 import { parseReceiptQR, pastOrToday } from "./receipt.js";
-import { saveBlob, downloadCsv, downloadXlsx, tablePdf, zipBlob, vcardText, csvBlob, xlsxBlob } from "./exports.js";
+import { saveBlob, downloadCsv, downloadXlsx, tablePdf, zipBlob, vcardText, csvBlob, xlsxBlob, setPdfBrand } from "./exports.js";
 import { PROVIDERS, PROVIDER_LIST, syncCfg, setSyncCfg, syncOn, syncNow, oauthLogin, oauthConfig, setupKey, cloudState, disconnect, remoteDevices, defaultDeviceName, deviceId, kvGet, changePassword } from "./sync.js";
 import { canUpdate, appVersion, checkUpdate, installUpdate } from "./platform.js";
 import { latestBalance, parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS, counterpartyKey } from "./importers.js";
@@ -10635,6 +10635,20 @@ const fillDun = (t, inv, r) => String(t || "").replace(/\{nummer\}/g, inv.number
   .replace(/\{frist\}/g, fmtDate(r.due)).replace(/\{faellig\}/g, fmtDate(invDue(inv))).replace(/\{kunde\}/g, inv.customer?.name || "");
 const hexRgb = (h, rgb) => { const m = String(h || "#0b63f6").replace("#", ""); const n = parseInt(m.length === 3 ? m.split("").map((x) => x + x).join("") : m, 16) || 0x0b63f6; return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
 
+/* v0.99.36: Rechnungsdesign (Logo, Akzentfarbe, Schrift, Briefpapier) auch für alle Berichte-PDFs */
+function syncPdfBrand() {
+  try {
+    const D = { ...DESIGN_DEF, ...ls.get("invoiceDesign", {}) }, co = ls.get("company", {}), lhx = ls.get("invLetterhead", null);
+    const hex = String(D.accent || "#0b63f6").replace("#", ""), acc = hex.length === 6 ? [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) : null;
+    setPdfBrand({ accent: acc, font: D.font, logo: co.logo || "", name: co.name || "", lh: D.useLH === false ? null : lhx, lhHideHead: D.lhHideHead, lhHideFooter: D.lhHideFooter, lhTop: D.lhTop, lhBottom: D.lhBottom, lhFollow: D.lhFollow });
+  } catch {}
+}
+if (typeof window !== "undefined") {
+  setTimeout(syncPdfBrand, 0);
+  window.addEventListener("findocu-ls", (e) => { if (/^(invoiceDesign|company)$/.test(e.detail?.key || "")) syncPdfBrand(); });
+  window.addEventListener("findocu-lh", syncPdfBrand);
+  window.addEventListener("storage", syncPdfBrand);
+}
 /* v0.99.22: eigenes Briefpapier (PDF oder Bild) als Hintergrund für Rechnungen, Angebote, Mahnungen */
 const LH_KEY = "invLetterhead";
 const letterhead = () => ls.get(LH_KEY, null);
@@ -12632,7 +12646,7 @@ function InvoiceDesignSettings() {
   return (
     <div className="designmod">
       <div className="dmctl">
-        <small className="muted">Eigenes Design</small>
+        <small className="muted">Eigenes Design · gilt auch für alle Berichte-PDFs (Steuerberater, Kontoauszüge, Buchungsbeleg …) – Briefpapier dort nur im Hochformat</small>
         <OwnDesignCards D={D} set={set} co={co} setCo={setCo} />
         <small className="muted">Vorlage{letterhead() && D.useLH !== false ? " (wird über dem Briefpapier verwendet)" : ""}</small>
         <div className="presetrow">{Object.entries(INV_PRESETS).map(([k, p]) => (

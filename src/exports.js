@@ -73,13 +73,29 @@ const safe = (t) => String(t ?? "").replace(/[   ]/g, " ").replace(/[‐‑
  * opts: { title, subtitle, columns: [{ label, w (Anteil), align: "left"|"right" }], rows: [[...]], totals?: [...],
  *         sections?: [{ heading, rows, totals }], kpis?: [[label, value]], note?, landscape?, accent? }
  */
+/* v0.99.36: Firmen-Design (Logo, Akzentfarbe, Schrift, Briefpapier) aus dem Rechnungsdesign für alle Berichte */
+let BRAND = null;
+export function setPdfBrand(b) { BRAND = b; }
+const b64bytes = (u) => Uint8Array.from(atob(String(u).split(",")[1] || ""), (c) => c.charCodeAt(0));
 export async function tablePdf(opts) {
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const B = opts.brand === false ? null : BRAND;
+  const FF = { helvetica: ["Helvetica", "HelveticaBold"], times: ["TimesRoman", "TimesRomanBold"], courier: ["Courier", "CourierBold"] }[B?.font] || ["Helvetica", "HelveticaBold"];
+  const font = await pdf.embedFont(StandardFonts[FF[0]]), bold = await pdf.embedFont(StandardFonts[FF[1]]);
   const [W, H] = opts.landscape ? [842, 595] : [595, 842];
-  const M = 36, fs = opts.fontSize || 8.5, lh = fs + 5.5;
-  const acc = opts.accent || [0.06, 0.55, 0.48];
+  const M = 36, fs = opts.fontSize || 8.5, lh = fs + 5.5, mm = 2.8346;
+  const acc = opts.accent || B?.accent || [0.06, 0.55, 0.48];
+  const tint = (k) => rgb(...acc.map((c) => 1 - (1 - c) * k));
+  // Briefpapier (nur Hochformat) bzw. Logo
+  let lh0 = null, lh1 = null, logo = null;
+  if (B?.lh?.data && !opts.landscape) try {
+    if (B.lh.type === "pdf") { const src = await PDFDocument.load(b64bytes(B.lh.data), { ignoreEncryption: true }); const e = await pdf.embedPdf(src, src.getPageCount() > 1 ? [0, 1] : [0]); lh0 = e[0]; lh1 = B.lhFollow === "none" ? null : B.lhFollow === "same" ? e[0] : e[1] || e[0]; }
+    else { const emb = (u) => (u ? (u.startsWith("data:image/png") ? pdf.embedPng(b64bytes(u)) : pdf.embedJpg(b64bytes(u))) : null); lh0 = await emb(B.lh.data); lh1 = B.lhFollow === "none" ? null : (await emb(B.lh.data2)) || lh0; }
+  } catch { lh0 = lh1 = null; }
+  if (B?.logo && !(lh0 && B.lhHideHead !== false)) try { logo = B.logo.startsWith("data:image/png") ? await pdf.embedPng(b64bytes(B.logo)) : await pdf.embedJpg(b64bytes(B.logo)); } catch { logo = null; }
+  const MT = lh0 && B.lhHideHead !== false ? Math.max(M, 95 + (B.lhTop || 0) * mm) : M;
+  const MB = lh0 && B.lhHideFooter !== false ? Math.max(M, (B.lhBottom ?? 25) * mm) : M;
   const cols = opts.columns, tw = cols.reduce((s, c) => s + (c.w || 1), 0), avail = W - 2 * M;
   const xs = []; let x = M; for (const c of cols) { xs.push(x); x += ((c.w || 1) / tw) * avail; }
   const widthOf = (i) => ((cols[i].w || 1) / tw) * avail;
@@ -87,25 +103,32 @@ export async function tablePdf(opts) {
   const fit = (t, w, f, size) => { let s = safe(t); if (f.widthOfTextAtSize(s, size) <= w) return s; while (s.length > 1 && f.widthOfTextAtSize(s + "…", size) > w) s = s.slice(0, -1); return s + "…"; };
   const text = (t, x0, y0, f = font, size = fs, color = rgb(0.1, 0.1, 0.12)) => page.drawText(safe(t), { x: x0, y: y0, size, font: f, color });
   const header = () => {
-    page = pdf.addPage([W, H]); pageNo++; y = H - M;
-    page.drawRectangle({ x: 0, y: H - 6, width: W, height: 6, color: rgb(...acc) });
-    text(opts.title, M, y - 14, bold, 15); y -= 30;
+    page = pdf.addPage([W, H]); pageNo++;
+    const bg = pageNo === 1 ? lh0 : lh1;
+    if (bg) { if (bg.embeddedPage !== undefined || B.lh.type === "pdf") page.drawPage(bg, { x: 0, y: 0, width: W, height: H }); else page.drawImage(bg, { x: 0, y: 0, width: W, height: H }); }
+    const top = bg ? MT : (pageNo === 1 || !lh0 ? (lh0 ? MT : M) : M);
+    y = H - top;
+    if (!bg) page.drawRectangle({ x: 0, y: H - 6, width: W, height: 6, color: rgb(...acc) });
+    let tw0 = avail;
+    if (logo && !bg) { const h = 34, w = Math.min(150, (logo.width / logo.height) * h), hh = (w / logo.width) * logo.height; page.drawImage(logo, { x: W - M - w, y: H - M - hh + 10, width: w, height: hh }); tw0 = avail - w - 14; }
+    else if (B?.name && !bg) { const n = safe(B.name), t = bold.widthOfTextAtSize(n, 10); page.drawText(n, { x: W - M - t, y: y - 10, size: 10, font: bold, color: rgb(...acc) }); tw0 = avail - t - 14; }
+    text(fit(opts.title, tw0, bold, 15), M, y - 14, bold, 15); y -= 30;
     if (opts.subtitle) { text(opts.subtitle, M, y, font, 9, rgb(0.4, 0.4, 0.45)); y -= 16; }
     if (pageNo === 1 && opts.kpis?.length) {
       const kw = avail / opts.kpis.length;
-      opts.kpis.forEach(([l, v], i) => { const kx = M + i * kw; page.drawRectangle({ x: kx, y: y - 34, width: kw - 6, height: 38, color: rgb(0.95, 0.97, 0.97) });
+      opts.kpis.forEach(([l, v], i) => { const kx = M + i * kw; page.drawRectangle({ x: kx, y: y - 34, width: kw - 6, height: 38, color: B ? tint(0.07) : rgb(0.95, 0.97, 0.97) });
         text(l, kx + 7, y - 9, font, 7.5, rgb(0.4, 0.4, 0.45)); text(v, kx + 7, y - 26, bold, 12); });
       y -= 48;
     }
     colHead();
   };
   const colHead = () => {
-    page.drawRectangle({ x: M, y: y - 4, width: avail, height: lh + 2, color: rgb(0.91, 0.97, 0.96) });
+    page.drawRectangle({ x: M, y: y - 4, width: avail, height: lh + 2, color: B ? tint(0.12) : rgb(0.91, 0.97, 0.96) });
     cols.forEach((c, i) => { const s = fit(c.label, widthOf(i) - 6, bold, fs); text(s, c.align === "right" ? xs[i] + widthOf(i) - 3 - bold.widthOfTextAtSize(s, fs) : xs[i] + 3, y, bold); });
     y -= lh + 3;
   };
   const row = (r, opt = {}) => {
-    if (y < M + 24) header();
+    if (y < MB + 24) header();
     if (opt.shade) page.drawRectangle({ x: M, y: y - 3.5, width: avail, height: lh, color: rgb(0.975, 0.975, 0.98) });
     if (opt.line) page.drawLine({ start: { x: M, y: y + lh - 3 }, end: { x: M + avail, y: y + lh - 3 }, thickness: 0.6, color: rgb(0.6, 0.6, 0.65) });
     r.forEach((v, i) => { const f = opt.bold ? bold : font; const s = fit(pdfNum(v, isMoneyCol(cols[i].label)) ?? cellTxt(v), widthOf(i) - 6, f, fs);
@@ -115,15 +138,15 @@ export async function tablePdf(opts) {
   header();
   const blocks = opts.sections || [{ rows: opts.rows, totals: opts.totals }];
   for (const b of blocks) {
-    if (b.heading) { if (y < M + 60) header(); y -= 4; text(b.heading, M, y, bold, 10.5, rgb(...acc)); y -= lh + 2; }
+    if (b.heading) { if (y < MB + 60) header(); y -= 4; text(b.heading, M, y, bold, 10.5, rgb(...acc)); y -= lh + 2; }
     (b.rows || []).forEach((r, i) => row(r, { shade: i % 2 === 1 }));
     if (b.totals) row(b.totals, { bold: true, line: true });
     if (!(b.rows || []).length && b.empty) { text(b.empty, M + 3, y, font, fs, rgb(0.5, 0.5, 0.55)); y -= lh; }
     y -= 6;
   }
-  if (opts.note) { if (y < M + 40) header(); y -= 6; for (const ln of String(opts.note).split("\n")) { text(ln, M, y, font, 7.5, rgb(0.45, 0.45, 0.5)); y -= 10; } }
+  if (opts.note) { if (y < MB + 40) header(); y -= 6; for (const ln of String(opts.note).split("\n")) { text(ln, M, y, font, 7.5, rgb(0.45, 0.45, 0.5)); y -= 10; } }
   const pages = pdf.getPages(), stamp = `Erstellt mit FinDocu am ${new Date().toLocaleDateString("de-AT")}`;
-  pages.forEach((p, i) => { p.drawText(safe(`${stamp} · Seite ${i + 1} von ${pages.length}`), { x: M, y: 18, size: 7, font, color: rgb(0.55, 0.55, 0.6) }); });
+  pages.forEach((p, i) => { p.drawText(safe(`${stamp} · Seite ${i + 1} von ${pages.length}`), { x: M, y: MB > M ? Math.max(14, MB - 14) : 18, size: 7, font, color: rgb(0.55, 0.55, 0.6) }); });
   return new Blob([await pdf.save()], { type: "application/pdf" });
 }
 
