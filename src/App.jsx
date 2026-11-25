@@ -7858,12 +7858,12 @@ function stbYearData(year, D, opt, map) {
     if (!inY(r.t.date) || r.scope !== "firma" || r.transfer || !r.biz) continue;
     const t = r.t, income = r.biz > 0, key = (income ? "+" : "-") + (t.category || "Sonstiges");
     const kz = t.kz || map[key] || kzGuess(t.category, t.counterparty, t.purpose, income);
-    lines.push({ id: t.id, date: t.date, src: r.acc?.name || "Bank", partner: t.counterparty || "", text: (t.purpose || "").slice(0, 160), cat: t.category || "Sonstiges", mapKey: key, kz, amount: r.biz, beleg: r.doc ? (r.doc.title || "Beleg") : "", hasDoc: !!r.doc, pct: bizPctOf(t, r.scope) });
+    lines.push({ id: t.id, accId: r.acc?.id, docId: r.doc?.id, date: t.date, src: r.acc?.name || "Bank", partner: t.counterparty || "", text: (t.purpose || "").slice(0, 160), cat: t.category || "Sonstiges", mapKey: key, kz, amount: r.biz, beleg: r.doc ? (r.doc.title || "Beleg") : "", hasDoc: !!r.doc, pct: bizPctOf(t, r.scope) });
   }
   const kassen = ls.get("kassen", []), kent = ls.get("kassaEntries", []);
   for (const e of kent) {
     if (!inY(e.date)) continue; const k = kassen.find((x) => x.id === e.kasse); const kz = KB_KZ[e.cat] || (e.kind === "ein" ? "9090" : "9230");
-    lines.push({ id: e.id, date: e.date, src: "Kassa " + (k?.name || ""), partner: "", text: e.text || "", cat: e.cat || "", mapKey: null, kz, amount: kbSigned(e), beleg: e.beleg || (e.eigen ? "Eigenbeleg" : e.docId ? "Dokument" : ""), hasDoc: !!(e.beleg || e.eigen || e.docId), kassa: true });
+    lines.push({ id: e.id, docId: e.docId, date: e.date, src: "Kassa " + (k?.name || ""), partner: "", text: e.text || "", cat: e.cat || "", mapKey: null, kz, amount: kbSigned(e), beleg: e.beleg || (e.eigen ? "Eigenbeleg" : e.docId ? "Dokument" : ""), hasDoc: !!(e.beleg || e.eigen || e.docId), kassa: true });
   }
   // Kilometergeld (Fahrtenbuch, geschäftliche Fahrten, max. 30.000 km)
   const fb = ls.get("fbook", FB_EMPTY), veh = Object.fromEntries((fb.vehicles || []).map((v) => [v.id, v]));
@@ -7887,17 +7887,18 @@ function stbYearData(year, D, opt, map) {
   const invs = ls.get("invoices", []).filter((x) => x.kind === "rechnung" && x.number && !["entwurf", "storniert"].includes(invState(x)) && inY(x.date));
   const umsatzM = Array.from({ length: 12 }, (_, i) => { const m = `${yr}-${String(i + 1).padStart(2, "0")}`; return { m, inv: r2e(sumBy(invs.filter((x) => x.date.startsWith(m)), invTotal)), erl: r2e(sumBy(byKz["9040"].lines.filter((l) => l.date.startsWith(m)), (l) => l.amount)) }; });
   const umsatzInv = r2e(sumBy(invs, invTotal)), umsatz = invs.length ? umsatzInv : byKz["9040"].sum;
-  const kuLimit = +yr >= 2025 ? 55000 : +yr >= 2023 ? 40000 : 35000;
+  const AI = opt.ai && opt.ai.year === yr ? opt.ai : {};
+  const kuLimit = AI.kuLimit || (+yr >= 2025 ? 55000 : +yr >= 2023 ? 40000 : 35000);
   // Pauschalierungsvergleich
   const sv = byKz["9225"].sum, waren = byKz["9100"].sum, personal = byKz["9110"].sum + byKz["9120"].sum, apl = byKz["9215"].sum + byKz["9217"].sum, kmA = byKz["9160"].lines.filter((l) => l.id === "km").reduce((s, l) => s - l.amount, 0);
-  const bRate = opt.basis6 ? 0.06 : +yr >= 2026 ? 0.15 : +yr === 2025 ? 0.135 : 0.12, bMax = opt.basis6 ? (+yr >= 2026 ? 25200 : +yr === 2025 ? 19200 : 13200) : (+yr >= 2026 ? 63000 : +yr === 2025 ? 43200 : 26400);
+  const bRate = AI.basisRate || (opt.basis6 ? 0.06 : +yr >= 2026 ? 0.15 : +yr === 2025 ? 0.135 : 0.12), bMax = AI.basisMax || (opt.basis6 ? (+yr >= 2026 ? 25200 : +yr === 2025 ? 19200 : 13200) : (+yr >= 2026 ? 63000 : +yr === 2025 ? 43200 : 26400));
   const basisBA = r2e(Math.min(inc * bRate, bMax) + waren + personal + sv + apl + kmA);
-  const kuRate = opt.kuType === "dienst" ? 0.2 : 0.45, kuMax = opt.kuType === "dienst" ? (+yr >= 2025 ? 11000 : 8400) : (+yr >= 2025 ? 24750 : 18900);
-  const kuOk = inc <= kuLimit * (+yr >= 2025 ? 1.1 : 1), kuBA = r2e(Math.min(inc * kuRate, kuMax) + sv);
+  const kuRate = AI.kuRate || (opt.kuType === "dienst" ? 0.2 : 0.45), kuMax = AI.kuMax || (opt.kuType === "dienst" ? (+yr >= 2025 ? 11000 : 8400) : (+yr >= 2025 ? 24750 : 18900));
+  const kuOk = inc <= (AI.kuTolerance || kuLimit * (+yr >= 2025 ? 1.1 : 1)), kuBA = r2e(Math.min(inc * kuRate, kuMax) + sv);
   const variants = [
     { k: "ear", name: "Einnahmen-Ausgaben-Rechnung (tatsächliche Ausgaben)", ba: out, ok: true },
-    { k: "basis", name: `Basispauschalierung ${String(bRate * 100).replace(".", ",")} %`, ba: basisBA, ok: true, note: "zusätzlich absetzbar: Waren, Personal, SVS, km-Geld, Arbeitsplatzpauschale" },
-    { k: "ku", name: `Kleinunternehmerpauschalierung ${kuRate * 100} %`, ba: kuBA, ok: kuOk, note: kuOk ? "zusätzlich absetzbar: SVS-Beiträge" : `nicht möglich – Umsatz über ${fmtMoney(kuLimit)}` }
+    { k: "basis", name: `Basispauschalierung ${String(+(bRate * 100).toFixed(1)).replace(".", ",")} %`, ba: basisBA, ok: true, note: "zusätzlich absetzbar: Waren, Personal, SVS, km-Geld, Arbeitsplatzpauschale" },
+    { k: "ku", name: `Kleinunternehmerpauschalierung ${Math.round(kuRate * 100)} %`, ba: kuBA, ok: kuOk, note: kuOk ? "zusätzlich absetzbar: SVS-Beiträge" : `nicht möglich – Umsatz über ${fmtMoney(kuLimit)}` }
   ].map((v) => { const g = r2e(inc - v.ba), f = r2e(g > 0 ? Math.min(g, 33000) * 0.15 : 0); return { ...v, gewinn: g, gfb: f, steuerbasis: r2e(g - f) }; });
   const best = variants.filter((v) => v.ok).sort((a, b) => a.steuerbasis - b.steuerbasis)[0];
   // Wareneingangsbuch, Privat, offene Punkte
@@ -7951,7 +7952,7 @@ async function stbReport(k, fmt, Y, co) {
         { heading: "Gewinnfreibetrag", rows: [["9221", "Grundfreibetrag 15 % bis 33.000 € Gewinn (max. 4.950 €)", "", -Y.gfb]], totals: ["", "Gewinn nach Grundfreibetrag", "", r2e(Y.profit - Y.gfb)] },
         { heading: "Pauschalierungsvergleich (Bemessung nach Grundfreibetrag)", rows: Y.variants.map((v) => ["", v.name + (v.ok ? "" : " – nicht möglich") + (Y.best?.k === v.k ? "  ← günstigste" : ""), "", v.steuerbasis]) },
         { heading: "Umsatz & Kleinunternehmergrenze", rows: [["", `Umsatz ${yr} (${Y.invs.length ? "Ausgangsrechnungen" : "Erlöse"})`, "", Y.umsatz], ["", "Kleinunternehmergrenze brutto" + (+yr >= 2025 ? " (Toleranz +10 %)" : ""), "", Y.kuLimit], ["", Y.umsatz <= Y.kuLimit ? "unter der Grenze ✓" : Y.umsatz <= Y.kuLimit * 1.1 && +yr >= 2025 ? "über der Grenze, aber in der 10-%-Toleranz" : "ÜBER der Grenze – Umsatzsteuerpflicht prüfen", "", ""]] },
-        { heading: "Hinweise für den Steuerberater", rows: [["", `${Y.noDoc.length} Ausgaben ohne Beleg · ${Y.unklar.length} Buchungen Privat/Firma unklar`, "", ""], ["", `${Y.anl.length} Anlagegüter, AfA ${fmtMoney(Y.afaSum)}${Y.anl.some((x) => x.missing) ? " – bei manchen fehlt die Nutzungsdauer" : ""}`, "", ""], ["", `${Y.trips.length} geschäftliche Fahrten, ${Y.km.toLocaleString("de-AT")} km`, "", Y.kmEur], ["", `${Y.priv.length} Privatentnahmen/-einlagen`, "", ""]] }] });
+        { heading: "Hinweise für den Steuerberater", rows: [["", `${Y.noDoc.length} Ausgaben ohne Beleg · ${Y.unklar.length} Buchungen Privat/Firma unklar`, "", ""], ["", `${Y.anl.length} Anlagegüter, AfA ${fmtMoney(Y.afaSum)}${Y.anl.some((x) => x.missing) ? " – bei manchen fehlt die Nutzungsdauer" : ""}`, "", ""], ["", `${Y.trips.length} geschäftliche Fahrten, ${Y.km.toLocaleString("de-AT")} km`, "", Y.kmEur], ["", `${Y.priv.length} Privatentnahmen/-einlagen`, "", ""], ["", (() => { const c = stbAiCache(Y.yr); if (!c) return "KI-Prüfung: nicht durchgeführt"; const f = c.res?.findings || []; return `KI-Prüfung ${new Date(c.at).toLocaleDateString("de-AT")}: ${f.filter((x) => x.level === "error").length} Fehler, ${f.filter((x) => x.level === "warn").length} Hinweise${c.hash === stbAiHash(Y, stbOpt()) ? "" : " (Zahlen seither geändert)"}`; })(), "", ""]] }] });
   }
   if (k === "e1a") {
     if (fmt === "csv") return csvBlob(["KZ", "Bezeichnung", "Art", "Posten", "Betrag €"], kzRows);
@@ -7991,22 +7992,24 @@ function StbRSec({ id, title, sub, open, onTog, children }) {
     <button type="button" className="stbrsh" onClick={() => onTog(id)} aria-expanded={!!open[id]}><span className="ichev">▾</span><b>{title}</b>{sub && <small className="muted">{sub}</small>}</button>
     {open[id] && <div className="stbrsb">{children}</div>}</section>);
 }
-function StbReports({ D, notify, setTab }) {
+function StbReports({ D, notify, setTab, accounts }) {
   const thisY = todayISO().slice(0, 4);
   const years = [...new Set([thisY, String(+thisY - 1), ...D.rows.map((r) => r.t.date.slice(0, 4))])].sort().reverse().slice(0, 6);
   const [year, setYear] = useLsState("stbRepYear", String(+thisY - (+todayISO().slice(5, 7) <= 4 ? 1 : 0)));
   const [opt, setOpt] = useLsState("stbRepOpt", STB_REP_DEF);
   const [map, setMap] = useLsState("stbKzMap", {});
   const [sel, setSel] = useLsState("stbRepSel", STB_REP_PRE);
-  const [open, setOpen] = useLsState("stbRepOpen", { exp: true, kz: true });
+  const [open, setOpen] = useLsState("stbRepOpen", { act: true, exp: true, kzl: true, ai: true });
   const [kzOpen, setKzOpen] = useState(null), [busy, setBusy] = useState("");
   const [assetsV, setAssetsV] = useState(0);
   const O = { ...STB_REP_DEF, ...opt };
   const Y = useMemo(() => stbYearData(year, D, O, map), [year, D, JSON.stringify(O), map, assetsV]);
   const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
   const tag = (k) => `${STB_REPORTS.find((r) => r[0] === k)[2]} ${year}`.replace(/[\\/:*?"<>|–]/g, "-");
-  const dl = async (k, fmt) => { setBusy(k + fmt); try { saveBlob(await stbReport(k, fmt, Y, co), `${tag(k)}.${fmt}`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
-  const zipAll = async () => { setBusy("zip"); try { const files = []; for (const k of sel) { const r = STB_REPORTS.find((x) => x[0] === k); if (!r) continue; for (const f of r[4]) files.push({ name: `${String(STB_REPORTS.indexOf(r) + 1).padStart(2, "0")} ${tag(k)}.${f}`, data: await stbReport(k, f, Y, co) }); }
+  const title = (k) => STB_REPORTS.find((r) => r[0] === k)[2];
+  const preview = async (k) => { setBusy(k + "prev"); try { await openPdf(await stbReport(k, "pdf", Y, co), `${tag(k)}.pdf`, `${title(k)} ${year}`); } catch (e) { notify("Vorschau fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
+  const dl = async (k, fmt) => { if (!(await stbAiGate(Y, O, `${title(k)} (${fmt.toUpperCase()})`))) return; setBusy(k + fmt); try { saveBlob(await stbReport(k, fmt, Y, co), `${tag(k)}.${fmt}`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
+  const zipAll = async () => { if (!(await stbAiGate(Y, O, `${sel.length} Berichte als ZIP`))) return; setBusy("zip"); try { const files = []; for (const k of sel) { const r = STB_REPORTS.find((x) => x[0] === k); if (!r) continue; for (const f of r[4]) files.push({ name: `${String(STB_REPORTS.indexOf(r) + 1).padStart(2, "0")} ${tag(k)}.${f}`, data: await stbReport(k, f, Y, co) }); }
     saveBlob(await zipBlob(files), `Steuerberater Berichte ${fileSafe(co.name || "")} ${year}.zip`.replace(/\s+/g, " ")); notify(`${files.length} Dateien als ZIP erstellt`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
   const tog = (k) => setOpen({ ...open, [k]: !open[k] });
   const cats = useMemo(() => { const m = new Map(); for (const l of Y.lines) if (l.mapKey) { const x = m.get(l.mapKey) || { key: l.mapKey, cat: l.cat, inc: l.amount > 0, n: 0, sum: 0, kz: map[l.mapKey] || kzGuess(l.cat, "", "", l.amount > 0) }; x.n++; x.sum = r2e(x.sum + Math.abs(l.amount)); m.set(l.mapKey, x); } return [...m.values()].sort((a, b) => b.sum - a.sum); }, [Y, map]);
@@ -8024,14 +8027,26 @@ function StbReports({ D, notify, setTab }) {
       <div className="stbkubar"><i style={{ width: pct + "%" }} className={pct >= 100 ? "over" : pct >= 85 ? "warn" : ""} /></div>
       <small className="muted">{Y.umsatz <= Y.kuLimit ? `Noch ${fmtMoney(Y.kuLimit - Y.umsatz)} bis zur Grenze (brutto)` : +year >= 2025 && Y.umsatz <= Y.kuLimit * 1.1 ? "Über der Grenze, aber innerhalb der 10-%-Toleranz – ab nächstem Jahr umsatzsteuerpflichtig" : "Über der Grenze – Umsatzsteuerpflicht mit dem Steuerberater klären"}</small></div>
 
+    <StbRSec open={open} onTog={tog} id="act" title="💼 Deine Tätigkeit" sub={O.ai && O.ai.year === year ? "Werte von KI übernommen" : ""}>
+      <StbActivity O={O} setOpt={setOpt} year={year} />
+    </StbRSec>
+
     <StbRSec open={open} onTog={tog} id="exp" title="📤 Berichte exportieren" sub={`${sel.length} ausgewählt`}>
       <div className="stbrlist">{STB_REPORTS.map(([k, ic, t, d, fmts]) => (<div key={k} className="stbritem">
         <input type="checkbox" checked={sel.includes(k)} onChange={(e) => setSel(e.target.checked ? [...sel, k] : sel.filter((x) => x !== k))} aria-label={t + " für ZIP auswählen"} />
         <span className="stbric">{ic}</span><div className="grow"><b>{t}</b><small className="muted block">{d}</small></div>
-        <div className="stbrfmts">{fmts.map((f) => <button key={f} className="btn sm" disabled={!!busy} onClick={() => dl(k, f)}>{busy === k + f ? "…" : { pdf: "PDF", xlsx: "Excel", csv: "CSV" }[f]}</button>)}</div>
+        <div className="stbrfmts">{fmts.includes("pdf") && <button className="btn sm stbprev" disabled={!!busy} title="Vorschau" aria-label={title(k) + " – Vorschau"} onClick={() => preview(k)}>{busy === k + "prev" ? "…" : <IcoEye />}</button>}{fmts.map((f) => <button key={f} className="btn sm" disabled={!!busy} onClick={() => dl(k, f)}>{busy === k + f ? "…" : { pdf: "PDF", xlsx: "Excel", csv: "CSV" }[f]}</button>)}</div>
       </div>))}</div>
       <div className="actions"><button className="btn primary" disabled={!sel.length || !!busy} onClick={zipAll}>{busy === "zip" ? "Wird erstellt …" : `📦 Ausgewählte als ZIP (${sel.length})`}</button>
         <button className="link" onClick={() => setSel(sel.length === STB_REPORTS.length ? STB_REP_PRE : STB_REPORTS.map((r) => r[0]))}>{sel.length === STB_REPORTS.length ? "Standardauswahl" : "Alle auswählen"}</button></div>
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="kzl" title="🏛️ Export für die Kanzlei-Software" sub="BMD · RZL · DATEV">
+      <StbKanzlei Y={Y} O={O} co={co} notify={notify} accounts={accounts || []} />
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="ai" title="🛡️ KI-Prüfung (österreichisches Steuerrecht)">
+      <StbAiStatus Y={Y} O={O} />
     </StbRSec>
 
     <StbRSec open={open} onTog={tog} id="kz" title="🧮 Beilage E 1a – Kennzahlen" sub={`${Y.used.length} Posten`}>
@@ -8074,6 +8089,235 @@ function StbReports({ D, notify, setTab }) {
     </StbRSec>
     <p className="muted small">Vorbereitung für den Steuerberater nach österreichischem Recht (Stand 2026) – keine Steuerberatung. Grundlage: Firmenbuchungen (Bank + Kassabuch) laut Zuordnung Firma/Privat.</p>
   </div>);
+}
+/* ======================= v0.99.23: KI-Prüfung (Websuche, österreichisches Steuerrecht) & Kanzlei-Exporte ======================= */
+const STB_KINDS = [["gewerbe", "Gewerbe / Handwerk"], ["handel", "Handel"], ["dienst", "Dienstleistung"], ["freiberuf", "Freier Beruf / Beratung"], ["neue_selbst", "Neue Selbständige (Werkvertrag)"],
+  ["kuenstler", "Künstler/in, Schriftsteller/in"], ["vortrag", "Vortragende, Lehrende"], ["land_forst", "Land- und Forstwirtschaft"], ["andere", "Andere (beschreiben)"]];
+async function stbAiCall(body) {
+  const r = await fetch("/api/tax", { method: "POST", headers: { "content-type": "application/json", "x-app-token": ls.get("appToken", "") }, body: JSON.stringify(body) }).catch(() => null);
+  if (!r) throw new Error("Keine Verbindung – bist du online?");
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(r.status === 404 ? "KI-Funktion auf dem Server nicht gefunden – bitte neue Version in Vercel veröffentlichen" : j.error || "KI-Fehler " + r.status);
+  return j;
+}
+const aiNum = (v, lo, hi) => (typeof v === "number" && isFinite(v) && v >= lo && v <= hi ? v : null);
+const strHash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+const stbOpt = () => ({ ...STB_REP_DEF, ...ls.get("stbRepOpt", {}) });
+function stbAiPayload(Y, O, detail) {
+  const act = ls.get("stbActivity", {});
+  const cats = {}; for (const l of Y.used) { if (l.auto) continue; const k = `${l.amount > 0 ? "+" : "-"}${l.cat}`; const x = cats[k] || (cats[k] = { kategorie: l.cat, art: l.amount > 0 ? "Einnahme" : "Ausgabe", kz: l.kz, summe: 0, anzahl: 0 }); x.summe = r2e(x.summe + Math.abs(l.amount)); x.anzahl++; }
+  const d = {
+    jahr: Y.yr, kleinunternehmer: !!O.ku, taetigkeit: [STB_KINDS.find((k) => k[0] === act.kind)?.[1], act.text].filter(Boolean).join(" – ") || ls.get("stbBizDesc", "") || "nicht angegeben",
+    einordnung: act.info ? { einkunftsart: act.info.incomeType, sozialversicherung: act.info.socialInsurance } : null,
+    angaben: { arbeitsplatzpauschale: O.apl, kilometergeldAusFahrtenbuch: !!O.km, basispauschalierung6: !!O.basis6, kuPauschalierung: O.kuType },
+    e1a: Object.fromEntries(E1A_KZ.filter(([k]) => Y.byKz[k]?.n).map(([k, l]) => [k, { bezeichnung: l, summe: Y.byKz[k].sum, posten: Y.byKz[k].n }])),
+    einnahmen: Y.inc, ausgaben: Y.out, gewinn: Y.profit, grundfreibetrag: Y.gfb,
+    umsatz: Y.umsatz, umsatzQuelle: Y.invs.length ? "Ausgangsrechnungen" : "Erlöse laut Bank", kleinunternehmergrenzeVerwendet: Y.kuLimit,
+    pauschalierungsvergleich: Y.variants.map((v) => ({ variante: v.name, moeglich: v.ok, ausgaben: v.ba, gewinn: v.gewinn, nachGrundfreibetrag: v.steuerbasis })),
+    kategorien: Object.values(cats).sort((a, b) => b.summe - a.summe).slice(0, 40),
+    anlagen: Y.anl.map((x) => ({ bezeichnung: detail ? x.a.name : x.a.cat || "Anlagegut", kaufdatum: x.a.date || null, kosten: Number(x.a.price) || 0, nutzungsdauer: x.gwg ? "GWG" : x.nd || null, afa: x.afa })),
+    kilometergeld: { fahrten: Y.trips.length, km: Y.km, satz: Y.rate, betrag: Y.kmEur },
+    privat: { anzahl: Y.priv.length, saldo: r2e(sumBy(Y.priv, (x) => x.amount)) },
+    ohneBeleg: { anzahl: Y.noDoc.length, summe: r2e(-sumBy(Y.noDoc, (l) => l.amount)) }, unklarePrivatFirma: Y.unklar.length,
+  };
+  if (detail) d.buchungen = Y.used.filter((l) => !l.auto).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 250)
+    .map((l) => ({ datum: l.date, partner: l.partner, text: (l.text || "").slice(0, 80), kategorie: l.cat, kz: l.kz, betrag: l.amount, beleg: l.hasDoc }));
+  return d;
+}
+const stbAiHash = (Y, O) => strHash(JSON.stringify(stbAiPayload(Y, O, false)));
+const stbAiCache = (yr) => ls.get("stbAi:" + yr, null);
+let stbGateUi = null;
+/* vor jedem Export: gültige Prüfung vorhanden → weiter, sonst Dialog */
+async function stbAiGate(Y, O, what) {
+  const c = stbAiCache(Y.yr), h = stbAiHash(Y, O);
+  if (c?.hash === h && c.res && !(c.res.findings || []).some((f) => f.level === "error")) return true;
+  if (!stbGateUi) return true;
+  return new Promise((resolve) => stbGateUi({ Y, O, what, resolve }));
+}
+const AI_LVL = { error: ["⛔", "Fehler"], warn: ["⚠️", "Hinweis"], info: ["ℹ️", "Info"], ok: ["✅", "OK"] };
+function StbAiFindings({ res }) {
+  if (!res) return null;
+  const f = (res.findings || []).slice().sort((a, b) => ["error", "warn", "info", "ok"].indexOf(a.level) - ["error", "warn", "info", "ok"].indexOf(b.level));
+  return (<div className="aifind">
+    {res.summary && <p className="aisum">{res.summary}</p>}
+    {f.map((x, i) => <div key={i} className={"aif " + (x.level || "info")}><span>{AI_LVL[x.level]?.[0] || "ℹ️"}</span><div className="grow"><b>{x.title}</b>{x.area && <small className="muted"> · {x.area}</small>}
+      {x.detail && <small className="block">{x.detail}</small>}{x.fix && <small className="block muted">→ {x.fix}</small>}
+      {x.source && /^https?:/.test(x.source) && <a className="small" href={x.source} target="_blank" rel="noreferrer">Quelle</a>}</div></div>)}
+    {!!res.rules?.length && <details className="airules"><summary>Geprüfte Werte ({res.rules.length})</summary>{res.rules.map((r, i) => <div key={i} className="row small"><span className="grow">{r.name}</span><b>{r.value}</b></div>)}</details>}
+    {!!res.sources?.length && <details className="airules"><summary>Quellen ({res.sources.length})</summary>{res.sources.map((s, i) => <a key={i} className="small block one" href={s.url} target="_blank" rel="noreferrer">{s.title || s.url}</a>)}</details>}
+  </div>);
+}
+function StbAiGateHost() {
+  const [req, setReq] = useState(null), [st, setSt] = useState("choose"), [res, setRes] = useState(null), [err, setErr] = useState("");
+  const [detail, setDetail] = useLsState("stbAiDetail", false);
+  useEffect(() => { stbGateUi = (r) => { setReq(r); setRes(null); setErr(""); const c = stbAiCache(r.Y.yr); if (c?.res && c.hash === stbAiHash(r.Y, r.O)) { setRes(c.res); setSt("done"); } else setSt("choose"); }; return () => { stbGateUi = null; }; }, []);
+  if (!req) return null;
+  const close = (ok) => { req.resolve(!!ok); setReq(null); };
+  const run = async () => {
+    setSt("busy"); setErr("");
+    try { const r = await stbAiCall({ mode: "check", year: req.Y.yr, detail, data: stbAiPayload(req.Y, req.O, detail) });
+      ls.set("stbAi:" + req.Y.yr, { hash: stbAiHash(req.Y, req.O), detail, at: r.at || new Date().toISOString(), res: r }); window.dispatchEvent(new Event("findocu-stbai")); setRes(r); setSt("done");
+    } catch (e) { setErr(e.message); setSt("error"); }
+  };
+  const errs = (res?.findings || []).filter((f) => f.level === "error").length, warns = (res?.findings || []).filter((f) => f.level === "warn").length;
+  const exp = !!req.what;
+  return (<Win id="stbaigate" onClose={() => close(false)} small defW={560}>
+    <div className="panelhead"><b>🛡️ KI-Prüfung {req.Y.yr}</b><XBtn /></div>
+    <div className="aigate">
+      {st === "choose" && <>
+        <p className="small">{exp ? <>Vor dem Export von <b>{req.what}</b> prüft die KI deine Werte</> : "Die KI prüft deine Werte"} nach dem aktuellen österreichischen Steuerrecht und recherchiert dazu im Internet (bmf.gv.at, usp.gv.at, wko.at …). Dauer ca. 20–60 Sekunden.</p>
+        <small className="muted">Welche Daten darf die KI sehen?</small>
+        <label className={"aiopt" + (!detail ? " on" : "")}><input type="radio" checked={!detail} onChange={() => setDetail(false)} /><span><b>Nur Summen &amp; Kategorien</b><small className="muted block">Keine Namen, IBANs oder Kundendaten – reicht für die Rechtsprüfung.</small></span></label>
+        <label className={"aiopt" + (detail ? " on" : "")}><input type="radio" checked={detail} onChange={() => setDetail(true)} /><span><b>Auch einzelne Buchungen</b><small className="muted block">Genauere Prüfung einzelner Posten (bis 250 größte Buchungen, mit Partnername und Zweck).</small></span></label>
+        <div className="actions"><button className="btn primary" onClick={run}>{exp ? "Prüfen & exportieren" : "Jetzt prüfen"}</button>{exp && <button className="link" onClick={() => close(true)}>Ohne Prüfung exportieren</button>}<button className="link" onClick={() => close(false)}>Abbrechen</button></div>
+      </>}
+      {st === "busy" && <div className="aibusy"><span className="spin" /> <span>Recherchiere aktuelles Steuerrecht und prüfe deine Werte …</span></div>}
+      {st === "error" && <><p className="warn small">KI-Prüfung nicht möglich: {err}</p>
+        <div className="actions"><button className="btn" onClick={run}>Erneut versuchen</button>{exp && <button className="link" onClick={() => close(true)}>Ohne Prüfung exportieren</button>}<button className="link" onClick={() => close(false)}>Abbrechen</button></div></>}
+      {st === "done" && <>
+        <div className={"aihead " + (errs ? "error" : warns ? "warn" : "ok")}>{errs ? `⛔ ${errs} Fehler` : warns ? `⚠️ ${warns} Hinweis${warns === 1 ? "" : "e"}` : "✅ Keine Beanstandungen"}<small className="muted"> · geprüft {res?.at ? new Date(res.at).toLocaleString("de-AT", { dateStyle: "short", timeStyle: "short" }) : ""}</small></div>
+        <StbAiFindings res={res} />
+        <small className="muted block">KI-Einschätzung mit Websuche – keine Steuerberatung. Im Zweifel mit dem Steuerberater klären.</small>
+        <div className="actions">{exp ? <><button className="btn primary" onClick={() => close(true)}>{errs ? "Trotzdem exportieren" : "Exportieren"}</button><button className="link" onClick={() => close(false)}>Erst korrigieren</button></> : <button className="btn" onClick={() => close(false)}>Schließen</button>}
+          <button className="link" onClick={() => setSt("choose")}>Neu prüfen</button></div>
+      </>}
+    </div>
+  </Win>);
+}
+function StbActivity({ O, setOpt, year }) {
+  const [act, setAct] = useLsState("stbActivity", { kind: "", text: ls.get("stbBizDesc", ""), info: null });
+  const [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const info = act.info;
+  const run = async () => {
+    if (!act.kind && !act.text?.trim()) return setErr("Bitte Art wählen oder Tätigkeit beschreiben");
+    setBusy(true); setErr("");
+    try { const r = await stbAiCall({ mode: "activity", year, kind: STB_KINDS.find((k) => k[0] === act.kind)?.[1] || "", activity: act.text });
+      setAct((a) => ({ ...a, info: r }));
+      const ai = { basisRate: aiNum(r.basisRate, 0.01, 0.3), basisMax: aiNum(r.basisMax, 1000, 500000), basisLimit: aiNum(r.basisLimit, 10000, 5e6), kuRate: aiNum(r.kuRate, 0.05, 0.6), kuMax: aiNum(r.kuMax, 1000, 100000), kuLimit: aiNum(r.kuLimit, 20000, 500000), kuTolerance: aiNum(r.kuTolerance, 20000, 600000), year };
+      setOpt({ ...O, kuType: r.kuType === "dienst" ? "dienst" : r.kuType === "gewerbe" ? "gewerbe" : O.kuType, basis6: typeof r.basis6 === "boolean" ? r.basis6 : O.basis6, ai });
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (<>
+    <div className="grid2">
+      <label>Art der Tätigkeit<PSelect value={act.kind || ""} onChange={(e) => setAct({ ...act, kind: e.target.value })}><option value="">– bitte wählen –</option>{STB_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</PSelect></label>
+      <label>Beschreibung (eigene Worte)<input value={act.text || ""} placeholder="z. B. Elektroinstallationen für Private, Material vom Großhandel" onChange={(e) => setAct({ ...act, text: e.target.value })} /></label>
+    </div>
+    <div className="actions"><button className="btn" disabled={busy} onClick={run}>{busy ? "Recherchiere im Internet …" : info ? "🔎 Erneut mit KI prüfen" : "🔎 Mit KI prüfen & Werte übernehmen"}</button>{err && <small className="red">{err}</small>}</div>
+    {info && <div className="aiact">
+      <b>{info.activity || "Tätigkeit"}</b><small className="muted"> · KI-Ergebnis vom {info.at ? fmtDate(info.at.slice(0, 10)) : "–"}</small>
+      <div className="aiacg">
+        {info.incomeType && <span><small className="muted">Einkunftsart</small>{info.incomeType}</span>}
+        {info.socialInsurance && <span><small className="muted">Sozialversicherung</small>{info.socialInsurance}</span>}
+        {aiNum(info.basisRate, 0, 1) != null && <span><small className="muted">Basispauschalierung</small>{String(+(info.basisRate * 100).toFixed(1)).replace(".", ",")} %{info.basisMax ? ` (max. ${fmtMoney(info.basisMax)})` : ""}</span>}
+        {aiNum(info.kuRate, 0, 1) != null && <span><small className="muted">KU-Pauschalierung</small>{Math.round(info.kuRate * 100)} %{info.kuMax ? ` (max. ${fmtMoney(info.kuMax)})` : ""}</span>}
+        {info.kuLimit && <span><small className="muted">Kleinunternehmergrenze</small>{fmtMoney(info.kuLimit)}{info.kuTolerance ? ` · Toleranz ${fmtMoney(info.kuTolerance)}` : ""}</span>}
+      </div>
+      {!!info.branchPausch?.filter((b) => b?.name).length && <div className="small"><b>Branchenpauschalierung:</b> {info.branchPausch.filter((b) => b?.name).map((b) => `${b.name}${b.info ? " – " + b.info : ""}`).join(" · ")}</div>}
+      {!!info.notes?.length && <ul className="small ainotes">{info.notes.slice(0, 5).map((n, i) => <li key={i}>{n}</li>)}</ul>}
+      {!!info.sources?.length && <details className="airules"><summary>Quellen ({info.sources.length})</summary>{info.sources.map((s, i) => <a key={i} className="small block one" href={s.url} target="_blank" rel="noreferrer">{s.title || s.url}</a>)}</details>}
+      <small className="muted block">Übernommen in Pauschalierungsvergleich und Kleinunternehmergrenze. KI-Recherche – keine Steuerberatung.</small>
+      {O.ai && <button className="link small" onClick={() => setOpt({ ...O, ai: null })}>Eingebaute Standardwerte verwenden</button>}
+    </div>}
+  </>);
+}
+/* ---------- Kanzlei-Exporte (BMD, DATEV/RZL, Belege) ---------- */
+const KZ_KONTO_DEF = { "9040": "4000", "9090": "4800", "9100": "5010", "9110": "5800", "9120": "6000", "9150": "7200", "9160": "7340", "9170": "7320", "9180": "7400", "9190": "7500", "9200": "7650", "9220": "8280", "9225": "7780", "9230": "7790" };
+const STB_KZL_DEF = { berater: "", mandant: "", bank: "2800", kassa: "2700", privat: "9600", accKonto: {}, konten: {} };
+const stbKzl = () => { const x = ls.get("stbKanzlei", {}); return { ...STB_KZL_DEF, ...x, konten: { ...KZ_KONTO_DEF, ...(x.konten || {}) }, accKonto: { ...(x.accKonto || {}) } }; };
+const cp1252 = (s) => { const out = []; for (const ch of s) { const c = ch.codePointAt(0); if (c < 128 || (c >= 160 && c < 256)) out.push(c); else { const i = WIN_ANSI_EXTRA.indexOf(ch); const map = [0x80, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8e, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b, 0x9c, 0x9e, 0x9f]; out.push(i >= 0 ? map[i] : 63); } } return new Uint8Array(out); };
+const ansiCsv = (lines) => new Blob([cp1252(lines.join("\r\n") + "\r\n")], { type: "text/csv;charset=windows-1252" });
+const deAmt = (v) => Math.abs(v).toFixed(2).replace(".", ",");
+const q = (s) => `"${String(s ?? "").replace(/"/g, '""').replace(/[\r\n;]+/g, " ")}"`;
+// Buchungszeilen für den Export (ohne automatische Posten wie AfA/km-Geld/Pauschalen)
+function stbExportRows(Y) {
+  const k = stbKzl(), yy = Y.yr.slice(2); let n = 0;
+  return Y.lines.filter((l) => !l.auto && (l.kz !== E1A_SKIP || (l.kassa && /Privat/.test(l.cat)))).map((l) => {
+    const konto = l.kz === E1A_SKIP ? k.privat : k.konten[l.kz] || k.konten["9230"];
+    const gkonto = l.kassa ? k.kassa : (l.accId && k.accKonto[l.accId]) || k.bank;
+    n++;
+    return { ...l, konto, gkonto, belegnr: (l.kassa ? "K" : "B") + yy + String(n).padStart(4, "0"), sh: l.amount < 0 ? "S" : "H", sym: l.kassa ? "KA" : "BK" };
+  });
+}
+function datevCsv(Y) {
+  const k = stbKzl(), rows = stbExportRows(Y), now = new Date(), ts = now.toISOString().replace(/\D/g, "").slice(0, 17);
+  const head1 = ["\"EXTF\"", 700, 21, "\"Buchungsstapel\"", 12, ts, "", "\"FD\"", "\"FinDocu\"", "\"\"", k.berater || 1001, k.mandant || 1, Y.yr + "0101", 4, Y.yr + "0101", Y.yr + "1231", q(`FinDocu EAR ${Y.yr}`), "\"\"", 1, 0, 0, "\"EUR\"", "", "\"\"", "", "", "\"\"", "", "", "\"\"", "\"\""].join(";");
+  const head2 = "Umsatz (ohne Soll/Haben-Kz);Soll/Haben-Kennzeichen;WKZ Umsatz;Kurs;Basis-Umsatz;WKZ Basis-Umsatz;Konto;Gegenkonto (ohne BU-Schlüssel);BU-Schlüssel;Belegdatum;Belegfeld 1;Belegfeld 2;Skonto;Buchungstext";
+  const lines = rows.map((r) => [deAmt(r.amount), q(r.sh), q("EUR"), "", "", "", r.konto, r.gkonto, "", r.date.slice(8, 10) + r.date.slice(5, 7), q(r.belegnr), "", "", q((r.partner || r.text || r.cat).slice(0, 60))].join(";"));
+  return ansiCsv([head1, head2, ...lines]);
+}
+function bmdCsv(Y) {
+  const rows = stbExportRows(Y), d = (iso) => iso.split("-").reverse().join(".");
+  const head = "satzart;konto;gkonto;belegnr;belegdat;buchdat;buchsymbol;buchcode;betrag;prozent;steuer;steuercode;text;extbelegnr";
+  return ansiCsv([head, ...rows.map((r) => ["0", r.konto, r.gkonto, r.belegnr, d(r.date), d(r.date), r.sym, r.sh === "S" ? "1" : "2", deAmt(r.amount), "0", "0,00", "", q(((r.partner ? r.partner + " " : "") + (r.text || r.cat)).slice(0, 80)), q(r.beleg || "")].join(";"))]);
+}
+const STB_BL_HEAD = ["Belegnr.", "Datum", "Konto", "Gegenkonto", "S/H", "Betrag €", "Partner", "Text", "KZ", "Beleg-Datei"];
+async function belegeZip(Y, onStep) {
+  const rows = stbExportRows(Y), files = [], list = [];
+  for (const r of rows) {
+    let fn = "";
+    if (r.docId) { onStep?.(`Beleg ${r.belegnr} …`); const b = await db.getFile(r.docId).catch(() => null);
+      if (b) { const ext = b.type === "application/pdf" ? "pdf" : (b.type.split("/")[1] || "jpg").replace("jpeg", "jpg"); fn = `${r.belegnr} ${r.date} ${fileSafe(r.partner || r.cat).slice(0, 40)}.${ext}`; files.push({ name: "Belege/" + fn, data: b }); } }
+    list.push([r.belegnr, r.date, r.konto, r.gkonto, r.sh, r.amount, r.partner || "", r.text || "", r.kz === E1A_SKIP ? "–" : r.kz, fn || (r.hasDoc ? r.beleg || "Papierbeleg" : "FEHLT")]);
+  }
+  files.unshift({ name: "Belegliste.csv", data: csvBlob(STB_BL_HEAD, list) }, { name: "Belegliste.xlsx", data: xlsxBlob([{ name: "Belege", head: STB_BL_HEAD, rows: list }]) });
+  return zipBlob(files);
+}
+const STB_KZL_EXP = [
+  ["bmd", "BMD NTCS", "Buchungsimport-CSV (Satzart 0) für BMD – häufigste Kanzlei-Software in Österreich", "csv"],
+  ["datev", "DATEV-Format (auch RZL)", "EXTF-Buchungsstapel; RZL und BMD (DATEV-Schnittstelle) lesen dieses Format ein", "csv"],
+  ["belege", "Belege + Belegliste", "Alle Belege benannt nach Belegnummer, dazu Belegliste (Excel/CSV) – passt zu den Buchungsdateien", "zip"],
+  ["alle", "Alles zusammen", "BMD + DATEV + Belege + Jahresbericht in einer ZIP-Datei", "zip"]];
+async function stbKanzleiFile(k, Y, co, onStep) {
+  const base = `${fileSafe(co.name || "Firma")} ${Y.yr}`;
+  if (k === "bmd") return [{ name: `BMD Buchungsimport ${base}.csv`, data: bmdCsv(Y) }];
+  if (k === "datev") return [{ name: `EXTF_Buchungsstapel_${Y.yr}.csv`, data: datevCsv(Y) }];
+  if (k === "belege") return [{ name: `Belege ${base}.zip`, data: await belegeZip(Y, onStep) }];
+  const files = [{ name: `BMD Buchungsimport ${base}.csv`, data: bmdCsv(Y) }, { name: `EXTF_Buchungsstapel_${Y.yr}.csv`, data: datevCsv(Y) },
+    { name: `Jahresbericht ${Y.yr}.pdf`, data: await stbReport("gesamt", "pdf", Y, co) }, { name: `E1a Kennzahlen ${Y.yr}.xlsx`, data: await stbReport("e1a", "xlsx", Y, co) }];
+  const bz = await belegeZip(Y, onStep); files.push({ name: `Belege ${base}.zip`, data: bz });
+  return [{ name: `Kanzlei-Export ${base}.zip`, data: await zipBlob(files) }];
+}
+function StbKanzlei({ Y, O, co, notify, accounts }) {
+  const [cfg, setCfg] = useLsState("stbKanzlei", {});
+  const K = { ...STB_KZL_DEF, ...cfg, konten: { ...KZ_KONTO_DEF, ...(cfg.konten || {}) }, accKonto: { ...(cfg.accKonto || {}) } };
+  const [busy, setBusy] = useState(""), [showK, setShowK] = useState(false);
+  const rows = useMemo(() => stbExportRows(Y), [Y, JSON.stringify(cfg)]);
+  const skipped = Y.lines.filter((l) => !l.auto && l.kz === E1A_SKIP && !(l.kassa && /Privat/.test(l.cat))).length;
+  const accIds = [...new Set(Y.lines.filter((l) => l.accId).map((l) => l.accId))];
+  const go = async (k, label) => {
+    if (!(await stbAiGate(Y, O, label))) return;
+    setBusy(k); try { for (const f of await stbKanzleiFile(k, Y, co, (s) => setBusy(k + ":" + s))) saveBlob(f.data, f.name); notify(`${label} erstellt`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); }
+  };
+  return (<>
+    <div className="stbrlist">{STB_KZL_EXP.map(([k, t, d, f]) => <div key={k} className="stbritem"><span className="stbric">{{ bmd: "🟦", datev: "🟩", belege: "🗂️", alle: "📦" }[k]}</span>
+      <div className="grow"><b>{t}</b><small className="muted block">{d}</small></div>
+      <div className="stbrfmts"><button className={"btn sm" + (k === "alle" ? " primary" : "")} disabled={!!busy} onClick={() => go(k, t)}>{busy.startsWith(k) ? (busy.split(":")[1] || "…") : f.toUpperCase()}</button></div></div>)}</div>
+    <small className="muted">{rows.length} Buchungen · Gegenkonto Bank {K.bank}, Kassa {K.kassa}{skipped ? ` · ${skipped} Buchungen mit „nicht absetzen“ sind nicht enthalten (z. B. Anlagenkauf – bitte separat übergeben)` : ""}. Automatische Posten (AfA, Kilometergeld, Pauschalen) stehen im Jahresbericht, nicht im Buchungsexport.</small>
+    <button className="link" onClick={() => setShowK(!showK)}>{showK ? "▾" : "▸"} Kontenplan &amp; Kanzlei-Daten</button>
+    {showK && <div className="stbkzlcfg">
+      <div className="grid2"><label>DATEV Beraternummer<input inputMode="numeric" value={K.berater} placeholder="vom Steuerberater" onChange={(e) => setCfg({ ...cfg, berater: e.target.value.replace(/\D/g, "") })} /></label>
+        <label>DATEV Mandantennummer<input inputMode="numeric" value={K.mandant} placeholder="vom Steuerberater" onChange={(e) => setCfg({ ...cfg, mandant: e.target.value.replace(/\D/g, "") })} /></label></div>
+      <div className="grid3"><label>Bank<input value={K.bank} onChange={(e) => setCfg({ ...cfg, bank: e.target.value })} /></label><label>Kassa<input value={K.kassa} onChange={(e) => setCfg({ ...cfg, kassa: e.target.value })} /></label><label>Privat<input value={K.privat} onChange={(e) => setCfg({ ...cfg, privat: e.target.value })} /></label></div>
+      {accIds.length > 1 && <><small className="muted">Eigenes Konto je Bankkonto (leer = {K.bank})</small>
+        <div className="grid3">{accIds.map((id) => <label key={id}>{accounts.find((a) => a.id === id)?.name || "Konto"}<input value={K.accKonto[id] || ""} placeholder={K.bank} onChange={(e) => setCfg({ ...cfg, accKonto: { ...K.accKonto, [id]: e.target.value } })} /></label>)}</div></>}
+      <small className="muted">Sachkonto je E1a-Kennzahl (Vorschlag nach dem österreichischen Einheitskontenrahmen – mit deinem Steuerberater abstimmen)</small>
+      <div className="stbkzk">{E1A_KZ.filter(([kz]) => KZ_KONTO_DEF[kz]).map(([kz, l]) => <label key={kz}><span><b>{kz}</b> {l}</span><input value={K.konten[kz]} onChange={(e) => setCfg({ ...cfg, konten: { ...(cfg.konten || {}), [kz]: e.target.value } })} /></label>)}</div>
+      {(cfg.konten || cfg.bank) && <button className="link small" onClick={() => setCfg({ berater: cfg.berater, mandant: cfg.mandant })}>Kontenplan zurücksetzen</button>}
+    </div>}
+  </>);
+}
+function StbAiStatus({ Y, O }) {
+  const [, bump] = useState(0);
+  useEffect(() => { const f = () => bump((n) => n + 1); window.addEventListener("findocu-stbai", f); return () => window.removeEventListener("findocu-stbai", f); }, []);
+  const c = stbAiCache(Y.yr), fresh = c && c.hash === stbAiHash(Y, O), f = c?.res?.findings || [];
+  const errs = f.filter((x) => x.level === "error").length, warns = f.filter((x) => x.level === "warn").length;
+  return (<>
+    <div className={"aihead " + (!c ? "" : errs ? "error" : warns ? "warn" : "ok")}>{!c ? "Noch nicht geprüft" : `${errs ? `⛔ ${errs} Fehler` : warns ? `⚠️ ${warns} Hinweis${warns === 1 ? "" : "e"}` : "✅ Keine Beanstandungen"}`}
+      {c && <small className="muted"> · {new Date(c.at).toLocaleString("de-AT", { dateStyle: "short", timeStyle: "short" })}{c.detail ? " · mit Einzelbuchungen" : " · nur Summen"}{fresh ? "" : " · Zahlen haben sich seither geändert"}</small>}</div>
+    {c && <StbAiFindings res={c.res} />}
+    <div className="actions"><button className="btn" onClick={() => stbGateUi?.({ Y, O, what: "", resolve: () => bump((n) => n + 1) })}>{c ? "Neu prüfen" : "🛡️ Jetzt prüfen"}</button></div>
+    <small className="muted">Läuft automatisch vor jedem Export – neu geprüft wird nur, wenn sich die Zahlen geändert haben.</small>
+  </>);
 }
 const STB_TABS = [["monate", "🚦", "Monate"], ["auszuege", "📄", "Kontoauszüge"], ["pruefen", "🔎", "Prüfen"], ["fragen", "❓", "Klärungsliste"], ["berichte", "📑", "Berichte"], ["paket", "📦", "Paket"], ["setup", "⚙︎", "Einstellungen"]];
 function stbData(txs, accounts, docs) {
@@ -8304,7 +8548,8 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
       {sec === "auszuege" && auszuege}
       {sec === "pruefen" && pruefen}
       {sec === "fragen" && fragen}
-      {sec === "berichte" && <StbReports D={D} notify={notify} setTab={setTab} />}
+      {sec === "berichte" && <StbReports D={D} notify={notify} setTab={setTab} accounts={accounts} />}
+      <StbAiGateHost />
       {sec === "paket" && paket}
       {sec === "setup" && setup}
       {impFiles[0] && <StmtImportWin key={impFiles[0].name + impFiles.length} file={impFiles[0]} accounts={accounts} txs={txs} getTxs={getTxs} importTxs={importTxs} saveDoc={saveDoc} updateTxs={updateTxs} categories={categories} token={token} notify={notify}
@@ -8335,7 +8580,7 @@ function AskCard({ r, updateTx, openTx }) {
 }
 /* Steuerberater-Paket: alles für einen Zeitraum in einer ZIP-Datei */
 const STB_PARTS = [["uebersicht", "📋 Übersicht (erste Seite)"], ["auszuege", "📄 Kontoauszüge, markiert"], ["buchungen", "📊 Buchungsliste Firma (Excel + CSV)"], ["belege", "🧾 Belege zu Firmenbuchungen"],
-  ["rechnungen", "📤 Ausgangsrechnungen + offene Posten"], ["ear", "📈 Einnahmen-Ausgaben-Rechnung (Jahr)"], ["fahrtenbuch", "🚗 Fahrtenbuch"], ["kassa", "💶 Kassabuch"], ["anlagen", "🛡️ Anlagen (Besitz „Firma“)"], ["klaerung", "❓ Klärungsliste + fehlende Belege"]];
+  ["rechnungen", "📤 Ausgangsrechnungen + offene Posten"], ["ear", "📈 Einnahmen-Ausgaben-Rechnung (Jahr)"], ["fahrtenbuch", "🚗 Fahrtenbuch"], ["kassa", "💶 Kassabuch"], ["anlagen", "🛡️ Anlagen (Besitz „Firma“)"], ["klaerung", "❓ Klärungsliste + fehlende Belege"], ["kanzlei", "🏛️ Buchungsexport BMD + DATEV/RZL (Jahr)"], ["berichte", "📑 Jahresbericht + E1a-Kennzahlen"]];
 function stbPeriods() {
   const y = +todayISO().slice(0, 4), out = [];
   for (const yy of [y, y - 1]) { out.push([String(yy), `Jahr ${yy}`]); for (let q = 4; q >= 1; q--) out.push([`${yy}-Q${q}`, `${q}. Quartal ${yy}`]); }
@@ -8358,6 +8603,8 @@ function StbPackage({ D, txs, accounts, docs, notify, openAsks }) {
   const stm = D.stmts.filter((d) => (d.stmt.from || "") <= to && (d.stmt.to || "") >= from);
   const label = per.find((x) => x[0] === p)?.[1] || p, tag = p.replace(/\s/g, "");
   async function build() {
+    const O = stbOpt(), Yp = stbYearData(year, D, O, ls.get("stbKzMap", {}));
+    if (!(await stbAiGate(Yp, O, `Steuerberater-Paket ${label}`))) return;
     setBusy("Paket wird erstellt …");
     try {
       const files = [], co = { ...CO_DEFAULT, ...ls.get("company", {}) }, list = ls.get("invoices", []), fb = ls.get("fbook", FB_EMPTY);
@@ -8404,6 +8651,8 @@ function StbPackage({ D, txs, accounts, docs, notify, openAsks }) {
         const ql = D.rows.filter((r) => r.t.ask && (r.t.ask.state !== "geklärt" || inP(r.t.date)));
         if (ql.length) files.push({ name: "10 Klärungsliste.pdf", data: await tablePdf({ title: "Klärungsliste", landscape: true, columns: [{ label: "Datum", w: 1 }, { label: "Empfänger", w: 2.2 }, { label: "Betrag €", w: 1, align: "right" }, { label: "Frage", w: 4 }, { label: "Antwort", w: 3.2 }, { label: "Status", w: 1 }], rows: ql.map((r) => [r.t.date, r.t.counterparty || "", r.t.amount, r.t.ask.q, r.t.ask.a || "", r.t.ask.state]) }) });
       }
+      if (parts.kanzlei) { files.push({ name: `11 Buchungsexport/BMD Buchungsimport ${year}.csv`, data: bmdCsv(Yp) }, { name: `11 Buchungsexport/EXTF_Buchungsstapel_${year}.csv`, data: datevCsv(Yp) }); }
+      if (parts.berichte) { files.push({ name: `12 Jahresbericht ${year}.pdf`, data: await stbReport("gesamt", "pdf", Yp, co) }, { name: `12 E1a Kennzahlen ${year}.xlsx`, data: await stbReport("e1a", "xlsx", Yp, co) }); }
       setBusy("Packe ZIP …");
       saveBlob(await zipBlob(files), `Steuerberater ${fileSafe(co.name || "")} ${tag}.zip`.replace(/\s+/g, " "));
       notify(`Paket mit ${files.length} Dateien erstellt`);
@@ -9964,7 +10213,10 @@ function useFitHeight(ref, min = 200, force = false, phone = false, phoneMin = 0
 }
 function useLsState(key, def) {
   const [v, setV] = useState(() => ls.get(key, def));
-  const set = (f) => setV((cur) => { const n = typeof f === "function" ? f(cur) : f; ls.set(key, n); return n; });
+  const me = useRef(null); if (!me.current) me.current = {};
+  const set = (f) => setV((cur) => { const n = typeof f === "function" ? f(cur) : f; ls.set(key, n); queueMicrotask(() => window.dispatchEvent(new CustomEvent("findocu-ls", { detail: { key, src: me.current } }))); return n; });
+  // andere Stellen, die denselben Schlüssel bearbeiten, bleiben synchron (z. B. Logo in Firmendaten und Rechnungsdesign)
+  useEffect(() => { const h = (e) => { if (e.detail?.key === key && e.detail.src !== me.current) setV(ls.get(key, def)); }; window.addEventListener("findocu-ls", h); return () => window.removeEventListener("findocu-ls", h); }, [key]);
   return [v, set];
 }
 
@@ -10001,6 +10253,40 @@ const fillDun = (t, inv, r) => String(t || "").replace(/\{nummer\}/g, inv.number
   .replace(/\{frist\}/g, fmtDate(r.due)).replace(/\{faellig\}/g, fmtDate(invDue(inv))).replace(/\{kunde\}/g, inv.customer?.name || "");
 const hexRgb = (h, rgb) => { const m = String(h || "#0b63f6").replace("#", ""); const n = parseInt(m.length === 3 ? m.split("").map((x) => x + x).join("") : m, 16) || 0x0b63f6; return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
 
+/* v0.99.22: eigenes Briefpapier (PDF oder Bild) als Hintergrund für Rechnungen, Angebote, Mahnungen */
+const LH_KEY = "invLetterhead";
+const letterhead = () => ls.get(LH_KEY, null);
+const lhEvt = () => window.dispatchEvent(new Event("findocu-lh"));
+function useLhVer() { const [v, setV] = useState(0); useEffect(() => { const f = () => setV((n) => n + 1); window.addEventListener("findocu-lh", f); return () => window.removeEventListener("findocu-lh", f); }, []); return v; }
+const dataUrlBytes = (u) => Uint8Array.from(atob(String(u).split(",")[1] || ""), (c) => c.charCodeAt(0));
+const fileToDataUrl = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
+async function readLetterhead(file) {
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  if (isPdf) {
+    const { PDFDocument } = await import("pdf-lib");
+    const src = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+    const n = Math.min(2, src.getPageCount());
+    // nur die ersten 2 Seiten behalten (Seite 1 = erste Seite, Seite 2 = Folgeseiten)
+    const out = await PDFDocument.create(); (await out.copyPages(src, [...Array(n).keys()])).forEach((pg) => out.addPage(pg));
+    const bytes = await out.save();
+    if (bytes.length <= 1_200_000) return { type: "pdf", data: "data:application/pdf;base64," + await blobToBase64(new Blob([bytes], { type: "application/pdf" })), pages: n, name: file.name };
+    // zu groß → als Bild (ca. 150 dpi)
+    const imgs = await blobToImages(new Blob([bytes], { type: "application/pdf" }), 1240, 2);
+    return { type: "img", data: imgs[0], data2: imgs[1] || "", pages: imgs.length, name: file.name, raster: true };
+  }
+  const img = await loadImage(file);
+  const sc = Math.min(1, 1240 / img.width), cv = document.createElement("canvas");
+  cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+  const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
+  return { type: "img", data: cv.toDataURL("image/jpeg", 0.85), pages: 1, name: file.name };
+}
+async function readLogoFile(file) {
+  const img = await loadImage(file);
+  const sc = Math.min(1, 900 / img.width, 360 / img.height), cv = document.createElement("canvas");
+  cv.width = Math.max(1, Math.round(img.width * sc)); cv.height = Math.max(1, Math.round(img.height * sc)); cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+  return cv.toDataURL("image/png");
+}
+
 /* Rechnung/Mahnung als Vorschau direkt unter der Zeile (wie bei Dokumenten) */
 async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   co = { ...CO_DEFAULT, ...co };
@@ -10009,10 +10295,22 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   const pdf = await PDFDocument.create();
   const FF = { helvetica: ["Helvetica", "HelveticaBold"], times: ["TimesRoman", "TimesRomanBold"], courier: ["Courier", "CourierBold"] }[D.font] || ["Helvetica", "HelveticaBold"];
   const F = await pdf.embedFont(StandardFonts[FF[0]]), B = await pdf.embedFont(StandardFonts[FF[1]]);
-  const W = 595.28, H = 841.89, M = 56, grey = rgb(0.38, 0.4, 0.45), dark = rgb(0.1, 0.11, 0.14), line = rgb(0.82, 0.83, 0.86), white = rgb(1, 1, 1);
+  const W = 595.28, H0 = 841.89, M = 56, grey = rgb(0.38, 0.4, 0.45), dark = rgb(0.1, 0.11, 0.14), line = rgb(0.82, 0.83, 0.86), white = rgb(1, 1, 1);
+  // Briefpapier
+  const LH = D.useLH === false ? null : (design.lh !== undefined ? design.lh : letterhead());
+  let lhBg = [null, null];
+  if (LH?.data) try {
+    if (LH.type === "pdf") { const src = await PDFDocument.load(dataUrlBytes(LH.data), { ignoreEncryption: true }); const n = src.getPageCount(); lhBg = await pdf.embedPdf(src, n > 1 ? [0, 1] : [0]); }
+    else { const emb = async (u) => (u ? (u.startsWith("data:image/png") ? pdf.embedPng(dataUrlBytes(u)) : pdf.embedJpg(dataUrlBytes(u))) : null); lhBg = [await emb(LH.data), await emb(LH.data2)]; }
+  } catch { lhBg = [null, null]; }
+  const hasLH = !!lhBg[0], lhHead = hasLH && D.lhHideHead !== false, lhFoot = hasLH && D.lhHideFooter !== false;
+  const mm = 2.8346, shift = hasLH ? (Number(D.lhTop) || 0) * mm : 0, botMin = hasLH && lhFoot ? Math.max(40, (Number(D.lhBottom ?? 25)) * mm) : 120;
+  const H = H0 - shift;   // alle Kopf-Positionen rutschen um „shift“ nach unten
+  const drawBg = (pg, first) => { const f = lhBg[0], s2 = D.lhFollow === "none" ? null : D.lhFollow === "same" ? f : lhBg[1] || f; const b = first ? f : s2; if (!b) return;
+    if (LH.type === "pdf") pg.drawPage(b, { x: 0, y: 0, width: W, height: H0 }); else pg.drawImage(b, { x: 0, y: 0, width: W, height: H0 }); };
   const acc = hexRgb(D.accent, rgb), accSoft = (() => { const c = acc; return rgb(1 - (1 - c.red) * 0.12, 1 - (1 - c.green) * 0.12, 1 - (1 - c.blue) * 0.12); })();
   const fs = Number(D.fontSize) || 9.5;
-  let page = pdf.addPage([W, H]);
+  let page = pdf.addPage([W, H0]); drawBg(page, true);
   const txt = (s, x, y, o = {}) => page.drawText(pdfSafe(s), { x, y, size: o.size || 10, font: o.bold ? B : F, color: o.color || dark });
   const width = (s, o = {}) => (o.bold ? B : F).widthOfTextAtSize(pdfSafe(s), o.size || 10);
   const right = (s, xr, y, o = {}) => txt(s, xr - width(s, o), y, o);
@@ -10027,7 +10325,7 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   };
   const hr = (y, col = line) => page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.6, color: col });
   const footer = () => {
-    if (!D.showFooter) return;
+    if (!D.showFooter || lhFoot) return;
     hr(62, D.headerBand ? acc : line);
     const cols = [
       [co.name, co.owner && co.owner !== co.name ? co.owner : "", co.street, [co.zip, co.city].filter(Boolean).join(" ")],
@@ -10040,10 +10338,10 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   };
 
   // Kopf
-  if (D.headerBand) page.drawRectangle({ x: 0, y: H - 112, width: W, height: 112, color: acc });
+  if (D.headerBand && !lhHead) page.drawRectangle({ x: 0, y: H - 112, width: W, height: 112, color: acc });
   const logoH = Math.max(24, Math.min(110, Number(D.logoSize) || 56));
   let logoDrawn = false;
-  if (co.logo) {
+  if (co.logo && !lhHead) {
     try {
       const bytes = Uint8Array.from(atob(co.logo.split(",")[1]), (c) => c.charCodeAt(0));
       const img = co.logo.startsWith("data:image/png") ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
@@ -10053,7 +10351,7 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
       if (D.headerBand && co.name) (D.logoPos === "rechts" ? txt : (s, x2, y2, o) => right(s, W - M, y2, o))(co.name, M, H - 70, { bold: true, size: 15, color: white });
     } catch {}
   }
-  if (!logoDrawn && co.name) {
+  if (!logoDrawn && co.name && !lhHead) {
     const o = { bold: true, size: 15, color: D.headerBand ? white : D.accentTitle ? acc : dark };
     if (D.logoPos === "links") txt(co.name, M, H - 70, o); else if (D.logoPos === "mitte") txt(co.name, (W - width(co.name, o)) / 2, H - 70, o); else right(co.name, W - M, H - 70, o);
   }
@@ -10102,7 +10400,7 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
     if (D.tableStyle === "schlicht") hr(y - 6, dark);
     y -= 22;
   };
-  const newPageIfNeeded = (need) => { if (y - need < 120) { footer(); page = pdf.addPage([W, H]); y = H - 70; head(); } };
+  const newPageIfNeeded = (need) => { if (y - need < botMin) { footer(); page = pdf.addPage([W, H0]); drawBg(page, false); y = (D.lhFollow === "none" ? H0 : H) - 70; head(); } };
   head();
   const rows = remind
     ? [{ text: `${docWord} ${inv.number} vom ${fmtDate(inv.date)}, fällig seit ${fmtDate(invDue(inv))}`, qty: 1, unit: "", price: invTotal({ ...inv, fee: 0 }) },
@@ -10166,7 +10464,7 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   for (const l of wrap(outro, W - 2 * M - 100, { size: fs + 0.5 })) { newPageIfNeeded(14); txt(l, M, y, { size: fs + 0.5 }); y -= 14; }
   txt(co.owner || co.name, M, y - 8, { size: fs + 0.5 });
   footer();
-  pdf.getPages().forEach((p, i, all) => { if (all.length > 1) p.drawText(`Seite ${i + 1} von ${all.length}`, { x: W - M - 60, y: 72, size: 7, font: F, color: grey }); });
+  pdf.getPages().forEach((p, i, all) => { if (all.length > 1) p.drawText(`Seite ${i + 1} von ${all.length}`, { x: W - M - 60, y: lhFoot ? Math.max(14, botMin - 16) : 72, size: 7, font: F, color: grey }); });
   return new Blob([await pdf.save()], { type: "application/pdf" });
 }
 const invFileName = (inv, remind) => safeName(`${remind ? remindName(remind.level) : inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"} ${inv.customer?.name || ""}`) + ".pdf";
@@ -10195,12 +10493,10 @@ function CompanyFields({ v, setV }) {
         {v.logo ? <img src={v.logo} alt="Logo" /> : <span className="muted small">Kein Logo</span>}
         <button className="btn sm" onClick={() => logoRef.current.click()}>{v.logo ? "Logo ändern" : "Logo hochladen"}</button>
         {v.logo && <button className="link red" onClick={() => setV({ ...v, logo: "" })}>Entfernen</button>}
-        <input ref={logoRef} type="file" accept="image/png,image/jpeg" hidden onChange={async (e) => {
+        <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/heic" hidden onChange={async (e) => {
           const file = e.target.files[0]; e.target.value = ""; if (!file) return;
-          const img = await loadImage(file).catch(() => null); if (!img) return alert("Bild konnte nicht gelesen werden");
-          const sc = Math.min(1, 600 / img.width, 240 / img.height), cv = document.createElement("canvas");
-          cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc); cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
-          setV({ ...v, logo: cv.toDataURL("image/png") });
+          const logo = await readLogoFile(file).catch(() => null); if (!logo) return alert("Bild konnte nicht gelesen werden");
+          setV({ ...v, logo });
         }} />
       </div>
     </fieldset>
@@ -11800,17 +12096,61 @@ function PdfPreview({ build, deps }) {
   }, deps);
   return <div className={"pdfprev" + (busy ? " busy" : "")}>{src ? <img src={src} alt="Vorschau" /> : <div className="dpload">Vorschau wird erstellt …</div>}</div>;
 }
+function OwnDesignCards({ D, set, co, setCo }) {
+  const lhVer = useLhVer(), lh = useMemo(() => letterhead(), [lhVer]);
+  const logoRef = useRef(), lhRef = useRef(), [busy, setBusy] = useState("");
+  const [lhImg, setLhImg] = useState("");
+  useEffect(() => { let dead = false; setLhImg(""); if (!lh?.data) return;
+    if (lh.type === "img") setLhImg(lh.data); else blobToImages(new Blob([dataUrlBytes(lh.data)], { type: "application/pdf" }), 300, 1).then((x) => !dead && setLhImg(x[0])).catch(() => {});
+    return () => { dead = true; }; }, [lh]);
+  const upLogo = async (file) => { setBusy("logo"); try { const logo = await readLogoFile(file); setCo((c) => ({ ...CO_DEFAULT, ...c, logo })); } catch { alert("Das Logo konnte nicht gelesen werden. Bitte PNG, JPG, WebP oder SVG verwenden."); } setBusy(""); };
+  const upLh = async (file) => { setBusy("lh"); try { const x = await readLetterhead(file); ls.set(LH_KEY, x); if (ls.get(LH_KEY, null)?.data !== x.data) throw new Error("Speicher voll");
+      set({ useLH: true }); lhEvt(); } catch (e) { alert("Das Briefpapier konnte nicht übernommen werden" + (/quota|voll/i.test(e.message || "") ? " – die Datei ist zu groß. Bitte eine kleinere PDF oder ein Bild verwenden." : ". Bitte eine PDF oder ein Bild (PNG/JPG) im A4-Format verwenden.")); } setBusy(""); };
+  const delLh = () => { if (!confirm("Eigenes Briefpapier entfernen?")) return; localStorage.removeItem(LH_KEY); ACT.dirty = true; lhEvt(); };
+  const drop = (fn) => ({ onDragOver: (e) => e.preventDefault(), onDrop: (e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) fn(f); } });
+  const seg = (k, opts) => <div className="seg">{opts.map(([v, l]) => <button key={v} className={(D[k] ?? opts[0][0]) === v ? "on" : ""} onClick={() => set({ [k]: v })}>{l}</button>)}</div>;
+  return (<div className="owndesign">
+    <div className="odcard" {...drop(upLogo)}>
+      <div className="odthumb logo">{co.logo ? <img src={co.logo} alt="Firmenlogo" /> : <span>🏷️</span>}</div>
+      <div className="grow"><b>Firmenlogo</b><small className="muted block">PNG mit transparentem Hintergrund ist ideal – auch JPG, WebP, SVG. Erscheint auf Rechnungen, Angeboten und Mahnungen.</small>
+        <div className="actions"><button className="btn sm" disabled={!!busy} onClick={() => logoRef.current.click()}>{busy === "logo" ? "…" : co.logo ? "Logo ändern" : "Logo hochladen"}</button>
+          {co.logo && <button className="link red" onClick={() => setCo((c) => ({ ...CO_DEFAULT, ...c, logo: "" }))}>Entfernen</button>}</div></div>
+      <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/heic" hidden onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; f && upLogo(f); }} />
+    </div>
+    <div className="odcard" {...drop(upLh)}>
+      <div className="odthumb a4">{lhImg ? <img src={lhImg} alt="Briefpapier" /> : <span>📄</span>}</div>
+      <div className="grow"><b>Eigenes Rechnungsdesign (Briefpapier)</b><small className="muted block">{lh ? `${lh.name || "Briefpapier"} · ${lh.type === "pdf" ? "PDF" : "Bild"}${lh.pages > 1 ? " · 2 Seiten (Seite 2 für Folgeseiten)" : ""}${lh.raster ? " · als Bild übernommen (Datei war groß)" : ""}` : "Lade dein Briefpapier als PDF oder Bild (A4) hoch – Kopf, Fußzeile und Hintergrund kommen dann von dir, FinDocu schreibt Empfänger, Positionen und Summen darüber. Hat die PDF 2 Seiten, wird Seite 2 für Folgeseiten verwendet."}</small>
+        <div className="actions"><button className="btn sm" disabled={!!busy} onClick={() => lhRef.current.click()}>{busy === "lh" ? "Wird übernommen …" : lh ? "Ersetzen" : "Briefpapier hochladen"}</button>
+          {lh && <button className="link red" onClick={delLh}>Entfernen</button>}</div></div>
+      <input ref={lhRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp,image/heic" hidden onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; f && upLh(f); }} />
+    </div>
+    {lh && <div className="odopts">
+      <label className="check mini"><input type="checkbox" checked={D.useLH !== false} onChange={(e) => set({ useLH: e.target.checked })} /> Briefpapier verwenden</label>
+      {D.useLH !== false && <>
+        <label className="check mini"><input type="checkbox" checked={D.lhHideHead !== false} onChange={(e) => set({ lhHideHead: e.target.checked })} /> Eigenen Kopf verwenden (Logo/Firmenname von FinDocu ausblenden)</label>
+        <label className="check mini"><input type="checkbox" checked={D.lhHideFooter !== false} onChange={(e) => set({ lhHideFooter: e.target.checked })} /> Eigene Fußzeile verwenden (Firmendaten-Fußzeile ausblenden)</label>
+        <label className="rangel">Inhalt nach unten <input type="range" min="0" max="60" value={D.lhTop || 0} onChange={(e) => set({ lhTop: Number(e.target.value) })} /><b>{D.lhTop || 0} mm</b></label>
+        {D.lhHideFooter !== false && <label className="rangel">Freier Rand unten <input type="range" min="15" max="70" value={D.lhBottom ?? 25} onChange={(e) => set({ lhBottom: Number(e.target.value) })} /><b>{D.lhBottom ?? 25} mm</b></label>}
+        <small className="muted">Folgeseiten</small>{seg("lhFollow", [["auto", lh.pages > 1 ? "Seite 2 der PDF" : "Wie Seite 1"], ["same", "Wie Seite 1"], ["none", "Ohne Briefpapier"]].filter((x, i, a) => !(lh.pages <= 1 && x[0] === "same")))}
+      </>}
+    </div>}
+  </div>);
+}
 function InvoiceDesignSettings() {
   const [d, setD] = useLsState("invoiceDesign", {});
+  const [coRaw, setCo] = useLsState("company", {});
+  const lhVer = useLhVer();
   const D = { ...DESIGN_DEF, ...d };
-  const co = { ...CO_DEFAULT, name: "Deine Firma e.U.", street: "Musterstraße 1", zip: "4020", city: "Linz", iban: "AT61 1904 3002 3457 3201", ...ls.get("company", {}) };
+  const co = { ...CO_DEFAULT, name: "Deine Firma e.U.", street: "Musterstraße 1", zip: "4020", city: "Linz", iban: "AT61 1904 3002 3457 3201", ...coRaw };
   const set = (p) => setD((x) => ({ ...x, ...p }));
   const tog = (k, l) => <label className="check mini"><input type="checkbox" checked={!!D[k]} onChange={(e) => set({ [k]: e.target.checked })} /> {l}</label>;
   const seg = (k, opts) => <div className="seg">{opts.map(([v, l]) => <button key={v} className={D[k] === v ? "on" : ""} onClick={() => set({ [k]: v })}>{l}</button>)}</div>;
   return (
     <div className="designmod">
       <div className="dmctl">
-        <small className="muted">Vorlage</small>
+        <small className="muted">Eigenes Design</small>
+        <OwnDesignCards D={D} set={set} co={co} setCo={setCo} />
+        <small className="muted">Vorlage{letterhead() && D.useLH !== false ? " (wird über dem Briefpapier verwendet)" : ""}</small>
         <div className="presetrow">{Object.entries(INV_PRESETS).map(([k, p]) => (
           <button key={k} className={"presetcard" + (D.preset === k ? " on" : "")} onClick={() => { const { label, ...pp } = p; setD({ ...d, preset: k, ...pp, font: p.font || "helvetica" }); }}>
             <span className={"pcmini pc-" + k} style={{ "--a": D.accent }}><i /><i /><i /></span>{p.label}</button>))}</div>
@@ -11841,7 +12181,7 @@ function InvoiceDesignSettings() {
           <button className="link" onClick={() => confirm("Design auf Standard (Klassisch) zurücksetzen?") && setD({})}>Zurücksetzen</button>
         </div>
       </div>
-      <PdfPreview build={() => buildInvoicePdf(SAMPLE_INV(), co, null, D)} deps={[JSON.stringify(D)]} />
+      <PdfPreview build={() => buildInvoicePdf(SAMPLE_INV(), co, null, D)} deps={[JSON.stringify(D), lhVer, co.logo]} />
     </div>
   );
 }
@@ -16218,4 +16558,39 @@ nav.bottom>button.navheadbtn:hover{color:var(--txt)!important}
 .stbritem input[type=checkbox]{width:18px!important;height:18px;flex:none;margin:0}
 .stbritem>.grow{flex:1 1 0;min-width:0}
 .stbku>.row{flex-wrap:wrap;gap:4px 8px}
+
+/* v0.99.22: eigenes Rechnungsdesign & Logo */
+.owndesign{display:flex;flex-direction:column;gap:8px}
+.odcard{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px dashed var(--line);border-radius:14px;background:var(--card)}
+.odcard .actions{margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.odthumb{flex:none;display:grid;place-items:center;background:#fff;border-radius:8px;border:1px solid var(--line);overflow:hidden;font-size:24px}
+.odthumb.logo{width:88px;height:56px;padding:6px}.odthumb.a4{width:56px;height:79px}
+.odthumb img{width:100%;height:100%;object-fit:contain;display:block}
+.odopts{display:flex;flex-direction:column;gap:6px;padding:4px 2px 6px}
+
+/* v0.99.23: KI-Prüfung, Tätigkeit, Kanzlei-Exporte */
+.stbprev{display:inline-grid;place-items:center;min-width:38px}.stbprev svg{width:17px;height:17px}
+.aigate{display:flex;flex-direction:column;gap:10px;padding:4px 2px}
+.aiopt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;cursor:pointer}
+.aiopt.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 7%,transparent)}.aiopt input{width:auto!important;margin-top:3px}
+.aibusy{display:flex;align-items:center;gap:10px;padding:24px 4px}
+.aibusy .spin{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--acc);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.aihead{font-weight:600;padding:8px 12px;border-radius:10px;background:var(--card2)}
+.aihead.ok{background:color-mix(in srgb,#2fb36d 14%,transparent)}.aihead.warn{background:color-mix(in srgb,#e0a030 16%,transparent)}.aihead.error{background:color-mix(in srgb,#e05050 16%,transparent)}
+.aihead small{font-weight:400}
+.aifind{display:flex;flex-direction:column;gap:6px}.aisum{margin:0;font-size:14px}
+.aif{display:flex;gap:10px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);font-size:13.5px}
+.aif.error{border-color:color-mix(in srgb,#e05050 55%,transparent)}.aif.warn{border-color:color-mix(in srgb,#e0a030 55%,transparent)}
+.aif small.block{margin-top:2px}
+.airules summary{cursor:pointer;font-size:13px;color:var(--mut);padding:4px 0}.airules .row{gap:10px;padding:2px 0}
+.aiact{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card)}
+.aiacg{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.aiacg span{display:flex;flex-direction:column;font-size:13.5px;padding:8px 10px;border-radius:10px;background:var(--card2)}
+.ainotes{margin:0;padding-left:18px}
+.stbkzlcfg{display:flex;flex-direction:column;gap:8px;padding:8px 0}
+.stbkzlcfg .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:600px){.stbkzlcfg .grid3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.stbkzk{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 12px}
+.stbkzk label{display:flex;align-items:center;gap:8px;font-size:12.5px}.stbkzk label span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.stbkzk input{width:72px!important;flex:none}
 `;

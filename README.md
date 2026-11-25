@@ -2,6 +2,20 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.23 – Steuerberater: KI-Prüfung, Vorschau & Kanzlei-Exporte
+- Berichte mit Vorschau (Auge) im Popup
+- „Deine Tätigkeit“: Art wählen + eigene Beschreibung, KI recherchiert im Internet Einkunftsart, Sozialversicherung, Pauschalierungssätze und Grenzen und übernimmt sie in die Berichte
+- KI-Prüfung nach aktuellem österreichischem Steuerrecht (mit Websuche) automatisch vor jedem Export und vor dem Steuerberater-Paket; wählbar: nur Summen oder auch Einzelbuchungen; Ergebnis wird gemerkt, neu geprüft nur bei geänderten Zahlen
+- Export für die Kanzlei-Software: BMD NTCS Buchungsimport (CSV), DATEV-Buchungsstapel (EXTF, auch für RZL), Belege + Belegliste, alles zusammen als ZIP; Kontenplan je E1a-Kennzahl anpassbar
+- Steuerberater-Paket: zusätzlich Buchungsexport BMD/DATEV und Jahresbericht
+- Neuer Server-Endpunkt /api/tax (braucht ANTHROPIC_API_KEY in Vercel)
+
+## v0.99.22 – Eigenes Rechnungsdesign & Firmenlogo
+- Einstellungen › Rechnungsdesign › „Eigenes Design“: Firmenlogo hochladen (PNG, JPG, WebP, SVG) und eigenes Briefpapier als PDF oder Bild (A4)
+- Briefpapier liegt im Hintergrund von Rechnungen, Angeboten und Mahnungen; eigener Kopf/eigene Fußzeile, Inhalt verschiebbar, freier Rand unten einstellbar
+- Folgeseiten: Seite 2 der PDF, wie Seite 1 oder ohne Briefpapier
+- Logo in Firmendaten und Rechnungsdesign bleibt synchron
+
 ## v0.99.21 – Steuerberater: Berichte
 - Neuer Reiter „Berichte“ im Steuerberater-Bereich (Österreich, Stand 2026): Jahresbericht, Beilage E 1a nach Kennzahlen, Einnahmen-Ausgaben-Journal, Pauschalierungsvergleich, Umsatz & Kleinunternehmergrenze, Anlagenverzeichnis mit AfA, Wareneingangsbuch, Kilometergeld, Privatentnahmen/-einlagen, offene Posten, fehlende Belege – als PDF, Excel oder CSV, ausgewählte als ZIP
 - Zuordnung Kategorien → E1a-Kennzahlen anpassbar; Angaben zu Arbeitsplatzpauschale, Kilometergeld und Tätigkeit
