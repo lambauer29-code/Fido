@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.26 – Kontoauszug: fixierte Leiste & Zoom
+- Kontoauszug-Ansicht: Titel und Leiste (Firma/Privat/unklar, Ansicht, KI, Abgleichen) bleiben beim Scrollen oben fixiert
+- Zoom im PDF (50–400 %), auch in der Ansicht „Beides“; Strg + Mausrad / Trackpad-Zoom; Zoom wird gemerkt
+- Einstellungen › Darstellung › „Kontoauszug: Zoom im PDF“: Zoom in der Leiste oder schwebender Zoom unten rechts mit Lupe
+
 ## v0.99.25 – Kontoauszüge: Ablagefeld
 - Kontoauszüge: Ablagefeld (Dateien oder Ordner hineinziehen oder klicken) statt „＋ Kontoauszug hochladen“
 - Auszug hinzufügen, Auszug bearbeiten und die Vorschau schließen nicht mehr bei einem Klick daneben (✕ oder Esc schließt)

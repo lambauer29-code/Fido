@@ -6954,6 +6954,12 @@ const cmpApply = (v) => { const c = document.documentElement.classList; c.toggle
 const cmpNorm = (v) => v === "klein" ? "klein" : "zahl";
 if (typeof document !== "undefined") cmpApply(cmpNorm(ls.get("cmpTest", "zahl")));
 const useCmp = () => { const [v] = useFlag("cmpTest", "zahl"); const ph = useMedia("(max-width:700px)"); return ph ? cmpNorm(v) : "aus"; };
+const STMT_ZOOM_UI = [["leiste", "Zoom in der Leiste", "− / + und „Breite“ oben in der fixierten Leiste"], ["schwebend", "Schwebender Zoom + Lupe", "Zoom-Knöpfe unten rechts im PDF, Lupe beim Darüberfahren"]];
+function StmtZoomSetting() {
+  const [v, set] = useFlag("stmtZoomUi", "leiste");
+  return <label className="switchrow"><span><b>Kontoauszug: Zoom im PDF</b><small className="muted block">Wie du in der Kontoauszug-Ansicht (PDF / Beides) vergrößerst. Strg + Mausrad bzw. Zwei-Finger-Zoom am Trackpad geht immer.</small></span>
+    <PickMenu label={(STMT_ZOOM_UI.find(([k]) => k === v) || STMT_ZOOM_UI[0])[1]} title="Zoom" items={STMT_ZOOM_UI.map(([k, t, sub]) => ({ k, title: t, sub, on: v === k, run: () => set(k) }))} /></label>;
+}
 function CmpSetting() {
   const [v0, set] = useFlag("cmpTest", "zahl"), v = cmpNorm(v0);
   useEffect(() => cmpApply(v), [v]);
@@ -7653,7 +7659,32 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
   const [pages, setPages] = useState(null), [view, setView] = useState("beides"), [hi, setHi] = useState(null), [busy, setBusy] = useState(false);
   const mob = useMobileBeta();
   const blobRef = useRef(null);
-  useEffect(() => { let dead = false; db.getFile(doc.id).then(async (b) => { blobRef.current = b; if (!b) return setPages([]); const p = await blobToImages(b, Math.min(1500, Math.round(820 * (window.devicePixelRatio || 1)))); if (!dead) setPages(p); }).catch(() => setPages([])); return () => { dead = true; }; }, [doc.id]);
+  // v0.99.26: Zoom im PDF (Variante aus den Einstellungen) + Lupe
+  const [zui] = useFlag("stmtZoomUi", "leiste");
+  const [zoom, setZoom0] = useLsState("stmtZoom", 1), [lupeOn, setLupeOn] = useLsState("stmtLupe", true), [lens, setLens] = useState(null);
+  const paneRef = useRef(null);
+  const canHover = typeof matchMedia !== "undefined" && matchMedia("(hover:hover) and (pointer:fine)").matches;
+  const setZoom = (z, at) => {
+    const el = paneRef.current, nz = Math.round(Math.max(0.5, Math.min(4, z)) * 100) / 100;
+    if (el) { const r = el.getBoundingClientRect(), ax = at ? at.x - r.left : el.clientWidth / 2, ay = at ? at.y - r.top : el.clientHeight / 2;
+      const fx = (el.scrollLeft + ax) / el.scrollWidth, fy = (el.scrollTop + ay) / el.scrollHeight;
+      requestAnimationFrame(() => { el.scrollLeft = fx * el.scrollWidth - ax; el.scrollTop = fy * el.scrollHeight - ay; }); }
+    setZoom0(nz);
+  };
+  const zRef = useRef(zoom); zRef.current = zoom;
+  useEffect(() => { const el = paneRef.current; if (!el) return;
+    const w = (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); setZoom(zRef.current * (e.deltaY < 0 ? 1.1 : 1 / 1.1), { x: e.clientX, y: e.clientY }); };
+    el.addEventListener("wheel", w, { passive: false }); return () => el.removeEventListener("wheel", w); });
+  const zctl = (cls) => (<div className={"stmtzoom " + cls} onClick={(e) => e.stopPropagation()}>
+    <button type="button" title="Verkleinern" aria-label="Verkleinern" onClick={() => setZoom(zoom - 0.25)}>−</button>
+    <button type="button" className="zval" title="Auf Breite" onClick={() => setZoom(1)}>{Math.round(zoom * 100)} %</button>
+    <button type="button" title="Vergrößern" aria-label="Vergrößern" onClick={() => setZoom(zoom + 0.25)}>＋</button>
+    {cls === "inbar" && <button type="button" className="zfit" title="An Breite anpassen" onClick={() => setZoom(1)}>Breite</button>}
+    {cls === "float" && canHover && <button type="button" className={"zlupe" + (lupeOn ? " on" : "")} title={lupeOn ? "Lupe aus" : "Lupe ein"} aria-label="Lupe" onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍</button>}
+  </div>);
+  const lensMove = (e, p, src) => { if (zui !== "schwebend" || !lupeOn || !canHover) return; const img = e.currentTarget.querySelector("img"); if (!img) return; const r = img.getBoundingClientRect();
+    setLens({ p, src, x: e.clientX, y: e.clientY, rx: (e.clientX - r.left) / r.width, ry: (e.clientY - r.top) / r.height, w: r.width, h: r.height }); };
+  useEffect(() => { let dead = false; db.getFile(doc.id).then(async (b) => { blobRef.current = b; if (!b) return setPages([]); const p = await blobToImages(b, Math.min(2400, Math.round(1000 * (window.devicePixelRatio || 1)))); if (!dead) setPages(p); }).catch(() => setPages([])); return () => { dead = true; }; }, [doc.id]);
   const rows = stmtRows(doc, txs, accounts, docs);
   const acc = accounts.find((a) => a.id === doc.stmt.accountId);
   const setScope = async (r, scope) => {
@@ -7719,6 +7750,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
   );
   return createPortal(
     <Win id="stmt" onClose={onClose} dirty={false} defW={1100} className="stmtwin" stay>
+      <div className="stmtsticky">
       <div className="panelhead"><b className="clamp">{doc.title}</b>
         <ExportMenu label="⬇︎" className="btn" items={[{ head: "Markiertes PDF" }, { label: "⬇︎ Speichern", sub: "Original mit Farben + Zusammenfassung", run: () => exportPdf(false) }, { label: "↗︎ Teilen / Mail", run: () => exportPdf(true) }]} />
         <XBtn /></div>
@@ -7729,14 +7761,18 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
         <span className="grow" />
         <div className="seg">{[["pdf", "PDF"], ["beides", "Beides"], ["liste", "Liste"]].filter(([k]) => !mob || k !== "beides").map(([k, l]) => <button key={k} className={(mob && view === "beides" ? k === "liste" : view === k) ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div>
         <button className="btn sm" disabled={busy} onClick={reAi}>{busy ? "…" : "✨ KI neu prüfen"}</button>
+        {zui !== "schwebend" && showPdf && !(mob && view === "beides") && zctl("inbar")}
         <button className="btn sm" disabled={busy} onClick={reMatch} title="Zeilen erneut mit den Buchungen abgleichen">⇄ Abgleichen</button>
+      </div>
       </div>
       <div className={"stmtbody" + (showPdf && showList && !mob ? " two" : "")}>
         {showPdf && !(mob && view === "beides") && (
-          <div className="stmtpdf">
+          <div className="stmtpdfwrap">
+          <div className="stmtpdf" ref={paneRef} onMouseLeave={() => setLens(null)}>
+            <div className="stmtzoomin" style={{ width: zoom * 100 + "%" }}>
             {!pages && <div className="dpload">Auszug wird geladen …</div>}
             {pages?.map((src, p) => (
-              <div key={p} className="stmtpage">
+              <div key={p} className="stmtpage" onMouseMove={(e) => lensMove(e, p, src)}>
                 <img src={src} alt={`Seite ${p + 1}`} />
                 {rows.filter((r) => r.box?.p === p).map((r) => (
                   <button key={r.i} id={`stmtbox-${doc.id}-${r.i}`} className={"stmtbox sc-" + r.scope + (hi === r.i ? " hi" : "")} title={`${r.cp} ${fmtMoney(r.amount)} – ${r.label} (antippen zum Wechseln)`}
@@ -7746,6 +7782,11 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
               </div>
             ))}
             {pages && !rows.some((r) => r.box) && <p className="muted small center-text">Die Zeilen konnten im PDF nicht gefunden werden (z. B. eingescannter Auszug). Die Liste und der Export funktionieren trotzdem.</p>}
+            </div>
+          </div>
+          {zui === "schwebend" && zctl("float")}
+          {lens && <div className="stmtlens" style={{ left: lens.x - 160, top: lens.y - 120, backgroundImage: `url(${lens.src})`, backgroundSize: `${lens.w * 2.4}px ${lens.h * 2.4}px`,
+            backgroundPosition: `${-(lens.rx * lens.w * 2.4 - 160)}px ${-(lens.ry * lens.h * 2.4 - 45)}px` }} />}
           </div>
         )}
         {(showList || (mob && view === "beides")) && list}
@@ -9891,6 +9932,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
     "darstellung": <><SetSec id="darstellung" title="Darstellung">
         <TabbarSetting />
         <CmpSetting />
+        <StmtZoomSetting />
         <small className="muted block tbsethead">Tag- und Nachtmodus</small>
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
@@ -16216,7 +16258,8 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .stmtwin .panelhead b{flex:1;min-width:0}
 .stmtbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
 .stmtbody{display:block}.stmtbody.two{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start}
-.stmtbody.two .stmtpdf,.stmtbody.two .stmtlist{max-height:calc(100vh - 230px);overflow:auto}
+.stmtbody.two .stmtlist{max-height:calc(100vh - 230px);overflow:auto}
+.stmtpdf{max-height:calc(100vh - 230px);overflow:auto;overscroll-behavior:contain}
 .stmtpdf{display:flex;flex-direction:column;gap:10px}
 .stmtpage{position:relative;border-radius:6px;overflow:hidden;box-shadow:0 1px 6px #0002;background:#fff}
 .stmtpage img{display:block;width:100%;height:auto}
@@ -16681,4 +16724,20 @@ nav.bottom>button.navheadbtn:hover{color:var(--txt)!important}
 .stmtacts{display:flex;gap:6px;align-items:center}.stmtacts .iconbtn{width:38px;height:38px;display:grid;place-items:center;font-size:17px}.stmtacts svg{width:18px;height:18px}
 .inlico{display:inline-flex;vertical-align:-3px}.inlico svg{width:16px;height:16px}
 .stbstmts>.docdrop{margin-bottom:2px;align-self:stretch;width:100%;box-sizing:border-box}
+
+/* v0.99.26: Kontoauszug – fixierte Leiste & Zoom */
+.stmtsticky{position:sticky;top:0;z-index:3;background:var(--bg);margin:0 -20px;padding:0 20px 2px;border-bottom:1px solid var(--line)}
+.stmtsticky .panelhead{position:static}
+.stmtsticky .stmtbar{margin:0 0 8px}
+.stmtbody{margin-top:10px}
+.stmtpdfwrap{position:relative;min-width:0}
+.stmtzoomin{display:flex;flex-direction:column;gap:10px;min-width:100%;max-width:none;transition:width .12s}
+.stmtpdf{display:block!important}
+.stmtzoom{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:12px;padding:2px;background:var(--card)}
+.stmtzoom button{border:0;background:none;color:var(--txt);font:inherit;font-size:15px;min-width:30px;height:30px;border-radius:9px;cursor:pointer;padding:0 6px}
+.stmtzoom button:hover{background:var(--card2)}.stmtzoom .zval{font-size:13px;min-width:54px;font-variant-numeric:tabular-nums}.stmtzoom .zfit{font-size:13px;color:var(--mut)}
+.stmtzoom.float{position:absolute;right:14px;bottom:14px;flex-direction:column;z-index:2;box-shadow:0 6px 20px #0004}
+.stmtzoom .zlupe.on{background:color-mix(in srgb,var(--acc) 22%,transparent)}
+.stmtlens{position:fixed;width:320px;height:90px;border-radius:45px;border:3px solid var(--acc);background-color:#fff;background-repeat:no-repeat;pointer-events:none;z-index:9999;box-shadow:0 10px 30px #0006}
+@media (max-width:700px){.stmtsticky{margin:0 -14px;padding:0 14px 2px}}
 `;
