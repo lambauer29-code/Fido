@@ -2322,7 +2322,8 @@ function AppMain() {
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup}
           deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null}
           journalTab={{ label: tabLabel(nav, "journal") || "Journal", open: () => setTab("journal") }} />}
-        {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify} />}
+        {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify}
+          det={{ docGroups: nav.docGroups, addCategoryEx, bookCash, accounts, linkTx, trashDoc, reanalyze }} />}
         {tab === "deadlines" && <Deadlines docs={dlDocs} onOpen={openDl} saveDoc={saveDl} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "cash" && <ExpensePage accounts={visAccounts} txs={txs} categories={TX_CATS(categories)} onSave={saveExpense} onScan={scanFor} addCategory={addCategory} notify={notify}
           onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
@@ -5311,7 +5312,8 @@ function JournalPreview({ d, compact = false, onSwipe }) {
     </div>
   );
 }
-function JournalFields({ d, saveDoc, categories, senders, tx, onConfirm, onDetails, onOriginal, pos }) {
+function JournalFields({ d, saveDoc, categories, senders, tx, onConfirm, onDetails, onOriginal, pos, extra }) {
+  const [more, setMore] = useLsState("jMore", false);
   const [f, setF] = useState(null);
   useEffect(() => { setF({ title: d.title || "", date: d.documentDate || "", total: d.amount?.total != null ? (+d.amount.total).toFixed(2).replace(".", ",") : "", net: d.amount?.net != null ? (+d.amount.net).toFixed(2).replace(".", ",") : "", vat: d.amount?.vat != null ? (+d.amount.vat).toFixed(2).replace(".", ",") : "", sender: d.sender || "", tags: (d.tags || []).join(", "), notes: d.notes || "" }); }, [d.id]);
   if (!f) return null;
@@ -5321,6 +5323,7 @@ function JournalFields({ d, saveDoc, categories, senders, tx, onConfirm, onDetai
     const amt = num(f.total), n = { ...d, title: f.title.trim() || d.title, documentDate: f.date || d.documentDate, sender: f.sender.trim(), notes: f.notes, tags: f.tags.split(",").map((t) => norm(t).trim()).filter(Boolean) };
     n.amount = amt == null ? (f.total.trim() ? d.amount : null) : { ...(d.amount || { currency: "EUR" }), total: amt, net: num(f.net), vat: num(f.vat) };
     if (JSON.stringify(n) !== JSON.stringify(d)) saveDoc(n);
+    return n;
   };
   const inp = (k, props = {}) => <input value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} onBlur={blurSave} {...props} />;
   return (
@@ -5338,14 +5341,18 @@ function JournalFields({ d, saveDoc, categories, senders, tx, onConfirm, onDetai
       <label className="jx">Notiz<textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} onBlur={blurSave} /></label>
       {d.direction === "ausgabe" && <label className="check jx"><input type="checkbox" checked={!!d.paid} onChange={(e) => commit({ paid: e.target.checked, paidDate: e.target.checked ? d.paidDate || todayISO() : undefined })} /> Bezahlt{d.paidDate ? ` am ${fmtDate(d.paidDate)}` : ""}</label>}
       <div className="jtx jx">{tx ? <span className="pos">✓ Buchung {fmtDate(tx.date)} · {fmtMoney(tx.amount)}</span> : d.amount?.total && d.direction !== "keine" ? <span className="muted">keine Buchung verknüpft</span> : null}</div>
+      {extra && <button type="button" className={"jmore jx" + (more ? " open" : "")} onClick={() => { blurSave(); setMore(!more); }} aria-expanded={more}><span>Weitere Felder</span><small className="muted">Buchung · Bezahlen · Vertrag · Fristen</small><span className="jchev">▾</span></button>}
+      {extra && more && <div className="jx jextra">{extra}</div>}
       <div className="jbtns">
-        <button className="btn primary jconfirm" onClick={() => { blurSave(); onConfirm(); }}>{jUnconf(d) ? "✓ Bestätigen & weiter" : "Weiter ›"}</button>
-        <div className="row"><button className="btn sm" onClick={onDetails}>Alle Details</button><button className="btn sm" onClick={onOriginal}>Original</button></div>
+        <button className="btn primary jconfirm" onClick={() => onConfirm(blurSave())}>{jUnconf(d) ? "✓ Bestätigen & weiter" : "Weiter ›"}</button>
+        <div className="row">{!extra && onDetails && <button className="btn sm" onClick={onDetails}>Alle Details</button>}<button className="btn sm" onClick={onOriginal}>Original</button></div>
       </div>
     </div>
   );
 }
-function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
+function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, det = {} }) {
+  const [jView] = useLsState("jView", "a");                                      // a = Weitere Felder · b = ganzes Formular · c = Prüfkarte
+  const flushRef = useRef(null);
   const mobB = useMobileBeta(), slim = useMedia("(max-width:999px)"), mob = mobB || slim, [boxW, setBoxW] = useState(1400), narrow = boxW < 1180;
   const [mode, setMode] = useLsState("jMode", "journal");                       // journal | pruefen | monate
   const [filt, setFilt] = useLsState("jFilt", "alle");
@@ -5356,6 +5363,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   const [q, setQ] = useState("");
   const [detW, setDetW] = useLsState("jDetW", true), [detN, setDetN] = useLsState("jDetN", false);
   const [mClosed, setMClosed] = useLsState("jMClosed", []);
+  const detOn = jView === "c" ? !narrow : (narrow ? detN : detW);
   useEffect(() => { if (!phoneOpen) return; const c = document.documentElement.classList; c.add("jpopen"); return () => c.remove("jpopen"); }, [phoneOpen]);
   const txByDoc = useMemo(() => { const m = new Map(); for (const t of txs) if (t.docId) m.set(t.docId, t); return m; }, [txs]);
   const base = useMemo(() => docs.filter((d) => !d.deletedAt && !d.stmt), [docs]);
@@ -5377,10 +5385,12 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   useEffect(() => { if (!mob && !list.some((d) => d.id === cur)) setCur(list[0]?.id || null); }, [list, mob]);
   const idx = curDoc ? list.findIndex((d) => d.id === curDoc.id) : -1;
   const go = (dir) => { const n = list[idx + dir]; if (n) { setCur(n.id); setTimeout(() => document.querySelector(`.jrow[data-id="${n.id}"]`)?.scrollIntoView({ block: "nearest" }), 0); } };
-  const confirm = async () => {
+  const confirm = async (base) => {
     if (!curDoc) return;
     const nextId = list[idx + 1]?.id || list[idx - 1]?.id || null;
-    if (jUnconf(curDoc)) await saveDoc({ ...curDoc, confirmed: true, confirmedAt: new Date().toISOString() });
+    const fl = flushRef.current, extraP = (fl && fl.docId === curDoc.id ? fl() : null) || {}, m = { ...(base || curDoc), ...extraP };
+    if (jUnconf(m)) await saveDoc({ ...m, confirmed: true, confirmedAt: new Date().toISOString() });
+    else if (Object.keys(extraP).length) await saveDoc(m);
     if (mode === "pruefen") { if (nextId) setCur(nextId); else { notify?.("Alle Belege geprüft ✓"); setPhoneOpen(false); } } else go(1);
   };
   useEffect(() => {
@@ -5406,7 +5416,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
     <div className="jmodes">
       <div className="seg">{[["journal", "📓 Journal"], ["pruefen", `✓ Prüfen${cnt("unbest") ? " (" + cnt("unbest") + ")" : ""}`], ["monate", "🗓 Monate"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); if (k === "pruefen") { const f = base.filter(jUnconf).sort((a, b) => jDate(b).localeCompare(jDate(a)))[0]; setCur(f?.id || null); if (mob && f) setPhoneOpen(true); } }}>{l}</button>)}</div>
       {mode !== "monate" && !mob && <SearchBox className="sbplain jsearch" icon={false} value={q} onChange={setQ} placeholder="Belege durchsuchen" />}
-      {mode !== "monate" && !mob && <button className={"btn sm jdetbtn" + ((narrow ? detN : detW) ? " on" : "")} onClick={() => (narrow ? setDetN(!detN) : setDetW(!detW))} title="Details einblenden und bearbeiten">{(narrow ? detN : detW) ? "✕ Details" : "✎ Details"}</button>}
+      {mode !== "monate" && !mob && jView !== "c" && <button className={"btn sm jdetbtn" + ((narrow ? detN : detW) ? " on" : "")} onClick={() => (narrow ? setDetN(!detN) : setDetW(!detW))} title="Details einblenden und bearbeiten">{(narrow ? detN : detW) ? "✕ Details" : "✎ Details"}</button>}
     </div>
   );
   const sidebar = (
@@ -5435,9 +5445,17 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
       <span className="jra"><b className={v > 0 ? "pos" : ""}>{v != null && v !== 0 ? fmtMoney(Math.abs(v)).replace("€ ", "") : d.amount?.total ? fmtMoney(d.amount.total).replace("€ ", "") : ""}</b>{v != null && v !== 0 && <i className={v > 0 ? "up" : "down"}>{v > 0 ? "▴" : "▾"}</i>}
         {d.amount?.currency && d.amount.currency !== "EUR" && <small className="muted block">{d.amount.currency}</small>}</span>
     </button>); };
-  const fields = curDoc && <JournalFields key={curDoc.id} d={curDoc} saveDoc={saveDoc} categories={categories} senders={senders} tx={txByDoc.get(curDoc.id)} onConfirm={confirm}
-    onDetails={() => onOpen(curDoc.id)} onOriginal={async () => { const b = await db.getFile(curDoc.id); if (b) openPdf(b, curDoc.fileName || "Beleg.pdf", curDoc.title); }}
-    pos={mode === "pruefen" ? `${idx + 1} von ${list.length} unbestätigt` : `${idx + 1} von ${list.length}`} />;
+  const onOriginal = async () => { const b = await db.getFile(curDoc.id); if (b) openPdf(b, curDoc.fileName || "Beleg.pdf", curDoc.title); };
+  const pos = curDoc && (mode === "pruefen" ? `${idx + 1} von ${list.length} unbestätigt` : `${idx + 1} von ${list.length}`);
+  const detEl = (part) => <Detail key={curDoc.id + part} doc={curDoc} categories={categories} txs={txs} saveDoc={saveDoc} notify={notify} inline part={part} flushRef={flushRef} {...det} onClose={() => {}} />;
+  const fields = curDoc && (jView === "c"
+    ? <JournalCard key={curDoc.id} d={curDoc} tx={txByDoc.get(curDoc.id)} onConfirm={confirm} onEdit={() => onOpen(curDoc.id)} onOriginal={onOriginal} pos={pos} />
+    : jView === "b"
+    ? <div className="jfull" key={curDoc.id}>{pos && <div className="jpos muted small">{pos}</div>}{detEl("all")}
+        <div className="jbtns"><button className="btn primary jconfirm" onClick={() => confirm()}>{jUnconf(curDoc) ? "✓ Bestätigen & weiter" : "Weiter ›"}</button>
+          <div className="row"><button className="btn sm" onClick={onOriginal}>Original</button></div></div></div>
+    : <JournalFields key={curDoc.id} d={curDoc} saveDoc={saveDoc} categories={categories} senders={senders} tx={txByDoc.get(curDoc.id)} onConfirm={confirm}
+        onOriginal={onOriginal} pos={pos} extra={det.linkTx ? detEl("extra") : null} onDetails={det.linkTx ? null : () => onOpen(curDoc.id)} />);
 
   /* ---------- 3 · Monats-Zeitleiste ---------- */
   if (mode === "monate") {
@@ -5486,7 +5504,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   /* ---------- 1 + 2 · Drei-Spalten-Journal / Prüf-Modus ---------- */
   return (
     <div className="jpage-wrap">{modeBar}
-      <div ref={boxRef} className={"jgrid" + (narrow ? " narrow" : "") + (mode === "pruefen" ? " pruef" : "") + ((narrow ? detN : detW) ? " det" : " nodet")} style={boxH ? { height: boxH } : undefined}>
+      <div ref={boxRef} className={"jgrid jv-" + jView + (narrow ? " narrow" : "") + (mode === "pruefen" ? " pruef" : "") + (detOn ? " det" : " nodet")} style={boxH ? { height: boxH } : undefined}>
         {mode !== "pruefen" && sidebar}
         <div className="jlist">
           <div className="jlhead">{mode === "pruefen" ? <b>Zu prüfen</b> : <b>{facet ? (facet.v || "Nicht zugewiesen") : sel.m ? MONTHS_DE[+sel.m - 1] + " " + sel.y : sel.y === "ohne" ? "Ohne Datum" : sel.y || "Alle Jahre"}</b>}<small className="muted">{list.length}</small></div>
@@ -5494,17 +5512,50 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
           <div className="jlsum"><span className="muted">Summe</span><b className={sum >= 0 ? "pos" : "neg"}>{fmtMoney(sum)}</b></div>
         </div>
         <div className="jcenter">{curDoc ? <JournalPreview d={curDoc} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}
-          {curDoc && !(narrow ? detN : detW) && <div className="jstrip">
+          {curDoc && !detOn && <div className="jstrip">
             <div className="grow jstxt"><b className="one">{curDoc.title || curDoc.fileName}</b><small className="muted one">{[jDate(curDoc) && fmtDate(jDate(curDoc)), curDoc.sender, curDoc.category].filter(Boolean).join(" · ")}</small></div>
             {jSigned(curDoc) != null && <b className={"jsamt " + (jSigned(curDoc) >= 0 ? "pos" : "neg")}>{fmtMoney(jSigned(curDoc))}</b>}
-            <button className="btn sm" onClick={() => (narrow ? setDetN(true) : setDetW(true))}>✎ Details</button>
-            <button className="btn sm primary" onClick={confirm}>{jUnconf(curDoc) ? "✓ Bestätigen" : "Weiter ›"}</button>
+            <button className="btn sm" onClick={() => (jView === "c" ? onOpen(curDoc.id) : narrow ? setDetN(true) : setDetW(true))}>{jView === "c" ? "✎ Bearbeiten" : "✎ Details"}</button>
+            <button className="btn sm primary" onClick={() => confirm()}>{jUnconf(curDoc) ? "✓ Bestätigen" : "Weiter ›"}</button>
           </div>}</div>
-        {(narrow ? detN : detW) && <div className="jinsp">{fields}</div>}
+        {detOn && <div className="jinsp">{fields}</div>}
       </div>
       {mode === "pruefen" && <small className="muted block jhint">Tastatur: ↑/↓ wechseln · Enter = Bestätigen &amp; weiter</small>}
     </div>
   );
+}
+function JournalCard({ d, tx, onConfirm, onEdit, onOriginal, pos }) {
+  const v = jSigned(d);
+  return (<div className="jcard">
+    {pos && <div className="jpos muted small">{pos}</div>}
+    <b className="jctitle">{d.title || d.fileName}</b>
+    {v != null && <div className={"jcamt " + (v >= 0 ? "pos" : "neg")}>{v > 0 ? "+ " : ""}{fmtMoney(v)}</div>}
+    <div className="jcmeta">
+      {jDate(d) && <span>📅 {fmtDate(jDate(d))}</span>}
+      {d.sender && <span>👤 {d.sender}</span>}
+      <span><CatGlyph c={d.category} /> {d.category || "Sonstiges"}</span>
+      <span>{docScope(d) === "firma" ? "🏢 Firma" : "👤 Privat"}</span>
+      {d.direction === "ausgabe" && <span>{d.paid ? "✓ bezahlt" : "○ offen"}</span>}
+      {(d.tags || []).length > 0 && <span>#{d.tags.join(" #")}</span>}
+    </div>
+    <div className="jtx">{tx ? <span className="pos">✓ Buchung {fmtDate(tx.date)} · {fmtMoney(tx.amount)}</span> : d.amount?.total && d.direction !== "keine" ? <span className="muted">keine Buchung verknüpft</span> : null}</div>
+    {d.notes && <p className="muted small jcnote">{d.notes}</p>}
+    <div className="jbtns">
+      <button className="btn primary jconfirm" onClick={() => onConfirm()}>{jUnconf(d) ? "✓ Bestätigen & weiter" : "Weiter ›"}</button>
+      <div className="row"><button className="btn sm" onClick={onEdit}>✎ Bearbeiten</button><button className="btn sm" onClick={onOriginal}>Original</button></div>
+    </div>
+  </div>);
+}
+const J_VIEWS = [["a", "Weitere Felder aufklappen", "Rechts die wichtigsten Felder, darunter „Weitere Felder ▾“ für Buchung, Bezahlen, Vertrag und Fristen – alles an einer Stelle."],
+  ["b", "Ganzes Dokument rechts", "Die rechte Spalte ist das komplette Dokument-Formular wie im Popup, speichert automatisch."],
+  ["c", "Prüfkarte + Bearbeiten", "Rechts nur eine kleine Karte zum Anschauen und Bestätigen, „✎ Bearbeiten“ öffnet das volle Popup. Größere Vorschau."]];
+function JournalViewSetting() {
+  const [v, setV] = useLsState("jView", "a");
+  return (<div className="jviewset">
+    <p className="muted small">Wie die Details eines Belegs im Journal angezeigt werden (Laptop, iPad und iPhone).</p>
+    {J_VIEWS.map(([k, t, sub]) => <label key={k} className={"jvopt" + (v === k ? " on" : "")}><input type="radio" name="jview" checked={v === k} onChange={() => setV(k)} />
+      <span className="grow"><b>{k.toUpperCase()} · {t}</b><small className="muted block">{sub}</small></span></label>)}
+  </div>);
 }
 function JPhoneSheet({ children }) {
   // v0.99.6: Karte mit Griff – ziehen (hoch/runter) oder antippen; rastet bei „wenig“ bzw. „alle Felder“ ein
@@ -7181,7 +7232,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
         <button className="btn primary" onClick={() => {
           const amt = parseAmt(edit.amount);
           save(withOrig({ ...t, counterparty: edit.counterparty.trim(), purpose: edit.purpose, date: edit.date || t.date, accountId: edit.accountId, ...(t.manual && isFinite(amt) && amt ? { amount: amt } : {}) }));
-          setEdit(null); onClose();
+          setEdit(null); // v0.99.9: nur das Bearbeiten schließen, die Buchung bleibt offen
         }}>Speichern</button><XBtn /></div>
       <label>Empfänger / Name<input value={edit.counterparty} onChange={(e) => setEdit({ ...edit, counterparty: e.target.value })} /></label>
       <div className="grid2">
@@ -8391,7 +8442,7 @@ function PayQR({ doc, notify }) {
     </div>
   );
 }
-function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash, txs = [], accounts = [], linkTx }) {
+function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash, txs = [], accounts = [], linkTx, inline = false, part = "all", flushRef }) {
   const [linkOpen, setLinkOpen] = useState(false), [prevOpen, setPrevOpen] = useState(false);
   const [newCat, setNewCat] = useState(false);
   const [lq, setLq] = useState("");
@@ -8407,6 +8458,16 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
     return () => u && URL.revokeObjectURL(u);
   }, [doc.id]);
 
+  // v0.99.10: im Journal eingebettet – speichert automatisch, nur geänderte Felder (verträgt sich mit den Schnellfeldern)
+  const patchOf = (a, b) => { const o = {}; for (const k of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) if (JSON.stringify(a?.[k]) !== JSON.stringify(b?.[k])) o[k] = a?.[k]; return o; };
+  const latest = useRef(null);
+  useEffect(() => { latest.current = { d, doc }; });
+  useEffect(() => { if (!inline) return; const p = patchOf(d, doc); if (!Object.keys(p).length) return; const t = setTimeout(() => saveDoc({ ...doc, ...p }), 700); return () => clearTimeout(t); }, [d]);
+  useEffect(() => () => { if (!inline || !latest.current) return; const { d: od, doc: odoc } = latest.current; const p = patchOf(od, odoc); if (Object.keys(p).length && !latest.current.flushed) saveDoc({ ...odoc, ...p }); }, [doc.id]);
+  const tok = useRef({});
+  if (flushRef) flushRef.current = Object.assign(() => { const p = patchOf(d, doc); if (latest.current) latest.current.flushed = true; setD({ ...doc, ...p }); return p; }, { docId: doc.id, tok: tok.current });
+  useEffect(() => () => { if (flushRef?.current?.tok === tok.current) flushRef.current = null; }, []);
+  const ex = inline && part === "extra";
   const set = (patch) => setD((x) => ({ ...x, ...patch }));
   const setC = (patch) => set({ contract: { provider: d.sender || "", active: true, ...d.contract, ...patch } });
   const setP = (patch) => set({ payment: { recipient: d.sender || "", ...d.payment, ...patch } });
@@ -8416,21 +8477,20 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
   const safeName = (d.title || "dokument").replace(/[\\/:*?"<>|]/g, "-");
   const numIn = (v) => { const s = String(v).replace(",", "."); return s === "" ? null : Number(s); };
 
-  return (
-    <Win id="detail" onClose={onClose} center dirty={dirty}>
-        <div className="panelhead">
+  const body = (<>
+        {!inline && <div className="panelhead">
           <b>Dokument</b>
           <button className="btn detprevbtn" title="Vorschau öffnen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>
           <button className="btn primary" disabled={!dirty} onClick={() => saveDoc(d)}>Speichern</button>
           <XBtn />
-        </div>
+        </div>}
 
-        {url && (doc.mimeType.startsWith("image/")
+        {!inline && url && (doc.mimeType.startsWith("image/")
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
           : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b className="clamp">{doc.fileName || doc.title}</b></div></div>)}
-        <div className="seg scopeseg" style={{ margin: "6px 0 6px" }} role="group" aria-label="Privat oder Firma">
+        {!ex && <div className="seg scopeseg" style={{ margin: "6px 0 6px" }} role="group" aria-label="Privat oder Firma">
           {SCOPES.map(([k, i, l]) => <button key={k} className={docScope(d) === k ? "on" : ""} onClick={() => set({ scope: k, scopeManual: true })}>{i} {l}</button>)}
-        </div>
+        </div>}
         <div className="seg areaseg" style={{ margin: "6px 0 10px" }}>
           {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={docArea(d) === k ? "on" : ""} onClick={() => set({ areaManual: k })}>{i} {l}</button>)}
         </div>
@@ -8439,7 +8499,8 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         {doc.status === "error" && <div className="err">Analyse fehlgeschlagen: {doc.error}</div>}
         {doc.status === "processing" && <div className="muted">Wird analysiert …</div>}
 
-        <label>Titel<input value={d.title || ""} onChange={(e) => set({ title: e.target.value })} /></label>
+        {ex && <label>Typ<input value={d.docType || ""} onChange={(e) => set({ docType: e.target.value })} /></label>}
+        {!ex && <><label>Titel<input value={d.title || ""} onChange={(e) => set({ title: e.target.value })} /></label>
         <div className="grid2">
           <label>Kategorie
             <PSelect value={d.category} onChange={(e) => (e.target.value === "__new" ? setNewCat(true) : set({ category: e.target.value }))}>
@@ -8452,10 +8513,10 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
           <label>Typ<input value={d.docType || ""} onChange={(e) => set({ docType: e.target.value })} /></label>
           <label>Absender<input value={d.sender || ""} onChange={(e) => set({ sender: e.target.value })} /></label>
           <label>Datum<input type="date" value={d.documentDate || ""} onChange={(e) => set({ documentDate: e.target.value })} /></label>
-        </div>
+        </div></>}
         <label className="check"><input type="checkbox" checked={!!d.taxRelevant} onChange={(e) => set({ taxRelevant: e.target.checked })} /> 🧾 Steuerrelevant</label>
 
-        <fieldset>
+        {!ex && <fieldset>
           <legend>Betrag</legend>
           <div className="seg">
             {[["ausgabe", "Ausgabe"], ["einnahme", "Einnahme"], ["keine", "Nur Info"]].map(([k, l]) => (
@@ -8477,7 +8538,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
               {!doc.paid && <button className="btn" style={{ marginTop: 8 }} onClick={() => bookCash({ ...doc, ...d })}>💶 Bar bezahlt</button>}
             </div>
           )}
-        </fieldset>
+        </fieldset>}
 
 
         {(() => {
@@ -8552,9 +8613,9 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
           )}
         </fieldset>
 
-        <label>Tags (mit Komma trennen)
+        {!ex && <label>Tags (mit Komma trennen)
           <input value={(d.tags || []).join(", ")} onChange={(e) => set({ tags: e.target.value.split(",").map((t) => norm(t).trim()).filter(Boolean) })} />
-        </label>
+        </label>}
 
         <fieldset>
           <legend>Fristen</legend>
@@ -8571,7 +8632,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         </fieldset>
 
         {d.summary && <p className="summary">{d.summary}</p>}
-        <label>Notizen<textarea rows={3} value={d.notes || ""} onChange={(e) => set({ notes: e.target.value })} /></label>
+        {!ex && <label>Notizen<textarea rows={3} value={d.notes || ""} onChange={(e) => set({ notes: e.target.value })} /></label>}
 
         <div className="textinfo">
           {d.fullText ? <>
@@ -8597,8 +8658,9 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
             <div className="panelhead"><b className="clamp">{doc.title}</b><XBtn /></div>
             <DocPreview d={doc} onOpen={() => setPrevOpen(false)} />
           </Win>, document.querySelector(".app") || document.body)}
-    </Win>
-  );
+  </>);
+  if (inline) return <div className={"detinline" + (ex ? " detextra" : "")}>{body}{!ex && <p className="muted small detauto">{dirty ? "Wird gespeichert …" : "✓ Änderungen werden automatisch gespeichert"}</p>}</div>;
+  return <Win id="detail" onClose={onClose} center dirty={dirty}>{body}</Win>;
 }
 
 /* ---------- Einstellungen, Budgets, Papierkorb, Backup ---------- */
@@ -8624,12 +8686,12 @@ function SetSec({ id, title, children }) {
   );
 }
 
-const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung"]], ["Daten & Ablage", ["import", "docgroups", "doccats", "rules", "kontaktarten", "fbicons", "trash"]],
+const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung"]], ["Daten & Ablage", ["import", "docgroups", "doccats", "journal", "rules", "kontaktarten", "fbicons", "trash"]],
   ["Navigation & Budgets", ["nav-tabs", "nav-mob", "nav-accounts", "budgets"]], ["Firma", ["meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel"]]];
-const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-mob": "Handy-Menü", "nav-accounts": "Konten & Gruppen" };
+const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-mob": "Handy-Menü", journal: "Journal", "nav-accounts": "Konten & Gruppen" };
 const SET_ICONS = { fbicons: "🚗", darstellung: "🌓", design: "🎨", applock: "🔒", datenschutz: "🛡️", verbindung: "🔌", import: "📥", docgroups: "🗂️", doccats: "🏷️", rules: "⚙️", kontaktarten: "👥", trash: "🗑️",
-  "nav-tabs": "📑", "nav-mob": "📱", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
-const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-mob", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
+  "nav-tabs": "📑", "nav-mob": "📱", journal: "📓", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
+const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-mob", "journal", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -9257,6 +9319,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
       </SetSec></>,
     "nav-tabs": <><NavSettings part="tabs" nav={nav} setNav={setNav} accounts={accounts} setAccounts={setAccounts} txs={txs} deleteAccount={deleteAccount} notify={notify} /></>,
+    "journal": <><SetSec id="journal" title="Journal"><JournalViewSetting /></SetSec></>,
     "nav-mob": <><SetSec id="nav-mob" title="Handy-Menü">
         <p className="muted small">Gilt fürs iPhone: welche Reiter in der Leiste unten stehen und wie sie in <b>Privat</b>, <b>Firma</b> und <b>Mehr</b> sortiert sind. Am Griff <b>⠿</b> ziehen – auch von einem Bereich in einen anderen – oder über <b>⋯</b> verschieben und ausblenden. Direkt am iPhone geht das auch über „⇄ Anordnen“ in Privat, Firma oder Mehr.</p>
         <MobNavEditor nav={nav} setNav={setNav} notify={notify} />
@@ -15789,4 +15852,26 @@ button.jmhead{width:100%;border:0;font-family:inherit;cursor:pointer;align-items
   html.tablet .msheet.mfull>.panel{max-width:none!important}
   html.tablet.win-open .topactions,html.tablet.win-open .fab{display:none}
 }
+
+/* v0.99.10: Journal – drei Detail-Varianten */
+.jmore{display:flex;align-items:center;gap:8px;width:100%;margin:6px 0 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card2);color:var(--acc);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;text-align:left}
+.jmore small{flex:1;font-weight:400;font-size:12px}.jmore .jchev{transition:transform .15s}.jmore:not(.open) .jchev{transform:rotate(-90deg)}
+.jextra{margin-top:6px}
+.detinline{display:flex;flex-direction:column;gap:8px;min-width:0}
+.detinline fieldset{margin:8px 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px}
+.detinline .grid4{grid-template-columns:repeat(2,minmax(0,1fr))}
+.detinline .actions{flex-wrap:wrap}
+.detauto{text-align:center;margin:4px 0}
+.jfull{display:flex;flex-direction:column;gap:6px}
+.jcard{display:flex;flex-direction:column;gap:10px;height:100%}
+.jcard .jctitle{font-size:17px;line-height:1.3}
+.jcard .jcamt{font-size:28px;font-weight:700}
+.jcard .jcmeta{display:flex;flex-direction:column;gap:6px;font-size:14px}
+.jcard .jcnote{white-space:pre-wrap;margin:0}
+.jcard .jbtns{margin-top:auto}
+.jviewset{display:flex;flex-direction:column;gap:8px}
+.jvopt{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;cursor:pointer}
+.jvopt.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.jvopt input{margin-top:3px}
+.jgrid.jv-c.det:not(.narrow){grid-template-columns:230px 270px minmax(0,1fr) 270px}.jgrid.jv-c.det.pruef:not(.narrow){grid-template-columns:270px minmax(0,1fr) 270px}
 `;

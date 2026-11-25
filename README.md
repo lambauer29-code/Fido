@@ -2,6 +2,19 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.10 – Journal: drei Detail-Varianten zur Auswahl
+
+Unter **Einstellungen → Journal** wählbar (gilt für Laptop, iPad und iPhone), kein doppeltes „Details“ + „Alle Details“ mehr:
+- **A · Weitere Felder aufklappen** (Standard): rechts die wichtigsten Felder, darunter „Weitere Felder ▾“ mit Typ, Steuerrelevant, Buchung, Bezahlen, Vertrag/Abo, Fristen und Text – alles in derselben Spalte.
+- **B · Ganzes Dokument rechts:** die rechte Spalte ist das komplette Dokument-Formular wie im Popup.
+- **C · Prüfkarte + Bearbeiten:** rechts eine kleine Karte zum Anschauen und Bestätigen, „✎ Bearbeiten“ öffnet das volle Popup; der Details-Knopf oben entfällt.
+
+Änderungen in A und B werden automatisch gespeichert; „Bestätigen & weiter“ übernimmt auch noch nicht gespeicherte Eingaben.
+
+## v0.99.9 – Buchung bearbeiten: Popup bleibt offen
+
+Wird eine Buchung (z. B. im Reiter Konten) über „Bearbeiten“ geändert, schließt „Speichern“ nur noch das Bearbeiten – die Buchung bleibt mit den neuen Daten geöffnet.
+
 ## v0.99.8 – iPad: Popups wie am iPhone, in der Größe veränderbar
 
 - Am iPad öffnen alle Popups (Dokument, Buchung, Rechnung, Vertrag, Fahrt, Kunde, Artikel, Lager, Gerät, Kassabuch, Journal-Details …) wie am iPhone als Karte von unten: Griff oben, „Abbrechen/Schließen – Titel – Speichern“, großer Speichern-Knopf unten, nach unten wischen schließt. Vorschau und Scanner bildschirmfüllend.
