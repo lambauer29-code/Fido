@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.37 – Kontoauszüge: kompakte Zuordnung & Lupe-Schalter
+- Firma/Privat/Unklar-Knopf und sein Menü im Stil der Status-Pills (kleiner, ohne Schatten)
+- Lupe ein/aus über „🔍 Lupe“ in der Leiste des Kontoauszugs – in beiden Zoom-Varianten, Standard: aus
+- Esc schließt ein offenes Menü, ohne das Fenster zu schließen
+
 ## v0.99.36 – Rechnungsdesign auch für Berichte
 - Alle Berichte-PDFs (Steuerberater, Kontoauszüge-Deckblatt, Buchungsbeleg, Offene Posten …) übernehmen Logo, Akzentfarbe und Schrift aus dem Rechnungsdesign
 - Eigenes Briefpapier als Hintergrund bei Berichten im Hochformat (Querformat-Tabellen mit Logo statt Briefpapier); Inhalt beginnt unter dem Briefkopf, freier Rand unten wie eingestellt

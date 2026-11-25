@@ -3261,7 +3261,7 @@ function VehicleWin({ init, onSave, onDelete, onClose }) {
 }
 
 /* Fahrzeugauswahl als Dropdown: Maus darüber öffnet, Antippen/Klick schaltet um */
-function PickMenu({ label, icon, items, extra = [], title, wide = false, click = true, btnClass = "chip", disabled = false, block = false }) {
+function PickMenu({ label, icon, items, extra = [], title, wide = false, click = true, btnClass = "chip", disabled = false, block = false, menuClass = "" }) {
   const [open, setOpen] = useState(false), [pos, setPos] = useState(null);
   const ref = useRef(null), t = useRef(null), lastPtr = useRef("mouse");
   const W = wide ? 320 : 292;
@@ -3274,9 +3274,9 @@ function PickMenu({ label, icon, items, extra = [], title, wide = false, click =
     if (!open) return;
     const out = (e) => { if (!ref.current?.contains(e.target) && !e.target.closest?.(".pickmenu")) setOpen(false); };
     const re = (e) => { if (e?.target?.closest?.(".pickmenu")) return; place(); };
-    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true); addEventListener("keydown", esc);
-    return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); removeEventListener("keydown", esc); };
+    const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); e.stopImmediatePropagation?.(); setOpen(false); } };   // Esc schließt nur das Menü, nicht das Fenster
+    document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true); addEventListener("keydown", esc, true);
+    return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); removeEventListener("keydown", esc, true); };
   }, [open]);
   // click = nur durch Anklicken öffnen (kein Aufklappen beim Drüberfahren)
   const hov = click ? {} : { onPointerEnter: (e) => { lastPtr.current = e.pointerType; if (e.pointerType === "mouse") show(); }, onPointerLeave: (e) => { if (e.pointerType === "mouse") hide(); } };
@@ -3286,7 +3286,7 @@ function PickMenu({ label, icon, items, extra = [], title, wide = false, click =
         onPointerDown={(e) => { lastPtr.current = e.pointerType; }}
         onClick={(e) => { e.stopPropagation(); if (!click && lastPtr.current === "mouse" && open) return; open ? setOpen(false) : show(); }}>{icon ? <>{icon} </> : null}{label} <span className="caret">▾</span></button>
       {open && pos && createPortal(
-        <div className="moremenu vehmenu pickmenu" role="menu" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ position: "fixed", top: pos.top ?? "auto", bottom: pos.bottom ?? "auto", left: pos.left, right: "auto", maxHeight: pos.maxH, overflowY: "auto" }} {...hov}>
+        <div className={"moremenu vehmenu pickmenu " + menuClass} role="menu" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ position: "fixed", top: pos.top ?? "auto", bottom: pos.bottom ?? "auto", left: pos.left, right: "auto", maxHeight: pos.maxH, overflowY: "auto" }} {...hov}>
           {items.map((x, i) => x.head ? <small key={"h" + i} className="muted pickhead">{x.head}</small> : (
             <button type="button" key={x.k} role="menuitemradio" aria-checked={!!x.on} disabled={!!x.disabled} className={x.on ? "on" : ""} onClick={() => { x.run(); setOpen(false); }}>
               {x.icon != null && <span className="vehmi">{x.icon}</span>}<span className="grow"><b>{x.title}</b>{x.sub && <small className="muted block">{x.sub}</small>}</span>{x.right && <span className="pickright">{x.right}</span>}{x.on && <span className="ok">✓</span>}
@@ -3332,9 +3332,9 @@ function VehPicker({ vehicles, v, onPick, onEdit, onAdd }) {
     if (!open) return;
     const out = (e) => { if (!ref.current?.contains(e.target) && !e.target.closest?.(".vehmenu")) setOpen(false); };
     const re = () => place();
-    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true); addEventListener("keydown", esc);
-    return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); removeEventListener("keydown", esc); };
+    const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); e.stopImmediatePropagation?.(); setOpen(false); } };   // Esc schließt nur das Menü, nicht das Fenster
+    document.addEventListener("pointerdown", out); addEventListener("resize", re); addEventListener("scroll", re, true); addEventListener("keydown", esc, true);
+    return () => { document.removeEventListener("pointerdown", out); removeEventListener("resize", re); removeEventListener("scroll", re, true); removeEventListener("keydown", esc, true); };
   }, [open]);
   const hov = {}; // nur per Klick öffnen
   return (
@@ -3745,7 +3745,7 @@ if (typeof window !== "undefined" && !window.__fdMenus) {
   window.__fdMenus = true;
   const closeAll = (except) => document.querySelectorAll("details.more[open]").forEach((d) => { if (d !== except) d.open = false; });
   document.addEventListener("pointerdown", (e) => { const d = e.target.closest?.("details.more"); closeAll(d); }, true);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAll(null); });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape" && document.querySelector("details.more[open]")) { e.stopPropagation(); closeAll(null); } }, true);
   document.addEventListener("click", (e) => { const b = e.target.closest?.("details.more .moremenu button"); if (b && !b.disabled) { const d = b.closest("details"); setTimeout(() => { if (d) d.open = false; }, 0); } });
 }
 function ExportMenu({ items, label = "⬇︎ Export", className = "chip", title = "Exportieren" }) {
@@ -7670,7 +7670,7 @@ function stmtRows(doc, txs, accounts, docs) {
 function ScopePick({ scope, onPick, onSplit }) {
   const cur = TX_SCOPES.find((x) => x[0] === scope) || TX_SCOPES[1];
   return <span className={"scpick sc-" + cur[0]} onClick={(e) => e.stopPropagation()}>
-    <PickMenu btnClass="chip scpickbtn" icon={cur[1]} label={cur[2]} title="Zuordnung ändern"
+    <PickMenu btnClass="chip scpickbtn" menuClass="pm-sm" icon={cur[1]} label={cur[2]} title="Zuordnung ändern"
       items={[{ head: "Zuordnung" }, ...TX_SCOPES.map(([k, ic, lb]) => ({ k, icon: ic, title: lb, sub: { firma: "Betriebsausgabe/-einnahme", privat: "nicht für die Firma", unklar: "Steuerberater fragen" }[k], on: scope === k, run: () => onPick(k) })),
         ...(onSplit ? [{ k: "split", icon: "✂️", title: "Aufteilen …", sub: "z. B. 60 % Firma / 40 % privat", run: onSplit }] : [])]} /></span>;
 }
@@ -7685,7 +7685,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
   const blobRef = useRef(null);
   // v0.99.26: Zoom im PDF (Variante aus den Einstellungen) + Lupe
   const [zui] = useFlag("stmtZoomUi", "leiste");
-  const [zoom, setZoom0] = useLsState("stmtZoom", 1), [lupeOn, setLupeOn] = useLsState("stmtLupe", true), [lens, setLens] = useState(null);
+  const [zoom, setZoom0] = useLsState("stmtZoom", 1), [lupeOn, setLupeOn] = useLsState("stmtLupe2", false), [lens, setLens] = useState(null);
   const paneRef = useRef(null);
   const canHover = typeof matchMedia !== "undefined" && matchMedia("(hover:hover) and (pointer:fine)").matches;
   const setZoom = (z, at) => {
@@ -7719,9 +7719,9 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
     <button type="button" className="zval" title="Auf Breite" onClick={() => setZoom(1)}>{Math.round(zoom * 100)} %</button>
     <button type="button" title="Vergrößern" aria-label="Vergrößern" onClick={() => setZoom(zoom + 0.25)}>＋</button>
     {cls === "inbar" && <button type="button" className="zfit" title="An Breite anpassen" onClick={() => setZoom(1)}>Breite</button>}
-    {cls === "float" && canHover && <button type="button" className={"zlupe" + (lupeOn ? " on" : "")} title={lupeOn ? "Lupe aus" : "Lupe ein"} aria-label="Lupe" onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍</button>}
+    {false && <button type="button" className={"zlupe" + (lupeOn ? " on" : "")} title={lupeOn ? "Lupe aus" : "Lupe ein"} aria-label="Lupe" onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍</button>}
   </div>);
-  const lensMove = (e, p, src) => { if (zui !== "schwebend" || !lupeOn || !canHover || e.buttons) return; const img = e.currentTarget.querySelector("img"); if (!img) return; const r = img.getBoundingClientRect();
+  const lensMove = (e, p, src) => { if (!lupeOn || !canHover || e.buttons) return; const img = e.currentTarget.querySelector("img"); if (!img) return; const r = img.getBoundingClientRect();
     setLens({ p, src, x: e.clientX, y: e.clientY, rx: (e.clientX - r.left) / r.width, ry: (e.clientY - r.top) / r.height, w: r.width, h: r.height }); };
   useEffect(() => { let dead = false; db.getFile(doc.id).then(async (b) => { blobRef.current = b; if (!b) return setPages([]); const p = await blobToImages(b, Math.min(2400, Math.round(1000 * (window.devicePixelRatio || 1)))); if (!dead) setPages(p); }).catch(() => setPages([])); return () => { dead = true; }; }, [doc.id]);
   const rows = stmtRows(doc, txs, accounts, docs);
@@ -7801,6 +7801,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
         <div className="seg">{[["pdf", "PDF"], ["beides", "Beides"], ["liste", "Liste"]].filter(([k]) => !mob || k !== "beides").map(([k, l]) => <button key={k} className={(mob && view === "beides" ? k === "liste" : view === k) ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div>
         <button className="btn sm" disabled={busy} onClick={reAi}>{busy ? "…" : "✨ KI neu prüfen"}</button>
         {zui !== "schwebend" && showPdf && !(mob && view === "beides") && zctl("inbar")}
+        {showPdf && canHover && <button type="button" className={"btn sm lupetog" + (lupeOn ? " on" : "")} aria-pressed={lupeOn} title={lupeOn ? "Lupe ausschalten" : "Lupe einschalten"} onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍 Lupe {lupeOn ? "ein" : "aus"}</button>}
         <button className="btn sm" disabled={busy} onClick={reMatch} title="Zeilen erneut mit den Buchungen abgleichen">⇄ Abgleichen</button>
       </div>
       </div>
@@ -17197,4 +17198,16 @@ html body .stbrfmts .stbprev{height:auto!important;min-height:0!important;align-
 .aitag{display:inline-block;font-size:11.5px;color:var(--acc);margin-left:6px}
 .aitag.block{display:block;margin:0}
 .switchrow+.aitag,label+.aitag{margin:-4px 0 4px 0;display:block}
+
+/* v0.99.37: Zuordnungs-Pill & -Menü kompakt wie Status-Pills; Lupe-Schalter */
+html body .scpick .scpickbtn{min-height:0!important;height:26px;padding:0 10px!important;font-size:12px!important;font-weight:700;gap:4px;box-shadow:none!important;display:inline-flex;align-items:center;line-height:1}
+html body .scpick .scpickbtn .caret{font-size:9px}
+html body .pickmenu.pm-sm{min-width:230px!important;max-width:290px;padding:6px!important}
+html body .pickmenu.pm-sm>button:not(.mcancel){padding:6px 8px!important;gap:8px;font-size:13.5px}
+html body .pickmenu.pm-sm>button b{font-size:13.5px!important;font-weight:600}
+html body .pickmenu.pm-sm>button small{font-size:11.5px!important;line-height:1.3}
+html body .pickmenu.pm-sm .vehmi{font-size:16px;width:20px;text-align:center}
+html body .pickmenu.pm-sm .pickhead{font-size:10.5px;padding:4px 8px 2px}
+html body .pickmenu.pm-sm .mcancel{padding:7px!important;font-size:13px}
+.lupetog.on{color:var(--acc)!important;box-shadow:inset 0 0 0 1.5px var(--acc)!important}
 `;
