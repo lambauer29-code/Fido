@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.19 – Seitenleiste: Konto nur im Reiter Konten markiert
+
+Ein ausgewähltes Konto wird in der Seitenleiste nur noch hervorgehoben, solange man im Reiter **Konten** ist. In anderen Reitern (z. B. Ausgabe) ist nur noch der jeweilige Reiter markiert; die Kontoauswahl bleibt erhalten und ist beim Zurückwechseln wieder sichtbar.
+
 ## v0.99.18 – Info & Versionen
 
 Neuer Abschnitt **Einstellungen → Info & Versionen**: zeigt die laufende Version und den kompletten Entwicklungsverlauf. Versionen sind nach Reihe gruppiert (z. B. v0.99, v0.98 …), Gruppen und einzelne Versionen lassen sich ein- und ausklappen, „Alle auf-/zuklappen“ und eine Suche im Verlauf. Die aktuelle Version ist markiert und beim Öffnen aufgeklappt.

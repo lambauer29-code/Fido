@@ -1544,7 +1544,7 @@ function SideResizer() {
   return <div className="sideresize" onPointerDown={down} onDoubleClick={reset} title="Ziehen = Breite ändern · Doppelklick = Standard" />;
 }
 
-function AccountTree({ onToggleChecks, onAll, showChecks = true, groups, txs, sel = [], onToggle, onOnly, onGroupSel, onHide, onToggleGroup, hidden = [], onUnhide, variant = "" }) {
+function AccountTree({ onToggleChecks, onAll, showChecks = true, groups, txs, sel = [], onToggle, onOnly, onGroupSel, onHide, onToggleGroup, hidden = [], onUnhide, variant = "", active = true }) {
   const shown = groups.filter((g) => g.accounts.length);
   if (!shown.length && !hidden.length) return null;
   const Box = ({ state, onClick, label }) => !showChecks ? null : (
@@ -1575,7 +1575,7 @@ function AccountTree({ onToggleChecks, onAll, showChecks = true, groups, txs, se
             {!g.collapsed && g.accounts.map((a) => {
               const bal = accountBalance(a, txs), on = sel.includes(a.id) && (showChecks || sel.length < groups.reduce((t, g) => t + g.accounts.length, 0));
               return (
-                <div key={a.id} className={"accitem" + (on ? " on" : "")}>
+                <div key={a.id} className={"accitem" + (on && active ? " on" : "")}>
                   <Box state={on ? "all" : ""} onClick={() => onToggle(a.id)} label={`${a.name} auswählen`} />
                   <button className="aname" onClick={() => (showChecks ? onOnly(a.id) : sel.length === 1 && sel[0] === a.id && onAll ? onAll() : onOnly(a.id))} title={`Nur ${a.name} anzeigen`}>
                     <AccIcon a={a} /><span className="an" style={accStyle(a)}>{a.name}</span>
@@ -2464,7 +2464,7 @@ function AppMain() {
               ))}
               {t.key === "accounts" && t.side && nav.accOpen && accounts.length > 0 && (
                 <div className="subnav side-only">
-                  <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={hiddenAccs} showChecks={nav.showChecks !== false} {...accActions} />
+                  <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={hiddenAccs} showChecks={nav.showChecks !== false} {...accActions} active={tab === "accounts"} />
                 </div>
               )}
               {t.key === "docs" && t.side && nav.docsOpen && active.length > 0 && (
