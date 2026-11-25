@@ -5293,6 +5293,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   const [openY, setOpenY] = useLsState("jOpenY", { [todayISO().slice(0, 4)]: true });
   const [cur, setCur] = useState(null), [side, setSide] = useState(false), [phoneOpen, setPhoneOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [detW, setDetW] = useLsState("jDetW", true), [detN, setDetN] = useLsState("jDetN", false);
+  const [mClosed, setMClosed] = useLsState("jMClosed", []);
   const txByDoc = useMemo(() => { const m = new Map(); for (const t of txs) if (t.docId) m.set(t.docId, t); return m; }, [txs]);
   const base = useMemo(() => docs.filter((d) => !d.deletedAt && !d.stmt), [docs]);
   const week = new Date(Date.now() - 7 * 864e5).toISOString();
@@ -5341,7 +5343,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   const modeBar = (
     <div className="jmodes">
       <div className="seg">{[["journal", "📓 Journal"], ["pruefen", `✓ Prüfen${cnt("unbest") ? " (" + cnt("unbest") + ")" : ""}`], ["monate", "🗓 Monate"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); if (k === "pruefen") { const f = base.filter(jUnconf).sort((a, b) => jDate(b).localeCompare(jDate(a)))[0]; setCur(f?.id || null); if (mob && f) setPhoneOpen(true); } }}>{l}</button>)}</div>
-      {mode !== "monate" && <SearchBox className="sbplain jsearch" icon={false} value={q} onChange={setQ} placeholder="Belege durchsuchen" />}
+      {mode !== "monate" && !mob && <SearchBox className="sbplain jsearch" icon={false} value={q} onChange={setQ} placeholder="Belege durchsuchen" />}
+      {mode !== "monate" && !mob && <button className={"btn sm jdetbtn" + ((narrow ? detN : detW) ? " on" : "")} onClick={() => (narrow ? setDetN(!detN) : setDetW(!detW))} title="Details einblenden und bearbeiten">{(narrow ? detN : detW) ? "✕ Details" : "✎ Details"}</button>}
     </div>
   );
   const sidebar = (
@@ -5396,13 +5399,19 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   if (mob) {
     const groups = mGroup(listV, (d) => jMonth(d));
     return (
-      <div className="jpage-wrap jmob">{modeBar}
+      <div className="jpage-wrap jmob mpage">{modeBar}
+        <div className="msticky jsticky">
+        <SearchBox className="sbplain jsearch" icon={false} value={q} onChange={setQ} placeholder="Belege durchsuchen" />
         <div className="chips jchips">{J_FILTERS.map(([k, ic, l]) => <button key={k} className={"chip" + (effFilt === k ? " on" : "")} onClick={() => { setFilt(k); if (mode === "pruefen") setMode("journal"); }}>{l}{k !== "alle" && cnt(k) ? ` ${cnt(k)}` : ""}</button>)}</div>
         {mode !== "pruefen" && <div className="chips jyears">{["", ...years].map((y) => <button key={y || "alle"} className={"chip" + (sel.y === y && !sel.m ? " on" : "")} onClick={() => setSel({ y, m: "" })}>{y || "Alle"}</button>)}{sel.m && <button className="chip on" onClick={() => setSel({ ...sel, m: "" })}>{MONTHS_DE[+sel.m - 1]} ✕</button>}</div>}
-        <div className="jmlist">{groups.map(([m, l]) => <React.Fragment key={m}>
-          <div className="jmhead"><span>{m ? MONTHS_DE[+m.slice(5, 7) - 1] + " " + m.slice(0, 4) : "Ohne Datum"}</span><span className="muted">{fmtMoney(l.reduce((s, d) => s + (jSigned(d) || 0), 0))}</span></div>
-          {l.map(row)}</React.Fragment>)}
-          {!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege für diese Auswahl."}</MEmpty>}</div>
+        </div>
+        <MScroll extra="jmscroll">{groups.map(([m, l]) => { const shut = mClosed.includes(m || "ohne"); return (<React.Fragment key={m}>
+          <button type="button" className={"jmhead" + (shut ? " shut" : "")} onClick={() => setMClosed(shut ? mClosed.filter((x) => x !== (m || "ohne")) : [...mClosed, m || "ohne"])} aria-expanded={!shut}>
+            <span className="jmhl"><span className="jchev">▾</span>{m ? MONTHS_DE[+m.slice(5, 7) - 1] + " " + m.slice(0, 4) : "Ohne Datum"}<small className="jmn">{l.length}</small></span><span className="muted">{fmtMoney(l.reduce((s, d) => s + (jSigned(d) || 0), 0))}</span></button>
+          {!shut && l.map(row)}</React.Fragment>); })}
+          {!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege für diese Auswahl."}</MEmpty>}
+          {groups.length > 1 && <div className="jmall"><button className="link" onClick={() => setMClosed([])}>Alle aufklappen</button><button className="link" onClick={() => setMClosed(groups.map(([m]) => m || "ohne"))}>Alle zuklappen</button></div>}
+        </MScroll>
         {phoneOpen && curDoc && createPortal(
           <div className="jphone">
             <div className="jphead"><button className="link" onClick={() => setPhoneOpen(false)}>‹ Journal</button><b className="one">{curDoc.title}</b>
@@ -5415,15 +5424,21 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   /* ---------- 1 + 2 · Drei-Spalten-Journal / Prüf-Modus ---------- */
   return (
     <div className="jpage-wrap">{modeBar}
-      <div ref={boxRef} className={"jgrid" + (narrow ? " narrow" : "") + (mode === "pruefen" ? " pruef" : "")} style={boxH ? { height: boxH } : undefined}>
+      <div ref={boxRef} className={"jgrid" + (narrow ? " narrow" : "") + (mode === "pruefen" ? " pruef" : "") + ((narrow ? detN : detW) ? " det" : " nodet")} style={boxH ? { height: boxH } : undefined}>
         {mode !== "pruefen" && sidebar}
         <div className="jlist">
           <div className="jlhead">{mode === "pruefen" ? <b>Zu prüfen</b> : <b>{facet ? (facet.v || "Nicht zugewiesen") : sel.m ? MONTHS_DE[+sel.m - 1] + " " + sel.y : sel.y === "ohne" ? "Ohne Datum" : sel.y || "Alle Jahre"}</b>}<small className="muted">{list.length}</small></div>
           <div className="jlscroll">{listV.map(row)}{!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege."}</MEmpty>}</div>
           <div className="jlsum"><span className="muted">Summe</span><b className={sum >= 0 ? "pos" : "neg"}>{fmtMoney(sum)}</b></div>
         </div>
-        <div className="jcenter">{curDoc ? <JournalPreview d={curDoc} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}</div>
-        <div className="jinsp">{fields}</div>
+        <div className="jcenter">{curDoc ? <JournalPreview d={curDoc} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}
+          {curDoc && !(narrow ? detN : detW) && <div className="jstrip">
+            <div className="grow jstxt"><b className="one">{curDoc.title || curDoc.fileName}</b><small className="muted one">{[jDate(curDoc) && fmtDate(jDate(curDoc)), curDoc.sender, curDoc.category].filter(Boolean).join(" · ")}</small></div>
+            {jSigned(curDoc) != null && <b className={"jsamt " + (jSigned(curDoc) >= 0 ? "pos" : "neg")}>{fmtMoney(jSigned(curDoc))}</b>}
+            <button className="btn sm" onClick={() => (narrow ? setDetN(true) : setDetW(true))}>✎ Details</button>
+            <button className="btn sm primary" onClick={confirm}>{jUnconf(curDoc) ? "✓ Bestätigen" : "Weiter ›"}</button>
+          </div>}</div>
+        {(narrow ? detN : detW) && <div className="jinsp">{fields}</div>}
       </div>
       {mode === "pruefen" && <small className="muted block jhint">Tastatur: ↑/↓ wechseln · Enter = Bestätigen &amp; weiter</small>}
     </div>
@@ -15580,10 +15595,16 @@ html.dark .scpick.sc-firma .scpickbtn{color:#fbbf24!important}html.dark .scpick.
 .jmodes{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.jmodes .seg button{white-space:nowrap}.jmodes .jsearch{flex:1;min-width:200px;max-width:420px}
 .jgrid{display:grid;grid-template-columns:230px 270px minmax(0,1fr) 310px;gap:10px;min-height:420px}
 .jgrid.pruef{grid-template-columns:270px minmax(0,1fr) 330px}
-.jgrid.narrow{grid-template-columns:210px 250px minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1.25fr)}
-.jgrid.narrow>.jside,.jgrid.narrow>.jlist{grid-row:1/3}
-.jgrid.narrow>.jcenter{grid-column:3;grid-row:1}.jgrid.narrow>.jinsp{grid-column:3;grid-row:2}
-.jgrid.narrow.pruef{grid-template-columns:260px minmax(0,1fr)}.jgrid.narrow.pruef>.jcenter,.jgrid.narrow.pruef>.jinsp{grid-column:2}
+.jgrid.nodet{grid-template-columns:230px 270px minmax(0,1fr)}
+.jgrid.nodet.pruef{grid-template-columns:270px minmax(0,1fr)}
+.jgrid.narrow{grid-template-columns:210px 250px minmax(0,1fr)}
+.jgrid.narrow.pruef{grid-template-columns:260px minmax(0,1fr)}
+.jgrid.narrow.det>.jcenter{display:none}
+.jgrid>.jcenter{display:flex;flex-direction:column}
+.jstrip{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:auto;padding:10px 12px;background:var(--card);border-top:1px solid var(--line)}
+.jstrip .jstxt{min-width:140px;display:flex;flex-direction:column}.jstrip .jsamt{font-size:16px;white-space:nowrap}
+.jdetbtn.on{background:color-mix(in srgb,var(--acc) 16%,var(--card));color:var(--acc)}
+html.hasdetail .jphone{visibility:hidden}
 html.hasdetail .jphone{visibility:hidden}
 .jscrim{position:absolute;inset:0;z-index:19;background:#0003;border-radius:16px}
 .jside,.jlist,.jinsp,.jcenter{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:auto;min-height:0}
@@ -15660,4 +15681,13 @@ html.hasdetail .jphone{visibility:hidden}
 .mobcfg .ki{width:30px;height:30px;display:grid;place-items:center;font-size:18px;color:var(--acc)}.mobcfg .ki .tabsvg{width:22px;height:22px}
 .mobcfg.mobhid{opacity:.5}.mobcfg .handle{touch-action:none;padding:6px 4px}
 .mobempty{padding:10px;text-align:center}
+
+/* v0.99.5: Journal am iPhone – Suche bleibt oben, Liste wie Dokumente, Monate einklappbar */
+.jmob .jsticky{gap:8px}.jmob .jsticky .chips{margin:0}
+.jmob .jmscroll{padding:0;background:var(--card)}
+.mnative .jmhead{position:sticky;top:calc(env(safe-area-inset-top) + var(--mstk,0px));z-index:2}
+button.jmhead{width:100%;border:0;font-family:inherit;cursor:pointer;align-items:center;text-align:left;padding:12px 14px 8px}
+.jmhead .jmhl{display:flex;align-items:center;gap:8px}.jmhead .jchev{font-size:11px;transition:transform .15s;display:inline-block}
+.jmhead.shut .jchev{transform:rotate(-90deg)}.jmhead .jmn{font-weight:600;font-size:11px;padding:1px 7px;border-radius:9px;background:var(--line);color:var(--mut);letter-spacing:0}
+.jmall{display:flex;justify-content:center;gap:18px;padding:12px}
 `;

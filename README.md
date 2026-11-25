@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.5 – Journal: Details-Knopf, iPhone-Scrollen, Monate einklappbar
+
+- **„✎ Details“-Knopf** (Laptop & iPad) blendet die Felder zum Bearbeiten ein und aus. Ausgeblendet ist die Vorschau größer, darunter eine Leiste mit Titel, Datum, Betrag, „✎ Details“ und „Bestätigen/Weiter“.
+- **iPad quer:** statt Vorschau und Felder gequetscht untereinander zeigt die rechte Spalte entweder die Vorschau oder – über „✎ Details“ – die Felder in voller Höhe.
+- **iPhone:** Scrollen wie in den Dokumenten – Suche und Filter bleiben oben stehen, die Liste ist eine Karte mit runden Kanten bis über die Leiste unten, Monatsüberschriften bleiben beim Scrollen oben.
+- **Monate ein-/ausklappbar** (Tippen auf die Monatsüberschrift, gespeichert), dazu „Alle auf-/zuklappen“ am Listenende.
+
 ## v0.99.4 – Handy-Menü frei sortierbar, Journal auf iPhone & iPad
 
 - **Handy-Menü selbst anordnen:** In Privat, Firma und Mehr gibt es „⇄ Anordnen“: Reiter am Griff ⠿ ziehen, über ⋯ in einen anderen Bereich, in die Leiste unten verschieben oder ausblenden. Das ganze Menü (Leiste unten + alle Bereiche) zusätzlich unter Einstellungen → Handy-Menü. Leiste unten max. 5, „Mehr“ bleibt immer rechts; Bereiche, die nicht in der Leiste stehen, erscheinen unter „Mehr“.
