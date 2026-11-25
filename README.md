@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.24 – Reiter Kontoauszüge
+- Eigener Reiter „Kontoauszüge“ in der Seitenleiste (unter Konten, am Handy unter Firma): heruntergeladenen Auszug hochladen, KI erkennt die Buchungen und markiert die Firmenzeilen
+- Monatsübersicht je Konto (vorhanden / unklare Zeilen / fehlt), Filter nach Konto und Jahr
+- Je Auszug 👁 Vorschau und 🖨️ Drucken des markierten Auszugs; „Alle drucken“ mit Deckblatt (Übersicht, Summen, fehlende Belege)
+- Druck-Markierung: nur Firma grün, unklar gelb, privat unmarkiert; neben Firmenzeilen Kategorie und Beleg-Status; unten auf jeder Seite Legende und Firmensumme
+- Steuerberater › Berichte: Vorschau-Auge ganz am Ende der Zeile
+
 ## v0.99.23 – Steuerberater: KI-Prüfung, Vorschau & Kanzlei-Exporte
 - Berichte mit Vorschau (Auge) im Popup
 - „Deine Tätigkeit“: Art wählen + eigene Beschreibung, KI recherchiert im Internet Einkunftsart, Sozialversicherung, Pauschalierungssätze und Grenzen und übernimmt sie in die Berichte
