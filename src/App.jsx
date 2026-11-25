@@ -4756,7 +4756,7 @@ function MobNavEditor({ nav, setNav, notify, only = null, showBar = true }) {
     from === "bar" && !MOB_HUBS.includes(k) && { k: "unbar", icon: "▦", title: "Aus der Leiste nehmen", sub: "landet unter „Mehr“", run: () => save(mobMove(L, k, "unbar")) },
     from === "bar" && MOB_HUBS.includes(k) && { k: "unbar", icon: "▦", title: "Aus der Leiste nehmen", sub: "Inhalt erscheint unter „Mehr“", run: () => save(mobMove(L, k, "unbar")) },
     ...(MOB_HUBS.includes(k) ? [] : MOB_HUBS.filter((h) => h !== from).map((h) => ({ k: h, icon: HUB_DEFS[h][0], title: "Nach " + HUB_DEFS[h][1], run: () => save(mobMove(L, k, h)) }))),
-    from !== "bar" && k !== "settings" && (L.hide.has(k) ? { k: "show", icon: "👁", title: "Einblenden", run: () => save(mobMove(L, k, "show")) } : { k: "hide", icon: "🚫", title: "Ausblenden", run: () => save(mobMove(L, k, "hide")) })
+    from !== "bar" && k !== "settings" && (L.hide.has(k) ? { k: "show", icon: <IcoEye />, title: "Einblenden", run: () => save(mobMove(L, k, "show")) } : { k: "hide", icon: "🚫", title: "Ausblenden", run: () => save(mobMove(L, k, "hide")) })
   ];
   const section = (id, label, note) => {
     const l = lists[id];
@@ -7348,7 +7348,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
               <Thumb d={doc} /><div className="grow"><b>📎 {doc.title}</b><small className="muted block">{doc.sender ? doc.sender + " · " : ""}{doc.amount?.total ? fmtMoney(doc.amount.total) + " · " : ""}Antippen für Vorschau</small></div>
             </div>
             <div className="row txbelacts">
-              <button className="btn sm" onClick={() => setPrevDoc(doc)}>👁 Vorschau</button>
+              <button className="btn sm detprevbtn" onClick={() => setPrevDoc(doc)}><IcoEye /> <span>Vorschau</span></button>
               <button className={"btn sm" + (swap ? " on" : "")} onClick={() => setSwap(!swap)}>⇄ Tauschen</button>
               <button className="btn sm" onClick={() => onOpen(doc.id)}>Öffnen</button>
               <button className="btn sm red" onClick={() => confirm(`Beleg „${doc.title}“ von der Buchung lösen?\nDer Beleg bleibt unter Dokumente erhalten.`) && linkTx(t.id, null)}>✕ Lösen</button>
@@ -7442,7 +7442,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
           </section>
           <h3 className="txsec">Dokumente zum Vertrag ({cdocs.length})</h3>
           {cdocs.length ? <div className="txctdocs">{cdocs.map((d) => (
-            <div key={d.id} className="txlink" onClick={() => setPrevDoc(d)}><Thumb d={d} /><div className="grow"><b className="one">{d.title}</b><small className="muted block">{d.documentDate ? fmtDate(d.documentDate) : ""}{d.docType ? " · " + d.docType : ""}</small></div><span className="link">👁 Vorschau</span></div>))}</div>
+            <div key={d.id} className="txlink" onClick={() => setPrevDoc(d)}><Thumb d={d} /><div className="grow"><b className="one">{d.title}</b><small className="muted block">{d.documentDate ? fmtDate(d.documentDate) : ""}{d.docType ? " · " + d.docType : ""}</small></div><span className="link detprevlink"><IcoEye /> Vorschau</span></div>))}</div>
             : <p className="muted small">Noch keine Dokumente mit diesem Vertrag verknüpft. Unter Verträge → Bearbeiten kannst du welche zuordnen.</p>}
           <button className="btn" style={{ marginTop: 12 }} onClick={() => { ls.set("ctOpenReq", ct.id); goTab?.("vertraege"); setCtPrev(false); onClose(); }}>In Verträgen öffnen ›</button>
         </Win>, document.querySelector(".app") || document.body); })()}
@@ -15903,4 +15903,5 @@ nav.bottom>button.navheadbtn:hover{color:var(--txt)!important}
 .infobody{padding:2px 14px 12px 40px;font-size:13.5px;line-height:1.5}
 .infobody p{margin:6px 0}.infobody ul,.infobody ol{margin:6px 0;padding-left:18px}.infobody li{margin:3px 0}
 .infobody code{font-size:12px;padding:1px 4px;border-radius:4px;background:var(--card2)}
+.detprevlink{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.detprevlink svg{width:17px;height:17px}
 `;

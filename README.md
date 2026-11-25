@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.20 – Einheitliches Augen-Symbol
+
+In der Buchungs-Ansicht (z. B. aus dem Steuerberater-Reiter) und bei verknüpften Dokumenten wird für „Vorschau“ jetzt dasselbe Augen-Symbol verwendet wie überall sonst in der App (statt des Emoji 👁). Ebenso im Handy-Menü bei „Einblenden“.
+
 ## v0.99.19 – Seitenleiste: Konto nur im Reiter Konten markiert
 
 Ein ausgewähltes Konto wird in der Seitenleiste nur noch hervorgehoben, solange man im Reiter **Konten** ist. In anderen Reitern (z. B. Ausgabe) ist nur noch der jeweilige Reiter markiert; die Kontoauswahl bleibt erhalten und ist beim Zurückwechseln wieder sichtbar.
