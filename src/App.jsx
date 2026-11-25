@@ -7805,7 +7805,277 @@ function StmtImportWin({ file, accounts, txs, getTxs, importTxs, saveDoc, update
 }
 
 /* Steuerberater: Monatsabschluss · Kontoauszüge · Prüfen · Klärungsliste · Paket */
-const STB_TABS = [["monate", "🚦", "Monate"], ["auszuege", "📄", "Kontoauszüge"], ["pruefen", "🔎", "Prüfen"], ["fragen", "❓", "Klärungsliste"], ["paket", "📦", "Paket"], ["setup", "⚙︎", "Einstellungen"]];
+/* ======================= Steuerberater · Berichte (v0.99.21, Österreich) =======================
+   Einnahmen-Ausgaben-Rechnung nach Zahlungsfluss (Bank + Kassabuch), gegliedert nach den Kennzahlen der Beilage E 1a,
+   dazu Anlagenverzeichnis mit AfA, Kilometergeld, Gewinnfreibetrag, Pauschalierungsvergleich, Kleinunternehmergrenze.
+   Werte: BMF/WKO/USP, Stand 2026 – keine Steuerberatung. */
+const E1A_KZ = [
+  ["9040", "Erlöse aus Lieferungen und Leistungen", "in"], ["9090", "Übrige Betriebseinnahmen", "in"],
+  ["9100", "Waren, Rohstoffe, Hilfsstoffe", "out"], ["9110", "Fremdpersonal und Fremdleistungen", "out"], ["9120", "Eigenes Personal", "out"],
+  ["9130", "Abschreibungen (AfA) inkl. geringwertige Wirtschaftsgüter", "out"], ["9150", "Instandhaltung Gebäude", "out"],
+  ["9160", "Reise- und Fahrtspesen inkl. Kilometergeld und Diäten", "out"], ["9170", "Tatsächliche Kfz-Kosten (ohne AfA, Leasing, km-Geld)", "out"],
+  ["9180", "Miet- und Pachtaufwand, Leasing", "out"], ["9190", "Provisionen, Lizenzgebühren", "out"], ["9200", "Werbe- und Repräsentationsaufwand", "out"],
+  ["9215", "Arbeitsplatzpauschale (klein, 300 €)", "out"], ["9217", "Arbeitsplatzpauschale (groß, 1.200 €)", "out"],
+  ["9220", "Zinsen und ähnliche Aufwendungen", "out"], ["9225", "Eigene Pflichtversicherungsbeiträge (SVS)", "out"], ["9230", "Übrige Betriebsausgaben", "out"]];
+const E1A_SKIP = "skip";
+const E1A_LBL = Object.fromEntries(E1A_KZ.map(([k, l]) => [k, l]));
+// Vorschlag für die Kennzahl aus Kategorie / Empfänger / Zweck
+function kzGuess(cat = "", cp = "", txt = "", income = false) {
+  const c = norm(cat), all = norm(`${cat} ${cp} ${txt}`);
+  if (income) return /zins/.test(all) ? "9090" : "9040";
+  if (/\bsvs\b|sozialversicherung|\bsva\b|selbst.*versich/.test(all)) return "9225";
+  if (/privat|umbuchung|geldtransit|kassendifferenz/.test(c)) return E1A_SKIP;
+  if (/waren|material|wareneinkauf|grosshandel|großhandel|elektrogroß|rohstoff|hilfsstoff|lager/.test(all)) return "9100";
+  if (/fremdleist|subunternehm|fremdpersonal|werkvertrag/.test(all)) return "9110";
+  if (/lohn|gehalt|personal|dienstnehmer/.test(c)) return "9120";
+  if (/reise|hotel|bahn|öbb|oebb|flug|diät|taggeld|nächtigung|parken|maut|vignette/.test(all)) return "9160";
+  if (/auto|kfz|tank|treibstoff|mobil|werkstatt|reifen|service|pickerl|diesel|benzin/.test(all)) return "9170";
+  if (/miete|pacht|leasing/.test(all)) return "9180";
+  if (/provision|lizenz/.test(all)) return "9190";
+  if (/werbung|marketing|inserat|bewirtung|repräsent|geschenk/.test(all)) return "9200";
+  if (/zins/.test(all)) return "9220";
+  if (/instandhalt|renovier/.test(c)) return "9150";
+  return "9230";
+}
+const KB_KZ = { "Barverkauf / Erlös": "9040", "Sonstige Einnahme": "9090", "Privateinlage": E1A_SKIP, "Bankabhebung (Geldtransit)": E1A_SKIP,
+  "Wareneinkauf": "9100", "Büromaterial": "9230", "Porto & Versand": "9230", "Bewirtung": "9200", "Reise & Fahrt": "9160", "Kfz": "9170", "Sonstiger Aufwand": "9230",
+  "Privatentnahme": E1A_SKIP, "Bankeinzahlung (Geldtransit)": E1A_SKIP, "Kassendifferenz": "9230" };
+const STB_REP_DEF = { ku: true, kuType: "gewerbe", apl: "0", km: true, basis6: false };
+// AfA eines Anlageguts für ein Jahr (linear, Halbjahres-AfA, GWG bis 1.000 € sofort)
+function afaOf(a, year) {
+  const p = Number(a.price) || 0, d = a.date || "", y0 = +d.slice(0, 4), m0 = +d.slice(5, 7) || 1, nd = Math.max(1, Number(a.afaYears) || 0);
+  if (!p || !y0 || +year < y0) return { afa: 0, book: p, gwg: p <= 1000, nd };
+  if (p <= 1000) return { afa: +year === y0 ? p : 0, book: +year === y0 ? 0 : 0, gwg: true, nd: 1 };
+  if (!a.afaYears) return { afa: 0, book: p, gwg: false, nd: 0, missing: true };
+  const full = p / nd; let rest = p, afa = 0;
+  for (let y = y0; y <= +year && rest > 0.004; y++) { const v = Math.min(rest, y === y0 && m0 > 6 ? full / 2 : full); if (y === +year) afa = v; rest -= v; }
+  return { afa: r2e(afa), book: r2e(Math.max(0, rest)), gwg: false, nd };
+}
+function stbYearData(year, D, opt, map) {
+  const yr = String(year), inY = (d) => (d || "").startsWith(yr);
+  const lines = [];   // { date, src, partner, text, cat, kz, amount (+/-), beleg, acc }
+  for (const r of D.rows) {
+    if (!inY(r.t.date) || r.scope !== "firma" || r.transfer || !r.biz) continue;
+    const t = r.t, income = r.biz > 0, key = (income ? "+" : "-") + (t.category || "Sonstiges");
+    const kz = t.kz || map[key] || kzGuess(t.category, t.counterparty, t.purpose, income);
+    lines.push({ id: t.id, date: t.date, src: r.acc?.name || "Bank", partner: t.counterparty || "", text: (t.purpose || "").slice(0, 160), cat: t.category || "Sonstiges", mapKey: key, kz, amount: r.biz, beleg: r.doc ? (r.doc.title || "Beleg") : "", hasDoc: !!r.doc, pct: bizPctOf(t, r.scope) });
+  }
+  const kassen = ls.get("kassen", []), kent = ls.get("kassaEntries", []);
+  for (const e of kent) {
+    if (!inY(e.date)) continue; const k = kassen.find((x) => x.id === e.kasse); const kz = KB_KZ[e.cat] || (e.kind === "ein" ? "9090" : "9230");
+    lines.push({ id: e.id, date: e.date, src: "Kassa " + (k?.name || ""), partner: "", text: e.text || "", cat: e.cat || "", mapKey: null, kz, amount: kbSigned(e), beleg: e.beleg || (e.eigen ? "Eigenbeleg" : e.docId ? "Dokument" : ""), hasDoc: !!(e.beleg || e.eigen || e.docId), kassa: true });
+  }
+  // Kilometergeld (Fahrtenbuch, geschäftliche Fahrten, max. 30.000 km)
+  const fb = ls.get("fbook", FB_EMPTY), veh = Object.fromEntries((fb.vehicles || []).map((v) => [v.id, v]));
+  const trips = (fb.entries || []).filter((e) => e.type === "trip" && e.purpose === "business" && inY(e.date)).sort((a, b) => a.date.localeCompare(b.date));
+  const rate = +(fb.settings?.kmRate ?? 0.5), km = sumBy(trips, (e) => Math.max(0, e.endKm - e.startKm)), kmEur = r2e(Math.min(km, 30000) * rate);
+  if (opt.km && kmEur) lines.push({ id: "km", date: yr + "-12-31", src: "Fahrtenbuch", partner: "", text: `Kilometergeld ${km.toLocaleString("de-AT")} km × ${String(rate).replace(".", ",")} €`, cat: "Kilometergeld", kz: "9160", amount: -kmEur, beleg: "Fahrtenbuch", hasDoc: true, auto: true });
+  // Anlagen (Firma) → AfA
+  const assets = ls.get("assets", []).filter((a) => (a.scope || "privat") === "firma");
+  const anl = assets.map((a) => ({ a, ...afaOf(a, yr) }));
+  const afaSum = r2e(sumBy(anl, (x) => x.afa));
+  if (afaSum) lines.push({ id: "afa", date: yr + "-12-31", src: "Anlagenverzeichnis", partner: "", text: `AfA ${anl.filter((x) => x.afa).length} Anlagegüter`, cat: "Abschreibung", kz: "9130", amount: -afaSum, beleg: "Anlagenverzeichnis", hasDoc: true, auto: true });
+  if (opt.apl === "300") lines.push({ id: "apl", date: yr + "-12-31", src: "Pauschale", partner: "", text: "Arbeitsplatzpauschale (klein)", cat: "Pauschale", kz: "9215", amount: -300, hasDoc: true, auto: true });
+  if (opt.apl === "1200") lines.push({ id: "apl", date: yr + "-12-31", src: "Pauschale", partner: "", text: "Arbeitsplatzpauschale (groß)", cat: "Pauschale", kz: "9217", amount: -1200, hasDoc: true, auto: true });
+  lines.sort((a, b) => a.date.localeCompare(b.date));
+  const used = lines.filter((l) => l.kz !== E1A_SKIP);
+  const byKz = {}; for (const [k] of E1A_KZ) byKz[k] = { sum: 0, n: 0, lines: [] };
+  for (const l of used) { const b = byKz[l.kz] || (byKz[l.kz] = { sum: 0, n: 0, lines: [] }); b.sum = r2e(b.sum + Math.abs(l.amount)); b.n++; b.lines.push(l); }
+  const inc = r2e(byKz["9040"].sum + byKz["9090"].sum), out = r2e(E1A_KZ.filter((k) => k[2] === "out").reduce((s, [k]) => s + (byKz[k]?.sum || 0), 0));
+  const profit = r2e(inc - out), gfb = r2e(profit > 0 ? Math.min(profit, 33000) * 0.15 : 0);
+  // Umsatz für Kleinunternehmergrenze: Ausgangsrechnungen nach Rechnungsdatum (sonst Firmen-Erlöse)
+  const invs = ls.get("invoices", []).filter((x) => x.kind === "rechnung" && x.number && !["entwurf", "storniert"].includes(invState(x)) && inY(x.date));
+  const umsatzM = Array.from({ length: 12 }, (_, i) => { const m = `${yr}-${String(i + 1).padStart(2, "0")}`; return { m, inv: r2e(sumBy(invs.filter((x) => x.date.startsWith(m)), invTotal)), erl: r2e(sumBy(byKz["9040"].lines.filter((l) => l.date.startsWith(m)), (l) => l.amount)) }; });
+  const umsatzInv = r2e(sumBy(invs, invTotal)), umsatz = invs.length ? umsatzInv : byKz["9040"].sum;
+  const kuLimit = +yr >= 2025 ? 55000 : +yr >= 2023 ? 40000 : 35000;
+  // Pauschalierungsvergleich
+  const sv = byKz["9225"].sum, waren = byKz["9100"].sum, personal = byKz["9110"].sum + byKz["9120"].sum, apl = byKz["9215"].sum + byKz["9217"].sum, kmA = byKz["9160"].lines.filter((l) => l.id === "km").reduce((s, l) => s - l.amount, 0);
+  const bRate = opt.basis6 ? 0.06 : +yr >= 2026 ? 0.15 : +yr === 2025 ? 0.135 : 0.12, bMax = opt.basis6 ? (+yr >= 2026 ? 25200 : +yr === 2025 ? 19200 : 13200) : (+yr >= 2026 ? 63000 : +yr === 2025 ? 43200 : 26400);
+  const basisBA = r2e(Math.min(inc * bRate, bMax) + waren + personal + sv + apl + kmA);
+  const kuRate = opt.kuType === "dienst" ? 0.2 : 0.45, kuMax = opt.kuType === "dienst" ? (+yr >= 2025 ? 11000 : 8400) : (+yr >= 2025 ? 24750 : 18900);
+  const kuOk = inc <= kuLimit * (+yr >= 2025 ? 1.1 : 1), kuBA = r2e(Math.min(inc * kuRate, kuMax) + sv);
+  const variants = [
+    { k: "ear", name: "Einnahmen-Ausgaben-Rechnung (tatsächliche Ausgaben)", ba: out, ok: true },
+    { k: "basis", name: `Basispauschalierung ${String(bRate * 100).replace(".", ",")} %`, ba: basisBA, ok: true, note: "zusätzlich absetzbar: Waren, Personal, SVS, km-Geld, Arbeitsplatzpauschale" },
+    { k: "ku", name: `Kleinunternehmerpauschalierung ${kuRate * 100} %`, ba: kuBA, ok: kuOk, note: kuOk ? "zusätzlich absetzbar: SVS-Beiträge" : `nicht möglich – Umsatz über ${fmtMoney(kuLimit)}` }
+  ].map((v) => { const g = r2e(inc - v.ba), f = r2e(g > 0 ? Math.min(g, 33000) * 0.15 : 0); return { ...v, gewinn: g, gfb: f, steuerbasis: r2e(g - f) }; });
+  const best = variants.filter((v) => v.ok).sort((a, b) => a.steuerbasis - b.steuerbasis)[0];
+  // Wareneingangsbuch, Privat, offene Punkte
+  const waren9100 = byKz["9100"].lines;
+  const priv = [];
+  for (const r of D.rows) if (inY(r.t.date) && r.transfer && r.acc?.use === "firma") priv.push({ date: r.t.date, art: r.t.amount < 0 ? "Entnahme (Umbuchung)" : "Einlage (Umbuchung)", text: `${r.t.counterparty || ""} ${r.t.purpose || ""}`.trim(), amount: r.t.amount, src: r.acc?.name || "" });
+  for (const e of kent) if (inY(e.date) && /Privat/.test(e.cat || "")) priv.push({ date: e.date, art: e.cat, text: e.text || "", amount: kbSigned(e), src: "Kassa" });
+  priv.sort((a, b) => a.date.localeCompare(b.date));
+  const noDoc = used.filter((l) => l.amount < 0 && !l.hasDoc), unklar = D.rows.filter((r) => inY(r.t.date) && r.scope === "unklar" && !r.transfer);
+  return { yr, lines, used, byKz, inc, out, profit, gfb, invs, umsatz, umsatzM, kuLimit, variants, best, anl, afaSum, trips, km, kmEur, rate, veh, waren9100, priv, noDoc, unklar, ku: opt.ku };
+}
+const STB_REPORTS = [
+  ["gesamt", "📘", "Jahresbericht für den Steuerberater", "Alles auf einen Blick: Ergebnis, E1a-Kennzahlen, Gewinnfreibetrag, Pauschalierungsvergleich, Umsatzgrenze, Hinweise", ["pdf", "xlsx"]],
+  ["e1a", "🧮", "E 1a – Kennzahlen", "Einnahmen und Ausgaben je Kennzahl der Beilage E 1a, mit Einzelposten", ["pdf", "xlsx", "csv"]],
+  ["journal", "📒", "Einnahmen-Ausgaben-Journal", "Alle Firmenbuchungen chronologisch mit Konto, Kennzahl und Beleg", ["pdf", "xlsx", "csv"]],
+  ["pausch", "⚖️", "Pauschalierungsvergleich", "EAR vs. Basispauschalierung vs. Kleinunternehmerpauschalierung", ["pdf"]],
+  ["umsatz", "📈", "Umsatz & Kleinunternehmergrenze", "Monatlicher Umsatz kumuliert gegen 55.000 € (Toleranz 60.500 €)", ["pdf", "xlsx"]],
+  ["anlagen", "🏷️", "Anlagenverzeichnis mit AfA", "Anschaffungsdatum, Kosten, Lieferant, Nutzungsdauer, AfA, Restbuchwert", ["pdf", "xlsx"]],
+  ["waren", "📦", "Wareneingangsbuch", "Wareneinkäufe (KZ 9100) mit laufender Nummer und Lieferant", ["pdf", "xlsx"]],
+  ["km", "🚗", "Kilometergeld-Aufstellung", "Geschäftliche Fahrten aus dem Fahrtenbuch × amtliches km-Geld", ["pdf", "xlsx"]],
+  ["privat", "👤", "Privatentnahmen & -einlagen", "Umbuchungen Firmenkonto ↔ privat und Privatbuchungen der Kassa", ["pdf", "xlsx"]],
+  ["offen", "📮", "Offene Posten (Forderungen)", "Unbezahlte Ausgangsrechnungen zum Stichtag", ["pdf"]],
+  ["fehlt", "⚠️", "Fehlende Belege & unklare Buchungen", "Was der Steuerberater sonst nachfragen würde", ["pdf"]]];
+const STB_REP_PRE = ["gesamt", "e1a", "journal", "anlagen", "km", "fehlt"];
+async function stbReport(k, fmt, Y, co) {
+  const yr = Y.yr, who = `${co.name || "Firma"}${co.owner ? " · " + co.owner : ""}${co.taxNo ? " · StNr. " + co.taxNo : ""}`, sub = `${who} · Wirtschaftsjahr ${yr}`;
+  const kzRows = E1A_KZ.map(([kz, l, d]) => [kz, l, d === "in" ? "Einnahme" : "Ausgabe", Y.byKz[kz]?.n || 0, Y.byKz[kz]?.sum || 0]).filter((r) => r[4] || ["9040"].includes(r[0]));
+  const jRow = (l) => [l.date, l.src, l.partner, l.text, l.cat, l.kz === E1A_SKIP ? "–" : l.kz, l.amount, l.beleg || (l.hasDoc ? "ja" : "FEHLT")];
+  const JH = ["Datum", "Konto/Quelle", "Partner", "Text", "Kategorie", "KZ", "Betrag €", "Beleg"];
+  const vRows = Y.variants.map((v) => [v.name + (v.ok ? "" : " (nicht möglich)"), Y.inc, v.ba, v.gewinn, v.gfb, v.steuerbasis]);
+  const VH = ["Variante", "Einnahmen €", "Betriebsausgaben €", "Gewinn €", "Grundfreibetrag €", "Bemessung €"];
+  const anlRows = Y.anl.map((x) => [x.a.name + (x.a.brand ? " · " + x.a.brand : ""), x.a.date || "", Number(x.a.price) || 0, x.a.dealer || "", x.gwg ? "GWG" : x.missing ? "fehlt" : x.nd + " J.", x.afa, x.gwg ? 0 : x.book]);
+  const AH = ["Anlagegut", "Anschaffung", "Kosten €", "Lieferant", "Nutzungsdauer", `AfA ${yr} €`, "Restbuchwert €"];
+  let cum = 0; const uRows = Y.umsatzM.map((x) => { cum = r2e(cum + (Y.invs.length ? x.inv : x.erl)); return [monthLabel(x.m), Y.invs.length ? x.inv : x.erl, cum, r2e(Y.kuLimit - cum)]; });
+  const UH = ["Monat", "Umsatz €", "kumuliert €", "bis Grenze €"];
+  const wRows = Y.waren9100.map((l, i) => [i + 1, l.date, l.partner || l.src, l.text, -l.amount, l.beleg || ""]);
+  const WH = ["Nr.", "Datum", "Lieferant", "Bezeichnung", "Betrag €", "Beleg"];
+  const kmRows = Y.trips.map((e) => [e.date, Y.veh[e.vid]?.name || "", Y.veh[e.vid]?.plate || "", e.from || "", e.to || "", e.note || "", Math.max(0, e.endKm - e.startKm), r2e(Math.max(0, e.endKm - e.startKm) * Y.rate)]);
+  const KH = ["Datum", "Fahrzeug", "Kennzeichen", "Von", "Nach", "Zweck", "km", "€"];
+  const pRows = Y.priv.map((x) => [x.date, x.art, x.src, x.text, x.amount]);
+  const PH = ["Datum", "Art", "Konto", "Text", "Betrag €"];
+  const note = "Werte Stand 2026 (BMF/WKO): Kleinunternehmergrenze 55.000 € brutto, Grundfreibetrag 15 % bis 33.000 € Gewinn,\nGWG bis 1.000 €, Kilometergeld PKW 0,50 €/km (max. 30.000 km).\nEinnahmen/Ausgaben nach Zahlungsfluss (Bank + Kassabuch), Firmenanteil laut Zuordnung in FinDocu" + (Y.ku ? ", Bruttosystem." : ".") + "\nVorbereitung für den Steuerberater – keine Steuerberatung.";
+  const P = (o) => tablePdf({ subtitle: sub, note, ...o });
+  if (k === "gesamt") {
+    if (fmt === "xlsx") return xlsxBlob([{ name: "Ergebnis", head: ["Position", "Betrag €"], rows: [["Betriebseinnahmen", Y.inc], ["Betriebsausgaben", -Y.out], ["Gewinn", Y.profit], ["Grundfreibetrag (KZ 9221)", -Y.gfb], ["Gewinn nach Grundfreibetrag", r2e(Y.profit - Y.gfb)], ["Umsatz (Kleinunternehmergrenze)", Y.umsatz], ["Grenze", Y.kuLimit]] },
+      { name: "E1a", head: ["KZ", "Bezeichnung", "Art", "Posten", "Betrag €"], rows: kzRows }, { name: "Journal", head: JH, rows: Y.used.map(jRow) }, { name: "Pauschalierung", head: VH, rows: vRows },
+      { name: "Umsatz", head: UH, rows: uRows }, { name: "Anlagen", head: AH, rows: anlRows }, { name: "Wareneingang", head: WH, rows: wRows }, { name: "Kilometergeld", head: KH, rows: kmRows }, { name: "Privat", head: PH, rows: pRows }]);
+    return P({ title: `Jahresbericht ${yr} für den Steuerberater`, kpis: [["Einnahmen", fmtMoney(Y.inc)], ["Ausgaben", fmtMoney(Y.out)], ["Gewinn", fmtMoney(Y.profit)], ["nach Grundfreibetrag", fmtMoney(Y.profit - Y.gfb)]],
+      columns: [{ label: "KZ / Position", w: 1.1 }, { label: "Bezeichnung", w: 5 }, { label: "Posten", w: 0.8, align: "right" }, { label: "Betrag €", w: 1.4, align: "right" }],
+      sections: [{ heading: "Beilage E 1a – Kennzahlen", rows: kzRows.map((r) => [r[0], r[1], r[3], r[2] === "Ausgabe" ? -r[4] : r[4]]), totals: ["", "Gewinn/Verlust", Y.used.length, Y.profit] },
+        { heading: "Gewinnfreibetrag", rows: [["9221", "Grundfreibetrag 15 % bis 33.000 € Gewinn (max. 4.950 €)", "", -Y.gfb]], totals: ["", "Gewinn nach Grundfreibetrag", "", r2e(Y.profit - Y.gfb)] },
+        { heading: "Pauschalierungsvergleich (Bemessung nach Grundfreibetrag)", rows: Y.variants.map((v) => ["", v.name + (v.ok ? "" : " – nicht möglich") + (Y.best?.k === v.k ? "  ← günstigste" : ""), "", v.steuerbasis]) },
+        { heading: "Umsatz & Kleinunternehmergrenze", rows: [["", `Umsatz ${yr} (${Y.invs.length ? "Ausgangsrechnungen" : "Erlöse"})`, "", Y.umsatz], ["", "Kleinunternehmergrenze brutto" + (+yr >= 2025 ? " (Toleranz +10 %)" : ""), "", Y.kuLimit], ["", Y.umsatz <= Y.kuLimit ? "unter der Grenze ✓" : Y.umsatz <= Y.kuLimit * 1.1 && +yr >= 2025 ? "über der Grenze, aber in der 10-%-Toleranz" : "ÜBER der Grenze – Umsatzsteuerpflicht prüfen", "", ""]] },
+        { heading: "Hinweise für den Steuerberater", rows: [["", `${Y.noDoc.length} Ausgaben ohne Beleg · ${Y.unklar.length} Buchungen Privat/Firma unklar`, "", ""], ["", `${Y.anl.length} Anlagegüter, AfA ${fmtMoney(Y.afaSum)}${Y.anl.some((x) => x.missing) ? " – bei manchen fehlt die Nutzungsdauer" : ""}`, "", ""], ["", `${Y.trips.length} geschäftliche Fahrten, ${Y.km.toLocaleString("de-AT")} km`, "", Y.kmEur], ["", `${Y.priv.length} Privatentnahmen/-einlagen`, "", ""]] }] });
+  }
+  if (k === "e1a") {
+    if (fmt === "csv") return csvBlob(["KZ", "Bezeichnung", "Art", "Posten", "Betrag €"], kzRows);
+    if (fmt === "xlsx") return xlsxBlob([{ name: "E1a", head: ["KZ", "Bezeichnung", "Art", "Posten", "Betrag €"], rows: kzRows }, ...E1A_KZ.filter(([kz]) => Y.byKz[kz]?.n).map(([kz]) => ({ name: "KZ " + kz, head: JH, rows: Y.byKz[kz].lines.map(jRow) }))]);
+    return P({ title: `Beilage E 1a – Kennzahlen ${yr}`, landscape: true, kpis: [["Einnahmen", fmtMoney(Y.inc)], ["Ausgaben", fmtMoney(Y.out)], ["Gewinn", fmtMoney(Y.profit)], ["Grundfreibetrag", fmtMoney(Y.gfb)]],
+      columns: [{ label: "Datum", w: 1 }, { label: "Konto/Quelle", w: 1.6 }, { label: "Partner", w: 2.2 }, { label: "Text", w: 3.4 }, { label: "Kategorie", w: 1.8 }, { label: "Betrag €", w: 1.2, align: "right" }],
+      sections: E1A_KZ.filter(([kz]) => Y.byKz[kz]?.n).map(([kz, l]) => ({ heading: `KZ ${kz} – ${l}`, rows: Y.byKz[kz].lines.map((x) => [x.date, x.src, x.partner, x.text, x.cat, Math.abs(x.amount)]), totals: ["", "", "", "", "Summe KZ " + kz, Y.byKz[kz].sum] })) });
+  }
+  if (k === "journal") {
+    if (fmt === "csv") return csvBlob(JH, Y.lines.map(jRow));
+    if (fmt === "xlsx") return xlsxBlob([{ name: "Journal", head: JH, rows: Y.lines.map(jRow) }]);
+    return P({ title: `Einnahmen-Ausgaben-Journal ${yr}`, landscape: true, columns: [{ label: "Datum", w: 1 }, { label: "Konto", w: 1.5 }, { label: "Partner", w: 2 }, { label: "Text", w: 3.2 }, { label: "Kategorie", w: 1.6 }, { label: "KZ", w: 0.6 }, { label: "Betrag €", w: 1.1, align: "right" }, { label: "Beleg", w: 1.6 }],
+      rows: Y.lines.map(jRow), totals: ["", "", "", "", "", "", Y.profit, "Gewinn"] });
+  }
+  if (k === "pausch") return P({ title: `Pauschalierungsvergleich ${yr}`, landscape: true, columns: [{ label: "Variante", w: 4 }, { label: "Einnahmen €", w: 1.2, align: "right" }, { label: "Betriebsausgaben €", w: 1.4, align: "right" }, { label: "Gewinn €", w: 1.2, align: "right" }, { label: "Grundfreibetrag €", w: 1.3, align: "right" }, { label: "Bemessung €", w: 1.2, align: "right" }],
+    rows: vRows, note: Y.variants.map((v) => `${v.name}: ${v.note || "alle tatsächlichen Betriebsausgaben"}`).join("\n") + `\nGünstigste Variante: ${Y.best?.name || "–"}. Wechsel/Sperrfristen und Voraussetzungen mit dem Steuerberater klären.\n` + note });
+  if (k === "umsatz") { if (fmt === "xlsx") return xlsxBlob([{ name: "Umsatz", head: UH, rows: uRows }]);
+    return P({ title: `Umsatz & Kleinunternehmergrenze ${yr}`, kpis: [["Umsatz", fmtMoney(Y.umsatz)], ["Grenze", fmtMoney(Y.kuLimit)], ["Rest", fmtMoney(Y.kuLimit - Y.umsatz)], ["Toleranz bis", fmtMoney(Y.kuLimit * 1.1)]],
+      columns: [{ label: "Monat", w: 2 }, { label: "Umsatz €", w: 1.4, align: "right" }, { label: "kumuliert €", w: 1.4, align: "right" }, { label: "bis Grenze €", w: 1.4, align: "right" }], rows: uRows }); }
+  if (k === "anlagen") { if (fmt === "xlsx") return xlsxBlob([{ name: "Anlagen", head: AH, rows: anlRows }]);
+    return P({ title: `Anlagenverzeichnis ${yr}`, landscape: true, columns: [{ label: "Anlagegut", w: 3.4 }, { label: "Anschaffung", w: 1.1 }, { label: "Kosten €", w: 1.1, align: "right" }, { label: "Lieferant", w: 2.2 }, { label: "Nutzungsdauer", w: 1.2 }, { label: `AfA ${yr} €`, w: 1.1, align: "right" }, { label: "Restbuchwert €", w: 1.2, align: "right" }],
+      rows: anlRows, totals: ["Summe", "", sumBy(Y.anl, (x) => Number(x.a.price) || 0), "", "", Y.afaSum, sumBy(Y.anl, (x) => (x.gwg ? 0 : x.book))], empty: "Keine Anlagegüter mit Zuordnung „Firma“ in Besitz & Garantie." }); }
+  if (k === "waren") { if (fmt === "xlsx") return xlsxBlob([{ name: "Wareneingang", head: WH, rows: wRows }]);
+    return P({ title: `Wareneingangsbuch ${yr}`, landscape: true, columns: [{ label: "Nr.", w: 0.6 }, { label: "Datum", w: 1 }, { label: "Lieferant", w: 2.6 }, { label: "Bezeichnung", w: 4 }, { label: "Betrag €", w: 1.2, align: "right" }, { label: "Beleg", w: 2 }], rows: wRows, totals: ["", "", "", "Summe", byKzSum(Y, "9100"), ""] }); }
+  if (k === "km") { if (fmt === "xlsx") return xlsxBlob([{ name: "Kilometergeld", head: KH, rows: kmRows }]);
+    return P({ title: `Kilometergeld ${yr}`, landscape: true, kpis: [["Fahrten", String(Y.trips.length)], ["Kilometer", Y.km.toLocaleString("de-AT")], ["Satz", String(Y.rate).replace(".", ",") + " €/km"], ["Betrag (KZ 9160)", fmtMoney(Y.kmEur)]],
+      columns: [{ label: "Datum", w: 1 }, { label: "Fahrzeug", w: 1.6 }, { label: "Kennz.", w: 1 }, { label: "Von", w: 1.8 }, { label: "Nach", w: 1.8 }, { label: "Zweck", w: 2.6 }, { label: "km", w: 0.7, align: "right" }, { label: "€", w: 0.9, align: "right" }], rows: kmRows, totals: ["", "", "", "", "", "Summe (max. 30.000 km)", Y.km, Y.kmEur] }); }
+  if (k === "privat") { if (fmt === "xlsx") return xlsxBlob([{ name: "Privat", head: PH, rows: pRows }]);
+    return P({ title: `Privatentnahmen & -einlagen ${yr}`, columns: [{ label: "Datum", w: 1 }, { label: "Art", w: 2 }, { label: "Konto", w: 1.6 }, { label: "Text", w: 3.4 }, { label: "Betrag €", w: 1.2, align: "right" }], rows: pRows, totals: ["", "", "", "Saldo", sumBy(Y.priv, (x) => x.amount)], empty: "Keine Einträge." }); }
+  if (k === "offen") return openItemsPdf(ls.get("invoices", []));
+  if (k === "fehlt") return P({ title: `Fehlende Belege & unklare Buchungen ${yr}`, landscape: true, columns: [{ label: "Datum", w: 1 }, { label: "Konto", w: 1.6 }, { label: "Partner", w: 2.4 }, { label: "Text", w: 3.6 }, { label: "Betrag €", w: 1.1, align: "right" }],
+    sections: [{ heading: "Firmenausgaben ohne Beleg", rows: Y.noDoc.map((l) => [l.date, l.src, l.partner, l.text, l.amount]), empty: "keine ✓" }, { heading: "Privat oder Firma unklar", rows: Y.unklar.map((r) => [r.t.date, r.acc?.name || "", r.t.counterparty || "", (r.t.purpose || "").slice(0, 120), r.t.amount]), empty: "keine ✓" }] });
+}
+const byKzSum = (Y, kz) => Y.byKz[kz]?.sum || 0;
+function StbRSec({ id, title, sub, open, onTog, children }) {
+  return (<section className={"tile stbrsec" + (open[id] ? " open" : "")}>
+    <button type="button" className="stbrsh" onClick={() => onTog(id)} aria-expanded={!!open[id]}><span className="ichev">▾</span><b>{title}</b>{sub && <small className="muted">{sub}</small>}</button>
+    {open[id] && <div className="stbrsb">{children}</div>}</section>);
+}
+function StbReports({ D, notify, setTab }) {
+  const thisY = todayISO().slice(0, 4);
+  const years = [...new Set([thisY, String(+thisY - 1), ...D.rows.map((r) => r.t.date.slice(0, 4))])].sort().reverse().slice(0, 6);
+  const [year, setYear] = useLsState("stbRepYear", String(+thisY - (+todayISO().slice(5, 7) <= 4 ? 1 : 0)));
+  const [opt, setOpt] = useLsState("stbRepOpt", STB_REP_DEF);
+  const [map, setMap] = useLsState("stbKzMap", {});
+  const [sel, setSel] = useLsState("stbRepSel", STB_REP_PRE);
+  const [open, setOpen] = useLsState("stbRepOpen", { exp: true, kz: true });
+  const [kzOpen, setKzOpen] = useState(null), [busy, setBusy] = useState("");
+  const [assetsV, setAssetsV] = useState(0);
+  const O = { ...STB_REP_DEF, ...opt };
+  const Y = useMemo(() => stbYearData(year, D, O, map), [year, D, JSON.stringify(O), map, assetsV]);
+  const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
+  const tag = (k) => `${STB_REPORTS.find((r) => r[0] === k)[2]} ${year}`.replace(/[\\/:*?"<>|–]/g, "-");
+  const dl = async (k, fmt) => { setBusy(k + fmt); try { saveBlob(await stbReport(k, fmt, Y, co), `${tag(k)}.${fmt}`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
+  const zipAll = async () => { setBusy("zip"); try { const files = []; for (const k of sel) { const r = STB_REPORTS.find((x) => x[0] === k); if (!r) continue; for (const f of r[4]) files.push({ name: `${String(STB_REPORTS.indexOf(r) + 1).padStart(2, "0")} ${tag(k)}.${f}`, data: await stbReport(k, f, Y, co) }); }
+    saveBlob(await zipBlob(files), `Steuerberater Berichte ${fileSafe(co.name || "")} ${year}.zip`.replace(/\s+/g, " ")); notify(`${files.length} Dateien als ZIP erstellt`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
+  const tog = (k) => setOpen({ ...open, [k]: !open[k] });
+  const cats = useMemo(() => { const m = new Map(); for (const l of Y.lines) if (l.mapKey) { const x = m.get(l.mapKey) || { key: l.mapKey, cat: l.cat, inc: l.amount > 0, n: 0, sum: 0, kz: map[l.mapKey] || kzGuess(l.cat, "", "", l.amount > 0) }; x.n++; x.sum = r2e(x.sum + Math.abs(l.amount)); m.set(l.mapKey, x); } return [...m.values()].sort((a, b) => b.sum - a.sum); }, [Y, map]);
+  const pct = Math.min(100, Math.round((Y.umsatz / Y.kuLimit) * 100));
+  const setAsset = (id, patch) => { ls.set("assets", ls.get("assets", []).map((a) => (a.id === id ? { ...a, ...patch } : a))); setAssetsV((v) => v + 1); };
+  return (<div className="stbrep">
+    <div className="row stbrepbar"><div className="chips">{years.map((y) => <button key={y} className={"chip" + (year === y ? " on" : "")} onClick={() => setYear(y)}>{y}</button>)}</div></div>
+    <div className="stbrkpis">
+      <div><small className="muted">Betriebseinnahmen</small><b className="pos">{fmtMoney(Y.inc)}</b></div>
+      <div><small className="muted">Betriebsausgaben</small><b className="neg">{fmtMoney(Y.out)}</b></div>
+      <div><small className="muted">Gewinn</small><b>{fmtMoney(Y.profit)}</b></div>
+      <div><small className="muted">Grundfreibetrag (KZ 9221)</small><b>{fmtMoney(Y.gfb)}</b></div>
+    </div>
+    <div className="stbku"><div className="row"><b>Kleinunternehmergrenze {year}</b><span className="grow" /><small className="muted">{fmtMoney(Y.umsatz)} von {fmtMoney(Y.kuLimit)}</small></div>
+      <div className="stbkubar"><i style={{ width: pct + "%" }} className={pct >= 100 ? "over" : pct >= 85 ? "warn" : ""} /></div>
+      <small className="muted">{Y.umsatz <= Y.kuLimit ? `Noch ${fmtMoney(Y.kuLimit - Y.umsatz)} bis zur Grenze (brutto)` : +year >= 2025 && Y.umsatz <= Y.kuLimit * 1.1 ? "Über der Grenze, aber innerhalb der 10-%-Toleranz – ab nächstem Jahr umsatzsteuerpflichtig" : "Über der Grenze – Umsatzsteuerpflicht mit dem Steuerberater klären"}</small></div>
+
+    <StbRSec open={open} onTog={tog} id="exp" title="📤 Berichte exportieren" sub={`${sel.length} ausgewählt`}>
+      <div className="stbrlist">{STB_REPORTS.map(([k, ic, t, d, fmts]) => (<div key={k} className="stbritem">
+        <input type="checkbox" checked={sel.includes(k)} onChange={(e) => setSel(e.target.checked ? [...sel, k] : sel.filter((x) => x !== k))} aria-label={t + " für ZIP auswählen"} />
+        <span className="stbric">{ic}</span><div className="grow"><b>{t}</b><small className="muted block">{d}</small></div>
+        <div className="stbrfmts">{fmts.map((f) => <button key={f} className="btn sm" disabled={!!busy} onClick={() => dl(k, f)}>{busy === k + f ? "…" : { pdf: "PDF", xlsx: "Excel", csv: "CSV" }[f]}</button>)}</div>
+      </div>))}</div>
+      <div className="actions"><button className="btn primary" disabled={!sel.length || !!busy} onClick={zipAll}>{busy === "zip" ? "Wird erstellt …" : `📦 Ausgewählte als ZIP (${sel.length})`}</button>
+        <button className="link" onClick={() => setSel(sel.length === STB_REPORTS.length ? STB_REP_PRE : STB_REPORTS.map((r) => r[0]))}>{sel.length === STB_REPORTS.length ? "Standardauswahl" : "Alle auswählen"}</button></div>
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="kz" title="🧮 Beilage E 1a – Kennzahlen" sub={`${Y.used.length} Posten`}>
+      <div className="stbkz">{E1A_KZ.filter(([kz]) => Y.byKz[kz]?.n || kz === "9040").map(([kz, l, dir]) => (<React.Fragment key={kz}>
+        <button type="button" className={"stbkzr" + (kzOpen === kz ? " open" : "")} onClick={() => setKzOpen(kzOpen === kz ? null : kz)}><span className="kz">{kz}</span><span className="grow">{l}<small className="muted"> · {Y.byKz[kz].n} Posten</small></span><b className={dir === "in" ? "pos" : ""}>{dir === "in" ? "" : "−"}{fmtMoney(Y.byKz[kz].sum)}</b></button>
+        {kzOpen === kz && <div className="stbkzl">{Y.byKz[kz].lines.slice(0, 300).map((x) => <div key={x.id + x.date} className="stbkzi"><span>{fmtDate(x.date)}</span><span className="grow one">{x.partner || x.text || x.cat}<small className="muted"> · {x.src}{x.hasDoc ? "" : " · ohne Beleg"}</small></span><b>{fmtMoney(Math.abs(x.amount))}</b></div>)}</div>}
+      </React.Fragment>))}
+        <div className="stbkzr tot"><span className="kz" /><span className="grow">Gewinn / Verlust</span><b>{fmtMoney(Y.profit)}</b></div>
+        <div className="stbkzr tot"><span className="kz">9221</span><span className="grow">Grundfreibetrag 15 % (max. 4.950 €)</span><b>−{fmtMoney(Y.gfb)}</b></div></div>
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="pausch" title="⚖️ Pauschalierungsvergleich" sub={Y.best ? "günstigste: " + Y.best.name.split(" ")[0] : ""}>
+      <div className="stbvars">{Y.variants.map((v) => <div key={v.k} className={"stbvar" + (Y.best?.k === v.k ? " best" : "") + (v.ok ? "" : " no")}>
+        <b>{v.name}</b><small className="muted block">{v.note || "alle tatsächlichen Betriebsausgaben laut Aufstellung"}</small>
+        <div className="row"><span>Ausgaben</span><b>{fmtMoney(v.ba)}</b></div><div className="row"><span>Gewinn</span><b>{fmtMoney(v.gewinn)}</b></div><div className="row"><span>nach Grundfreibetrag</span><b>{fmtMoney(v.steuerbasis)}</b></div>
+        {Y.best?.k === v.k && <span className="stpill st-paid">günstigste</span>}</div>)}</div>
+      <small className="muted">Grobe Gegenüberstellung – Voraussetzungen, Sperrfristen und Pflichtversicherung mit dem Steuerberater klären.</small>
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="anl" title="🏷️ Anlagenverzeichnis & AfA" sub={`${Y.anl.length} Anlagegüter · AfA ${fmtMoney(Y.afaSum)}`}>
+      {!Y.anl.length ? <p className="muted small">Keine Geräte mit Zuordnung „Firma“. In <button className="link" onClick={() => setTab?.("besitz")}>Besitz &amp; Garantie</button> ein Gerät auf „Firma“ stellen, dann erscheint es hier.</p>
+        : <div className="stbanl">{Y.anl.map((x) => <div key={x.a.id} className="stbanli"><div className="grow"><b className="one">{x.a.name}</b><small className="muted block">{x.a.date ? fmtDate(x.a.date) : "kein Kaufdatum"} · {fmtMoney(Number(x.a.price) || 0)}{x.a.dealer ? " · " + x.a.dealer : ""}</small></div>
+          {x.gwg ? <span className="stpill st-paid">GWG – sofort</span> : <label className="stbnd">Nutzungsdauer<input inputMode="numeric" value={x.a.afaYears || ""} placeholder="Jahre" onChange={(e) => setAsset(x.a.id, { afaYears: e.target.value.replace(/\D/g, "").slice(0, 2) })} /></label>}
+          <div className="stbanlv"><small className="muted">AfA {year}</small><b>{x.missing ? "–" : fmtMoney(x.afa)}</b></div></div>)}</div>}
+      <small className="muted">Geringwertige Wirtschaftsgüter bis 1.000 € werden sofort abgesetzt; sonst linear über die Nutzungsdauer, Halbjahres-AfA bei Anschaffung im 2. Halbjahr. Wird ein Anlagegut über AfA abgesetzt, die Kaufbuchung unten bei „Zuordnung“ auf „nicht absetzen“ stellen, damit es nicht doppelt zählt.</small>
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="map" title="🔗 Zuordnung Kategorien → Kennzahlen" sub={`${cats.length} Kategorien`}>
+      <div className="stbmap">{cats.map((c) => <div key={c.key} className="stbmapr"><span className="grow">{c.inc ? "＋" : "−"} {c.cat}<small className="muted"> · {c.n}× · {fmtMoney(c.sum)}</small></span>
+        <PSelect value={map[c.key] || c.kz} onChange={(e) => setMap({ ...map, [c.key]: e.target.value })}>{E1A_KZ.filter((k) => (k[2] === "in") === c.inc).map(([kz, l]) => <option key={kz} value={kz}>{kz} · {l}</option>)}<option value={E1A_SKIP}>nicht absetzen / über AfA / privat</option></PSelect></div>)}</div>
+      {Object.keys(map).length > 0 && <button className="link" onClick={() => setMap({})}>Automatische Zuordnung wiederherstellen</button>}
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="opt" title="⚙︎ Angaben für die Berechnung">
+      <label className="switchrow"><span><b>Kleinunternehmer (umsatzsteuerbefreit)</b><small className="muted block">Bruttosystem – Beträge inkl. USt</small></span><input type="checkbox" className="switch" checked={O.ku} onChange={(e) => setOpt({ ...O, ku: e.target.checked })} /></label>
+      <label className="switchrow"><span><b>Kilometergeld aus dem Fahrtenbuch</b><small className="muted block">Nur wenn das Fahrzeug nicht im Betriebsvermögen ist (sonst tatsächliche Kfz-Kosten)</small></span><input type="checkbox" className="switch" checked={O.km} onChange={(e) => setOpt({ ...O, km: e.target.checked })} /></label>
+      <label>Arbeitsplatzpauschale<PSelect value={O.apl} onChange={(e) => setOpt({ ...O, apl: e.target.value })}><option value="0">keine</option><option value="300">klein – 300 € (andere Arbeitsstätte vorhanden)</option><option value="1200">groß – 1.200 € (keine andere Arbeitsstätte)</option></PSelect></label>
+      <label>Art der Tätigkeit (für Pauschalierungen)<PSelect value={O.kuType} onChange={(e) => setOpt({ ...O, kuType: e.target.value })}><option value="gewerbe">Gewerbe / Handwerk – 45 % (KU-Pauschalierung)</option><option value="dienst">Dienstleistung – 20 % (KU-Pauschalierung)</option></PSelect></label>
+      <label className="switchrow"><span><b>Beratende/unterrichtende Tätigkeit</b><small className="muted block">Basispauschalierung dann 6 % statt 15 %</small></span><input type="checkbox" className="switch" checked={O.basis6} onChange={(e) => setOpt({ ...O, basis6: e.target.checked })} /></label>
+    </StbRSec>
+    <p className="muted small">Vorbereitung für den Steuerberater nach österreichischem Recht (Stand 2026) – keine Steuerberatung. Grundlage: Firmenbuchungen (Bank + Kassabuch) laut Zuordnung Firma/Privat.</p>
+  </div>);
+}
+const STB_TABS = [["monate", "🚦", "Monate"], ["auszuege", "📄", "Kontoauszüge"], ["pruefen", "🔎", "Prüfen"], ["fragen", "❓", "Klärungsliste"], ["berichte", "📑", "Berichte"], ["paket", "📦", "Paket"], ["setup", "⚙︎", "Einstellungen"]];
 function stbData(txs, accounts, docs) {
   const accMap = new Map(accounts.map((a) => [a.id, a])), docMap = new Map(docs.map((d) => [d.id, d]));
   const rel = txs.filter((t) => t.kind !== "broker" && accMap.get(t.accountId)?.kind !== "broker");
@@ -8034,6 +8304,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
       {sec === "auszuege" && auszuege}
       {sec === "pruefen" && pruefen}
       {sec === "fragen" && fragen}
+      {sec === "berichte" && <StbReports D={D} notify={notify} setTab={setTab} />}
       {sec === "paket" && paket}
       {sec === "setup" && setup}
       {impFiles[0] && <StmtImportWin key={impFiles[0].name + impFiles.length} file={impFiles[0]} accounts={accounts} txs={txs} getTxs={getTxs} importTxs={importTxs} saveDoc={saveDoc} updateTxs={updateTxs} categories={categories} token={token} notify={notify}
@@ -15904,4 +16175,47 @@ nav.bottom>button.navheadbtn:hover{color:var(--txt)!important}
 .infobody p{margin:6px 0}.infobody ul,.infobody ol{margin:6px 0;padding-left:18px}.infobody li{margin:3px 0}
 .infobody code{font-size:12px;padding:1px 4px;border-radius:4px;background:var(--card2)}
 .detprevlink{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.detprevlink svg{width:17px;height:17px}
+/* v0.99.21: Monatskarte – Aktionen untereinander */
+.stbmacts{display:flex!important;flex-direction:column;align-items:flex-start;gap:8px;margin-top:6px}
+
+/* v0.99.21: Steuerberater – Berichte */
+.stbrep{display:flex;flex-direction:column;gap:12px}
+.stbrkpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.stbrkpis>div{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid var(--line)}
+.stbrkpis b{font-size:20px;font-variant-numeric:tabular-nums}
+@media (max-width:700px){.stbrkpis{grid-template-columns:repeat(2,minmax(0,1fr))}.stbrkpis b{font-size:17px}}
+.stbku{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid var(--line)}
+.stbkubar{height:10px;border-radius:5px;background:var(--card2);overflow:hidden}.stbkubar i{display:block;height:100%;background:var(--acc);border-radius:5px}
+.stbkubar i.warn{background:var(--warn,#e0a030)}.stbkubar i.over{background:var(--red,#e05050)}
+.stbrsec{padding:0!important;overflow:hidden}
+.stbrsh{display:flex;align-items:baseline;gap:8px;width:100%;border:0;background:none;color:var(--txt);font-family:inherit;font-size:15px;text-align:left;cursor:pointer;padding:14px}
+.stbrsh small{margin-left:auto;font-size:12px}
+.stbrsec:not(.open) .stbrsh .ichev{transform:rotate(-90deg)}
+.stbrsb{padding:0 14px 14px;display:flex;flex-direction:column;gap:10px}
+.stbrlist{display:flex;flex-direction:column;gap:6px}
+.stbritem{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:12px}
+.stbric{font-size:20px}.stbritem small{font-size:12px}
+.stbrfmts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+@media (max-width:700px){.stbritem{flex-wrap:wrap}.stbrfmts{width:100%;justify-content:flex-start;padding-left:58px}}
+.stbkz{display:flex;flex-direction:column}
+.stbkzr{display:flex;align-items:center;gap:10px;width:100%;border:0;border-bottom:1px solid var(--line);background:none;color:var(--txt);font-family:inherit;font-size:14px;text-align:left;padding:9px 4px;cursor:pointer}
+.stbkzr .kz{flex:none;width:44px;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums}
+.stbkzr b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.stbkzr.tot{cursor:default;font-weight:700;border-bottom:0}
+.stbkzl{padding:4px 0 8px 54px;display:flex;flex-direction:column;gap:2px;max-height:320px;overflow:auto}
+.stbkzi{display:flex;gap:10px;font-size:13px;padding:3px 0}.stbkzi span:first-child{flex:none;width:78px;color:var(--mut)}
+.stbvars{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:900px){.stbvars{grid-template-columns:minmax(0,1fr)}}
+.stbvar{display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--line);border-radius:12px}
+.stbvar.best{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 7%,transparent)}.stbvar.no{opacity:.55}
+.stbvar .row{display:flex;justify-content:space-between;gap:10px;font-size:13.5px}
+.stbanl{display:flex;flex-direction:column;gap:6px}
+.stbanli{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:12px}
+.stbnd{display:flex;flex-direction:column;font-size:11px;color:var(--mut);width:90px}.stbnd input{width:100%}
+.stbanlv{display:flex;flex-direction:column;align-items:flex-end;min-width:90px}
+.stbmap{display:flex;flex-direction:column;gap:6px}
+.stbmapr{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.stbmapr .pselect,.stbmapr select{max-width:340px}
+.stbritem input[type=checkbox]{width:18px!important;height:18px;flex:none;margin:0}
+.stbritem>.grow{flex:1 1 0;min-width:0}
+.stbku>.row{flex-wrap:wrap;gap:4px 8px}
 `;

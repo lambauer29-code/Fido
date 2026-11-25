@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.21 – Steuerberater: Berichte
+- Neuer Reiter „Berichte“ im Steuerberater-Bereich (Österreich, Stand 2026): Jahresbericht, Beilage E 1a nach Kennzahlen, Einnahmen-Ausgaben-Journal, Pauschalierungsvergleich, Umsatz & Kleinunternehmergrenze, Anlagenverzeichnis mit AfA, Wareneingangsbuch, Kilometergeld, Privatentnahmen/-einlagen, offene Posten, fehlende Belege – als PDF, Excel oder CSV, ausgewählte als ZIP
+- Zuordnung Kategorien → E1a-Kennzahlen anpassbar; Angaben zu Arbeitsplatzpauschale, Kilometergeld und Tätigkeit
+- Monatskarte: „Als abgeschlossen markieren“ steht jetzt unter den Firmenbuchungen
+
 ## v0.99.20 – Einheitliches Augen-Symbol
 
 In der Buchungs-Ansicht (z. B. aus dem Steuerberater-Reiter) und bei verknüpften Dokumenten wird für „Vorschau“ jetzt dasselbe Augen-Symbol verwendet wie überall sonst in der App (statt des Emoji 👁). Ebenso im Handy-Menü bei „Einblenden“.
