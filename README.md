@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.29 – Kleinigkeit
+- Steuerberater › Berichte: Vorschau-Auge auf gleicher Höhe wie PDF/Excel/CSV
+
 ## v0.99.28 – Einheitliche Buttons & Menüs
 - Zeilen-Buttons in allen Reitern wie in Dokumente: schlanke Icons ohne Kästchen (Rechnungen, Mahnungen, Verträge, Fixkosten, Kunden, Kontoauszüge, Steuerberater, Fahrtenbuch)
 - Alle Dropdown-Menüs im Stil des Teilen-Menüs, mit „Abbrechen“ unten; Klick daneben oder Esc schließt, Klick auf einen Menüpunkt schließt immer

@@ -16806,4 +16806,7 @@ html body :is(.fbrem,.stbrfmts) .btn{background:transparent!important;box-shadow
 html body :is(.fbrem,.stbrfmts) .btn:hover{background:var(--card2)!important;color:var(--acc)}
 html body .cactions .chip{background:transparent!important;box-shadow:none!important;border:0!important;color:var(--mut);padding-left:6px;padding-right:8px}
 html body .cactions .chip:hover{background:var(--card2)!important;color:var(--acc)}
+/* v0.99.29: Auge in Steuerberater › Berichte auf Höhe der PDF/Excel/CSV-Buttons */
+html body .stbrfmts{align-items:center}
+html body .stbrfmts .stbprev{height:auto!important;min-height:0!important;align-self:stretch;margin:0!important}
 `;
