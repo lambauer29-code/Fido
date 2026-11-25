@@ -5347,6 +5347,7 @@ function JournalPreview({ d, compact = false, onSwipe, onOpen }) {
   );
 }
 function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
+  const [jsPos] = useFlag("jStripPos", "c");   // v0.99.30: Leiste über dem Beleg – c = schwebend, b = eine Zeile
   const mobB = useMobileBeta(), slim = useMedia("(max-width:999px)"), mob = mobB || slim, [boxW, setBoxW] = useState(1400), narrow = boxW < 1180;
   const [mode, setMode] = useLsState("jMode", "journal");                       // journal | pruefen | monate
   const [filt, setFilt] = useLsState("jFilt", "alle");
@@ -5494,15 +5495,18 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
             <b className={"jlsumtop " + (sum >= 0 ? "pos" : "neg")} title="Summe">{fmtMoney(sum)}</b></div>
           <div className="jlscroll">{listV.map(row)}{!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege."}</MEmpty>}</div>
         </div>
-        <div className="jcenter">{curDoc ? <JournalPreview d={curDoc} onOpen={onOriginal} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}
-          {curDoc && !detOn && <div className="jstrip">
+        <div className={"jcenter" + (curDoc && !detOn ? " js-" + jsPos : "")}>
+          {curDoc && !detOn && <div className={"jstrip jstop js" + jsPos} title={curDoc.title || curDoc.fileName}>
             <div className="grow jstxt"><b className="one">{curDoc.title || curDoc.fileName}</b><small className="muted one">{[jDate(curDoc) && fmtDate(jDate(curDoc)), curDoc.sender, curDoc.category].filter(Boolean).join(" · ")}</small></div>
             {jSigned(curDoc) != null && <b className={"jsamt " + (jSigned(curDoc) >= 0 ? "pos" : "neg")}>{fmtMoney(jSigned(curDoc))}</b>}
-            {jUnconf(curDoc) && <button className="btn sm" onClick={() => confirm()}>✓ Bestätigen</button>}
-            <button className="btn sm jnavb" disabled={idx <= 0} onClick={() => go(-1)} aria-label="Vorheriger Beleg">‹</button>
-            <button className="btn sm primary" onClick={() => onOpen(curDoc.id)}>✎ Bearbeiten</button>
-            <button className="btn sm jnavb" disabled={idx >= list.length - 1} onClick={() => go(1)} aria-label="Nächster Beleg">›</button>
-          </div>}</div>
+            <span className="jsicons">
+              {jUnconf(curDoc) && <button className="jsib ok" onClick={() => confirm()} title="Bestätigen" aria-label="Bestätigen">✓</button>}
+              <button className="jsib" disabled={idx <= 0} onClick={() => go(-1)} aria-label="Vorheriger Beleg" title="Vorheriger Beleg">‹</button>
+              <button className="jsib edit" onClick={() => onOpen(curDoc.id)} aria-label="Bearbeiten" title="Bearbeiten"><IcoEdit /></button>
+              <button className="jsib" disabled={idx >= list.length - 1} onClick={() => go(1)} aria-label="Nächster Beleg" title="Nächster Beleg">›</button>
+            </span>
+          </div>}
+          {curDoc ? <JournalPreview d={curDoc} onOpen={onOriginal} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}</div>
         {detOn && <div className="jinsp">{fields}</div>}
       </div>
       {mode === "pruefen" && <small className="muted block jhint">Tastatur: ↑/↓ wechseln · Enter = Bestätigen &amp; weiter</small>}
@@ -6969,6 +6973,12 @@ const cmpNorm = (v) => v === "klein" ? "klein" : "zahl";
 if (typeof document !== "undefined") cmpApply(cmpNorm(ls.get("cmpTest", "zahl")));
 const useCmp = () => { const [v] = useFlag("cmpTest", "zahl"); const ph = useMedia("(max-width:700px)"); return ph ? cmpNorm(v) : "aus"; };
 const STMT_ZOOM_UI = [["leiste", "Zoom in der Leiste", "− / + und „Breite“ oben in der fixierten Leiste"], ["schwebend", "Schwebender Zoom + Lupe", "Zoom-Knöpfe unten rechts im PDF, Lupe beim Darüberfahren"]];
+const JSTRIP_UI = [["c", "Schwebend auf dem Beleg", "halbtransparent oben auf dem Dokument"], ["b", "Eine Zeile über dem Beleg", "kompakte Zeile, Beleg darunter"]];
+function JStripSetting() {
+  const [v, set] = useFlag("jStripPos", "c");
+  return <label className="switchrow"><span><b>Journal: Leiste über dem Beleg</b><small className="muted block">Titel, Betrag, ‹ Bearbeiten › oberhalb der Belegvorschau (Desktop und iPad quer).</small></span>
+    <PickMenu label={(JSTRIP_UI.find(([k]) => k === v) || JSTRIP_UI[0])[1]} title="Leiste" items={JSTRIP_UI.map(([k, t, sub]) => ({ k, title: t, sub, on: v === k, run: () => set(k) }))} /></label>;
+}
 function StmtZoomSetting() {
   const [v, set] = useFlag("stmtZoomUi", "leiste");
   return <label className="switchrow"><span><b>Kontoauszug: Zoom im PDF</b><small className="muted block">Wie du in der Kontoauszug-Ansicht (PDF / Beides) vergrößerst. Strg + Mausrad bzw. Zwei-Finger-Zoom am Trackpad geht immer.</small></span>
@@ -9962,6 +9972,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         <TabbarSetting />
         <CmpSetting />
         <StmtZoomSetting />
+        <JStripSetting />
         <small className="muted block tbsethead">Tag- und Nachtmodus</small>
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
@@ -16809,4 +16820,19 @@ html body .cactions .chip:hover{background:var(--card2)!important;color:var(--ac
 /* v0.99.29: Auge in Steuerberater › Berichte auf Höhe der PDF/Excel/CSV-Buttons */
 html body .stbrfmts{align-items:center}
 html body .stbrfmts .stbprev{height:auto!important;min-height:0!important;align-self:stretch;margin:0!important}
+
+/* v0.99.30: Journal – Leiste über dem Beleg (b = Zeile, c = schwebend) */
+.jstrip.jstop{position:sticky;top:0;bottom:auto;margin-top:0;flex-wrap:nowrap;z-index:3}
+.jstrip.jstop .jstxt{flex:1;min-width:0}
+.jstrip.jstop .jsamt{font-size:15px}
+.jsicons{display:inline-flex;align-items:center;gap:2px;flex:none}
+.jsib{width:34px;height:34px;border:0;border-radius:10px;background:transparent;color:var(--mut);font:inherit;font-size:20px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.jsib svg{width:19px;height:19px}.jsib:hover:not(:disabled){background:var(--card2);color:var(--acc)}.jsib:disabled{opacity:.3;cursor:default}
+.jsib.edit{color:var(--acc)}.jsib.ok{color:var(--green,#2fb36d);font-size:18px}
+.jstrip.jsb{border-top:0;border-bottom:1px solid var(--line);padding:8px 12px;background:var(--card)}
+.jstrip.jsb .jstxt{flex-direction:row;align-items:baseline;gap:8px;overflow:hidden}
+.jstrip.jsb .jstxt b{flex:0 1 auto;min-width:0}.jstrip.jsb .jstxt small{flex:1 1 0;min-width:0}
+.jstrip.jsc{margin:10px 10px -66px;border:1px solid var(--line);border-radius:14px;padding:8px 10px 8px 14px;top:10px;background:color-mix(in srgb,var(--card) 82%,transparent);backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);box-shadow:0 8px 26px #0005}
+.jcenter.js-c>.jstrip+*{padding-top:66px}
+@media (max-width:900px){.jstrip.jsb .jstxt small{display:none}}
 `;

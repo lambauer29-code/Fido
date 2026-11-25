@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.30 – Journal: Leiste über dem Beleg
+- Titel, Betrag und ‹ ✎ › stehen jetzt über der Belegvorschau statt darunter
+- Einstellungen › Darstellung › „Journal: Leiste über dem Beleg“: schwebend auf dem Beleg (Standard) oder als eine Zeile darüber
+
 ## v0.99.29 – Kleinigkeit
 - Steuerberater › Berichte: Vorschau-Auge auf gleicher Höhe wie PDF/Excel/CSV
 
