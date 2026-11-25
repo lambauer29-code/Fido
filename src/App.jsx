@@ -5517,6 +5517,57 @@ function JournalCard({ d, tx, onConfirm, onEdit, pos, onPrev, onNext }) {
     {d.notes && <p className="muted small jcnote">{d.notes}</p>}
   </div>);
 }
+/* ======================= Info & Versionen (v0.99.18) =======================
+   Entwicklungsverlauf aus der README („## vX.Y.Z – Titel“), erst beim Öffnen geladen */
+function mdLite(txt) {
+  const inl = (t, k) => t.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map((x, i) => x.startsWith("**") ? <b key={k + "-" + i}>{x.slice(2, -2)}</b> : x.startsWith("`") ? <code key={k + "-" + i}>{x.slice(1, -1)}</code> : x);
+  const out = []; let list = null, para = [];
+  const flushP = () => { if (para.length) { out.push(<p key={"p" + out.length}>{inl(para.join(" "), "p" + out.length)}</p>); para = []; } };
+  const flushL = () => { if (list) { const L = list; out.push(L.ord ? <ol key={"l" + out.length}>{L.items}</ol> : <ul key={"l" + out.length}>{L.items}</ul>); list = null; } };
+  for (const raw of txt.split("\n")) {
+    const l = raw.trimEnd(), m = l.match(/^\s*(?:[-*]|(\d+)\.)\s+(.*)$/);
+    if (!l.trim()) { flushP(); flushL(); continue; }
+    if (m) { flushP(); const ord = !!m[1]; if (!list || list.ord !== ord) { flushL(); list = { ord, items: [] }; } list.items.push(<li key={list.items.length}>{inl(m[2], "li" + out.length + "-" + list.items.length)}</li>); continue; }
+    if (/^#{3,}\s/.test(l)) { flushP(); flushL(); out.push(<p key={"h" + out.length}><b>{l.replace(/^#+\s*/, "")}</b></p>); continue; }
+    flushL(); para.push(l.trim());
+  }
+  flushP(); flushL(); return out;
+}
+function InfoSection() {
+  const [log, setLog] = useState(null), [err, setErr] = useState("");
+  const [openG, setOpenG] = useState(() => ({ [APP_VER.split(".").slice(0, 2).join(".")]: true }));
+  const [openV, setOpenV] = useState(() => ({ [APP_VER]: true }));
+  const [q, setQ] = useState("");
+  useEffect(() => { import("../README.md?raw").then((m) => {
+    const parts = m.default.split(/\n(?=## v\d)/).filter((x) => /^## v\d/.test(x));
+    setLog(parts.map((x) => { const nl = x.indexOf("\n"), head = x.slice(3, nl < 0 ? undefined : nl).trim(), mm = head.match(/^v([\d.]+)\s*[–-]?\s*(.*)$/);
+      return { v: mm ? mm[1] : head, title: mm ? mm[2] : "", body: (nl < 0 ? "" : x.slice(nl + 1)).split(/\n## /)[0].trim() }; }));
+  }).catch((e) => setErr(e.message)); }, []);
+  const qn = norm(q);
+  const shown = (log || []).filter((x) => !qn || norm(x.v + " " + x.title + " " + x.body).includes(qn));
+  const groups = []; for (const x of shown) { const g = x.v.split(".").slice(0, 2).join("."); const last = groups[groups.length - 1]; if (last && last.g === g) last.items.push(x); else groups.push({ g, items: [x] }); }
+  const allOpen = groups.length > 0 && groups.every((g) => openG[g.g]);
+  return (<div className="infosec">
+    <div className="infocard">
+      <img src="/icon.svg" alt="" />
+      <div className="grow"><b>FinDocu</b><small className="muted block">Finanzen &amp; Dokumente</small></div>
+      <div className="infover"><small className="muted">Version</small><b>{APP_VER}</b></div>
+    </div>
+    <div className="infohead"><b>Entwicklungsverlauf</b>{log && <small className="muted">{log.length} Versionen</small>}<span className="grow" />
+      {log && !q && <button className="link" onClick={() => setOpenG(allOpen ? {} : Object.fromEntries(groups.map((g) => [g.g, true])))}>{allOpen ? "Alle zuklappen" : "Alle aufklappen"}</button>}</div>
+    {log && <SearchBox className="sbplain" icon={false} value={q} onChange={setQ} placeholder="Im Verlauf suchen (z. B. Journal, iPad)" />}
+    {err && <p className="muted small">Verlauf konnte nicht geladen werden: {err}</p>}
+    {!log && !err && <p className="muted small">Wird geladen …</p>}
+    {groups.map(({ g, items }) => { const og = !!q || !!openG[g]; return (<div key={g} className={"infogrp" + (og ? " open" : "")}>
+      <button type="button" className="infogh" onClick={() => setOpenG({ ...openG, [g]: !openG[g] })} aria-expanded={og}><span className="ichev">▾</span><b>v{g}</b><small className="muted">{items.length === 1 ? "1 Version" : items.length + " Versionen"}</small></button>
+      {og && items.map((x) => { const ov = !!q || !!openV[x.v]; return (<div key={x.v} className={"infov" + (ov ? " open" : "")}>
+        <button type="button" className="infovh" onClick={() => setOpenV({ ...openV, [x.v]: !openV[x.v] })} aria-expanded={ov}><span className="ichev">▾</span><b className="infovn">v{x.v}</b><span className="grow one">{x.title}</span>{x.v === APP_VER && <span className="stpill st-paid">aktuell</span>}</button>
+        {ov && <div className="infobody">{x.body ? mdLite(x.body) : <p className="muted small">Keine Details.</p>}</div>}
+      </div>); })}
+    </div>); })}
+    {log && !shown.length && <p className="muted small">Nichts gefunden.</p>}
+  </div>);
+}
 function JPhoneSheet({ children }) {
   // v0.99.6: Karte mit Griff – ziehen (hoch/runter) oder antippen; rastet bei „wenig“ bzw. „alle Felder“ ein
   const ref = useRef(null), drag = useRef(null);
@@ -8640,12 +8691,12 @@ function SetSec({ id, title, children }) {
   );
 }
 
-const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung"]], ["Daten & Ablage", ["import", "docgroups", "doccats", "rules", "kontaktarten", "fbicons", "trash"]],
+const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung", "info"]], ["Daten & Ablage", ["import", "docgroups", "doccats", "rules", "kontaktarten", "fbicons", "trash"]],
   ["Navigation & Budgets", ["nav-tabs", "nav-mob", "nav-accounts", "budgets"]], ["Firma", ["meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel"]]];
-const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-mob": "Handy-Menü", "nav-accounts": "Konten & Gruppen" };
+const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-mob": "Handy-Menü", info: "Info & Versionen", "nav-accounts": "Konten & Gruppen" };
 const SET_ICONS = { fbicons: "🚗", darstellung: "🌓", design: "🎨", applock: "🔒", datenschutz: "🛡️", verbindung: "🔌", import: "📥", docgroups: "🗂️", doccats: "🏷️", rules: "⚙️", kontaktarten: "👥", trash: "🗑️",
-  "nav-tabs": "📑", "nav-mob": "📱", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
-const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-mob", "nav-accounts", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
+  "nav-tabs": "📑", "nav-mob": "📱", info: "ℹ️", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
+const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-mob", "nav-accounts", "info", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -9273,6 +9324,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => setImp(null)} />}
       </SetSec></>,
     "nav-tabs": <><NavSettings part="tabs" nav={nav} setNav={setNav} accounts={accounts} setAccounts={setAccounts} txs={txs} deleteAccount={deleteAccount} notify={notify} /></>,
+    "info": <><SetSec id="info" title="Info & Versionen"><InfoSection /></SetSec></>,
     "nav-mob": <><SetSec id="nav-mob" title="Handy-Menü">
         <p className="muted small">Gilt fürs iPhone: welche Reiter in der Leiste unten stehen und wie sie in <b>Privat</b>, <b>Firma</b> und <b>Mehr</b> sortiert sind. Am Griff <b>⠿</b> ziehen – auch von einem Bereich in einen anderen – oder über <b>⋯</b> verschieben und ausblenden. Direkt am iPhone geht das auch über „⇄ Anordnen“ in Privat, Firma oder Mehr.</p>
         <MobNavEditor nav={nav} setNav={setNav} notify={notify} />
@@ -15834,4 +15886,21 @@ nav.bottom .navheadbtn.shut .navheadchev{transform:rotate(-90deg)}
 nav.bottom>button.navheadbtn{background:none!important;box-shadow:none!important;min-height:0!important;margin:0!important;padding:10px 14px 4px!important;font-size:11px!important;font-weight:700!important;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)!important;flex-direction:row!important;justify-content:flex-start!important}
 html.fg nav.bottom>button.navheadbtn{font-size:12.5px!important}
 nav.bottom>button.navheadbtn:hover{color:var(--txt)!important}
+
+/* v0.99.18: Info & Versionen */
+.infosec{display:flex;flex-direction:column;gap:10px}
+.infocard{display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:var(--card2);border:1px solid var(--line)}
+.infocard img{width:46px;height:46px;border-radius:12px}.infocard b{font-size:16px}
+.infover{text-align:right;display:flex;flex-direction:column}.infover b{font-size:20px;font-variant-numeric:tabular-nums}
+.infohead{display:flex;align-items:baseline;gap:8px;margin-top:6px;flex-wrap:wrap}.infohead>*{white-space:nowrap}
+.infogrp{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.infogh,.infovh{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;color:var(--txt);font-family:inherit;font-size:14px;text-align:left;cursor:pointer;padding:11px 12px}
+.infogh{background:var(--card2)}.infogh small{margin-left:auto;font-size:12px}
+.infov{border-top:1px solid var(--line)}
+.infovh{padding:9px 12px 9px 22px;font-size:13.5px}.infovn{font-variant-numeric:tabular-nums;white-space:nowrap}
+.ichev{font-size:11px;display:inline-block;transition:transform .15s;color:var(--mut)}
+.infogrp:not(.open)>.infogh .ichev,.infov:not(.open)>.infovh .ichev{transform:rotate(-90deg)}
+.infobody{padding:2px 14px 12px 40px;font-size:13.5px;line-height:1.5}
+.infobody p{margin:6px 0}.infobody ul,.infobody ol{margin:6px 0;padding-left:18px}.infobody li{margin:3px 0}
+.infobody code{font-size:12px;padding:1px 4px;border-radius:4px;background:var(--card2)}
 `;
