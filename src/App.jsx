@@ -1928,6 +1928,7 @@ function AppMain() {
   const [pdfView, setPdfView] = useState(null);
   pdfUi = setPdfView;
   fileUi = { add: (file, o) => onFiles([file], o || {}) };
+  scanUi = { withFile: (file, cb) => { scanCb.current = cb; setScanFile(file); setScanOpen(true); } };
   belegUi = { link: linkTx, upload: (txId, file) => onFiles([file], { stay: true, linkTx: txId }) };
   const impRef = useRef(null), vcfApp = useRef(null);
   const [sideMiniSet, setSideMiniRaw] = useState(() => ls.get("sideMini", null));
@@ -4382,7 +4383,7 @@ function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () =
           <div className="tilehead"><b>Depot-Positionen</b><small>{pf.positions.length} Positionen</small></div>
           <div className="stats">
             <div><small>Investiert (netto)</small><b>{fmtMoney(pf.invested)}</b></div>
-            <div><small>Dividenden & Zinsen</small><b className="ok">{fmtMoney(pf.income)}</b></div>
+            <div><small>Dividenden & Zinsen</small><b className="pos">{fmtMoney(pf.income)}</b></div>
             <div><small>Gebühren & Steuern</small><b>{fmtMoney(pf.costs)}</b></div>
           </div>
           {pf.positions.map((p) => (
@@ -5807,7 +5808,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
   const [visList, docSent] = useProgressive(list);
   const counts = useMemo(() => Object.fromEntries(categories.map((c) => [c, docs.filter((d) => d.category === c).length])), [docs, categories]);
   const amt = (d) => d.amount?.total != null && (
-    <span className={"amt" + (d.direction === "einnahme" ? " ok" : d.paid ? " paid" : "")} title={payAmt(d) !== d.amount.total ? `Brutto ${fmtMoney(d.amount.total)} · ausbezahlt ${fmtMoney(payAmt(d))}` : undefined}>{d.direction === "einnahme" ? "+" : ""}{fmtMoney(payAmt(d), d.amount.currency)}</span>);
+    <span className={"amt" + (d.direction === "einnahme" ? " pos" : d.paid ? " paid" : "")} title={payAmt(d) !== d.amount.total ? `Brutto ${fmtMoney(d.amount.total)} · ausbezahlt ${fmtMoney(payAmt(d))}` : undefined}>{d.direction === "einnahme" ? "+" : ""}{fmtMoney(payAmt(d), d.amount.currency)}</span>);
   // gespeicherte Ansichten: alle Filter dieses Reiters
   const fState = JSON.stringify({ cat: cat || "", taxOnly, unpaid, month, area, scope });
   const setFState = (j) => { try { const o = JSON.parse(j); setCat?.(o.cat || ""); setTaxOnly(!!o.taxOnly); setUnpaid(!!o.unpaid); setMonth(o.month || ""); setArea?.(o.area || "alle"); setScope(o.scope || "alle"); } catch {} };
@@ -9329,6 +9330,7 @@ const SORT_STYLES = [["dropdown", "Dropdown-Button", "Sortierung als Auswahlknop
 const ABO_STYLES = [["pill", "Status + ✓ ✕", "bisherige Anzeige"], ["haken", "Nur grüner Haken", "Tipp bestätigt, ? = noch prüfen"], ["hakendd", "Haken + Auswahl", "Haken mit Pfeil öffnet alle Status"], ["dropdown", "Status-Auswahl", "farbiger Text, Tipp öffnet Auswahl"], ["punkt", "Punkt am Symbol", "nur farbiger Punkt, Rest unter ⋯"]];
 /* v0.99.53: offene Punkte eines Monats als Popup */
 let fileUi = null;   // in App gesetzt: { add(file, opts) → ids }
+let scanUi = null;   // in App gesetzt: { withFile(file, cb) } – Zuschneiden/Verbessern eines Fotos
 function StbItemsWin({ req, x, docs, txs, updateTx, openTx, onOpenDoc, onClose, setTab }) {
   const [beleg, setBeleg] = useState(null), kbFile = useRef(null), [kbFor, setKbFor] = useState(null);
   const kind = req.kind, title = { beleg: "Firmenausgaben ohne Beleg", unklar: "Privat/Firma unklar", asks: "Offene Fragen an den Steuerberater", inv: "Ausgangsrechnungen", kassa: "Kassabuch" }[kind];
@@ -14363,33 +14365,104 @@ function ViewSettings() {
     <p className="muted small">Wie Listen und Übersichten aufgebaut sind – gilt für die ganze App und lässt sich jederzeit ändern.</p>
     <div className="optsec"><b>Steuerberater → Monate</b><small className="muted block">Auch direkt im Reiter über „▦ Ansicht“ umschaltbar.</small><OptPicker opts={MON_VIEWS} value={mv} onPick={setMv} pv={(k) => PV_MON[k]} /></div>
     <div className="optsec"><b>Sortierung in Listen</b><small className="muted block">Datum, zuletzt hinzugefügt, Betrag … – nochmal tippen dreht die Reihenfolge um. Jeder Reiter merkt sich seine Sortierung.</small><OptPicker opts={SORT_STYLES} value={ss} onPick={setSs} pv={(k) => PV_SORT[k]} /></div>
+    <KbBelegSettings />
     <div className="optsec"><b>Fixkosten & Abos – Status</b><small className="muted block">Anzeige für „Bestätigt“, „Prüfen“ und „Beendet“ bei erkannten Abos.</small><OptPicker opts={ABO_STYLES} value={ab} onPick={setAb} pv={(k) => PV_ABO[k]} /></div>
   </>);
 }
 /* v0.99.53: Kassabuch – Beleg je Buchung (Ansehen · Drucken · Teilen · ⋯ bzw. Hinzufügen · Scannen) */
 const IcoClip = () => <Ico d={<path d="M21.4 11.6 12.5 20.5a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.7 1.7 0 0 1-2.4-2.4l8.3-8.3" />} />;
 const IcoCam = () => <Ico d={<><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13" r="3.5" /></>} />;
-function KbActs({ e, d, onOpen, onAttach, onScan, onPickDoc, onDetach }) {
+/* v0.99.56: Kassabuch-Beleg – Darstellung wählbar (Icons · Knopf · Status) + Kamera live, Vorschläge, Zwischenablage, Eigenbeleg, Drag & Drop */
+const KB_BELEG_STYLES = [["icons", "Icons", "Ansehen · Drucken · Teilen bzw. 📎 📷 und ⋯"], ["knopf", "Ein Knopf „Beleg ▾“", "schlank, alle Optionen im Menü"], ["status", "Status + Auge", "✓ bzw. roter Hinweis „fehlt ▾“"]];
+const kbDocAmt = (d) => Math.abs(payAmt(d) ?? d.amount?.total ?? NaN);
+const kbMatches = (e, docs) => { const t = Date.parse(e.date);
+  return docs.filter((d) => !d.deletedAt && Math.abs(kbDocAmt(d) - e.amount) < 0.015 && Math.abs((Date.parse(d.documentDate || d.createdAt || "") - t) / 864e5) <= 7)
+    .sort((a, b) => Math.abs(Date.parse(a.documentDate || a.createdAt) - t) - Math.abs(Date.parse(b.documentDate || b.createdAt) - t)); };
+function KbActs({ e, d, style, n, a }) {
   const st = (f) => (ev) => { ev.stopPropagation(); f(); };
+  if (e.stornoOf) return <span className="kbacts" />;
+  const noItems = [{ icon: "📎", title: "Datei hochladen", sub: "PDF oder Bild vom Gerät", run: a.attach }, { icon: "📷", title: "Mit Kamera aufnehmen", sub: "Webcam, iPhone (Continuity-Kamera) oder Handy-Kamera", run: a.cam },
+    { icon: "✨", title: "Passende Belege vorschlagen", sub: n ? `${n} Dokument${n > 1 ? "e" : ""} mit ${fmtMoney(e.amount)} ±7 Tage` : "gleicher Betrag, Datum ±7 Tage", run: a.suggest },
+    { icon: "🗂", title: "Aus Dokumenten wählen", run: a.pick }, { icon: "📋", title: "Aus Zwischenablage einfügen", sub: "Screenshot oder kopiertes Bild / PDF", run: a.paste },
+    { icon: "✍️", title: "Eigenbeleg erstellen", sub: "PDF aus den Buchungsdaten, wenn der Originalbeleg fehlt", run: a.eigen },
+    { icon: "#", title: "Belegnummer / Ablageort", sub: e.beleg ? `aktuell: ${e.beleg}` : "z. B. „Ordner 3, Nr. 47“ – ohne Datei", run: a.ref }];
+  const hasItems = [{ icon: <IcoEye />, title: "Beleg ansehen", run: () => a.open(d.id) }, { icon: <IcoPrint />, title: "Drucken", run: () => printDoc(d) }, { icon: <IcoShare />, title: "Teilen", run: () => shareDocs([d]) },
+    { head: "Beleg ändern" }, { icon: "📎", title: "Durch Datei ersetzen", run: a.attach }, { icon: "📷", title: "Mit Kamera ersetzen", run: a.cam }, { icon: "🗂", title: "Anderes Dokument wählen", run: a.pick }, { icon: "📋", title: "Aus Zwischenablage ersetzen", run: a.paste },
+    { icon: "✕", title: "Beleg lösen", sub: "Dokument bleibt in „Dokumente“", run: a.detach }];
+  const menu = (items, btnClass, label, title) => <PickMenu btnClass={btnClass} label={label} title={title} wide items={items.map((x, i) => x.head ? x : { k: "k" + i, ...x })} />;
+  const dots = <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>;
   return (<span className="kbacts dactions" onClick={(ev) => ev.stopPropagation()}>
-    {d ? <>
-      <button title="Beleg ansehen" aria-label="Beleg ansehen" onClick={st(() => onOpen(d.id))}><IcoEye /></button>
+    {style === "knopf" ? menu(d ? hasItems : noItems, "kbbtn " + (d ? "has" : e.beleg || e.eigen ? "ref" : "no"), d ? "📎 Beleg" : e.beleg ? "# " + e.beleg.slice(0, 8) : "＋ Beleg", "Beleg")
+    : style === "status" ? (d ? <><button title="Beleg ansehen" aria-label="Beleg ansehen" onClick={st(() => a.open(d.id))}><IcoEye /></button>{menu(hasItems, "kbbtn has", "✓", "Beleg vorhanden")}</>
+      : menu(noItems, "kbbtn " + (e.beleg || e.eigen ? "ref" : "no"), e.beleg ? "# " + e.beleg.slice(0, 8) : e.eigen ? "Eigenbeleg" : n ? `fehlt · ${n}✨` : "fehlt", "Beleg fehlt"))
+    : d ? <>
+      <button title="Beleg ansehen" aria-label="Beleg ansehen" onClick={st(() => a.open(d.id))}><IcoEye /></button>
       <button className="kbx" title="Beleg drucken" aria-label="Drucken" onClick={st(() => printDoc(d))}><IcoPrint /></button>
       <button className="kbx" title="Beleg teilen" aria-label="Teilen" onClick={st(() => shareDocs([d]))}><IcoShare /></button>
-      <MoreMenu items={[{ icon: "📎", title: "Beleg ersetzen", sub: "Datei wählen", run: onAttach }, { icon: "📷", title: "Beleg scannen", run: onScan }, { icon: "🗂", title: "Anderes Dokument wählen", run: onPickDoc }, { icon: "✕", title: "Beleg lösen", run: onDetach }]} />
-    </> : e.stornoOf ? null : <>
-      <button title="Beleg hinzufügen (Datei)" aria-label="Beleg hinzufügen" onClick={st(onAttach)}><IcoClip /></button>
-      <button className="kbx" title="Beleg scannen" aria-label="Beleg scannen" onClick={st(onScan)}><IcoCam /></button>
-      <MoreMenu items={[{ icon: "🗂", title: "Vorhandenes Dokument wählen", run: onPickDoc }]} />
+      {menu(hasItems.slice(3), "iconbtn morebtn rowmorebtn", dots, "Mehr")}
+    </> : <>
+      <button title="Beleg hinzufügen (Datei)" aria-label="Beleg hinzufügen" onClick={st(a.attach)}><IcoClip /></button>
+      <button className="kbx" title="Mit Kamera aufnehmen" aria-label="Kamera" onClick={st(a.cam)}><IcoCam /></button>
+      {menu(noItems.slice(2), "iconbtn morebtn rowmorebtn" + (n ? " kbhint" : ""), dots, n ? `${n} passende${n > 1 ? "" : "r"} Beleg${n > 1 ? "e" : ""} gefunden` : "Mehr")}
     </>}
   </span>);
 }
-function DocPickWin({ docs, title = "Dokument wählen", onPick, onClose }) {
+// Kamera live (getUserMedia) – Mac: Webcam oder iPhone als Continuity-Kamera
+function CamWin({ onShot, onFallback, onClose }) {
+  const vid = useRef(null), [devs, setDevs] = useState([]), [dev, setDev] = useLsState("camDev", ""), [err, setErr] = useState("");
+  useEffect(() => { let stream, dead = false;
+    (async () => { try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Kamera wird hier nicht unterstützt");
+      stream = await navigator.mediaDevices.getUserMedia({ video: dev ? { deviceId: { exact: dev }, width: { ideal: 2560 } } : { facingMode: "environment", width: { ideal: 2560 } }, audio: false });
+      if (dead) return stream.getTracks().forEach((t) => t.stop());
+      if (vid.current) { vid.current.srcObject = stream; await vid.current.play().catch(() => {}); }
+      setDevs((await navigator.mediaDevices.enumerateDevices()).filter((x) => x.kind === "videoinput"));
+    } catch (x) { setErr(x?.name === "NotAllowedError" ? "Kein Zugriff auf die Kamera – bitte in den System-/Browser-Einstellungen erlauben." : x?.name === "NotFoundError" || x?.name === "OverconstrainedError" ? "Keine Kamera gefunden." : (x?.message || "Kamera nicht verfügbar")); } })();
+    return () => { dead = true; stream?.getTracks().forEach((t) => t.stop()); }; }, [dev]);
+  const shot = () => { const v = vid.current; if (!v?.videoWidth) return; const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext("2d").drawImage(v, 0, 0);
+    c.toBlob((b) => b && onShot(new File([b], `Beleg-${todayISO()}.jpg`, { type: "image/jpeg" })), "image/jpeg", 0.92); };
+  return createPortal(<Win id="kbcam" onClose={onClose} defW={720} dirty={false} stay>
+    <div className="panelhead"><b>Beleg fotografieren</b>{devs.length > 1 && <PSelect className="chip" value={dev} onChange={(ev) => setDev(ev.target.value)}><option value="">Standard-Kamera</option>{devs.map((x, i) => <option key={x.deviceId} value={x.deviceId}>{x.label || "Kamera " + (i + 1)}</option>)}</PSelect>}<XBtn /></div>
+    {err ? <div className="kbcamerr"><p>{err}</p><button className="btn" onClick={onFallback}>📁 Stattdessen Foto-Datei wählen</button></div>
+      : <div className="kbcamv"><video ref={vid} playsInline muted /><span className="kbcamframe" aria-hidden="true" /></div>}
+    <div className="actions">{!err && <><small className="muted grow">Tipp Mac: iPhone in der Nähe → in der Liste oben als Kamera wählbar (Continuity-Kamera).</small><button className="btn primary" onClick={shot}>📸 Aufnehmen</button></>}</div>
+  </Win>, document.querySelector(".app") || document.body);
+}
+// Zwischenablage: erst automatisch lesen, sonst auf ⌘V / Strg+V warten
+function PasteWin({ onFile, onClose }) {
+  const [msg, setMsg] = useState("Zwischenablage wird gelesen …");
+  const take = (f) => { if (f && /^image\/|pdf/.test(f.type)) { onFile(f); return true; } return false; };
+  useEffect(() => {
+    const h = (ev) => { const f = [...(ev.clipboardData?.files || [])][0]; if (take(f)) ev.preventDefault(); else setMsg("In der Zwischenablage ist kein Bild und kein PDF."); };
+    addEventListener("paste", h);
+    (async () => { try { for (const it of await navigator.clipboard.read()) { const t = it.types.find((x) => /^image\/|pdf/.test(x)); if (t) { const b = await it.getType(t); take(new File([b], `Beleg-${todayISO()}.${t.includes("pdf") ? "pdf" : t.split("/")[1] || "png"}`, { type: t })); return; } }
+      setMsg("Kein Bild gefunden – jetzt ⌘V bzw. Strg+V drücken."); } catch { setMsg("Jetzt ⌘V bzw. Strg+V drücken, um das Bild einzufügen."); } })();
+    return () => removeEventListener("paste", h); }, []);
+  return createPortal(<Win id="kbpaste" onClose={onClose} small defW={420} dirty={false} stay>
+    <div className="panelhead"><b>Aus Zwischenablage einfügen</b><XBtn /></div>
+    <div className="kbpaste" tabIndex={0} autoFocus>📋<p>{msg}</p><small className="muted">Screenshot (⇧⌘4 mit Ctrl) oder kopiertes Bild bzw. PDF</small></div>
+  </Win>, document.querySelector(".app") || document.body);
+}
+async function kbEigenbelegPdf(e, kasse, grund) {
+  const co = { ...CO_DEFAULT, ...ls.get("company", {}) }, net = e.vat ? e.amount / (1 + e.vat / 100) : null;
+  const rows = [["Beleg-Nr.", kbNo(e)], ["Kasse", kasse?.name || ""], ["Datum", fmtDate(e.date)], ["Art", e.kind === "ein" ? "Einnahme" : "Ausgabe"], ["Gegenstand / Leistung", e.text || ""], ["Kategorie", e.cat || ""],
+    ["Betrag brutto", fmtMoney(e.amount)], e.vat != null && ["USt", `${e.vat} % · netto ${fmtMoney(net)} · USt ${fmtMoney(e.amount - net)}`], ["Grund für Eigenbeleg", grund || "Originalbeleg nicht vorhanden"],
+    ["Erstellt am", fmtDate(todayISO())], ["Unterschrift", "______________________________"]].filter(Boolean);
+  return tablePdf({ title: "Eigenbeleg", subtitle: `${co.name || "Firma"}${co.street ? " · " + co.street : ""}${co.city ? " · " + (co.zip ? co.zip + " " : "") + co.city : ""}`, columns: [{ label: "Feld", w: 1.6 }, { label: "Angabe", w: 5 }], rows,
+    note: "Eigenbeleg für eine Kassenbuchung ohne Fremdbeleg – mit Unterschrift aufbewahren." });
+}
+function KbBelegSettings() { const [v, setV] = useLsState("kbBelegStyle", "icons");
+  return <div className="optsec"><b>Kassabuch – Beleg-Spalte</b><small className="muted block">Wie Belege in der Kassabuch-Tabelle angezeigt und hinzugefügt werden.</small><OptPicker opts={KB_BELEG_STYLES} value={v} onPick={setV} pv={(k) => ({
+    icons: <span className="pvrow"><i className="pvl" /><span className="pvic2">📎 📷 ⋯</span></span>, knopf: <span className="pvrow"><i className="pvl" /><span className="pvbtn ok">📎 Beleg ▾</span></span>,
+    status: <span className="pvrow"><i className="pvl" /><span className="pvbtn" style={{ color: "#ef4444" }}>fehlt ▾</span></span> }[k])} /></div>; }
+function DocPickWin({ docs, title = "Dokument wählen", onPick, onClose, suggest = [] }) {
   const [q, setQ] = useState("");
+  const sugg = !q.trim() ? suggest.slice(0, 8) : [];
   const l = docs.filter((d) => !d.deletedAt && (!q.trim() || norm(`${d.title} ${d.sender || ""} ${d.category || ""}`).includes(norm(q)))).sort((a, b) => (b.documentDate || b.createdAt || "").localeCompare(a.documentDate || a.createdAt || "")).slice(0, 40);
   return createPortal(<Win id="docpick" onClose={onClose} small defW={540} dirty={false} stay>
     <div className="panelhead"><b>{title}</b><XBtn /></div>
     <input className="sbsearch" autoFocus value={q} placeholder="Dokumente durchsuchen …" onChange={(e) => setQ(e.target.value)} />
+    {sugg.length > 0 && <><small className="muted pickhead">✨ Passende Belege (gleicher Betrag, Datum ±7 Tage)</small><div className="sblist kbsugg">{sugg.map((d) => <button key={"s" + d.id} type="button" className="sbrow" onClick={() => onPick(d)}><Thumb d={d} /><span className="grow"><b className="one">{d.title}</b><small className="muted block one">{[d.documentDate && fmtDate(d.documentDate), d.sender, d.amount?.total != null && fmtMoney(d.amount.total)].filter(Boolean).join(" · ")}</small></span></button>)}</div><small className="muted pickhead">Alle Dokumente</small></>}
     <div className="sblist">{l.map((d) => <button key={d.id} type="button" className="sbrow" onClick={() => onPick(d)}><Thumb d={d} /><span className="grow"><b className="one">{d.title}</b><small className="muted block one">{[d.documentDate && fmtDate(d.documentDate), d.sender, d.amount?.total != null && fmtMoney(d.amount.total)].filter(Boolean).join(" · ")}</small></span></button>)}</div>
   </Win>, document.querySelector(".app") || document.body);
 }
@@ -14405,11 +14478,23 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
   const { saldo, bal } = kbRun(entries, kasse);
   const kbSetDoc = (e, id) => { setEntries((l) => l.map((x) => (x.id === e.id ? { ...x, docId: id || null } : x))); notify?.(id ? `Beleg bei ${kbNo(e)} hinterlegt` : `Beleg bei ${kbNo(e)} gelöst`); };
   const kbAttach = async (e, file, o) => { const id = await onUpload?.(file, o); if (id) kbSetDoc(e, id); };
-  const kbActs = (e) => <KbActs e={e} d={e.docId && docs.find((d) => d.id === e.docId)} onOpen={(id) => onOpen?.(id)} onAttach={() => { setKbFor(e); kbFile.current?.click(); }}
-    onScan={() => onScan?.((file, o) => kbAttach(e, file, { ...(o || {}), scanned: true }))} onPickDoc={() => setKbPick(e)} onDetach={() => confirm(`Beleg von ${kbNo(e)} lösen? Das Dokument bleibt in „Dokumente“.`) && kbSetDoc(e, null)} />;
+  const [kbStyle] = useLsState("kbBelegStyle", "icons"), [kbCam, setKbCam] = useState(null), [kbPaste, setKbPaste] = useState(null), [kbDrop, setKbDrop] = useState(null);
+  const kbFileFor = (e) => { setKbFor(e); kbFile.current?.click(); };
+  const kbScanOld = (e) => onScan?.((file, o) => kbAttach(e, file, { ...(o || {}), scanned: true }));
+  const kbEigen = async (e) => { const g = prompt(`Eigenbeleg für ${kbNo(e)} („${e.text}“, ${fmtMoney(e.amount)})\nGrund, warum der Originalbeleg fehlt:`, e.kind === "ein" ? "Barverkauf ohne Rechnung" : "Beleg verloren / nicht ausgestellt"); if (g == null) return;
+    const blob = await kbEigenbelegPdf(e, kasse, g); const id = await onUpload?.(new File([blob], `Eigenbeleg-${kbNo(e).replace("/", "-")}.pdf`, { type: "application/pdf" }), {});
+    if (id) { setEntries((l) => l.map((x) => (x.id === e.id ? { ...x, docId: id, eigen: true } : x))); notify?.(`Eigenbeleg für ${kbNo(e)} erstellt`); } };
+  const kbActs = (e) => { const d = e.docId && docs.find((x) => x.id === e.docId), sug = d ? [] : kbMatches(e, docs);
+    return <KbActs e={e} d={d} style={kbStyle} n={sug.length} a={{ open: (id) => onOpen?.(id), attach: () => kbFileFor(e), cam: () => setKbCam(e), suggest: () => setKbPick({ e, sug }), pick: () => setKbPick({ e, sug }), paste: () => setKbPaste(e), eigen: () => kbEigen(e),
+      ref: () => { const v = prompt(`Belegnummer oder Ablageort für ${kbNo(e)}:`, e.beleg || ""); if (v != null) setEntries((l) => l.map((x) => (x.id === e.id ? { ...x, beleg: v.trim() } : x))); },
+      detach: () => confirm(`Beleg von ${kbNo(e)} lösen? Das Dokument bleibt in „Dokumente“.`) && kbSetDoc(e, null) }} />; };
+  const kbDnD = (e) => e.stornoOf ? {} : { onDragOver: (ev) => { if ([...(ev.dataTransfer?.types || [])].includes("Files")) { ev.preventDefault(); ev.stopPropagation(); setKbDrop(e.id); } }, onDragLeave: () => setKbDrop((x) => (x === e.id ? null : x)),
+    onDrop: (ev) => { const f = ev.dataTransfer?.files?.[0]; if (!f) return; ev.preventDefault(); ev.stopPropagation(); setKbDrop(null); kbAttach(e, f); } };
   const kbModals = (<>
     <input ref={kbFile} type="file" accept="image/*,application/pdf" hidden onChange={(ev) => { const f = ev.target.files[0]; ev.target.value = ""; if (f && kbFor) kbAttach(kbFor, f); }} />
-    {kbPick && <DocPickWin docs={docs} title={`Beleg für ${kbNo(kbPick)} wählen`} onClose={() => setKbPick(null)} onPick={(d) => { kbSetDoc(kbPick, d.id); setKbPick(null); }} />}
+    {kbPick && <DocPickWin docs={docs} suggest={kbPick.sug} title={`Beleg für ${kbNo(kbPick.e)} wählen`} onClose={() => setKbPick(null)} onPick={(d) => { kbSetDoc(kbPick.e, d.id); setKbPick(null); }} />}
+    {kbCam && <CamWin onClose={() => setKbCam(null)} onFallback={() => { const e = kbCam; setKbCam(null); kbScanOld(e); }} onShot={(f) => { const e = kbCam; setKbCam(null); if (scanUi) scanUi.withFile(f, (file, o) => kbAttach(e, file, { ...(o || {}), scanned: true })); else kbAttach(e, f, { scanned: true }); }} />}
+    {kbPaste && <PasteWin onClose={() => setKbPaste(null)} onFile={(f) => { const e = kbPaste; setKbPaste(null); kbAttach(e, f); }} />}
   </>);
   const kCounts = counts.filter((c) => c.kasse === kasse.id).sort((a, b) => (b.created || "").localeCompare(a.created || ""));
   const lastCount = kCounts[0];
@@ -14501,7 +14586,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
               {l.map((e) => <MItem key={e.id} dim={!!(e.stornoBy || e.stornoOf)} icon={<MIco e={e.kind === "ein" ? "💶" : "🧾"} />} title={e.text}
                 tags={[e.stornoBy && "storniert", e.stornoOf && "Storno", !e.docId && !e.beleg && e.eigen && "Eigenbeleg"]}
                 sub={`${kbNo(e)} · ${e.cat}${e.docId ? " · 📎" : ""}`} amount={(e.kind === "ein" ? "+" : "−") + fmtMoney(e.amount)} amountCls={e.kind === "ein" ? "pos" : "neg"}
-                onClick={() => setDet(e.id)} swipe={{ left: e.stornoOf ? [] : e.docId ? [{ icon: <IcoEye />, label: "Beleg", bg: "#3b82f6", run: () => onOpen?.(e.docId) }] : [{ icon: "📎", label: "Beleg", bg: "#3b82f6", run: () => { setKbFor(e); kbFile.current?.click(); } }, { icon: "📷", label: "Scannen", bg: "#8b5cf6", run: () => onScan?.((file, o) => kbAttach(e, file, { ...(o || {}), scanned: true })) }], right: !e.stornoBy && !e.stornoOf ? [{ icon: "↩︎", label: "Storno", bg: "#ef4444", run: () => doStorno(e) }] : [] }} />)}
+                onClick={() => setDet(e.id)} swipe={{ left: e.stornoOf ? [] : e.docId ? [{ icon: <IcoEye />, label: "Beleg", bg: "#3b82f6", run: () => onOpen?.(e.docId) }] : [{ icon: "📎", label: "Beleg", bg: "#3b82f6", run: () => { setKbFor(e); kbFile.current?.click(); } }, { icon: "📷", label: "Kamera", bg: "#8b5cf6", run: () => kbScanOld(e) }, { icon: "⋯", label: "Mehr", bg: "#64748b", run: () => setKbPick({ e, sug: kbMatches(e, docs) }) }], right: !e.stornoBy && !e.stornoOf ? [{ icon: "↩︎", label: "Storno", bg: "#ef4444", run: () => doStorno(e) }] : [] }} />)}
             </React.Fragment>
           ))}
         </MScroll>
@@ -14527,7 +14612,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
         {per !== "alle" && <div className="kbr kbopen"><span /><span>{fmtDate(first)}</span><span>Anfangsbestand</span><span /><span /><span /><span className="r">{fmtMoney(opening)}</span><span /></div>}
         {!shown.length && <p className="muted small" style={{ padding: 12 }}>{mine.length ? "Keine Buchungen in diesem Zeitraum." : "Noch keine Buchungen. Jede Bareinnahme und -ausgabe einzeln mit Beleg erfassen."}</p>}
         {shown.map((e) => (
-          <div key={e.id} className={"kbr click" + rowCls(e)} onClick={() => setDet(e.id)}>
+          <div key={e.id} className={"kbr click" + rowCls(e) + (kbDrop === e.id ? " kbdrop" : "")} onClick={() => setDet(e.id)} {...kbDnD(e)}>
             <span className="muted kbcno">{kbNo(e)}</span><span className="kbcdate">{fmtDate(e.date)}<small className="muted kbsub">{kbNo(e)}</small></span>
             <span className="one kbctext"><b>{e.text}</b>{e.docId && " 📎"}{e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}<small className="muted kbsub one">{e.cat}</small></span>
             <span className="muted one kbccat">{e.cat}</span>
@@ -16222,7 +16307,7 @@ html.fg .hero{background:var(--card)!important;color:var(--txt)!important;box-sh
 html.fg .hero small{color:var(--mut)}
 html.fg .hero .hero-v,html.fg .hero b{color:var(--txt)}
 html.fg .hero .hsub>div,html.fg .hero .stats>div{background:var(--card2)!important;color:var(--txt)}
-html.fg .pos,html.fg .ok{color:var(--ok)!important}
+html.fg .ok{color:var(--ok)!important}html.fg .pos{color:var(--pos,var(--ok))!important}
 html.fg b,html.fg strong{font-weight:600}
 html.fg .frow,html.fg .ditem,html.fg .invrow{padding-top:14px;padding-bottom:14px;border-color:var(--line)}
 html.fg .frow b,html.fg .ditem .dtitle,html.fg .invrow .row1 b{font-size:18px;font-weight:500}
@@ -16694,7 +16779,7 @@ html,body{min-height:100%}
 .txkv{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
 .txkv:last-child{border-bottom:0}
 .txkv>span{color:var(--mut)}
-.txkv>b{text-align:right}.txkv>b.pos{color:var(--ok)}
+.txkv>b{text-align:right}.txkv>b.pos{color:var(--pos,var(--ok))}
 .txkv.col{flex-direction:column;align-items:stretch;gap:8px}
 .txkv.col>span:empty{display:none}
 .txkv.col>p{margin:0;white-space:pre-wrap;word-break:break-word;line-height:1.4}
@@ -16735,7 +16820,7 @@ html,body{min-height:100%}
 .mrow{display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid var(--line);cursor:pointer}.mrow:last-child{border-bottom:0}
 .mrow .grow{display:flex;flex-direction:column;min-width:0}.mrow .grow>span{font-size:18px}
 .maccico{width:40px;height:40px;display:grid;place-items:center;font-size:26px;flex:none}
-.mmoney{font-weight:500;font-size:17px}.mmoney.pos{color:var(--ok)}.mmoney.big{font-size:22px;font-weight:700;text-align:center}
+.mmoney{font-weight:500;font-size:17px}.mmoney.pos{color:var(--pos,var(--ok))}.mmoney.big{font-size:22px;font-weight:700;text-align:center}
 .mactions{display:flex;gap:8px;flex-wrap:wrap}.mactions .btn{flex:1 1 auto}
 .mtopbar{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:6px;padding:8px 0;background:var(--bg);margin:-6px 0 0}
 .mtitle{text-align:center;font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -16750,7 +16835,7 @@ html,body{min-height:100%}
 .mtx .grow{min-width:0;display:flex;flex-direction:column;gap:3px}.mtx .grow>b{font-size:17px;font-weight:600}
 .msub{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:14px;min-width:0}
 .mtag{background:var(--card2);color:var(--txt);border-radius:7px;padding:1px 7px;font-size:12px;flex:none}
-.mamt{font-weight:600;font-size:16px;white-space:nowrap}.mamt.in{color:var(--ok);background:color-mix(in srgb,var(--ok) 15%,transparent);padding:4px 8px;border-radius:8px}
+.mamt{font-weight:600;font-size:16px;white-space:nowrap}.mamt.in{color:var(--pos,var(--ok));background:color-mix(in srgb,var(--pos,var(--ok)) 15%,transparent);padding:4px 8px;border-radius:8px}
 .mrec{width:26px;height:26px;border-radius:50%;background:var(--card2);display:grid;place-items:center;font-size:14px;flex:none;color:var(--mut)}
 .one{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mmore summary{display:grid;place-items:center;font-size:20px;line-height:1}
@@ -16802,7 +16887,7 @@ html,body{min-height:100%}
 .kbbeleg{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;display:flex;flex-direction:column;gap:6px}
 .kbbelegrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .kbtable{padding:0;overflow:hidden}
-.kbr{display:grid;grid-template-columns:86px 92px minmax(0,2.4fr) minmax(0,1.3fr) 110px 110px 120px auto;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);font-size:14px}
+.kbr{display:grid;grid-template-columns:86px 92px minmax(0,2.4fr) minmax(0,1.3fr) 110px 110px 120px 132px;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);font-size:14px}
 .kbr .r{text-align:right;font-variant-numeric:tabular-nums}.kbr .stpill{margin-left:8px;min-width:0}
 .kbh{font-size:12px;font-weight:700;color:var(--mut);position:sticky;top:0;background:var(--card);z-index:2}
 .kbfoot{position:static;border-top:2px solid var(--line);border-bottom:0;font-size:14px;color:inherit}
@@ -16863,14 +16948,14 @@ html,body{min-height:100%}
 .kbcnt{margin-left:3px;font-weight:400}
 .kbr>span{min-width:0}
 @container (max-width:860px){
-  .kbr{grid-template-columns:96px minmax(0,1fr) 92px 92px 100px auto;gap:8px;padding:9px 12px}
+  .kbr{grid-template-columns:96px minmax(0,1fr) 92px 92px 100px 100px;gap:8px;padding:9px 12px}
   .kbr>.kbcno,.kbr>.kbccat,.kbh>span:nth-child(1),.kbh>span:nth-child(4),.kbopen>span:nth-child(1),.kbopen>span:nth-child(4),.kbfoot>span:nth-child(1),.kbfoot>span:nth-child(4){display:none}
   .kbr .kbsub{display:block;font-size:11px;font-weight:400;line-height:1.3}
   .kbr .kbctext{display:flex;flex-direction:column;white-space:normal}
   .kbr .kbctext>b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .kbr .kbctext .stpill{align-self:flex-start;margin:2px 0 0}
 }
-@container (max-width:520px){ .kbr{grid-template-columns:82px minmax(0,1fr) 80px 80px 88px auto;font-size:13px;gap:6px;padding:8px 10px} }
+@container (max-width:520px){ .kbr{grid-template-columns:82px minmax(0,1fr) 80px 80px 88px 100px;font-size:13px;gap:6px;padding:8px 10px} }
 
 /* v0.68 Listen als abgerundete Karte mit innerer Scroll-Liste (wie Konten) */
 .fitscroll.fscard{background:var(--card);border-radius:26px;box-shadow:var(--shadow);margin:0!important;padding:0!important;gap:0!important;overflow:hidden;isolation:isolate}
@@ -16905,16 +16990,16 @@ html:not(.fg) .fitscroll.fscard{border-radius:18px}
   .kbfoot>span{font-size:20px!important;font-weight:600!important}
   .kbr .stpill{font-size:12px}
   .kbr .kbsub{font-size:15px;margin-top:2px}
-  @container (min-width:1001px){ .kbr{grid-template-columns:112px 116px minmax(0,2fr) minmax(0,1fr) 124px 124px 134px auto} }
+  @container (min-width:1001px){ .kbr{grid-template-columns:112px 116px minmax(0,2fr) minmax(0,1fr) 124px 124px 134px 132px} }
   @container (max-width:1000px){
-    .kbr{grid-template-columns:124px minmax(0,1fr) 120px 120px 132px auto}
+    .kbr{grid-template-columns:124px minmax(0,1fr) 120px 120px 132px 132px}
     .kbr>.kbcno,.kbr>.kbccat,.kbh>span:nth-child(1),.kbh>span:nth-child(4),.kbopen>span:nth-child(1),.kbopen>span:nth-child(4),.kbfoot>span:nth-child(1),.kbfoot>span:nth-child(4){display:none}
     .kbr .kbsub{display:block;font-weight:400;line-height:1.3}
     .kbr .kbctext{display:flex;flex-direction:column;white-space:normal}
     .kbr .kbctext>b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   }
   @container (max-width:640px){
-    .kbr{grid-template-columns:88px minmax(0,1fr) 74px 74px 86px auto;gap:8px;padding:12px 12px;font-size:15px}
+    .kbr{grid-template-columns:88px minmax(0,1fr) 74px 74px 86px 100px;gap:8px;padding:12px 12px;font-size:15px}
     .kbr>.kbcdate,.kbopen>span{font-size:15px}
     .kbr>.r,.kbr .kbctext>b,.kbr>.r>b,.kbfoot>span{font-size:16px!important}
     .kbr .kbsub{font-size:13px}
@@ -17252,7 +17337,7 @@ label>.vehpick.block{margin-top:6px}
 .httile.bad{background:color-mix(in srgb,var(--red) 10%,var(--card));border-color:color-mix(in srgb,var(--red) 30%,transparent)}
 .httile.bad b,.httile.bad small{color:var(--red)}
 .httile.warn b{color:var(--warn)}
-.httile.pos b{color:var(--ok)}.httile.neg b{color:var(--red)}
+.httile.pos b{color:var(--pos,var(--ok))}.httile.neg b{color:var(--red)}
 .httiles.editing .httile{border-style:dashed;border-color:var(--acc);padding-top:40px}
 .htleft>*,.htright>*{min-width:0;max-width:100%;box-sizing:border-box}
 .httodo{overflow:hidden}
@@ -17585,7 +17670,7 @@ html.sty-glas .tile,html.sty-glas .hero,html.sty-glas .khero,html.sty-glas .msca
 html.sty-glas .tile,html.sty-glas .hero,html.sty-glas .khero{border:1px solid rgba(255,255,255,.35)!important;border-radius:22px!important;background:rgba(255,255,255,.18)!important;box-shadow:0 8px 30px rgba(20,10,60,.18)!important}
 html.sty-glas .win,html.sty-glas .lbsheet,html.sty-glas .pickmenu,html.sty-glas .sugmenu{background:rgba(40,28,100,.82)!important;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}
 html.sty-glas .btn.primary,html.sty-glas .lbtab.on,html.sty-glas .seg>button.on{background:#fff!important;color:#6d32d9!important}
-html.sty-glas .neg,html.sty-glas .red{color:#ffd0d8!important}html.sty-glas .pos,html.sty-glas .ok{color:#c9ffe9!important}
+html.sty-glas .neg,html.sty-glas .red{color:#ffd0d8!important}html.sty-glas .ok{color:#c9ffe9!important}html.sty-glas .pos{color:var(--pos,#c9ffe9)!important}
 
 /* 3 Soft UI */
 html.sty-soft{--bg:#e6e9ef!important;--card:#e6e9ef!important;--card2:#e6e9ef!important;--line:transparent!important;--txt:#3b4252!important;--mut:#7a8191!important;--sl:#ffffff;--sd:#c3c8d2}
@@ -17752,8 +17837,17 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .dupdoc{display:flex;gap:10px;align-items:center;padding:10px;border-radius:12px;background:var(--card2);margin:6px 0 10px}.dupacts{flex-wrap:wrap}
 .flatacc{margin:10px 0 14px}.flataccpv{font-weight:500}
 .dlvamt{display:flex;justify-content:space-between;align-items:baseline;padding:10px 12px;border-radius:12px;background:var(--card2);margin:6px 0}.dlvamt b{font-size:20px}
-.kbacts{display:flex;gap:2px;justify-content:flex-end;align-items:center}.kbacts button{width:30px;height:30px}.kbacth{text-align:right}
-@container (max-width:900px){.kbacts .kbx{display:none}}
+.kbacts{display:flex;gap:2px;justify-content:flex-end;align-items:center}.kbfoot>span{white-space:nowrap}
+.kbbtn{display:inline-flex;align-items:center;gap:3px;padding:4px 9px;border-radius:14px;border:0;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;max-width:124px;overflow:hidden;text-overflow:ellipsis}
+.kbbtn.has{background:color-mix(in srgb,var(--pos,var(--ok)) 16%,transparent);color:var(--pos,var(--ok))}.kbbtn.no{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}.kbbtn.ref{background:var(--card2);color:var(--mut)}.kbbtn .caret{font-size:9px;opacity:.7}
+.kbhint{position:relative}.kbhint::after{content:"";position:absolute;top:4px;right:3px;width:7px;height:7px;border-radius:50%;background:var(--acc)}
+.kbr.kbdrop{outline:2px dashed var(--acc);outline-offset:-3px;background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.kbcamv{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3}.kbcamv video{width:100%;height:100%;object-fit:contain;display:block}.kbcamframe{position:absolute;inset:7%;border:2px dashed rgba(255,255,255,.5);border-radius:10px;pointer-events:none}
+.kbcamerr{padding:20px;text-align:center}.kbpaste{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 12px;border:2px dashed var(--line);border-radius:14px;font-size:30px;text-align:center;outline:0}.kbpaste p{font-size:15px;margin:0}
+.kbacts .kbbtn{width:auto;height:26px}.kbacts .rowmorebtn .caret{display:none}.kbpaste small{font-size:12px}.kbpaste p{font-size:15px}
+.kbsugg{margin-bottom:8px}.pvic2{font-size:11px;letter-spacing:2px}
+.kbacts button{width:30px;height:30px}.kbacth{text-align:right}
+@container (max-width:860px){.kbacts .kbx{display:none}.kbbtn{max-width:96px;padding:4px 7px}}
 .stbmh.click{cursor:pointer;user-select:none}.stbchev{width:14px;color:var(--mut);font-size:12px}.stbmonth.shut{padding-bottom:12px}.seg.sm{margin:0}.seg.sm button{padding:4px 8px;font-size:12px}
 /* v0.99.54 Ansichten */
 .optsec{margin:10px 0 16px}.optpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:8px}
@@ -18059,7 +18153,7 @@ html.hasdetail .jphone{visibility:hidden}
 .jrow:hover{background:var(--card2)}.jrow.on{background:color-mix(in srgb,var(--acc) 14%,transparent)}
 .jrow .grow{min-width:0;display:flex;flex-direction:column}.jrow small{color:var(--mut);font-size:12px}
 .jrd{font-size:14px;font-variant-numeric:tabular-nums}
-.jra{text-align:right;flex:none;font-variant-numeric:tabular-nums}.jra b{font-size:15px}.jra i{font-style:normal;margin-left:3px;font-size:11px}.jra i.down{color:var(--red)}.jra i.up{color:var(--ok,#16a34a)}
+.jra{text-align:right;flex:none;font-variant-numeric:tabular-nums}.jra b{font-size:15px}.jra i{font-style:normal;margin-left:3px;font-size:11px}.jra i.down{color:var(--red)}.jra i.up{color:var(--pos,var(--ok))}
 .jdot{width:9px;height:9px;border-radius:50%;flex:none;border:2px solid var(--line)}.jdot.un{background:#3b82f6;border-color:#3b82f6}
 .jcenter{background:var(--card2);padding:0}
 .jprev{display:flex;flex-direction:column;gap:0;padding:12px;min-height:100%}

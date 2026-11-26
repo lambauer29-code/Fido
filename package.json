@@ -1,7 +1,7 @@
 {
   "name": "findocu",
   "private": true,
-  "version": "0.99.54",
+  "version": "0.99.56",
   "type": "module",
   "scripts": {
     "dev": "vite",

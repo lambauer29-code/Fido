@@ -2,6 +2,17 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.56 – Kassabuch: Beleg-Spalte wählbar + neue Beleg-Optionen
+- Einstellungen → Design → Ansichten → „Kassabuch – Beleg-Spalte“: Icons, ein Knopf „Beleg ▾“ oder Status + Auge
+- Neues Beleg-Menü: Datei hochladen, Kamera live (Webcam, iPhone als Continuity-Kamera, Handy-Kamera – danach Ecken anpassen), passende Belege vorschlagen (gleicher Betrag, Datum ±7 Tage), aus Dokumenten wählen, aus Zwischenablage einfügen (⌘V), Eigenbeleg als PDF erstellen, Belegnummer/Ablageort eintragen
+- Datei per Drag & Drop direkt auf eine Kassabuch-Zeile ziehen
+- Mit Beleg: Ansehen, Drucken, Teilen, Ersetzen (Datei/Kamera/Dokument/Zwischenablage), Lösen
+- Punkt am ⋯ bzw. „fehlt · 2✨“ zeigt, wenn passende Belege gefunden wurden
+
+## v0.99.55 – Kassabuch-Spalten fix, Guthaben-Farbe überall
+- Kassabuch: Beleg-Spalte hat eine feste Breite – Saldo und Summen stehen in jeder Zeile genau untereinander
+- Guthaben-Farbe (Einstellungen → Design) gilt jetzt überall: Kontoliste in der Seitenleiste, Konten, Buchungen, Journal, Dokumente (Einnahmen), Analyse, Vermögen (Dividenden), Firmenauswertung, Rechnungen, Kassabuch – auch in den Stilen Graphit, Sand, Nacht, Schiefer, Salbei, Papier und Glas
+
 ## v0.99.54 – Ansichten wählbar: Monate, Sortierung, Abo-Status
 - Einstellungen → Design → „Ansichten“: drei Auswahlen mit Vorschau
 - Steuerberater → Monate: Karten, Liste, Tabelle (Monate × Prüfpunkte), Zeitleiste, Jahres-Kacheln, Nur Offene – auch direkt im Reiter über „▦“ umschaltbar
