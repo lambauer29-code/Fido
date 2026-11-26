@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.92 – „＋ Buchung“ nicht mehr dauerhaft aktiv
+- Konten: Knopf „＋ Buchung ▾“ sieht wie die anderen Knöpfe aus (war dauerhaft als aktiv eingefärbt); nur das offene Menü wird hervorgehoben
+
 ## v0.99.91 – „＋ Buchung“ in den Konten
 - Konten: neuer Knopf „＋ Buchung ▾“ vor dem Ablagefeld – Klick = Ausgabe für das gewählte Konto, Pfeil = Ausgabe, Einnahme, Umbuchung zu anderem Konto, Beleg scannen
 - Umbuchung: Von-/Auf-Konto, Betrag, Datum, Text → zwei Buchungen mit Kategorie „Umbuchung“ (zählen nicht als Einnahme/Ausgabe), z. B. Kreditrate oder Rückzahlung

@@ -7157,8 +7157,8 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       {!!accounts.length && (
         <div className="chips">
           {onManual && <span className="splitbtn">
-            <button className="chip on splitmain" title={`Ausgabe erfassen${selA ? " – " + selA.name : ""}`} onClick={() => onManual({ accountId: selA?.id, dir: "out" })}>＋ Buchung</button>
-            <PickMenu click btnClass="chip on splitarrow" title="Buchung hinzufügen" label="" items={[
+            <button className="chip splitmain" title={`Ausgabe erfassen${selA ? " – " + selA.name : ""}`} onClick={() => onManual({ accountId: selA?.id, dir: "out" })}>＋ Buchung</button>
+            <PickMenu click btnClass="chip splitarrow" title="Buchung hinzufügen" label="" items={[
               { k: "out", icon: "↓", title: "Ausgabe", sub: selA ? selA.name : "Konto im Formular wählen", run: () => onManual({ accountId: selA?.id, dir: "out" }) },
               { k: "in", icon: "↑", title: "Einnahme", sub: selA ? selA.name : "", run: () => onManual({ accountId: selA?.id, dir: "in" }) },
               { k: "tr", icon: "⇄", title: "Umbuchung zu anderem Konto", sub: "z. B. Kreditrate, Rückzahlung", run: () => onManual({ accountId: selA?.id, transfer: true }) },
@@ -18976,7 +18976,7 @@ button.txmark.m-doc{cursor:pointer}button.txmark.m-doc:hover{background:var(--ca
 .txrow.sc-firma{box-shadow:inset 4px 0 0 var(--stc-firma);background:color-mix(in srgb,var(--stc-firma) 7%,transparent)}.txrow.sc-unklar{box-shadow:inset 4px 0 0 color-mix(in srgb,var(--stc-unklar) 70%,transparent)}
 .txrow.sc-firma:hover{background:color-mix(in srgb,var(--stc-firma) 12%,transparent)}
 nav .doctree .accitem .an{color:inherit!important}
-.splitbtn{display:inline-flex;align-items:stretch}.splitbtn>.splitmain{border-top-right-radius:0!important;border-bottom-right-radius:0!important;margin-right:0}.splitbtn .splitarrow{border-top-left-radius:0!important;border-bottom-left-radius:0!important;border-left:1px solid color-mix(in srgb,currentColor 30%,transparent)!important;padding-left:8px!important;padding-right:10px!important;height:100%}.splitbtn>.vehpick{display:inline-flex}
+.splitbtn{display:inline-flex;align-items:stretch;gap:0}.splitbtn .splitarrow.on,.splitbtn .splitarrow.open{background:color-mix(in srgb,var(--acc) 14%,transparent)!important}.splitbtn>.splitmain{border-top-right-radius:0!important;border-bottom-right-radius:0!important;margin-right:0}.splitbtn .splitarrow{border-top-left-radius:0!important;border-bottom-left-radius:0!important;border-left:1px solid color-mix(in srgb,currentColor 30%,transparent)!important;padding-left:8px!important;padding-right:10px!important;height:100%}.splitbtn>.vehpick{display:inline-flex}
 .amtgrid{align-items:end}.amtgrid>label{display:flex;flex-direction:column;justify-content:flex-end;min-width:0;white-space:nowrap}.amtgrid>label>input{width:100%}
 .fxrow{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:12px;background:color-mix(in srgb,var(--acc) 5%,transparent)}.fxrow .fxinfo{font-size:13.5px}.fxins{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.fxins label{flex:1 1 140px;margin:0;font-size:12.5px}.fxins .btn{flex:none}
 .expcur{display:flex;gap:8px;align-items:stretch;flex-wrap:nowrap}.expcur>input{flex:1;min-width:0}.expcur>.vehpick,.fxhead>.vehpick{flex:none!important;width:auto!important;display:inline-flex}.expcur .cursel,.fxhead .cursel{width:auto!important;min-width:96px;white-space:nowrap}.fxhead{gap:10px;align-items:center;flex-wrap:wrap}.fxhead .seg{flex:1}
