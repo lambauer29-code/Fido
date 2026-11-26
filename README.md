@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.44 – Kontoverwendung als Dropdown
+
+- Steuerberater → Einstellungen: Privat / Firma / Beides je Konto jetzt als Dropdown im gewohnten App-Format statt Umschaltleiste.
+
 ## v0.99.43 – Monatsabschluss erweitert
 
 - Steuerberater → Monate: neue Prüfpunkte „Firmenbelege ohne Buchung“ (mit Liste, Ansehen und „Passt so“), „Ausgangsrechnungen“ (überfällig und noch nicht gemahnt) und „Kassabuch“ (Buchungen ohne Beleg, negativer Kassastand).

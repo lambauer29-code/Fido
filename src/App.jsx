@@ -9063,7 +9063,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
         {bankAccs.map((a) => (
           <div key={a.id} className="stbaccrow">
             <b className="grow one">{a.name}</b>
-            <div className="seg">{[["privat", "👤 Privat"], ["firma", "🏢 Firma"], ["gemischt", "❓ Beides"]].map(([k, l]) => <button key={k} className={(a.use || "privat") === k ? "on" : ""} onClick={() => setAccounts((x) => x.map((y) => (y.id === a.id ? { ...y, use: k } : y)))}>{l}</button>)}</div>
+            <span className="stbusesel"><PSelect title="Verwendung" value={a.use || "privat"} onChange={(e) => { const k = e.target.value; setAccounts((x) => x.map((y) => (y.id === a.id ? { ...y, use: k } : y))); }}><option value="privat">👤 Privat</option><option value="firma">🏢 Firma</option><option value="gemischt">🔀 Beides (gemischt)</option></PSelect></span>
             <label className="check small"><input type="checkbox" checked={stmtNeeded(a, need)} onChange={(e) => setNeed((n) => ({ ...n, [a.id]: e.target.checked }))} /> Auszug je Monat nötig</label>
           </div>
         ))}
@@ -16776,7 +16776,7 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .stbchecks{display:flex;flex-direction:column;gap:4px;margin-top:10px}
 .stbcheck{padding:6px 10px;border-radius:9px;background:var(--card2);font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .stbprog{display:flex;align-items:center;gap:10px;margin-top:8px}.stbtrack{flex:1;height:6px;border-radius:3px;background:var(--card2);overflow:hidden}.stbtrack>i{display:block;height:100%;background:var(--green,#22a06b);transition:width .3s}
-.stbcheck>.grow{flex:1;min-width:0}.stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
+.stbcheck>.grow{flex:1;min-width:0}.stbusesel{width:220px;flex:0 0 auto}@media(max-width:600px){.stbusesel{width:100%}}.stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
 .stbmacts{justify-content:space-between;margin-top:4px}
 .stbstmts{display:flex;flex-direction:column;gap:10px}
 .stbstmt{display:flex;align-items:center;gap:12px;padding:12px}
