@@ -1927,6 +1927,7 @@ function AppMain() {
   const [shareData, setShareData] = useState(null);
   const [pdfView, setPdfView] = useState(null);
   pdfUi = setPdfView;
+  fileUi = { add: (file, o) => onFiles([file], o || {}) };
   belegUi = { link: linkTx, upload: (txId, file) => onFiles([file], { stay: true, linkTx: txId }) };
   const impRef = useRef(null), vcfApp = useRef(null);
   const [sideMiniSet, setSideMiniRaw] = useState(() => ls.get("sideMini", null));
@@ -2330,13 +2331,16 @@ function AppMain() {
     ls.set("contractList", ls.get("contractList", []).map((c) => (c.id === d.ctId ? { ...c, dlDone: dl.done ? [...new Set([...(c.dlDone || []), dl.date])] : (c.dlDone || []).filter((x) => x !== dl.date) } : c)));
     setCtVer((v) => v + 1);
   };
+  // v0.99.53: Objekte aus „Fristen“ als Popup öffnen – der Reiter bleibt
+  const [dlPop, setDlPop] = useState(null);
   const openDl = (id) => { id = String(id);
-    if (id.startsWith("vt:steuer:")) { lsSetEv("stbSec", /svs|est/.test(id) ? "ruecklage" : "paket"); setTab("steuer"); return; }
-    if (id.startsWith("vt:retain:")) { ls.set("openSettingsSec", "retain"); setTab("settings"); return; }
-    if (id.startsWith("vt:close:")) { lsSetEv("stbSec", "monate"); setTab("steuer"); return; }
-    if (id.startsWith("vt:inv:")) { const x = ls.get("invoices", []).find((y) => y.id === id.slice(7)); setTab(x && invState(x) === "überfällig" ? "mahnungen" : "invoices"); return; }
-    if (String(id).startsWith("as:")) { ls.set("assetOpenReq", String(id).slice(3)); setTab("besitz"); return; }
-    if (String(id).startsWith("ct:")) { ls.set("ctOpenReq", String(id).slice(3)); setTab("vertraege"); } else setOpenId(id); };
+    if (id.startsWith("vt:inv:")) { const x = ls.get("invoices", []).find((y) => y.id === id.slice(7)); if (x) { (async () => openPdf(await buildInvoicePdf(x, { ...CO_DEFAULT, ...ls.get("company", {}) }), invFileName(x), "", x.customer?.email))(); return; } }
+    if (id.startsWith("vt:")) { const d = fixDocs.find((x) => x.id === id); if (d) { setDlPop({ kind: "virt", id }); return; } }
+    if (id.startsWith("as:")) { const a = ls.get("besitz", []).find((x) => x.id === id.slice(3)); if (a) { setDlPop({ kind: "as", a }); return; } }
+    if (id.startsWith("ct:")) { const c = ls.get("contractList", []).find((x) => x.id === id.slice(3)); if (c) { setDlPop({ kind: "ct", c }); return; } }
+    setOpenId(id); };
+  const dlGo = (where) => { setDlPop(null); if (where === "steuer") { lsSetEv("stbSec", "ruecklage"); setTab("steuer"); } else if (where === "close") { lsSetEv("stbSec", "monate"); setTab("steuer"); } else if (where === "retain") { ls.set("openSettingsSec", "retain"); setTab("settings"); } };
+  const upList = (key, item, del) => { const l = ls.get(key, []); lsSetEv(key, del ? l.filter((x) => x.id !== item.id) : l.some((x) => x.id === item.id) ? l.map((x) => (x.id === item.id ? item : x)) : [...l, item]); setCtVer((v) => v + 1); };
   // Kalender-Abo: bei jeder Änderung der Fristen (verzögert) neu hochladen
   const calSig = useMemo(() => JSON.stringify([dlCfgApp.lead, dlCfgApp.time, dlCfgApp.leadBy, dlCfgApp.onDay, dlDocs.flatMap((d) => (d.deadlines || []).filter((x) => !x.done).map((x) => [x.id, x.date, x.label, d.title, payAmt(d)]))]), [dlDocs, dlCfgApp]);
   useDlNotify(dlDocs, notify, openDl);
@@ -2417,6 +2421,9 @@ function AppMain() {
           journalTab={{ label: tabLabel(nav, "journal") || "Journal", open: () => setTab("journal") }} />}
         {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify} />}
         {dupQ[0] && <DupWin key={dupQ[0].name + (dupQ[0].existing?.id || "")} req={dupQ[0]} onDone={(v) => { dupQ[0].res(v); setDupQ((q) => q.slice(1)); }} />}
+        {dlPop?.kind === "virt" && (() => { const d = fixDocs.find((x) => x.id === dlPop.id); return d ? <DlVirtWin d={d} onClose={() => setDlPop(null)} onGo={dlGo} onToggle={(x) => saveDl({ ...d, deadlines: d.deadlines.map((y) => (y.id === x.id ? { ...y, done: !y.done } : y)) })} /> : null; })()}
+        {dlPop?.kind === "ct" && <ContractEditor c={dlPop.c} docs={active} me={me} onSave={(c) => upList("contractList", c)} onDelete={(c) => upList("contractList", c, true)} onClose={() => setDlPop(null)} />}
+        {dlPop?.kind === "as" && <AssetEditor a={dlPop.a} docs={active} onScan={scanFor} onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true }))[0]} onOpenDoc={setOpenId} notify={notify} onSave={(a) => upList("besitz", a)} onDelete={(a) => upList("besitz", a, true)} onClose={() => setDlPop(null)} />}
         {rtReq && <RtGuardWin req={rtReq} onDone={(v) => { rtReq.res(v); setRtReq(null); }} />}
         {tab === "deadlines" && <Deadlines docs={dlDocs} onOpen={openDl} saveDoc={saveDl} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "cash" && <ExpensePage accounts={visAccounts} txs={txs} categories={TX_CATS(categories)} onSave={saveExpense} onScan={scanFor} addCategory={addCategory} notify={notify}
@@ -2830,7 +2837,11 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
   const all = txs.filter((t) => t.manual).sort((a, b) => (b.date + (b.createdAt || "")).localeCompare(a.date + (a.createdAt || "")));
   const nq = norm(q.trim());
   const hit = (t) => !nq || norm(`${t.counterparty || ""} ${t.purpose || ""} ${t.category || ""} ${accOf(t.accountId)?.name || ""} ${fmtDate(t.date)} ${amtStr(Math.abs(t.amount))}`).includes(nq);
-  const list = all.filter(hit).slice(0, nq ? 500 : 200);
+  const [exS, setExS, exDir] = useSortState("ausgabe", "datum");
+  const EX_SORTS = { datum: ["Datum", "neueste zuerst", (a, b) => (b.date + (b.createdAt || "")).localeCompare(a.date + (a.createdAt || ""))], neu: SORT_NEW, betrag: ["Betrag", "höchster zuerst", (a, b) => Math.abs(b.amount) - Math.abs(a.amount)], name: ["Händler", "A–Z", (a, b) => (a.counterparty || "~").localeCompare(b.counterparty || "~", "de")] };
+  const exLk = { sortBy: exS, setSortBy: setExS, dir: exDir, sorts: EX_SORTS };
+  const list = sortList(all.filter(hit), EX_SORTS, exS, exDir).slice(0, nq ? 500 : 200);
+  const exGroups = exS === "datum" ? mGroup(list, (t) => t.date) : [["", list]];
   const monthOut = txs.filter((t) => t.manual && t.amount < 0 && t.date.startsWith(month)).reduce((s, t) => s - t.amount, 0);
   const cash = accounts.filter((a) => a.kind === "cash");
   const exportMenu = (() => { const allA = [...all].sort((a, b) => a.date.localeCompare(b.date)); const accN = (id) => accounts.find((a) => a.id === id)?.name || "";
@@ -2885,11 +2896,11 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
         {form}
         <div className="exphead"><b>Erfasste Ausgaben</b><small className="muted">{monthLabel(month)}: {fmtMoney(monthOut)}</small>{exportMenu}</div>
         {!!cash.length && <div className="tile expcashbox">{cashRows}</div>}
-        <MBar q={q} setQ={setQ} placeholder="Ausgaben durchsuchen" />
+        <MBar q={q} setQ={setQ} placeholder="Ausgaben durchsuchen" lk={exLk} />
         <MScroll>
-          {mGroup(list, (t) => t.date).map(([date, items]) => (
-            <React.Fragment key={date}>
-              <div className="mday">{dayL(date)}</div>
+          {exGroups.map(([date, items]) => (
+            <React.Fragment key={date || "all"}>
+              {date && <div className="mday">{dayL(date)}</div>}
               {items.map((t) => { const d = t.docId && docs.find((x) => x.id === t.docId), a = accOf(t.accountId), open = openId === t.id; return (
                 <div key={t.id}>
                   <div className="mtx" onClick={() => setOpenId(open ? null : t.id)}>
@@ -2912,11 +2923,11 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
       {form}
       <div className="expside">
         <div className="exphead"><b>Erfasste Ausgaben</b><small className="muted">{monthLabel(month)}: {fmtMoney(monthOut)}</small>{exportMenu}</div>
-        <SearchBox placeholder="Ausgaben durchsuchen" value={q} onChange={setQ} />
+        <div className="row expsearch"><span className="grow"><SearchBox placeholder="Ausgaben durchsuchen" value={q} onChange={setQ} /></span><SortCtl {...exLk} /></div>
         <FitScroll card className="expbox" minH={wide ? 160 : Math.round(innerHeight * 0.62)}>
           <div className="tile">
             {!q && cashRows}
-            {mGroup(list, (t) => t.date).map(([date, items]) => <React.Fragment key={date}><div className="mday expday">{dayL(date)}{date.slice(0, 4) !== todayISO().slice(0, 4) ? " " + date.slice(0, 4) : ""}</div>{items.map(row)}</React.Fragment>)}
+            {exGroups.map(([date, items]) => <React.Fragment key={date || "all"}>{date && <div className="mday expday">{dayL(date)}{date.slice(0, 4) !== todayISO().slice(0, 4) ? " " + date.slice(0, 4) : ""}</div>}{items.map(row)}</React.Fragment>)}
             {empty}
           </div>
         </FitScroll>
@@ -3532,7 +3543,9 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
   );
   const st = fbStats(v, entries);
   const today = todayISO(), month = today.slice(0, 7), year = today.slice(0, 4);
-  const mine = st.e.slice().sort((a, b) => (b.date + (b.time || "")).localeCompare(a.date + (a.time || "")) || ((+b.km || +b.endKm || 0) - (+a.km || +a.endKm || 0)));
+  const [fbS, setFbS, fbDir] = useSortState("fahrtenbuch", "datum");
+  const FB_SORTS = { datum: ["Datum", "neueste zuerst", (a, b) => (b.date + (b.time || "")).localeCompare(a.date + (a.time || "")) || ((+b.km || +b.endKm || 0) - (+a.km || +a.endKm || 0))], neu: SORT_NEW, betrag: ["Betrag", "höchster zuerst", (a, b) => (+b.total || 0) - (+a.total || 0)] };
+  const mine = sortList(st.e, FB_SORTS, fbS, fbDir);
   const monthCost = st.e.filter((x) => x.type !== "trip" && x.date.startsWith(month)).reduce((s, x) => s + (+x.total || 0), 0);
   const lastFuel = st.e.filter((x) => x.type === "fuel").sort((a, b) => b.date.localeCompare(a.date))[0];
   const myRem = reminders.filter((r) => r.vid === v.id && !r.done);
@@ -3649,7 +3662,8 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
         <section className="tile">
           {view === "trip" && trips.length > 0 && <div className="tilehead"><b>Fahrten {year}</b><button className="link" onClick={exportCsv}>⬇︎ CSV fürs Finanzamt</button></div>}
           {view === "verlauf" && myRem.length > 0 && <FbRemStrip rems={myRem} remState={remState} onOpen={(r) => setRemEdit(r)} />}
-          <FbTimeline list={mine.filter((x) => view === "verlauf" || x.type === view)} all={st.e} st={st} kmRate={kmRate} prevId={prevId} docOf={docOf}
+          <div className="fbsort"><SortCtl sorts={FB_SORTS} sortBy={fbS} setSortBy={setFbS} dir={fbDir} /></div>
+          <FbTimeline flat={!(fbS === "datum" && fbDir === 1)} list={mine.filter((x) => view === "verlauf" || x.type === view)} all={st.e} st={st} kmRate={kmRate} prevId={prevId} docOf={docOf}
             onClick={(x) => openEdit(x)} onPrev={setWinPrev} Acts={FbActs}
             preview={(x) => <div className="txprev"><DocPreview d={docOf(x)} onOpen={() => onOpen(docOf(x).id)} /></div>} />
           {!mine.filter((x) => view === "verlauf" || x.type === view).length && <p className="muted small">Noch keine Einträge – oben über ⛽ Tanken, 🛣️ Fahrt oder 🧾 Ausgabe erfassen.</p>}
@@ -4656,7 +4670,7 @@ function ListBar({ q, setQ, placeholder, id, tabs, tab, setTab, lk, tokens = [],
   const views = lk?.views || [];
   const viewOn = (v) => (v.filter ?? tab) === tab && (v.q || "") === (q || "") && (v.yr || "") === (lk?.yr || "") && (v.tagF || "") === (lk?.tagF || "");
   const anyView = views.some(viewOn);
-  const applyV = (v) => { if (setTab && v.filter != null) setTab(v.filter); setQ?.(v.q || ""); lk?.setYr?.(v.yr || ""); lk?.setTagF?.(v.tagF || ""); if (v.sortBy && lk?.setSortBy) lk.setSortBy(v.sortBy); };
+  const applyV = (v) => { if (setTab && v.filter != null) setTab(v.filter); setQ?.(v.q || ""); lk?.setYr?.(v.yr || ""); lk?.setTagF?.(v.tagF || ""); if (v.sortBy && lk?.setSortBy) lk.setSortBy(v.sortBy, true); };
   const dirty = (tabs && tab !== t0) || (q || "").trim() || lk?.yr || lk?.tagF;
   const tabLabel = tabs?.find(([k]) => k === tab)?.[1];
   const saveV = () => { const n = prompt("Name für den neuen Reiter:", [tab !== t0 && tabLabel, lk?.yr, lk?.tagF && "#" + lk.tagF, (q || "").trim() && "„" + q.trim() + "“"].filter(Boolean).join(" · ")); if (!n || !lk?.setViews) return;
@@ -4664,6 +4678,7 @@ function ListBar({ q, setQ, placeholder, id, tabs, tab, setTab, lk, tokens = [],
   const reset = () => { if (setTab && t0 != null) setTab(t0); lk?.setYr?.(""); lk?.setTagF?.(""); tokens.filter(Boolean).forEach(([, clr]) => clr()); };
   const nBadge = tk.length + (tabs && tab !== t0 ? 1 : 0);
   const hasSheet = !!(sheet || lk || tabs);
+  const [sortStyle] = useLsState("sortStyle", "dropdown"), sortVis = !!(lk?.sorts && lk?.setSortBy && Object.keys(lk.sorts).length > 1);
   const moreItems = [...(actions || []).filter(Boolean), ...(lk?.setViews && dirty && !anyView ? [{ head: "Ansicht" }, { k: "lbsave", icon: "☆", title: "Als Reiter speichern", sub: "aktuelle Filter mit einem Tipp wieder aufrufen", run: saveV }] : [])];
   return (<div className="lbar msticky">
     <div className="lbmini" aria-hidden="true">{typeof document !== "undefined" ? document.querySelector("header.top h1")?.textContent : ""}</div>
@@ -4672,6 +4687,7 @@ function ListBar({ q, setQ, placeholder, id, tabs, tab, setTab, lk, tokens = [],
         lead={tk.length ? <span className="lbtoks">{tk.map(([l, clr], i) => <span key={i} className="lbtok">{l}<button type="button" aria-label={l + " entfernen"} onMouseDown={(e) => e.preventDefault()} onClick={clr}>✕</button></span>)}</span> : null}
         onBackEmpty={tk.length ? () => tk[tk.length - 1][1]() : undefined} />
       {hasSheet && <button type="button" className={"btn lbfilter" + (nBadge ? " on" : "")} aria-label="Filter" onClick={() => setOpen(true)}><span aria-hidden="true">⚙︎</span><span className="lbl"> Filter</span>{!!nBadge && <span className="lbbadge">{nBadge}</span>}</button>}
+      {sortVis && sortStyle === "dropdown" && <SortCtl sorts={lk.sorts} sortBy={lk.sortBy} setSortBy={lk.setSortBy} dir={lk.dir || 1} cls="lbsortdd" />}
       {!!moreItems.length && <PickMenu btnClass="btn lbmore" label="⋯" title="Weitere Aktionen" wide items={moreItems} />}
     </div>
     {(tabs || views.length > 0) && <div className={"lbtabs" + (phoneTabs ? "" : " nophone")} role="tablist">
@@ -4679,11 +4695,12 @@ function ListBar({ q, setQ, placeholder, id, tabs, tab, setTab, lk, tokens = [],
       {views.map((v) => <button key={v.id} role="tab" aria-selected={viewOn(v)} className={"lbtab lbview" + (viewOn(v) ? " on" : "")} onClick={() => (viewOn(v) ? reset() : applyV(v))}>☆ {v.n}</button>)}
       {lk?.setViews && dirty && !anyView && <button className="lbtab lbadd" onClick={saveV}>＋ Ansicht</button>}
     </div>}
+    {sortVis && sortStyle !== "dropdown" && <div className="lbsortrow"><SortCtl sorts={lk.sorts} sortBy={lk.sortBy} setSortBy={lk.setSortBy} dir={lk.dir || 1} /></div>}
     {open && <LbSheet onClose={() => setOpen(false)} onReset={reset} hits={hits}>
       {sheet}
       {tabs && <><h4 className="lbh">Ansicht</h4><div className="lbchips">{tabs.map(([k, l, n]) => <button key={k} className={"chip" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>{l}{n != null && <small> {n}</small>}</button>)}</div></>}
       {lk?.years?.length > 0 && <><h4 className="lbh">Jahr</h4><div className="lbchips">{["", ...lk.years].map((y) => <button key={y || "alle"} className={"chip" + ((lk.yr || "") === y ? " on" : "")} onClick={() => lk.setYr(y)}>{y || "Alle Jahre"}</button>)}</div></>}
-      {lk?.sorts && <><h4 className="lbh">Sortierung</h4><div className="lbchips">{Object.entries(lk.sorts).map(([k, [t, sub]]) => <button key={k} title={sub} className={"chip" + (lk.sortBy === k ? " on" : "")} onClick={() => lk.setSortBy(k)}>{t}</button>)}</div></>}
+      {lk?.sorts && <><h4 className="lbh">Sortierung</h4><div className="lbchips">{Object.entries(lk.sorts).map(([k, [t, sub]]) => <button key={k} title={sub} className={"chip" + (lk.sortBy === k ? " on" : "")} onClick={() => lk.setSortBy(k)}>{t}{lk.sortBy === k ? (lk.dir === -1 ? " ↑" : " ↓") : ""}</button>)}</div></>}
       {lk?.tags?.length > 0 && <><h4 className="lbh">Tags</h4><div className="lbchips">{lk.tags.map((t) => <button key={t} className={"chip" + (lk.tagF === t ? " on" : "")} onClick={() => lk.setTagF(lk.tagF === t ? "" : t)}>#{t}</button>)}</div></>}
       {views.length > 0 && <><h4 className="lbh">Gespeicherte Reiter</h4><div className="lbviews">{views.map((v) => <div key={v.id} className="lbvrow"><span className="grow">☆ {v.n}</span>
         <button className="iconbtn" aria-label={"„" + v.n + "“ löschen"} onClick={() => confirm(`Reiter „${v.n}“ löschen?`) && lk.setViews((l) => l.filter((x) => x.id !== v.id))}>✕</button></div>)}</div></>}
@@ -5462,14 +5479,18 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   const cnt = (k) => base.filter(test[k]).length;
   const years = useMemo(() => [...new Set(base.map((d) => jDate(d).slice(0, 4)).filter(Boolean))].sort().reverse(), [base]);
   const effFilt = mode === "pruefen" ? "unbest" : filt;
+  const [jS, setJS, jDir] = useSortState("journal", "datum");
+  const J_SORTS = { datum: ["Datum", "neueste zuerst", (a, b) => jDate(b).localeCompare(jDate(a)) || (b.createdAt || "").localeCompare(a.createdAt || "")], neu: SORT_NEW, betrag: ["Betrag", "höchster zuerst", (a, b) => Math.abs(jSigned(b) || 0) - Math.abs(jSigned(a) || 0)], name: ["Absender", "A–Z", (a, b) => (a.sender || "~").localeCompare(b.sender || "~", "de")] };
+  const jSort = <SortCtl sorts={J_SORTS} sortBy={jS} setSortBy={setJS} dir={jDir} />;
   const list = useMemo(() => {
     const qn = norm(q);
     return base.filter((d) => test[effFilt](d)
       && (mode === "pruefen" || !sel.y || (sel.y === "ohne" ? !jDate(d) : jDate(d).startsWith(sel.y + (sel.m ? "-" + sel.m : ""))))
       && (!facet || (facet.k === "cat" ? d.category === facet.v : facet.k === "contact" ? (facet.v ? (d.sender || "") === facet.v : !d.sender) : (d.tags || []).includes(facet.v)))
       && (!qn || norm(`${d.title} ${d.sender} ${d.category} ${(d.tags || []).join(" ")} ${d.amount?.total ?? ""}`).includes(qn)))
-      .sort((a, b) => jDate(b).localeCompare(jDate(a)) || (b.createdAt || "").localeCompare(a.createdAt || ""));
-  }, [base, effFilt, sel, facet, q, mode, txByDoc]);
+      .sort((a, b) => jDir * (J_SORTS[jS] || J_SORTS.datum)[2](a, b));
+  }, [base, effFilt, sel, facet, q, mode, txByDoc, jS, jDir]);
+  const jFlat = !(jS === "datum" && jDir === 1);
   const listV = useProgressiveAuto(list, 80);
   const curDoc = list.find((d) => d.id === cur) || (mob ? null : list[0]) || null;
   useEffect(() => { if (!mob && !list.some((d) => d.id === cur)) setCur(list[0]?.id || null); }, [list, mob]);
@@ -5504,6 +5525,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
     <div className="jmodes">
       <div className="seg">{[["journal", "📓 Journal"], ["pruefen", `✓ Prüfen${cnt("unbest") ? " (" + cnt("unbest") + ")" : ""}`], ["monate", "🗓 Monate"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); if (k === "pruefen") { const f = base.filter(jUnconf).sort((a, b) => jDate(b).localeCompare(jDate(a)))[0]; setCur(f?.id || null); if (mob && f) setPhoneOpen(true); } }}>{l}</button>)}</div>
       {mode !== "monate" && !mob && <SearchBox className="sbplain jsearch" icon={false} value={q} onChange={setQ} placeholder="Belege durchsuchen" />}
+      {mode !== "monate" && !mob && jSort}
     </div>
   );
   const sidebar = (
@@ -5557,17 +5579,18 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   }
   /* ---------- 4 · iPhone ---------- */
   if (mob) {
-    const groups = mGroup(listV, (d) => jMonth(d));
+    const groups = jFlat ? [[null, listV]] : mGroup(listV, (d) => jMonth(d));
     return (
       <div className="jpage-wrap jmob mpage">{modeBar}
         <div className="msticky jsticky">
         <SearchBox className="sbplain jsearch" icon={false} value={q} onChange={setQ} placeholder="Belege durchsuchen" />
+        {mode !== "monate" && <div className="mtxsort">{jSort}</div>}
         <div className="chips jchips">{J_FILTERS.map(([k, ic, l]) => <button key={k} className={"chip" + (effFilt === k ? " on" : "")} onClick={() => { setFilt(k); if (mode === "pruefen") setMode("journal"); }}>{l}{k !== "alle" && cnt(k) ? ` ${cnt(k)}` : ""}</button>)}</div>
         {mode !== "pruefen" && <div className="chips jyears">{["", ...years].map((y) => <button key={y || "alle"} className={"chip" + (sel.y === y && !sel.m ? " on" : "")} onClick={() => setSel({ y, m: "" })}>{y || "Alle"}</button>)}{sel.m && <button className="chip on" onClick={() => setSel({ ...sel, m: "" })}>{MONTHS_DE[+sel.m - 1]} ✕</button>}</div>}
         </div>
-        <MScroll extra="jmscroll">{groups.map(([m, l]) => { const shut = mClosed.includes(m || "ohne"); return (<React.Fragment key={m}>
-          <button type="button" className={"jmhead" + (shut ? " shut" : "")} onClick={() => setMClosed(shut ? mClosed.filter((x) => x !== (m || "ohne")) : [...mClosed, m || "ohne"])} aria-expanded={!shut}>
-            <span className="jmhl"><span className="jchev">▾</span>{m ? MONTHS_DE[+m.slice(5, 7) - 1] + " " + m.slice(0, 4) : "Ohne Datum"}<small className="jmn">{l.length}</small></span><span className="muted">{fmtMoney(l.reduce((s, d) => s + (jSigned(d) || 0), 0))}</span></button>
+        <MScroll extra="jmscroll">{groups.map(([m, l]) => { const shut = m !== null && mClosed.includes(m || "ohne"); return (<React.Fragment key={m ?? "flat"}>
+          {m !== null && <button type="button" className={"jmhead" + (shut ? " shut" : "")} onClick={() => setMClosed(shut ? mClosed.filter((x) => x !== (m || "ohne")) : [...mClosed, m || "ohne"])} aria-expanded={!shut}>
+            <span className="jmhl"><span className="jchev">▾</span>{m ? MONTHS_DE[+m.slice(5, 7) - 1] + " " + m.slice(0, 4) : "Ohne Datum"}<small className="jmn">{l.length}</small></span><span className="muted">{fmtMoney(l.reduce((s, d) => s + (jSigned(d) || 0), 0))}</span></button>}
           {!shut && l.map(row)}</React.Fragment>); })}
           {!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege für diese Auswahl."}</MEmpty>}
           {groups.length > 1 && <div className="jmall"><button className="link" onClick={() => setMClosed([])}>Alle aufklappen</button><button className="link" onClick={() => setMClosed(groups.map(([m]) => m || "ohne"))}>Alle zuklappen</button></div>}
@@ -5777,8 +5800,8 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
         (!taxOnly || d.taxRelevant) && (!unpaid || (d.direction === "ausgabe" && d.amount?.total && !d.paid)) && (!dupOnly || (d.dupOf && docs.some((x) => x.id === d.dupOf))))
       .filter((d) => { if (!terms.length) return true; const h = haystack(d); return terms.every((t) => h.includes(t)); })
       .filter((d) => !akte || (akteMatch(akte, d) && (akteSub === "alle" || (akteSub === "vertraege" ? !!d.contract : akteSub === "fristen" ? (d.deadlines || []).some((x) => !x.done && x.date && daysUntil(x.date) >= -60) : d.direction === "ausgabe" && d.amount?.total && !d.paid))))
-      .sort(kit.sorts[sort]?.[2] || kit.sorts.date[2]);
-  }, [docs, qDef, cat, tag, year, month, sort, taxOnly, unpaid, area, scope, akte, akteSub, dupOnly]);
+      .sort((a, b) => kit.dir * (kit.sorts[sort]?.[2] || kit.sorts.date[2])(a, b));
+  }, [docs, qDef, cat, tag, year, month, sort, kit.dir, taxOnly, unpaid, area, scope, akte, akteSub, dupOnly]);
 
   const rowH = useRef({});
   const [visList, docSent] = useProgressive(list);
@@ -6126,6 +6149,22 @@ function DlSettingsWin({ onClose, notify }) {
     </fieldset>
   </Win>);
 }
+/* v0.99.53: Fristen – Objekt als Popup öffnen statt den Reiter zu wechseln */
+function DlVirtWin({ d, onClose, onToggle, onGo }) {
+  const kind = d.dlKind, info = {
+    steuer: /svs/.test(d.id) ? "SVS-Beiträge werden quartalsweise vorgeschrieben (Ende Februar, Mai, August, November). Betrag laut letzter Zahlung." : /erkl/.test(d.id) ? "Einkommensteuererklärung über FinanzOnline bis 30.6. (Papier bis 30.4.). Mit Steuerberater gelten längere Fristen." : "Einkommensteuer-Vorauszahlung laut Vorauszahlungsbescheid, fällig 15.2., 15.5., 15.8. und 15.11. Betrag laut letzter Zahlung.",
+    abschluss: "Monat im Reiter Steuerberater → Monate prüfen: Auszüge, Belege, Firma/Privat, Rechnungen, Kassabuch.",
+    dokument: "Belege mit abgelaufener Aufbewahrungsfrist dürfen gelöscht werden – nichts wird automatisch gelöscht."
+  }[kind] || "";
+  const go = { steuer: ["Rücklage öffnen", "steuer"], abschluss: ["Monatsabschluss öffnen", "close"], dokument: ["Abgelaufene Belege prüfen", "retain"] }[kind];
+  return (<Win id="dlvirt" onClose={onClose} small defW={480} dirty={false}>
+    <div className="panelhead"><b className="clamp">{d.title}</b><XBtn /></div>
+    {d.amount?.total != null && <div className="dlvamt"><small className="muted">Betrag (letzte Zahlung)</small><b>{fmtMoney(d.amount.total)}</b></div>}
+    <ul className="rtlist">{(d.deadlines || []).map((x) => <li key={x.id}><label className="check grow"><input type="checkbox" checked={!!x.done} onChange={() => onToggle(x)} /> {x.label}</label><small className={daysUntil(x.date) < 0 && !x.done ? "red" : "muted"}>{fmtDate(x.date)}</small></li>)}</ul>
+    {info && <p className="muted small">{info}</p>}
+    {go && <div className="actions"><button className="btn" onClick={() => onGo(go[1])}>{go[0]} ›</button></div>}
+  </Win>);
+}
 /* ---------- Kalender-Abo (Apple Kalender, Google, Outlook) ---------- */
 function buildIcs(items, name = "FinDocu – Fristen") {
   return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinDocu//Fristen//DE", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
@@ -6410,6 +6449,20 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
   const soon = list.filter((d) => d.contract.cancelBy && daysUntil(d.contract.cancelBy) >= 0 && daysUntil(d.contract.cancelBy) <= 60);
   const letter = letterFor ? cancelLetter(letterFor.contract, me) : "";
   const remove = (r) => setSubs?.({ ...subs, confirmed: subs.confirmed.filter((k) => k !== r.key), dismissed: [...subs.dismissed, r.key] });
+  // v0.99.54: Darstellung des Abo-Status (Einstellungen → Design)
+  const [aboStyle] = useLsState("aboStyle", "pill");
+  const stKey = (x) => (isEnded(x.r) ? "end" : x.stale ? "inaktiv" : isOk(x.r) ? "ok" : "chk");
+  const ST_META = { ok: ["✓", "Bestätigt", "st-paid"], chk: ["?", "Prüfen", "st-open"], end: ["✕", "Beendet", "st-void"], inaktiv: ["–", "Inaktiv", "st-void"] };
+  const stItems = (x) => { const k = stKey(x); return [
+    { k: "ok", title: "✓ Bestätigt", sub: "läuft noch, zählt zu den Fixkosten", on: k === "ok", run: () => k !== "ok" && verify(x.r) },
+    { k: "chk", title: "? Prüfen", sub: "erkannt, noch nicht bestätigt", on: k === "chk" || k === "inaktiv", run: () => (k === "ok" ? verify(x.r) : k === "end" ? endIt(x.r) : null) },
+    { k: "end", title: "✕ Beendet", sub: "Vertrag beendet, zählt nicht mehr", on: k === "end", run: () => k !== "end" && endIt(x.r) },
+    setSubs && { k: "rm", title: "Kein Abo", sub: "aus der Liste entfernen", run: () => confirm(`„${x.name}“ aus der Liste entfernen?`) && remove(x.r) }].filter(Boolean); };
+  const stCtl = (x) => { const k = stKey(x), [ic, lab, cls] = ST_META[k];
+    if (aboStyle === "haken") return <button className={"abock " + k} title={k === "ok" ? "Bestätigt – tippen hebt die Bestätigung auf" : k === "end" ? "Beendet – tippen aktiviert wieder" : "Noch nicht bestätigt – tippen zum Bestätigen"} aria-pressed={k === "ok"} onClick={() => (k === "end" ? endIt(x.r) : verify(x.r))}>{ic}</button>;
+    if (aboStyle === "hakendd") return <PickMenu btnClass={"abodd " + k} label={<span className="abock in">{ic}</span>} title={"Status: " + lab} items={stItems(x)} />;
+    if (aboStyle === "dropdown") return <PickMenu btnClass={"stpill invst abosel " + cls} label={lab} title="Status ändern" items={stItems(x)} />;
+    return null; };
   // Eine Liste für Vertragsdokumente und erkannte Abos (Aufbau wie Rechnungen)
   const [cq, setCq] = useState(""), [cf, setCf] = useState("alle");
   const IV = (k) => (INTERVAL_SHORT[k] || "").replace("/ ", "") || k || "";
@@ -6460,23 +6513,26 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
             <React.Fragment key={x.key}>
               <div className={"invrow" + (x.stale ? " stale" : "") + (open[x.key] ? " prevopen" : "") + (pick?.has(x.key) ? " picked" : "")} onClick={() => (pick ? togglePick(x.key) : x.doc ? onOpen(x.doc.id) : toggleOpen(x.key))}>
                 {pick && <KitPickBox on={pick.has(x.key)} />}
-                <CatIcon c={x.category || "Sonstiges"} size={36} />
+                <span className="abodotwrap"><CatIcon c={x.category || "Sonstiges"} size={36} />{aboStyle === "punkt" && <span className={"abodot " + (x.doc ? (x.cls === "st-paid" ? "ok" : x.cls === "st-over" ? "over" : "chk") : stKey(x))} title={x.label} />}</span>
                 <div className="invmain">
                   <div className="row1"><b className="invname">{x.name}</b><KitTags tags={fkTags(x)} /></div>
                   <small className="muted block">{x.sub}</small>
                 </div>
                 <b className="invamt">{x.amount ? fmtMoney(x.amount) : "–"}<small className="muted block ctint">{x.int}</small></b>
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
-                  <span className={"stpill invst " + x.cls}>{x.label}</span>
+                  {(aboStyle === "pill" || (x.doc && aboStyle !== "punkt" && x.cls !== "st-paid")) && <span className={"stpill invst " + x.cls}>{x.label}</span>}
+                  {!x.doc && aboStyle !== "pill" && stCtl(x)}
                   {x.doc ? <button className="iconbtn" title="Vertrag ansehen" onClick={() => onOpen(x.doc.id)}><IcoEye /></button>
-                    : <button className={"iconbtn ok" + (isOk(x.r) ? " on" : "")} title={isOk(x.r) ? "Bestätigung aufheben" : "Bestätigen: läuft noch, zählt zu den Fixkosten"} aria-pressed={isOk(x.r)} onClick={() => verify(x.r)}>✓</button>}
+                    : aboStyle === "pill" && <button className={"iconbtn ok" + (isOk(x.r) ? " on" : "")} title={isOk(x.r) ? "Bestätigung aufheben" : "Bestätigen: läuft noch, zählt zu den Fixkosten"} aria-pressed={isOk(x.r)} onClick={() => verify(x.r)}>✓</button>}
                   {x.doc ? <button className="iconbtn" title="Kündigungsschreiben" onClick={() => setLetterFor(x.doc)}>✉︎</button>
-                    : <button className={"iconbtn no" + (isEnded(x.r) ? " on" : "")} title={isEnded(x.r) ? "Wieder aktivieren" : "Deaktivieren: Vertrag beendet, zählt nicht mehr"} aria-pressed={isEnded(x.r)} onClick={() => endIt(x.r)}>✕</button>}
+                    : aboStyle === "pill" && <button className={"iconbtn no" + (isEnded(x.r) ? " on" : "")} title={isEnded(x.r) ? "Wieder aktivieren" : "Deaktivieren: Vertrag beendet, zählt nicht mehr"} aria-pressed={isEnded(x.r)} onClick={() => endIt(x.r)}>✕</button>}
                   <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
                     <div className="moremenu">
                       <button onClick={(e) => { e.currentTarget.closest("details").open = false; toggleOpen(x.key); }}>{open[x.key] ? "Buchungen ausblenden" : `Buchungen anzeigen (${x.txs.length})`}</button>
                       {x.doc && <button onClick={(e) => { e.currentTarget.closest("details").open = false; setLetterFor(x.doc); }}>✉︎ Kündigungsschreiben</button>}
                       {x.doc && <button onClick={(e) => { e.currentTarget.closest("details").open = false; printDoc(x.doc); }}>🖨 Vertrag drucken</button>}
+                      {!x.doc && aboStyle !== "pill" && <button onClick={(e) => { e.currentTarget.closest("details").open = false; verify(x.r); }}>{isOk(x.r) ? "Bestätigung aufheben" : "✓ Bestätigen"}</button>}
+                      {!x.doc && aboStyle !== "pill" && <button onClick={(e) => { e.currentTarget.closest("details").open = false; endIt(x.r); }}>{isEnded(x.r) ? "Wieder aktivieren" : "✕ Als beendet markieren"}</button>}
                       {setSubs && <button onClick={(e) => { e.currentTarget.closest("details").open = false; tagFk([x]); }}># Tags bearbeiten</button>}
                       {!x.doc && setSubs && <button className="red" onClick={(e) => { e.currentTarget.closest("details").open = false; remove(x.r); }}>Aus der Liste entfernen</button>}
                     <MenuCancel /></div>
@@ -6547,12 +6603,16 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const selKey = sel.join(",");
   const scoped = useMemo(() => { const set = new Set(sel); return txs.filter((t) => set.has(t.accountId) || (!t.accountId && allSel)); }, [txs, selKey, allSel]);
   const months = useMemo(() => [...new Set(scoped.map((t) => t.date.slice(0, 7)))].sort().reverse(), [scoped]);
+  const [txS, setTxS, txDir] = useSortState("konten", "datum");
+  const TX_SORTS = { datum: ["Datum", "neueste zuerst", (a, b) => b.date.localeCompare(a.date)], neu: SORT_NEW, betrag: ["Betrag", "größter zuerst", (a, b) => Math.abs(b.amount) - Math.abs(a.amount)], name: ["Empfänger", "A–Z", (a, b) => (a.counterparty || "~").localeCompare(b.counterparty || "~", "de")] };
+  const txSort = <SortCtl sorts={TX_SORTS} sortBy={txS} setSortBy={setTxS} dir={txDir} />;
   const list = useMemo(() => {
     const terms = norm(q).split(/\s+/).filter(Boolean);
     return scoped.filter((t) => (!month || t.date.startsWith(month)) && (!coll || (t.colls || []).includes(coll)) &&
       (!terms.length || terms.every((w) => norm(`${t.counterparty} ${t.purpose} ${t.category} ${t.security || ""} ${t.isin || ""} ${String(t.amount).replace(".", ",")}`).includes(w))))
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [scoped, q, month, coll]);
+      .sort((a, b) => txDir * (TX_SORTS[txS] || TX_SORTS.datum)[2](a, b));
+  }, [scoped, q, month, coll, txS, txDir]);
+  const txFlat = !(txS === "datum" && txDir === 1);
   const bank = list.filter((t) => t.kind !== "broker" && t.category !== "Umbuchung" && !(cashAccs.length && t.category === "Bargeld"));
   const inc = bank.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const out = bank.filter((t) => t.amount < 0).reduce((s, t) => s - t.amount, 0);
@@ -6597,7 +6657,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const dropFiles = (files) => { impQ.current = { files, i: 0 }; nextImp(); };
 
   const dayGroups = [];
-  for (const t of list.slice(0, limit)) { const g = dayGroups[dayGroups.length - 1]; if (g && g.date === t.date) g.items.push(t); else dayGroups.push({ date: t.date, items: [t] }); }
+  for (const t of list.slice(0, limit)) { const g = dayGroups[dayGroups.length - 1], dk = txFlat ? "" : t.date; if (g && g.date === dk) g.items.push(t); else dayGroups.push({ date: dk, items: [t] }); }
 
   const modals = (<>
       {editAcc && <AccountSheet init={editAcc} txs={txs} hasAtmAccount={cashAccs.some((a) => a.atm && a.id !== editAcc.id)} onClose={() => setEditAcc(null)}
@@ -6682,7 +6742,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
     const a = mView === "all" ? null : accounts.find((x) => x.id === mView);
     const bal = a ? balOf(a) : allBal;
     const groupsD = [];
-    for (const t of list.slice(0, limit)) { const g = groupsD[groupsD.length - 1]; if (g && g.date === t.date) g.items.push(t); else groupsD.push({ date: t.date, items: [t] }); }
+    for (const t of list.slice(0, limit)) { const g = groupsD[groupsD.length - 1], dk = txFlat ? "" : t.date; if (g && g.date === dk) g.items.push(t); else groupsD.push({ date: dk, items: [t] }); }
     const dayLabel = (iso) => { const d = new Date(iso + "T12:00"); const r = relDay(iso); return r === "Heute" || r === "Gestern" ? r : `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}. ${["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][d.getDay()]}`; };
     const cl = ls.get("txColls", []);
     return (
@@ -6703,6 +6763,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
         </div>
         <input ref={fileRef} type="file" hidden multiple accept=".csv,.txt,.xml,.sta,.mt940,.940,.ofx,.qif,.pdf,.xlsx,.xls,.json" onChange={(e) => { const f = [...e.target.files]; e.target.value = ""; if (f.length) dropFiles(f); }} />
         {mSearch && <SearchBox autoFocus placeholder="Buchungen durchsuchen" value={q} onChange={setQ} />}
+        <div className="mtxsort">{txSort}</div>
         <div className="mbalrow">
           <PSelect className="mmonth" value={month} onChange={(e) => setMonth(e.target.value)}><option value="">Heute</option>{months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</PSelect>
           <Money v={month ? list.reduce((x, t) => x + t.amount, 0) : bal} cls="big" />
@@ -6711,8 +6772,8 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
         {month && <small className="muted center-text block">Summe der Buchungen im {monthLabel(month)}</small>}
         <div className="mtxlist">
           {groupsD.map((g, gi) => (
-            <React.Fragment key={g.date}>
-              {(gi > 0 || dayLabel(g.date) !== "Heute") && <div className="mday">{dayLabel(g.date)}</div>}
+            <React.Fragment key={g.date || "flat"}>
+              {g.date && (gi > 0 || dayLabel(g.date) !== "Heute") && <div className="mday">{dayLabel(g.date)}</div>}
               {g.items.map((t) => (
                 <SwipeRow key={t.id} {...txSwipe(t)}><div className="mtx" onClick={() => openTx(t)}>
                   <TxIcon t={t} size={46} />
@@ -6844,7 +6905,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           <p>Noch keine Umsätze.<br />Exportiere deine Umsätze im Online-Banking oder beim Broker (CSV, CAMT, MT940 …) oder nimm einfach den PDF-Kontoauszug – und importiere die Datei hier. Für Bargeld legst du ein Konto „Geldbörse“ an.</p></div>
       )}
 
-      {!!txs.length && <SearchBox placeholder="Umsätze durchsuchen" value={q} onChange={setQ} />}
+      {!!txs.length && <div className="row expsearch"><span className="grow"><SearchBox placeholder="Umsätze durchsuchen" value={q} onChange={setQ} /></span>{txSort}</div>}
 
       {wideTx ? (
         <div className={"txtable" + (!acc && sel.length > 1 ? " withacc" : "")}>
@@ -6874,8 +6935,8 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           </div>
         </div>
       ) : <div className={"txscroll" + (fitH ? " fit" : "")} ref={scrollRef} style={fitH ? { maxHeight: fitH } : undefined} onScroll={onListScroll}>{dayGroups.map((g) => (
-        <section key={g.date}>
-          <h3>{new Date(g.date + "T12:00").toLocaleDateString("de-AT", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}</h3>
+        <section key={g.date || "flat"}>
+          {g.date && <h3>{new Date(g.date + "T12:00").toLocaleDateString("de-AT", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}</h3>}
           <div className="dlist">
             {g.items.map((t) => (
               <React.Fragment key={t.id}>
@@ -7069,28 +7130,50 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
 /* ---------- Einheitlicher Listen-Baukasten (Aufbau wie Rechnungen, v0.83) ----------
    Jahr · Sortierung · Tags als Menüs, gespeicherte Ansichten, Mehrfachauswahl mit fixer Leiste */
 const exp2pick = (items) => (items || []).filter(Boolean).map((e, i) => e.head ? { head: e.head } : { k: "e" + i, icon: e.icon, title: e.label, sub: e.sub, run: e.run, disabled: e.disabled });
-function useListKit(key, { sorts, def, dateOf = () => "", tagsOf = (x) => x.tags || [] }) {
-  const [yr, setYr] = useState(""), [sortBy, setSortBy] = useState(def || Object.keys(sorts)[0]), [tagF, setTagF] = useState(""), [pick, setPick] = useState(null);
+/* v0.99.54: Sortierung in allen Reitern – Darstellung in Einstellungen → Design wählbar (Dropdown · Segment · Spaltenkopf) */
+const idTs = (id) => { const s = String(id || ""); if (s.length >= 14) { const n = parseInt(s.slice(-8), 36); if (n > 1.5e12 && n < 4e12) return n; } return 0; };
+const addedOf = (x) => { if (!x) return 0; const v = x.createdAt || x.created || x.importedAt || x.addedAt; const t = v ? Date.parse(v) : NaN; return isNaN(t) ? idTs(x.id) : t; };
+const SORT_NEW = ["Zuletzt hinzugefügt", "neueste zuerst", (a, b) => addedOf(b) - addedOf(a)];
+function useSortState(key, def) {
+  const [s, setS] = useLsState("sort:" + key, { k: def, d: 1 });
+  const k = s?.k || def, d = s?.d === -1 ? -1 : 1;
+  return [k, (nk, keep) => setS((o) => ({ k: nk, d: keep ? (o?.d === -1 ? -1 : 1) : (o?.k || def) === nk ? -(o?.d === -1 ? -1 : 1) : 1 })), d, (nd) => setS((o) => ({ k: o?.k || def, d: nd }))];
+}
+// sorts: { key: [Titel, Untertitel, cmp] }; d = -1 dreht um
+const sortList = (l, sorts, k, d = 1) => { const f = (sorts[k] || Object.values(sorts)[0])?.[2]; return f ? [...l].sort((a, b) => d * f(a, b)) : l; };
+function SortCtl({ sorts, sortBy, setSortBy, dir = 1, cls = "" }) {
+  const [style] = useLsState("sortStyle", "dropdown");
+  const cur = sorts[sortBy] || Object.values(sorts)[0] || [];
+  const arr = (k) => (k === sortBy ? (dir === 1 ? " ↓" : " ↑") : "");
+  const dd = <PickMenu icon="↕" label={cur[0] + (dir === -1 ? " ↑" : "")} title="Sortierung – nochmal tippen dreht die Reihenfolge um" items={Object.entries(sorts).map(([k, [t, sub]]) => ({ k, title: t + arr(k), sub: k === sortBy && dir === -1 ? "umgekehrt" : sub, on: sortBy === k, run: () => setSortBy(k) }))} />;
+  if (style === "segment") return <span className={"seg sortseg " + cls} role="group" aria-label="Sortierung">{Object.entries(sorts).map(([k, [t, sub]]) => <button key={k} type="button" className={sortBy === k ? "on" : ""} title={sub + (k === sortBy ? " – nochmal tippen dreht um" : "")} onClick={() => setSortBy(k)}>{t}{arr(k)}</button>)}</span>;
+  if (style === "spalte") return <span className={"sorthead " + cls}><span className="sortheadcols">{Object.entries(sorts).map(([k, [t, sub]]) => <button key={k} type="button" className={sortBy === k ? "on" : ""} title={sub} onClick={() => setSortBy(k)}>{t}<i>{k === sortBy ? (dir === 1 ? "▼" : "▲") : "↕"}</i></button>)}</span><span className="sortheaddd">{dd}</span></span>;
+  return dd;
+}
+function useListKit(key, { sorts: sorts0, def, dateOf = () => "", tagsOf = (x) => x.tags || [], noNew }) {
+  const sorts = noNew || sorts0.neu ? sorts0 : { ...sorts0, neu: SORT_NEW };
+  const [yr, setYr] = useState(""), [tagF, setTagF] = useState(""), [pick, setPick] = useState(null);
+  const [sortBy, setSortBy, dir, setDir] = useSortState(key, def || Object.keys(sorts0)[0]);
   const [views, setViews] = useLsState("views:" + key, []);
   const togglePick = (id) => setPick((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const apply = (l) => l.filter((x) => (!yr || String(dateOf(x) || "").startsWith(yr)) && (!tagF || tagsOf(x).includes(tagF))).sort((sorts[sortBy] || Object.values(sorts)[0])[2]);
-  return { key, sorts, dateOf, tagsOf, yr, setYr, sortBy, setSortBy, tagF, setTagF, pick, setPick, togglePick, views, setViews, apply };
+  const apply = (l) => l.filter((x) => (!yr || String(dateOf(x) || "").startsWith(yr)) && (!tagF || tagsOf(x).includes(tagF))).sort((a, b) => dir * (sorts[sortBy] || Object.values(sorts)[0])[2](a, b));
+  return { key, sorts, dateOf, tagsOf, yr, setYr, sortBy, setSortBy, dir, setDir, tagF, setTagF, pick, setPick, togglePick, views, setViews, apply };
 }
 function KitFilters({ kit, all, filters, filter, setFilter, q = "", setQ, noYear, noTags, children }) {
-  const { yr, setYr, sortBy, setSortBy, tagF, setTagF, views, setViews, sorts, dateOf, tagsOf } = kit;
+  const { yr, setYr, sortBy, setSortBy, dir, tagF, setTagF, views, setViews, sorts, dateOf, tagsOf } = kit;
   const years = noYear ? [] : [...new Set(all.map((x) => String(dateOf(x) || "").slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort().reverse();
   const tags = noTags ? [] : [...new Set(all.flatMap(tagsOf))].sort((a, b) => a.localeCompare(b, "de"));
   const fl = filters?.find(([k]) => k === filter)?.[1];
   const save = () => { const n = prompt("Name der Ansicht:", [fl !== "Alle" && fl, yr, tagF && "#" + tagF, q && "„" + q + "“"].filter(Boolean).join(" ")); if (!n) return; setViews((v) => [...v, { id: uid(), n, filter, q, yr, tagF, sortBy }]); };
   const on = (v) => (v.filter ?? filter) === filter && (v.q || "") === q && (v.yr || "") === yr && (v.tagF || "") === tagF;
-  const applyV = (v) => { if (setFilter && v.filter != null) setFilter(v.filter); setQ?.(v.q || ""); setYr(v.yr || ""); setTagF(v.tagF || ""); setSortBy(v.sortBy || sortBy); };
+  const applyV = (v) => { if (setFilter && v.filter != null) setFilter(v.filter); setQ?.(v.q || ""); setYr(v.yr || ""); setTagF(v.tagF || ""); setSortBy(v.sortBy || sortBy, true); };
   return (<>
     {views.map((v) => <span key={v.id} className="ltview"><button className={"chip" + (on(v) ? " on" : "")} onClick={() => applyV(v)}>☆ {v.n}</button><button className="ltx" title="Ansicht löschen" aria-label="Ansicht löschen" onClick={() => confirm(`Ansicht „${v.n}“ löschen?`) && setViews((l) => l.filter((y) => y.id !== v.id))}>✕</button></span>)}
     {filters?.map(([k, l, n]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l}{n != null && <small> ({n})</small>}</button>)}
     {children}
     <span className="grow" />
     {!noYear && years.length > 0 && <PickMenu icon="📅" label={yr || "Alle Jahre"} title="Jahr" items={[{ k: "", title: "Alle Jahre", on: !yr, run: () => setYr("") }, ...years.map((y) => ({ k: y, title: y, on: yr === y, run: () => setYr(y) }))]} />}
-    <PickMenu icon="↕" label={(sorts[sortBy] || [])[0]} title="Sortierung" items={Object.entries(sorts).map(([k, [t, sub]]) => ({ k, title: t, sub, on: sortBy === k, run: () => setSortBy(k) }))} />
+    <SortCtl sorts={sorts} sortBy={sortBy} setSortBy={setSortBy} dir={dir} />
     {!noTags && <PickMenu icon="#" label={tagF || "Tags"} title="Tags" items={[{ k: "", title: "Alle Tags", on: !tagF, run: () => setTagF("") }, ...tags.map((t) => ({ k: t, title: "#" + t, sub: `${all.filter((x) => tagsOf(x).includes(t)).length} Einträge`, on: tagF === t, run: () => setTagF(t) }))]}
       extra={[{ label: "Tags vergeben: ⋯ in einer Zeile oder „Auswählen“", run: () => {} }]} />}
     {((filter && filters && filter !== filters[0][0]) || q || yr || tagF) && <button className="chip" onClick={save}>☆ Ansicht merken</button>}
@@ -7245,9 +7328,9 @@ const MActs = ({ items }) => { const cm = useCmp(), l = items.filter(Boolean);
       {!!rest.length && <PickMenu btnClass="btn sm cmpmore" label="⋯" title="Weitere Aktionen" items={rest.map((a, i) => ({ k: "a" + i, title: a.label, run: a.run }))} />}</div>; }
   return <div className="mactions">{l.map((a, i) => <button key={i} className={"btn" + (a.primary ? " primary" : "")} onClick={a.run}>{a.label}</button>)}</div>; };
 // v0.92: Handy-Listen nutzen den neuen Listen-Kopf (Reiter = Chips, Zusatzfilter ins Filter-Blatt)
-const MBar = ({ q, setQ, placeholder, chips, children }) => { const cl = (chips || []).filter(Boolean), on = cl.find((c) => c[3]);
+const MBar = ({ q, setQ, placeholder, chips, children, lk }) => { const cl = (chips || []).filter(Boolean), on = cl.find((c) => c[3]);
   const kids = React.Children.toArray(children).filter(Boolean);
-  return <ListBar q={q} setQ={setQ} placeholder={placeholder} tabs={cl.length ? cl.map(([k, l, n]) => [k, l, n]) : null} tab={on?.[0] ?? cl[0]?.[0]} setTab={(k) => cl.find((c) => c[0] === k)?.[4]?.()}
+  return <ListBar q={q} setQ={setQ} placeholder={placeholder} tabs={cl.length ? cl.map(([k, l, n]) => [k, l, n]) : null} tab={on?.[0] ?? cl[0]?.[0]} setTab={(k) => cl.find((c) => c[0] === k)?.[4]?.()} lk={lk}
     sheet={kids.length ? <div className="lbchips lbextra">{kids}</div> : null} />; };
 const MBarOld = ({ q, setQ, placeholder, chips, children, inline }) => { const cm = useCmp(), cl = (chips || []).filter(Boolean);
   if (cm !== "aus") { const on = cl.find((c) => c[3]) || cl[0], inl = inline ?? cl.length > 0;
@@ -9241,6 +9324,43 @@ function stbMonth(m, D, need, X = null) {
   const issues = missStmt.length + noBeleg.length + unklar.length + asks.length + docsNoTx.length + invLate.length + kNoBeleg.length + (kNeg ? 1 : 0);
   return { m, rows, stm, noBeleg, unklar, asks, missStmt, firma, issues, docsNoTx, invM, invOpen, invLate, kE, kNoBeleg, kNeg, nChk: checks.length, nOk: checks.filter(Boolean).length, inc: firma.filter((r) => r.biz > 0).reduce((s, r) => s + r.biz, 0), out: firma.filter((r) => r.biz < 0).reduce((s, r) => s - r.biz, 0) };
 }
+const MON_VIEWS = [["karten", "Karten", "Raster mit aufklappbaren Monaten"], ["liste", "Liste", "eine Zeile pro Monat, Klick klappt auf"], ["matrix", "Tabelle", "Monate × Prüfpunkte"], ["zeit", "Zeitleiste", "senkrecht mit offenen Punkten"], ["jahr", "Jahres-Kacheln", "12 Ampeln, Klick zeigt den Monat"], ["fokus", "Nur Offene", "erledigte Monate eingeklappt"]];
+const SORT_STYLES = [["dropdown", "Dropdown-Button", "Sortierung als Auswahlknopf neben der Suche"], ["segment", "Segment-Schalter", "alle Sortierungen sichtbar, ein Tipp"], ["spalte", "Spaltenkopf", "wie eine Tabellenüberschrift (Handy: Dropdown)"]];
+const ABO_STYLES = [["pill", "Status + ✓ ✕", "bisherige Anzeige"], ["haken", "Nur grüner Haken", "Tipp bestätigt, ? = noch prüfen"], ["hakendd", "Haken + Auswahl", "Haken mit Pfeil öffnet alle Status"], ["dropdown", "Status-Auswahl", "farbiger Text, Tipp öffnet Auswahl"], ["punkt", "Punkt am Symbol", "nur farbiger Punkt, Rest unter ⋯"]];
+/* v0.99.53: offene Punkte eines Monats als Popup */
+let fileUi = null;   // in App gesetzt: { add(file, opts) → ids }
+function StbItemsWin({ req, x, docs, txs, updateTx, openTx, onOpenDoc, onClose, setTab }) {
+  const [beleg, setBeleg] = useState(null), kbFile = useRef(null), [kbFor, setKbFor] = useState(null);
+  const kind = req.kind, title = { beleg: "Firmenausgaben ohne Beleg", unklar: "Privat/Firma unklar", asks: "Offene Fragen an den Steuerberater", inv: "Ausgangsrechnungen", kassa: "Kassabuch" }[kind];
+  const txRow = (r, extra) => (<div key={r.t.id} className="sbrow click" onClick={() => openTx?.(r.t)}>
+    <span className="grow"><b className="one">{r.t.counterparty || r.t.purpose || "Buchung"}</b><small className="muted block one">{fmtDate(r.t.date)}{r.t.purpose && r.t.counterparty ? " · " + r.t.purpose : ""}{r.t.category ? " · " + r.t.category : ""}</small></span>
+    <b className={r.t.amount < 0 ? "neg" : "pos"}>{fmtMoney(r.t.amount)}</b>{extra}</div>);
+  const st = (f) => (e) => { e.stopPropagation(); f(); };
+  const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
+  const kbSet = (e, id) => lsSetEv("kassaEntries", ls.get("kassaEntries", []).map((y) => (y.id === e.id ? { ...y, docId: id } : y)));
+  const invL = [...(x.invLate || []), ...(x.invOpen || []).filter((i) => !(x.invLate || []).includes(i))];
+  return createPortal(<Win id="stbitems" onClose={onClose} small defW={600} stay>
+    <div className="panelhead"><b className="clamp">{title} · {monthLabel(req.m)}</b><XBtn /></div>
+    <div className="sblist">
+      {kind === "beleg" && x.noBeleg.map((r) => txRow(r, <button className="btn sm" onClick={st(() => setBeleg({ t: r.t, cp: r.t.counterparty, purpose: r.t.purpose, date: r.t.date, amount: r.t.amount }))}>📎 Beleg zuordnen</button>))}
+      {kind === "unklar" && x.unklar.map((r) => txRow(r, <span className="seg sm" onClick={(e) => e.stopPropagation()}><button onClick={() => updateTx({ ...r.t, scope: "firma", scopeSrc: undefined })}>🏢 Firma</button><button onClick={() => updateTx({ ...r.t, scope: "privat", scopeSrc: undefined })}>👤 Privat</button></span>))}
+      {kind === "asks" && x.asks.map((r) => txRow(r, <small className="muted">{r.t.ask?.q || ""}</small>))}
+      {kind === "inv" && invL.map((i) => (<div key={i.id} className="sbrow click" onClick={async () => openPdf(await buildInvoicePdf(i, co), invFileName(i), "", i.customer?.email)}>
+        <span className="grow"><b className="one">{i.number} · {i.customer?.name || "Kunde"}</b><small className="muted block one">{fmtDate(i.date)} · fällig {fmtDate(invDueEff(i))}{(i.reminders || []).length ? ` · ${remindName(i.reminders.length - 1)} versendet` : ""}</small></span>
+        <b>{fmtMoney(invTotal(i))}</b>{(x.invLate || []).includes(i) ? <span className="stpill st-over">überfällig</span> : <span className="stpill st-open">offen</span>}</div>))}
+      {kind === "kassa" && x.kE.filter((e) => !e.stornoBy && !e.stornoOf).map((e) => { const d = e.docId && docs.find((y) => y.id === e.docId);
+        return (<div key={e.id} className="sbrow"><span className="grow"><b className="one">{e.text}</b><small className="muted block one">{kbNo(e)} · {fmtDate(e.date)} · {e.cat}{!d && !e.beleg && !e.eigen ? " · Beleg fehlt" : ""}</small></span>
+          <b className={e.kind === "ein" ? "pos" : "neg"}>{(e.kind === "ein" ? "+" : "−") + fmtMoney(e.amount)}</b>
+          {d ? <button className="iconbtn" title="Beleg ansehen" onClick={() => onOpenDoc?.(d.id)}><IcoEye /></button> : !e.beleg && !e.eigen && <button className="btn sm" onClick={() => { setKbFor(e); kbFile.current?.click(); }}>📎 Beleg</button>}</div>); })}
+    </div>
+    <div className="actions">
+      {kind === "inv" && <button className="link" onClick={() => { onClose(); setTab?.("mahnungen"); }}>Zu den Mahnungen ›</button>}
+      {kind === "kassa" && <button className="link" onClick={() => { onClose(); setTab?.("kassa"); }}>Kassabuch öffnen ›</button>}
+    </div>
+    <input ref={kbFile} type="file" accept="image/*,application/pdf" hidden onChange={async (ev) => { const f = ev.target.files[0]; ev.target.value = ""; if (!f || !kbFor || !fileUi) return; const ids = await fileUi.add(f, { stay: true, receipt: true }); if (ids?.[0]) kbSet(kbFor, ids[0]); }} />
+    {beleg && <StmtBelegWin r={beleg} docs={docs} txs={txs} onClose={() => setBeleg(null)} onOpenDoc={onOpenDoc} />}
+  </Win>, document.querySelector(".app") || document.body);
+}
 function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs, getTxs, categories, token, notify, setTab, onOpen, openTx, setAccounts, only }) {
   const mob = useMobileBeta();
   const [sec0, setSec] = useLsState("stbSec", "monate");
@@ -9261,7 +9381,8 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
   const [invList] = useLsState("invoices", []);
   const kassa = useKassa();
   const [okDocs, setOkDocs] = useLsState("stbNoTxOk", {});
-  const [nbMonth, setNbMonth] = useState(null);
+  const [nbMonth, setNbMonth] = useState(null), [items, setItems] = useState(null);
+  const [mOpen, setMOpen] = useLsState("stbMonOpen", {});
   const linked = useMemo(() => new Set([...txs.map((t) => t.docId), ...kassa.entries.map((e) => e.docId)].filter(Boolean)), [txs, kassa.entries]);
   const M = useMemo(() => months.map((m) => stbMonth(m, D, need, { docs, inv: invList, kassa, linked, okDocs })), [D, year, need, docs, invList, kassa.entries, kassa.kassen, linked, okDocs]);
   const sendMonth = (m) => { lsSetEv("stbPer", m); setSec("paket"); };
@@ -9291,29 +9412,26 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
   </>);
 
   /* ---------- 3 Monatsabschluss-Ampel ---------- */
-  const monate = (
-    <div className="stbmonths">
-      {M.map((x) => {
-        const any = x.rows.length || x.docsNoTx.length || x.invM.length || x.kE.length;
-        const st = done[x.m] ? "done" : !any ? "empty" : x.missStmt.length ? "bad" : x.issues ? "warn" : "ok";
-        const label = { done: "abgeschlossen ✓", empty: "keine Buchungen", bad: x.missStmt.length === 1 ? "Auszug fehlt" : `${x.missStmt.length} Auszüge fehlen`, warn: `${x.issues} offen`, ok: "bereit ✓" }[st];
-        return (
-          <section key={x.m} className={"tile stbmonth st-" + st}>
-            <div className="stbmh"><span className={"stbdot " + st} /><b>{monthLabel(x.m)}</b><span className="grow" />
-              <small className="muted">{x.firma.length ? `Firma: +${fmtMoney(x.inc)} / −${fmtMoney(x.out)}` : ""}</small>
-              <span className={"stpill " + ({ done: "st-paid", ok: "st-paid", bad: "st-over", warn: "st-open", empty: "st-draft" }[st])}>{label}</span></div>
+  /* v0.99.54: Monatsansicht wählbar – Karten · Liste · Tabelle · Zeitleiste · Jahr · Nur Offene (Einstellungen → Design) */
+  const [monView, setMonView] = useLsState("stbMonView", "karten");
+  const [selM, setSelM] = useState(null), [mShowRest, setMShowRest] = useState(false);
+  const mInfo = (x) => { const any = x.rows.length || x.docsNoTx.length || x.invM.length || x.kE.length;
+    const st = done[x.m] ? "done" : !any ? "empty" : x.missStmt.length ? "bad" : x.issues ? "warn" : "ok";
+    const label = { done: "abgeschlossen ✓", empty: "keine Buchungen", bad: x.missStmt.length === 1 ? "Auszug fehlt" : `${x.missStmt.length} Auszüge fehlen`, warn: `${x.issues} offen`, ok: "bereit ✓" }[st];
+    return { any, st, label, pill: { done: "st-paid", ok: "st-paid", bad: "st-over", warn: "st-open", empty: "st-draft" }[st] }; };
+  const mBody = (x) => { const { any } = mInfo(x); return (<>
             {any > 0 && <div className="stbprog" title={`${x.nOk} von ${x.nChk} Punkten erledigt`}><span className="stbtrack"><i style={{ width: `${x.nChk ? Math.round(x.nOk / x.nChk * 100) : 0}%` }} /></span><small className="muted">{x.nOk} von {x.nChk} erledigt</small></div>}
             {any > 0 && <div className="stbchecks">
               {x.stm.map(({ a, need, doc }) => (
                 <div key={a.id} className="stbcheck">{doc ? "✅" : need ? "⚠️" : "➖"} Auszug {a.name}
                   {doc ? <button className="link small" onClick={() => setStmtOpen(doc.id)}>ansehen</button> : need ? <button className="link small" onClick={() => fileRef.current.click()}>hochladen</button> : <small className="muted"> nicht nötig</small>}</div>
               ))}
-              <div className={"stbcheck" + (x.noBeleg.length ? " click" : "")} onClick={() => x.noBeleg.length && goCheck(x.m, "beleg")}>{x.noBeleg.length ? "⚠️" : "✅"} {x.noBeleg.length ? `${x.noBeleg.length} Firmenausgabe${x.noBeleg.length > 1 ? "n" : ""} ohne Beleg` : "Belege zu Firmenausgaben vollständig"}{x.noBeleg.length > 0 && <span className="muted"> ›</span>}</div>
-              <div className={"stbcheck" + (x.unklar.length ? " click" : "")} onClick={() => x.unklar.length && goCheck(x.m, "unklar")}>{x.unklar.length ? "⚠️" : "✅"} {x.unklar.length ? `${x.unklar.length} Buchung${x.unklar.length > 1 ? "en" : ""} Privat/Firma unklar` : "Alle Buchungen zugeordnet"}{x.unklar.length > 0 && <span className="muted"> ›</span>}</div>
+              <div className={"stbcheck" + (x.noBeleg.length ? " click" : "")} onClick={() => x.noBeleg.length && setItems({ m: x.m, kind: "beleg" })}>{x.noBeleg.length ? "⚠️" : "✅"} {x.noBeleg.length ? `${x.noBeleg.length} Firmenausgabe${x.noBeleg.length > 1 ? "n" : ""} ohne Beleg` : "Belege zu Firmenausgaben vollständig"}{x.noBeleg.length > 0 && <span className="muted"> ›</span>}</div>
+              <div className={"stbcheck" + (x.unklar.length ? " click" : "")} onClick={() => x.unklar.length && setItems({ m: x.m, kind: "unklar" })}>{x.unklar.length ? "⚠️" : "✅"} {x.unklar.length ? `${x.unklar.length} Buchung${x.unklar.length > 1 ? "en" : ""} Privat/Firma unklar` : "Alle Buchungen zugeordnet"}{x.unklar.length > 0 && <span className="muted"> ›</span>}</div>
               <div className={"stbcheck" + (x.docsNoTx.length ? " click" : "")} onClick={() => x.docsNoTx.length && setNbMonth(x.m)}>{x.docsNoTx.length ? "⚠️" : "✅"} {x.docsNoTx.length ? `${x.docsNoTx.length} Firmenbeleg${x.docsNoTx.length > 1 ? "e" : ""} ohne Buchung (bar bezahlt?)` : "Alle Firmenbelege einer Buchung zugeordnet"}{x.docsNoTx.length > 0 && <span className="muted"> ›</span>}</div>
-              {x.invM.length > 0 && <div className="stbcheck click" onClick={() => setTab?.(x.invLate.length ? "mahnungen" : "invoices")}>{x.invLate.length ? "⚠️" : "✅"} <span className="grow">{x.invLate.length ? `${x.invLate.length} Ausgangsrechnung${x.invLate.length > 1 ? "en" : ""} überfällig, noch nicht gemahnt` : x.invOpen.length ? `Ausgangsrechnungen: ${x.invOpen.length} offen, noch nicht fällig` : `Ausgangsrechnungen bezahlt (${x.invM.length})`}</span><span className="muted">›</span></div>}
-              {x.kE.length > 0 && <div className="stbcheck click" onClick={() => setTab?.("kassa")}>{x.kNoBeleg.length || x.kNeg ? "⚠️" : "✅"} <span className="grow">{x.kNeg ? "Kassabuch: Kassastand wird negativ" : x.kNoBeleg.length ? `Kassabuch: ${x.kNoBeleg.length} Buchung${x.kNoBeleg.length > 1 ? "en" : ""} ohne Beleg` : `Kassabuch in Ordnung (${x.kE.length} Buchungen)`}</span><span className="muted">›</span></div>}
-              {x.asks.length > 0 && <div className="stbcheck click" onClick={() => setSec("fragen")}>❓ {x.asks.length} offene Frage{x.asks.length > 1 ? "n" : ""} an den Steuerberater <span className="muted">›</span></div>}
+              {x.invM.length > 0 && <div className="stbcheck click" onClick={() => setItems({ m: x.m, kind: "inv" })}>{x.invLate.length ? "⚠️" : "✅"} <span className="grow">{x.invLate.length ? `${x.invLate.length} Ausgangsrechnung${x.invLate.length > 1 ? "en" : ""} überfällig, noch nicht gemahnt` : x.invOpen.length ? `Ausgangsrechnungen: ${x.invOpen.length} offen, noch nicht fällig` : `Ausgangsrechnungen bezahlt (${x.invM.length})`}</span><span className="muted">›</span></div>}
+              {x.kE.length > 0 && <div className="stbcheck click" onClick={() => setItems({ m: x.m, kind: "kassa" })}>{x.kNoBeleg.length || x.kNeg ? "⚠️" : "✅"} <span className="grow">{x.kNeg ? "Kassabuch: Kassastand wird negativ" : x.kNoBeleg.length ? `Kassabuch: ${x.kNoBeleg.length} Buchung${x.kNoBeleg.length > 1 ? "en" : ""} ohne Beleg` : `Kassabuch in Ordnung (${x.kE.length} Buchungen)`}</span><span className="muted">›</span></div>}
+              {x.asks.length > 0 && <div className="stbcheck click" onClick={() => setItems({ m: x.m, kind: "asks" })}>❓ {x.asks.length} offene Frage{x.asks.length > 1 ? "n" : ""} an den Steuerberater <span className="muted">›</span></div>}
               <div className="row stbmacts">
                 <button className="link small" onClick={() => goCheck(x.m, "firma")}>Firmenbuchungen ({x.firma.length})</button>
                 <button className="link small" title={x.issues ? "Es sind noch Punkte offen – Paket kann trotzdem erstellt werden" : "Paket für diesen Monat erstellen"} onClick={() => sendMonth(x.m)}>📦 An Steuerberater senden</button>
@@ -9321,10 +9439,72 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
                   : <button className="link small" onClick={() => (!x.issues || confirm(`Im ${monthLabel(x.m)} sind noch ${x.issues} Punkte offen. Trotzdem als abgeschlossen markieren?`)) && setDone((d) => ({ ...d, [x.m]: todayISO() }))}>Als abgeschlossen markieren</button>}
               </div>
             </div>}
-          </section>
-        );
-      })}
+  </>); };
+  const mDefOpen = (x, st) => x.m === todayISO().slice(0, 7) || st === "warn" || st === "bad";
+  const mCard = (x, force) => { const { any, st, label, pill } = mInfo(x); const open = force ?? mOpen[x.m] ?? mDefOpen(x, st);
+    return (<section key={x.m} className={"tile stbmonth st-" + st + (open ? "" : " shut")}>
+      <div className={"stbmh" + (force == null ? " click" : "")} onClick={() => force == null && setMOpen((o) => ({ ...o, [x.m]: !open }))} title={force == null ? (open ? "Zuklappen" : "Aufklappen") : undefined}>{force == null && <span className="stbchev">{open ? "▾" : "▸"}</span>}<span className={"stbdot " + st} /><b>{monthLabel(x.m)}</b><span className="grow" />
+        <small className="muted">{x.firma.length ? `Firma: +${fmtMoney(x.inc)} / −${fmtMoney(x.out)}` : ""}</small>
+        <span className={"stpill " + pill}>{label}</span></div>
+      {open && any > 0 && mBody(x)}
+    </section>); };
+  const mRow = (x) => { const { any, st, label, pill } = mInfo(x); const open = mOpen["l:" + x.m] ?? false;
+    return (<div key={x.m} className={"stbmrow st-" + st + (open ? " open" : "")}>
+      <div className="stbmrh click" onClick={() => setMOpen((o) => ({ ...o, ["l:" + x.m]: !open }))}><span className="stbchev">{open ? "▾" : "▸"}</span><span className={"stbdot " + st} /><b>{monthLabel(x.m)}</b>
+        {any > 0 && <span className="stbtrack mini" title={`${x.nOk} von ${x.nChk} erledigt`}><i style={{ width: `${x.nChk ? Math.round(x.nOk / x.nChk * 100) : 0}%` }} /></span>}<span className="grow" />
+        <small className="muted stbmrf">{x.firma.length ? `+${fmtMoney(x.inc)} / −${fmtMoney(x.out)}` : ""}</small><span className={"stpill " + pill}>{label}</span></div>
+      {open && any > 0 && <div className="stbmrb">{mBody(x)}</div>}
+    </div>); };
+  // offene Punkte als kurze Liste (Zeitleiste)
+  const mIssues = (x) => [
+    ...x.stm.filter(({ need, doc }) => need && !doc).map(({ a }) => [`Auszug ${a.name} fehlt`, () => fileRef.current.click()]),
+    x.noBeleg.length && [`${x.noBeleg.length}× Firmenausgabe ohne Beleg`, () => setItems({ m: x.m, kind: "beleg" })],
+    x.unklar.length && [`${x.unklar.length}× Privat/Firma unklar`, () => setItems({ m: x.m, kind: "unklar" })],
+    x.docsNoTx.length && [`${x.docsNoTx.length}× Beleg ohne Buchung`, () => setNbMonth(x.m)],
+    x.invLate.length && [`${x.invLate.length}× Rechnung überfällig`, () => setItems({ m: x.m, kind: "inv" })],
+    (x.kNoBeleg.length || x.kNeg) && [x.kNeg ? "Kassastand negativ" : `${x.kNoBeleg.length}× Kassabuch ohne Beleg`, () => setItems({ m: x.m, kind: "kassa" })],
+    x.asks.length && [`${x.asks.length}× offene Frage`, () => setItems({ m: x.m, kind: "asks" })]].filter(Boolean);
+  // Tabellen-Zelle: Symbol + Klick
+  const MX_COLS = [["Auszüge", (x) => { const miss = x.stm.filter((s) => s.need && !s.doc).length; return [!x.stm.length || !x.stm.some((s) => s.need) ? "➖" : miss ? "❌" : "✅", miss ? () => fileRef.current.click() : null, miss ? `${miss} fehlt` : ""]; }],
+    ["Belege", (x) => [x.noBeleg.length ? "⚠️" : "✅", x.noBeleg.length ? () => setItems({ m: x.m, kind: "beleg" }) : null, x.noBeleg.length || ""]],
+    ["Firma/Privat", (x) => [x.unklar.length ? "⚠️" : "✅", x.unklar.length ? () => setItems({ m: x.m, kind: "unklar" }) : null, x.unklar.length || ""]],
+    ["Ohne Buchung", (x) => [x.docsNoTx.length ? "⚠️" : "✅", x.docsNoTx.length ? () => setNbMonth(x.m) : null, x.docsNoTx.length || ""]],
+    ["Rechnungen", (x) => [!x.invM.length ? "➖" : x.invLate.length ? "⚠️" : "✅", x.invM.length ? () => setItems({ m: x.m, kind: "inv" }) : null, x.invLate.length || ""]],
+    ["Kassa", (x) => [!x.kE.length ? "➖" : x.kNoBeleg.length || x.kNeg ? "⚠️" : "✅", x.kE.length ? () => setItems({ m: x.m, kind: "kassa" }) : null, x.kNoBeleg.length || ""]],
+    ["Fragen", (x) => [x.asks.length ? "❓" : "➖", x.asks.length ? () => setItems({ m: x.m, kind: "asks" }) : null, x.asks.length || ""]]];
+  const selX = M.find((x) => x.m === selM);
+  const monViews = {
+    karten: () => <div className="stbmonths">{M.map((x) => mCard(x))}</div>,
+    liste: () => <div className="tile stbmlist">{M.map(mRow)}</div>,
+    matrix: () => (<>
+      <div className="tile stbmx"><table><thead><tr><th>Monat</th>{MX_COLS.map(([h]) => <th key={h}>{h}</th>)}<th>Status</th></tr></thead>
+        <tbody>{M.map((x) => { const { st, label, pill } = mInfo(x); return (<tr key={x.m} className={"st-" + st + (selM === x.m ? " on" : "")}>
+          <td><button type="button" className="link" onClick={() => setSelM(selM === x.m ? null : x.m)}><span className={"stbdot " + st} /> {monthLabel(x.m)}</button></td>
+          {MX_COLS.map(([h, f]) => { const [ic, run, n] = f(x); return <td key={h}>{run ? <button type="button" className="stbmxc" title={h} onClick={run}>{ic}{n ? <small>{n}</small> : null}</button> : <span className="stbmxc">{ic}</span>}</td>; })}
+          <td><span className={"stpill " + pill}>{label}</span></td></tr>); })}</tbody></table></div>
+      {selX && mCard(selX, true)}</>),
+    zeit: () => <div className="tile stbtl">{M.map((x) => { const { any, st, label } = mInfo(x), iss = mIssues(x), open = mOpen["t:" + x.m] ?? false;
+      return (<div key={x.m} className={"stbtli st-" + st}><span className={"stbdot " + st} />
+        <div className="stbtlh click" onClick={() => setMOpen((o) => ({ ...o, ["t:" + x.m]: !open }))}><b>{monthLabel(x.m)}</b> <small className="muted">· {label}</small>{any > 0 && <span className="muted"> {open ? "▾" : "▸"}</span>}</div>
+        {!open && iss.length > 0 && <div className="stbtliss">{iss.map(([t, run], i) => <button key={i} type="button" className="link small" onClick={run}>{t} ›</button>)}</div>}
+        {open && any > 0 && <div className="stbtlb">{mBody(x)}</div>}
+      </div>); })}</div>,
+    jahr: () => { const sorted = [...M].sort((a, b) => a.m.localeCompare(b.m)), cur = selX || M.find((x) => ["warn", "bad"].includes(mInfo(x).st)) || M[0];
+      return (<>
+        <div className="tile stbyear">{sorted.map((x) => { const { st, label } = mInfo(x); return <button key={x.m} type="button" className={"stbyt st-" + st + (cur?.m === x.m ? " on" : "")} title={label} onClick={() => setSelM(x.m)}><span className={"stbdot " + st} /><b>{MONTHS_DE[+x.m.slice(5, 7) - 1].slice(0, 3)}</b><small>{st === "warn" ? x.issues : st === "bad" ? "!" : st === "empty" ? "–" : "✓"}</small></button>; })}</div>
+        {cur && mCard(cur, true)}</>); },
+    fokus: () => { const hot = M.filter((x) => ["warn", "bad"].includes(mInfo(x).st)), rest = M.filter((x) => !hot.includes(x));
+      return (<div className="stbmonths stbfocus">
+        {hot.map((x) => mCard(x, true))}
+        {!hot.length && <div className="tile stbcheck">✅ Alle Monate sind bereit oder abgeschlossen.</div>}
+        {rest.length > 0 && <button type="button" className="stbfrest" onClick={() => setMShowRest(!mShowRest)}><span className="stbdot ok" /> {rest.length} Monat{rest.length > 1 ? "e" : ""} fertig oder ohne Buchungen – {mShowRest ? "ausblenden" : "anzeigen"} {mShowRest ? "▾" : "›"}</button>}
+        {mShowRest && <div className="tile stbmlist">{rest.map(mRow)}</div>}
+      </div>); } };
+  const monate = (
+    <div className="stbmwrap">
+      {(monViews[monView] || monViews.karten)()}
       {!M.length && <MEmpty>Für {year} gibt es noch keine Monate.</MEmpty>}
+      {items && (() => { const x = M.find((y) => y.m === items.m); return x ? <StbItemsWin req={items} x={x} docs={docs} txs={txs} updateTx={updateTx} openTx={openTx} onOpenDoc={onOpen} setTab={setTab} onClose={() => setItems(null)} /> : null; })()}
       {nbMonth && (() => { const x = M.find((y) => y.m === nbMonth); const l = x?.docsNoTx || [];
         return createPortal(<Win id="stbnotx" onClose={() => setNbMonth(null)} small defW={560} stay>
           <div className="panelhead"><b className="clamp">Firmenbelege ohne Buchung · {monthLabel(nbMonth)}</b><XBtn /></div>
@@ -9532,7 +9712,8 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
   return (
     <div className="anapage stbpage">
       {head}
-      {sec === "monate" && <>{<div className="row stbtoolbar">{upload}<span className="grow" /><small className="muted">{openAsks.length ? `${openAsks.length} offene Fragen · ` : ""}Grün = bereit für den Steuerberater</small></div>}{monate}</>}
+      {sec === "monate" && <>{<div className="row stbtoolbar">{upload}<span className="grow" /><small className="muted">{openAsks.length ? `${openAsks.length} offene Fragen · ` : ""}Grün = bereit für den Steuerberater</small><PickMenu icon="▦" label={(MON_VIEWS.find((v) => v[0] === monView) || MON_VIEWS[0])[1]} title="Monatsansicht (auch unter Einstellungen → Design)" items={MON_VIEWS.map(([k, t, sub]) => ({ k, title: t, sub, on: monView === k, run: () => setMonView(k) }))} />
+          {["karten", "liste", "zeit"].includes(monView) && <><button className="btn sm" onClick={() => { const pf = { karten: "", liste: "l:", zeit: "t:" }[monView]; setMOpen((o) => ({ ...o, ...Object.fromEntries(M.map((x) => [pf + x.m, true])) })); }}>Alle aufklappen</button><button className="btn sm" onClick={() => { const pf = { karten: "", liste: "l:", zeit: "t:" }[monView]; setMOpen((o) => ({ ...o, ...Object.fromEntries(M.map((x) => [pf + x.m, false])) })); }}>Alle zuklappen</button></>}</div>}{monate}</>}
       {sec === "auszuege" && auszuege}
       {sec === "pruefen" && pruefen}
       {sec === "fragen" && fragen}
@@ -10398,6 +10579,7 @@ const DESIGN_PRESETS = [
     light: { bg: "#f4eee5", card: "#fffdf9", card2: "#f8f3ea", line: "#e8dfd0" } },
   { id: "scanner", name: "Scanner Blau", note: "Dokumenten-Scanner-Stil", acc: "#1a73e8", acc2: "#f9ab00", hero: ["#0d2a5c", "#1a73e8", "#4fa3ff"] },
 ];
+const FLAT_ACC = ["#c8a24a", "#d4af37", "#7fb0ff", "#2563eb", "#a5a8ff", "#2dd4bf", "#9fd3a3", "#e08a5a", "#f19ab0", "#e5484d", "#c084fc", "#f5f5f5"];
 const POS_SWATCHES = ["#16a34a", "#22c55e", "#00a87e", "#0d9488", "#36a18b", "#0b63f6", "#2eaadc", "#494fdf", "#a67931"];
 const NEG_SWATCHES = ["#e5484d", "#dc2626", "#fe4b60", "#e16259", "#b55b64", "#ec7e00", "#f59e0b", "#9333ea", "#475569"];
 const mixWhite = (hex, p) => { const n = parseInt(hex.slice(1), 16), f = (c) => Math.round(c + (255 - c) * p); return "#" + [n >> 16, (n >> 8) & 255, n & 255].map((c) => f(c).toString(16).padStart(2, "0")).join(""); };
@@ -10406,9 +10588,9 @@ function applyDesign(design, theme) {
   const ov = design.over?.[pr.id] || {};
   const set = (k, v) => (v ? st.setProperty(k, v) : st.removeProperty(k));
   // v0.99.51: flache Stile bringen ihre eigene Akzentfarbe mit – außer der Nutzer hat selbst eine gewählt
-  const flatSty = !!UI_STYLES.find((x) => x[0] === design.style)?.[4]?.flat;
-  const dark = theme === "dark", def = (pr.id === "fido" || flatSty) && !ov.acc && !ov.acc2;
-  const acc = ov.acc || pr.acc, acc2 = ov.acc2 || pr.acc2;
+  const flatSty = !!UI_STYLES.find((x) => x[0] === design.style)?.[4]?.flat, fa = flatSty ? design.flatAcc?.[design.style] : null;
+  const dark = theme === "dark", def = !fa && pr.id === "fido" && !ov.acc && !ov.acc2;
+  const acc = fa || ov.acc || pr.acc, acc2 = ov.acc2 || pr.acc2;
   set("--acc", def ? null : dark ? mixWhite(acc, 0.22) : acc);
   set("--acc2", def ? null : acc2);
   set("--hero", def ? null : `linear-gradient(135deg,${pr.hero[0]} 0%,${ov.acc || pr.hero[1]} 55%,${ov.acc2 || pr.hero[2]} 100%)`);
@@ -10509,6 +10691,11 @@ function DesignSettings({ design, setDesign, theme }) {
       <h4 className="subhead">Stil</h4>
       <p className="muted small">Ändert Schriftart, Ecken, Schatten, Kartenform, Dichte und Grundfarben der ganzen App. „Aurora“, „Kompakt Pro“ und „Großer Kontrast“ bringen eigene Farben mit; bei den anderen gilt zusätzlich der Farbstil darunter.</p>
       <StylePicker value={design.style} onPick={(k) => pick("style", k)} />
+      {UI_STYLES.find((x) => x[0] === design.style)?.[4]?.flat && (() => { const st = UI_STYLES.find((x) => x[0] === design.style), cur = design.flatAcc?.[design.style] || null;
+        const setFa = (c) => setDesign({ ...design, flatAcc: { ...(design.flatAcc || {}), [design.style]: c || undefined } });
+        return (<div className="flatacc"><div className="colorrow"><span><b>Markierungsfarbe für „{st[1]}“</b><small className="muted block">Links, ausgewählte Chips, Fortschrittsbalken und Hinweise – „A“ = Farbe des Stils</small></span><span className="flataccpv" style={{ color: "var(--acc)" }}>● Markierung</span></div>
+          <Swatches value={cur} list={FLAT_ACC} custom={design.flatAccList} def={st[4].acc} onPick={setFa} onAdd={(c) => setDesign({ ...design, flatAcc: { ...(design.flatAcc || {}), [design.style]: c }, flatAccList: [...new Set([...(design.flatAccList || []), c])].slice(-8) })} onRemove={(c) => setDesign({ ...design, flatAccList: (design.flatAccList || []).filter((x) => x !== c), flatAcc: cur === c ? { ...design.flatAcc, [design.style]: undefined } : design.flatAcc })} /></div>); })()}
+      <ViewSettings />
       <h4 className="subhead">Schriftart</h4>
       <p className="muted small">Schrift für Text und Überschriften der ganzen App – unabhängig vom Stil wählbar. Die Größen stellst du unter „Schriftgrößen“ ein.</p>
       <FontPicker design={design} pick={pick} />
@@ -12254,7 +12441,8 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
   const [filter, setFilter] = useState("alle"), [q, setQ] = useState("");
   // Test „Neue Listen“: Jahr, Sortierung, Tags, gespeicherte Ansichten, Mehrfachauswahl
   const lt = true; // „Neue Listen“ fix übernommen (v0.82)
-  const [yr, setYr] = useState(""), [sortBy, setSortBy] = useState("datum"), [tagF, setTagF] = useState(""), [pick, setPick] = useState(null);
+  const [yr, setYr] = useState(""), [tagF, setTagF] = useState(""), [pick, setPick] = useState(null);
+  const [sortBy, setSortBy, sortDir] = useSortState("invoices", "datum");
   const [views, setViews] = useLsState("views:invoices", []);
   const togglePick = (id) => setPick((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const coOk = co.name && co.street && co.city;
@@ -12338,7 +12526,8 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
   const cnt = (k) => (k === "alle" ? list.length : k === "angebote" ? list.filter((x) => x.kind === "angebot").length : k === "wiederkehrend" ? templates.length : inv.filter((x) => st(x) === k).length);
   const allTags = [...new Set(list.flatMap((x) => x.tags || []))].sort((a, b) => a.localeCompare(b, "de"));
   const years = [...new Set(list.map((x) => (x.date || "").slice(0, 4)).filter(Boolean))].sort().reverse();
-  const SORTS = { datum: (a, b) => (b.date || "").localeCompare(a.date || "") || (b.number || "").localeCompare(a.number || ""), betrag: (a, b) => invTotal(b) - invTotal(a), kunde: (a, b) => (a.customer?.name || "").localeCompare(b.customer?.name || "", "de"), faellig: (a, b) => (invDueEff(a) || "9").localeCompare(invDueEff(b) || "9") };
+  const INV_SORTS = { datum: ["Datum", "neueste zuerst", (a, b) => (b.date || "").localeCompare(a.date || "") || (b.number || "").localeCompare(a.number || "")], neu: SORT_NEW, betrag: ["Betrag", "höchste zuerst", (a, b) => invTotal(b) - invTotal(a)], kunde: ["Kunde", "A–Z", (a, b) => (a.customer?.name || "").localeCompare(b.customer?.name || "", "de")], faellig: ["Fälligkeit", "früheste zuerst", (a, b) => (invDueEff(a) || "9").localeCompare(invDueEff(b) || "9")] };
+  const SORTS = Object.fromEntries(Object.entries(INV_SORTS).map(([k, v]) => [k, (a, b) => sortDir * v[2](a, b)]));
   const shown = list.filter((x) => (filter === "alle" ? true : filter === "angebote" ? x.kind === "angebot" : x.kind === "rechnung" && st(x) === filter))
     .filter((x) => !q || norm(`${x.number} ${x.customer?.name} ${(x.items || []).map((i) => i.text).join(" ")} ${(x.tags || []).join(" ")}`).includes(norm(q)))
     .filter((x) => !lt || ((!yr || (x.date || "").startsWith(yr)) && (!tagF || (x.tags || []).includes(tagF))))
@@ -12358,7 +12547,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
   const printInv = async (xs) => { notify?.("Druck wird vorbereitet …"); const imgs = []; for (const x of xs) imgs.push(...(await blobToImages(await buildInvoicePdf(x, co)))); await printImages(imgs, xs.length === 1 ? invFileName(xs[0]) : `${xs.length} Rechnungen`); };
   const picked = () => list.filter((x) => pick?.has(x.id));
   const saveView = () => { const n = prompt("Name der Ansicht:", [FILTERS.find(([k]) => k === filter)?.[1], yr, tagF && "#" + tagF, q && "„" + q + "“"].filter((x) => x && x !== "Alle").join(" ")); if (!n) return; setViews((v) => [...v, { id: uid(), n, filter, q, yr, tagF, sortBy }]); };
-  const applyView = (v) => { setFilter(v.filter); setQ(v.q || ""); setYr(v.yr || ""); setTagF(v.tagF || ""); setSortBy(v.sortBy || "datum"); };
+  const applyView = (v) => { setFilter(v.filter); setQ(v.q || ""); setYr(v.yr || ""); setTagF(v.tagF || ""); setSortBy(v.sortBy || "datum", true); };
   const viewOn = (v) => v.filter === filter && (v.q || "") === q && (v.yr || "") === yr && (v.tagF || "") === tagF;
   const ltMore = [{ head: "Bereiche" }, setTab && { k: "kunden", icon: "👥", title: "Kunden", run: () => setTab("kunden") }, { k: "artikel", icon: "📦", title: "Artikel", run: () => (setTab ? setTab("artikel") : setMdOpen(true)) }, setTab && { k: "mahn", icon: "📮", title: "Mahnungen", run: () => setTab("mahnungen") }, { k: "firma", icon: "🏢", title: "Firmendaten", run: () => setCoOpen(true) },
     { head: "Export" }, ...expItems.filter((e) => !e.head).map((e, i) => ({ k: "e" + i, title: e.label, sub: e.sub, run: e.run }))].filter(Boolean);
@@ -12367,13 +12556,13 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
     {FILTERS.map(([k, l]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({cnt(k)})</small></button>)}
     <span className="grow" />
     <PickMenu icon="📅" label={yr || "Alle Jahre"} title="Jahr" items={[{ k: "", title: "Alle Jahre", on: !yr, run: () => setYr("") }, ...years.map((y) => ({ k: y, title: y, on: yr === y, run: () => setYr(y) }))]} />
-    <PickMenu icon="↕" label={{ datum: "Datum", betrag: "Betrag", kunde: "Kunde", faellig: "Fälligkeit" }[sortBy]} title="Sortierung" items={[["datum", "Datum", "neueste zuerst"], ["betrag", "Betrag", "höchste zuerst"], ["kunde", "Kunde", "A–Z"], ["faellig", "Fälligkeit", "früheste zuerst"]].map(([k, t, sub]) => ({ k, title: t, sub, on: sortBy === k, run: () => setSortBy(k) }))} />
+    <SortCtl sorts={INV_SORTS} sortBy={sortBy} setSortBy={setSortBy} dir={sortDir} />
     <PickMenu icon="#" label={tagF || "Tags"} title="Tags" items={[{ k: "", title: "Alle Tags", on: !tagF, run: () => setTagF("") }, ...allTags.map((t) => ({ k: t, title: "#" + t, sub: `${list.filter((x) => (x.tags || []).includes(t)).length} Einträge`, on: tagF === t, run: () => setTagF(t) }))]}
       extra={[{ label: "Tags vergeben: ⋯ in einer Zeile oder „Auswählen“", run: () => {} }]} />
     {(filter !== "alle" || q || yr || tagF) && <button className="chip" onClick={saveView}>☆ Ansicht merken</button>}
   </>);
   const invBar = <ListBar q={q} setQ={setQ} placeholder="Nummer, Kunde, Leistung suchen" id="kit:invoices" tabs={FILTERS.map(([k, l]) => [k, l, cnt(k)])} tab={filter} setTab={setFilter} hits={shown.length}
-    lk={{ yr, setYr, years, sortBy, setSortBy, sorts: { datum: ["Datum", "neueste zuerst"], betrag: ["Betrag", "höchste zuerst"], kunde: ["Kunde", "A–Z"], faellig: ["Fälligkeit", "früheste zuerst"] }, tagF, setTagF, tags: allTags, views, setViews }}
+    lk={{ yr, setYr, years, sortBy, setSortBy, dir: sortDir, sorts: INV_SORTS, tagF, setTagF, tags: allTags, views, setViews }}
     actions={[{ k: "newr", icon: "＋", title: "Neue Rechnung", run: () => newDoc("rechnung") }, { k: "newa", icon: "📝", title: "Neues Angebot", run: () => newDoc("angebot") },
       { k: "pick", icon: "☑", title: pick ? "Auswahl beenden" : "Auswählen", sub: "mehrere drucken, exportieren, taggen", run: () => setPick(pick ? null : new Set()) }, ...ltMore]} />;
   const bulkBar = pick && (
@@ -12944,6 +13133,8 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
     setPicked(all.map((c) => ({ ...c, on: true })));
   };
   const [list, setList] = useLsState("customers", []);
+  const [ctSort, setCtSort, ctDir] = useSortState("kunden", "name");
+  const CT_SORTS = { name: ["Name", "A–Z", (a, b) => (a.name || "").localeCompare(b.name || "", "de")], neu: SORT_NEW, nummer: ["Nummer", "aufsteigend", (a, b) => String(a.number || "~").localeCompare(String(b.number || "~"), "de", { numeric: true })], ort: ["Ort", "A–Z", (a, b) => (a.city || "~").localeCompare(b.city || "~", "de")] };
   const [types] = useContactTypes();
   const typeOf = (c) => types.find((t) => t.name === (c.type || "Kunde")) || { name: c.type || "Kunde", icon: "👤", color: "#888" };
   const [picked, setPicked] = useState(null); // Import-Vorschau
@@ -12969,7 +13160,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
   const invOf = (c) => invMap.get(c.id) || [];
   const shown = list.filter((c) => type === "alle" || (c.type || "Kunde") === type)
     .filter((c) => !q || norm(`${c.name} ${c.contact} ${c.email} ${c.phone} ${c.address} ${c.number}`).includes(norm(q)))
-    .sort((a, b) => (a.name || "").localeCompare(b.name || "", "de"));
+    .sort((a, b) => ctDir * (CT_SORTS[ctSort] || CT_SORTS.name)[2](a, b));
   const shownV = useProgressiveAuto(shown);
   const vcard = (c) => {
     const v = ["BEGIN:VCARD", "VERSION:3.0", `FN:${c.name}`, c.contact && `NOTE:Ansprechperson ${c.contact}`, c.email && `EMAIL:${c.email}`, c.phone && `TEL;TYPE=WORK:${c.phone}`, c.mobile && `TEL;TYPE=CELL:${c.mobile}`,
@@ -12988,7 +13179,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
           if (!all.length) return alert("Keine Kontakte in der Datei gefunden.");
           setPicked(all.map((c) => ({ ...c, on: true })));
         }} />
-        <MBar q={q} setQ={setQ} placeholder="Name, E-Mail, Telefon, Ort suchen"
+        <MBar q={q} setQ={setQ} placeholder="Name, E-Mail, Telefon, Ort suchen" lk={{ sortBy: ctSort, setSortBy: setCtSort, dir: ctDir, sorts: CT_SORTS }}
           chips={[["alle", "Alle", list.length, type === "alle", () => setType("alle")], ...types.map((t) => ["t:" + t.id, <><TypeGlyph t={t} /> {t.name}</>, list.filter((c) => (c.type || "Kunde") === t.name).length, type === t.name, () => setType(t.name)])]} />
         {busy && <ImportBar {...busy} />}
         <MScroll>
@@ -13017,7 +13208,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         }} />
       </div>
       {false && !("contacts" in navigator && "select" in (navigator.contacts || {})) && <p className="muted small hint">📱 <b>iPhone – direkt aus dem Adressbuch:</b> Einstellungen → Apps → Safari → Erweitert → Feature Flags → „Contact Picker API“ einschalten, dann FinDocu neu öffnen. Danach öffnet „Aus Handy-Kontakten“ die Kontaktauswahl des iPhones. <b>Ohne diese Einstellung:</b> Kontakte-App → Kontakte markieren → Teilen → „In Dateien sichern“ und die .vcf-Datei hier wählen. <b>Mac:</b> Kontakte → Ablage → Exportieren → vCard. <b>Android/Chrome:</b> funktioniert direkt.</p>}
-      <ListBar q={q} setQ={setQ} placeholder="Name, E-Mail, Telefon, Ort suchen" id="kunden" hits={shown.length}
+      <ListBar q={q} setQ={setQ} placeholder="Name, E-Mail, Telefon, Ort suchen" id="kunden" hits={shown.length} lk={{ sortBy: ctSort, setSortBy: setCtSort, dir: ctDir, sorts: CT_SORTS }}
         tabs={[["alle", "Alle", list.length], ...types.map((t) => [t.name, t.name, list.filter((c) => (c.type || "Kunde") === t.name).length])]} tab={type} setTab={setType}
         actions={[{ k: "new", icon: "＋", title: "Neuer Kontakt", run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) },
           unmatched.length > 0 && { k: "assign", icon: "🔗", title: `Rechnungen zuordnen (${unmatched.length})`, sub: "Rechnungen ohne passenden Kunden", run: () => setAssignOpen(true) }, { k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }, { k: "phone", icon: "📱", title: "Aus Handy-Kontakten", run: fromPhone },
@@ -13217,13 +13408,13 @@ function FbRemStrip({ rems, remState, onOpen }) {
       <small className="fbremwhen">{[x.dk != null && (x.dk <= 0 ? `${kmFmt(-x.dk)} überzogen` : `in ${kmFmt(x.dk)}`), x.dd != null && (x.dd < 0 ? `seit ${-x.dd} Tagen fällig` : x.dd === 0 ? "heute" : `in ${x.dd} Tagen`)].filter(Boolean).join(" · ")}</small>
     </button>))}</div></div>);
 }
-function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, preview, onPrev }) {
+function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, preview, onPrev, flat }) {
   const [ics] = useIconStore("fbIcons");
   const consAt = new Map([...(st.cons || []), ...(st.consE || [])].map((c) => [c.date + ":" + c.km, c.v]));
   const kmOf = (x) => +(x.type === "trip" ? x.endKm : x.km) || 0;
   const allSorted = useMemo(() => [...all].sort((a, b) => a.date.localeCompare(b.date) || kmOf(a) - kmOf(b)), [all]);
   const listV = useProgressiveAuto(list, 50);
-  const groups = mGroup(listV, (x) => x.date.slice(0, 7));
+  const groups = flat ? [["", listV]] : mGroup(listV, (x) => x.date.slice(0, 7));
   const sumMonth = (m) => {
     const inM = all.filter((x) => x.date.startsWith(m)), before = allSorted.filter((x) => x.date < m + "-01" && kmOf(x));
     const kmEnd = Math.max(0, ...inM.map(kmOf)), kmStart = before.length ? Math.max(...before.map(kmOf)) : Math.min(...inM.map(kmOf).filter(Boolean));
@@ -13236,13 +13427,13 @@ function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, previ
     return { cost, km, l: wavg(cm), e: wavg(ce), every };
   };
   if (!list.length) return null;
-  return (<div className="fbtl">{groups.map(([m, l]) => { const sm = sumMonth(m); return (<React.Fragment key={m}>
-    <div className="fbtlm"><span className="fbtlmark" aria-hidden="true" />
+  return (<div className="fbtl">{groups.map(([m, l]) => { const sm = m ? sumMonth(m) : null; return (<React.Fragment key={m || "flat"}>
+    {m && <div className="fbtlm"><span className="fbtlmark" aria-hidden="true" />
       <div className="fbmcard">
         <b className="fbmtitle">{new Date(m + "-15").toLocaleDateString("de-AT", { month: "long", year: "numeric" })}</b>
         <div className="fbmline">{[sm.cost ? fmtMoney(sm.cost) : null, sm.km ? kmFmt(sm.km) : null, sm.l != null ? `${sm.l.toFixed(2).replace(".", ",")} l/100 km` : null, sm.e != null ? `${sm.e.toFixed(1).replace(".", ",")} kWh/100 km` : null].filter(Boolean).join(" · ") || "keine Kosten"}</div>
         {sm.every && <div className="fbmnote"><span className="muted">Zeit zwischen Tankvorgängen:</span> alle {sm.every[0]} Tage{sm.every[1] ? `, etwa ${kmFmt(sm.every[1])}` : ""}</div>}
-      </div></div>
+      </div></div>}
     {l.map((x) => { const el = x.type === "fuel" && isElec(x.fuel);
       const ik = x.type === "fuel" ? (el ? "elec" : "fuel") : x.type === "trip" ? "trip" : FB_EXP.some((c) => c[0] === x.cat) ? "x:" + x.cat : "exp";
       const col = ics[ik]?.color || (ik.startsWith("x:") && !ics[ik]?.color && ics.exp?.color) || fbSlot(ik)[3], icon = <FbIco k={ik} />;
@@ -13686,7 +13877,9 @@ function ArticlesPage({ setTab }) {
   const [list, setList] = useLsState("articles", []);
   const invoices = ls.get("invoices", []);
   const C = artCfg();
-  const [edit, setEdit] = useState(null), [q, setQ] = useState(""), [grp, setGrp] = useState("alle"), [sort, setSort] = useState("name");
+  const [edit, setEdit] = useState(null), [q, setQ] = useState(""), [grp, setGrp] = useState("alle");
+  const [sort, setSort, sortDir] = useSortState("artikel", "name");
+  const ART_SORTS = { name: ["Name", "A–Z", (x, y) => (x.a.text || "").localeCompare(y.a.text || "", "de")], neu: [SORT_NEW[0], SORT_NEW[1], (x, y) => addedOf(y.a) - addedOf(x.a)], preis: ["Preis", "höchster zuerst", (x, y) => (Number(y.a.price) || 0) - (Number(x.a.price) || 0)], umsatz: ["Umsatz", "meist verrechnet zuerst", (x, y) => y.u.sum - x.u.sum] };
   const [scan, setScan] = useState(false);
   const nextNo = () => C.prefix + String(list.reduce((m, a) => Math.max(m, String(a.number || "").startsWith(C.prefix) ? parseInt(a.number.slice(C.prefix.length), 10) || 0 : 0), 0) + 1).padStart(3, "0");
   const usage = (a) => { let n = 0, sum = 0; for (const i of invoices) if (i.kind === "rechnung" && !["entwurf", "storniert"].includes(i.status)) for (const it of i.items || []) if (it.text === a.text) { n++; sum += (Number(it.qty) || 0) * (Number(it.price) || 0); } return { n, sum }; };
@@ -13697,7 +13890,7 @@ function ArticlesPage({ setTab }) {
   const shown = list.filter((a) => grp === "alle" || (grp === "ohne" ? !a.group : a.group === grp))
     .filter((a) => !q || norm(`${a.text} ${a.number} ${a.group} ${a.note} ${a.ean}`).includes(norm(q)))
     .map((a) => ({ a, u: usage(a) }))
-    .sort((x, y) => (sort === "umsatz" ? y.u.sum - x.u.sum : sort === "preis" ? (Number(y.a.price) || 0) - (Number(x.a.price) || 0) : (x.a.text || "").localeCompare(y.a.text || "", "de")));
+    .sort((x, y) => sortDir * (ART_SORTS[sort] || ART_SORTS.name)[2](x, y));
   return (
     <div className="ctpage">
       {mob ? (
@@ -13705,12 +13898,10 @@ function ArticlesPage({ setTab }) {
         <MActs items={[{ label: "＋ Artikel", primary: true, run: () => setEdit({ id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: grp !== "alle" && grp !== "ohne" ? grp : "" }) }, { label: "📷 Scannen", run: () => setScan(true) }]} />
         <MBar q={q} setQ={setQ} placeholder="Bezeichnung, Nummer, Gruppe suchen"
           chips={[["alle", "Alle", list.length], ...groups.map((g) => [g, g, list.filter((a) => a.group === g).length]), ["ohne", "Ohne Gruppe", list.filter((a) => !a.group).length]]
-            .filter(([k, , n]) => k === "alle" || n || C.groups.includes(k)).map(([k, l, n]) => [k, l, n, grp === k, () => setGrp(k)])}>
-          <PSelect className="chip" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">↕ Name</option><option value="preis">↕ Preis</option><option value="umsatz">↕ Umsatz</option></PSelect>
-        </MBar>
+            .filter(([k, , n]) => k === "alle" || n || C.groups.includes(k)).map(([k, l, n]) => [k, l, n, grp === k, () => setGrp(k)])} lk={{ sortBy: sort, setSortBy: setSort, dir: sortDir, sorts: ART_SORTS }} />
         <MScroll>
           {!shown.length && <MEmpty>{list.length ? "Keine Treffer." : "Noch keine Artikel – mit „＋ Artikel“ anlegen."}</MEmpty>}
-          {(grp === "alle" && sort === "name" ? mGroup([...shown].sort((x, y) => (x.a.group || "~").localeCompare(y.a.group || "~", "de") || (x.a.text || "").localeCompare(y.a.text || "", "de")), ({ a }) => a.group || "Ohne Gruppe") : [["", shown]]).map(([g, l]) => (
+          {(grp === "alle" && sort === "name" && sortDir === 1 ? mGroup([...shown].sort((x, y) => (x.a.group || "~").localeCompare(y.a.group || "~", "de") || (x.a.text || "").localeCompare(y.a.text || "", "de")), ({ a }) => a.group || "Ohne Gruppe") : [["", shown]]).map(([g, l]) => (
             <React.Fragment key={g || "all"}>
               {g && <MHead right={l.length}>{g}</MHead>}
               {l.map(({ a, u }) => (
@@ -13727,7 +13918,7 @@ function ArticlesPage({ setTab }) {
       ) : (<>
       <ListBar q={q} setQ={setQ} placeholder="Bezeichnung, Nummer, Gruppe suchen" id="artikel" hits={shown.length}
         tabs={[["alle", "Alle", list.length], ...groups.map((g) => [g, g, list.filter((a) => a.group === g).length]), ["ohne", "Ohne Gruppe", list.filter((a) => !a.group).length]].filter(([k, , n]) => k === "alle" || n || C.groups.includes(k))} tab={grp} setTab={setGrp}
-        lk={{ sortBy: sort, setSortBy: setSort, sorts: { name: ["Name", "A–Z"], preis: ["Preis", "höchster zuerst"], umsatz: ["Umsatz", "meist verrechnet zuerst"] } }}
+        lk={{ sortBy: sort, setSortBy: setSort, dir: sortDir, sorts: ART_SORTS }}
         actions={[{ k: "new", icon: "＋", title: "Neuer Artikel", run: () => setEdit({ id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: grp !== "alle" && grp !== "ohne" ? grp : "" }) }, { k: "scan", icon: "📷", title: "Artikel scannen", run: () => setScan(true) },
           setTab && { k: "lager", icon: "📋", title: "Lager & Inventur", run: () => setTab("inventur") }, setTab && { k: "set", icon: "⚙︎", title: "Artikel-Einstellungen", run: () => { ls.set("openSettingsSec", "artikel"); setTab("settings"); } },
           { head: "Export" }, ...exp2pick([{ head: `${shown.length} Artikel (aktueller Filter)` },
@@ -13885,13 +14076,15 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
   const [filter, setFilter] = useState("alle"), [q, setQ] = useState("");
   const [mode, setMode] = useLsState("astView", "list");
   const [edit, setEdit] = useState(null), [syncOpen, setSyncOpen] = useState(false);
+  const [astSort, setAstSort, astDir] = useSortState("besitz", "ablauf");
+  const AST_SORTS = { ablauf: ["Garantie-Ende", "läuft zuerst ab", (x, y) => (astEndAll(x) || "9999").localeCompare(astEndAll(y) || "9999") || (x.name || "").localeCompare(y.name || "", "de")], datum: ["Kaufdatum", "neueste zuerst", (x, y) => (y.date || "").localeCompare(x.date || "")], neu: SORT_NEW, preis: ["Preis", "höchster zuerst", (x, y) => (Number(y.price) || 0) - (Number(x.price) || 0)], name: ["Name", "A–Z", (x, y) => (x.name || "").localeCompare(y.name || "", "de")] };
   useEffect(() => { const id = ls.get("assetOpenReq", null); if (!id) return; ls.set("assetOpenReq", null); const x = list.find((y) => y.id === id); if (x) setEdit(x); }, []);
   const save = (a) => setList((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
   const inScope = list.filter((a) => scope === "alle" || (a.scope || "privat") === scope);
   const byState = (st) => inScope.filter((a) => astState(a) === st);
   const shown = inScope.filter((a) => (filter === "alle" ? !astOut(a) : filter === "aus" ? astOut(a) : astState(a) === filter))
     .filter((a) => !q || norm(`${a.name} ${a.brand} ${a.serial} ${a.dealer} ${a.cat} ${a.note}`).includes(norm(q)))
-    .sort((x, y) => (astEndAll(x) || "9999").localeCompare(astEndAll(y) || "9999") || (x.name || "").localeCompare(y.name || "", "de"));
+    .sort((x, y) => astDir * (AST_SORTS[astSort] || AST_SORTS.ablauf)[2](x, y));
   const shownV = useProgressiveAuto(shown);
   const value = inScope.filter((a) => !astOut(a)).reduce((s, a) => s + (Number(a.price) || 0), 0);
   const dlDocsA = useMemo(() => assetDlDocs(inScope), [inScope]);
@@ -13930,7 +14123,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
         {scopeSeg}
         <MStats items={stats.slice(0, 4)} />
         <MActs items={[{ label: "＋ Gerät", primary: true, run: newAsset }, { label: "📷 Beleg scannen", run: () => { newAsset(); setTimeout(() => document.querySelector(".win .expbig, .sheet .expbig")?.click(), 60); } }, { label: mode === "cal" ? "☰ Liste" : "📅 Kalender", run: () => setMode(mode === "cal" ? "list" : "cal") }]} />
-        <MBar q={q} setQ={setQ} placeholder="Gerät, Marke, Seriennummer suchen" chips={chips.filter(([k, , n]) => n || k === "alle").map(([k, l, n]) => [k, l, n, filter === k, () => setFilter(k)])}><ExportMenu items={exportItems} /></MBar>
+        <MBar q={q} setQ={setQ} placeholder="Gerät, Marke, Seriennummer suchen" lk={{ sortBy: astSort, setSortBy: setAstSort, dir: astDir, sorts: AST_SORTS }} chips={chips.filter(([k, , n]) => n || k === "alle").map(([k, l, n]) => [k, l, n, filter === k, () => setFilter(k)])}><ExportMenu items={exportItems} /></MBar>
         {mode === "cal" ? cal : (
           <MScroll>
             {!shown.length && empty}
@@ -13955,7 +14148,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
         <ExportMenu items={exportItems} />
       </div>
       {mode === "cal" ? cal : (<>
-        <ListBar q={q} setQ={setQ} placeholder="Gerät, Marke, Seriennummer, Händler suchen" id="besitz" hits={shown.length}
+        <ListBar q={q} setQ={setQ} placeholder="Gerät, Marke, Seriennummer, Händler suchen" id="besitz" hits={shown.length} lk={{ sortBy: astSort, setSortBy: setAstSort, dir: astDir, sorts: AST_SORTS }}
           tabs={chips.filter(([k, , n]) => n || k === "alle").map(([k, l, n]) => [k, l, n])} tab={filter} setTab={setFilter} />
         <FitScroll card cols={["Gerät", "Marke · Kauf · Garantie", "Kaufpreis"]}>
           <section className="tile ctlist">
@@ -14146,7 +14339,62 @@ function KassaDetailWin({ e, kasse, saldo, entries, docs, onOpen, onStorno, onCl
   );
 }
 
+/* v0.99.54: Ansichten (Monate · Sortierung · Abos) in Einstellungen → Design */
+function OptPicker({ opts, value, onPick, pv }) {
+  return <div className="optpick">{opts.map(([k, t, sub]) => <button key={k} type="button" className={"optcard" + (value === k ? " on" : "")} aria-pressed={value === k} onClick={() => onPick(k)}>
+    <span className="optpv" aria-hidden="true">{pv(k)}</span><b>{t}</b><small className="muted">{sub}</small></button>)}</div>;
+}
+const OPD = (c) => <i className={"opd " + c} />;
+const PV_MON = { karten: <span className="pvg2">{[0, 1, 2, 3].map((i) => <span key={i} className="pvbox">{OPD(i ? "ok" : "w")}<i className="pvl" /></span>)}</span>,
+  liste: <span className="pvcol">{["w", "ok", "b"].map((c, i) => <span key={i} className="pvrow">▸ {OPD(c)}<i className="pvl" /></span>)}</span>,
+  matrix: <span className="pvmx">{[0, 1, 2].map((r) => <span key={r} className="pvrow"><i className="pvl s" />{["ok", r === 1 ? "w" : "ok", "ok", r === 2 ? "b" : "ok"].map((c, i) => <span key={i}>{OPD(c)}</span>)}</span>)}</span>,
+  zeit: <span className="pvtl">{["w", "ok", "b"].map((c, i) => <span key={i} className="pvrow">{OPD(c)}<i className="pvl" /></span>)}</span>,
+  jahr: <span className="pvg6">{"ok ok ok ok ok w ok b ok w w e".split(" ").map((c, i) => <span key={i}>{OPD(c)}</span>)}</span>,
+  fokus: <span className="pvcol"><span className="pvrow">{OPD("w")}<i className="pvl" /></span><span className="pvrow dash">{OPD("ok")}<i className="pvl s" /></span></span> };
+const PV_SORT = { dropdown: <span className="pvcol"><span className="pvbtn">↕ Datum ▾</span></span>, segment: <span className="pvseg"><span className="on">Datum</span><span>Neu</span><span>€</span></span>,
+  spalte: <span className="pvhead"><span className="on">Datum ▼</span><span>Name</span><span>€</span></span> };
+const PV_ABO = { pill: <span className="pvrow"><i className="pvl" /><span className="pvpill">Bestätigt</span>✓✕</span>, haken: <span className="pvrow"><i className="pvl" /><span className="abock ok">✓</span></span>,
+  hakendd: <span className="pvrow"><i className="pvl" /><span className="pvbtn ok">✓ ▾</span></span>, dropdown: <span className="pvrow"><i className="pvl" /><span className="pvpill">Bestätigt ▾</span></span>,
+  punkt: <span className="pvrow"><span className="pvic"><i className="abodot ok" /></span><i className="pvl" /></span> };
+function ViewSettings() {
+  const [mv, setMv] = useLsState("stbMonView", "karten"), [ss, setSs] = useLsState("sortStyle", "dropdown"), [ab, setAb] = useLsState("aboStyle", "pill");
+  return (<>
+    <h4 className="subhead">Ansichten</h4>
+    <p className="muted small">Wie Listen und Übersichten aufgebaut sind – gilt für die ganze App und lässt sich jederzeit ändern.</p>
+    <div className="optsec"><b>Steuerberater → Monate</b><small className="muted block">Auch direkt im Reiter über „▦ Ansicht“ umschaltbar.</small><OptPicker opts={MON_VIEWS} value={mv} onPick={setMv} pv={(k) => PV_MON[k]} /></div>
+    <div className="optsec"><b>Sortierung in Listen</b><small className="muted block">Datum, zuletzt hinzugefügt, Betrag … – nochmal tippen dreht die Reihenfolge um. Jeder Reiter merkt sich seine Sortierung.</small><OptPicker opts={SORT_STYLES} value={ss} onPick={setSs} pv={(k) => PV_SORT[k]} /></div>
+    <div className="optsec"><b>Fixkosten & Abos – Status</b><small className="muted block">Anzeige für „Bestätigt“, „Prüfen“ und „Beendet“ bei erkannten Abos.</small><OptPicker opts={ABO_STYLES} value={ab} onPick={setAb} pv={(k) => PV_ABO[k]} /></div>
+  </>);
+}
+/* v0.99.53: Kassabuch – Beleg je Buchung (Ansehen · Drucken · Teilen · ⋯ bzw. Hinzufügen · Scannen) */
+const IcoClip = () => <Ico d={<path d="M21.4 11.6 12.5 20.5a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.7 1.7 0 0 1-2.4-2.4l8.3-8.3" />} />;
+const IcoCam = () => <Ico d={<><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13" r="3.5" /></>} />;
+function KbActs({ e, d, onOpen, onAttach, onScan, onPickDoc, onDetach }) {
+  const st = (f) => (ev) => { ev.stopPropagation(); f(); };
+  return (<span className="kbacts dactions" onClick={(ev) => ev.stopPropagation()}>
+    {d ? <>
+      <button title="Beleg ansehen" aria-label="Beleg ansehen" onClick={st(() => onOpen(d.id))}><IcoEye /></button>
+      <button className="kbx" title="Beleg drucken" aria-label="Drucken" onClick={st(() => printDoc(d))}><IcoPrint /></button>
+      <button className="kbx" title="Beleg teilen" aria-label="Teilen" onClick={st(() => shareDocs([d]))}><IcoShare /></button>
+      <MoreMenu items={[{ icon: "📎", title: "Beleg ersetzen", sub: "Datei wählen", run: onAttach }, { icon: "📷", title: "Beleg scannen", run: onScan }, { icon: "🗂", title: "Anderes Dokument wählen", run: onPickDoc }, { icon: "✕", title: "Beleg lösen", run: onDetach }]} />
+    </> : e.stornoOf ? null : <>
+      <button title="Beleg hinzufügen (Datei)" aria-label="Beleg hinzufügen" onClick={st(onAttach)}><IcoClip /></button>
+      <button className="kbx" title="Beleg scannen" aria-label="Beleg scannen" onClick={st(onScan)}><IcoCam /></button>
+      <MoreMenu items={[{ icon: "🗂", title: "Vorhandenes Dokument wählen", run: onPickDoc }]} />
+    </>}
+  </span>);
+}
+function DocPickWin({ docs, title = "Dokument wählen", onPick, onClose }) {
+  const [q, setQ] = useState("");
+  const l = docs.filter((d) => !d.deletedAt && (!q.trim() || norm(`${d.title} ${d.sender || ""} ${d.category || ""}`).includes(norm(q)))).sort((a, b) => (b.documentDate || b.createdAt || "").localeCompare(a.documentDate || a.createdAt || "")).slice(0, 40);
+  return createPortal(<Win id="docpick" onClose={onClose} small defW={540} dirty={false} stay>
+    <div className="panelhead"><b>{title}</b><XBtn /></div>
+    <input className="sbsearch" autoFocus value={q} placeholder="Dokumente durchsuchen …" onChange={(e) => setQ(e.target.value)} />
+    <div className="sblist">{l.map((d) => <button key={d.id} type="button" className="sbrow" onClick={() => onPick(d)}><Thumb d={d} /><span className="grow"><b className="one">{d.title}</b><small className="muted block one">{[d.documentDate && fmtDate(d.documentDate), d.sender, d.amount?.total != null && fmtMoney(d.amount.total)].filter(Boolean).join(" · ")}</small></span></button>)}</div>
+  </Win>, document.querySelector(".app") || document.body);
+}
 function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
+  const kbFile = useRef(null), [kbFor, setKbFor] = useState(null), [kbPick, setKbPick] = useState(null);
   const mob = useMobileBeta();
   const { kassen, setKassen, entries, setEntries, counts, setCounts } = useKassa();
   const [sel, setSel] = useLsState("kassaSel", "k1");
@@ -14155,13 +14403,24 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
   const [form, setForm] = useState(null), [countOpen, setCountOpen] = useState(false), [det, setDet] = useState(null), [showCounts, setShowCounts] = useState(false), [setup, setSetup] = useState(false);
   const mine = entries.filter((e) => e.kasse === kasse.id);
   const { saldo, bal } = kbRun(entries, kasse);
+  const kbSetDoc = (e, id) => { setEntries((l) => l.map((x) => (x.id === e.id ? { ...x, docId: id || null } : x))); notify?.(id ? `Beleg bei ${kbNo(e)} hinterlegt` : `Beleg bei ${kbNo(e)} gelöst`); };
+  const kbAttach = async (e, file, o) => { const id = await onUpload?.(file, o); if (id) kbSetDoc(e, id); };
+  const kbActs = (e) => <KbActs e={e} d={e.docId && docs.find((d) => d.id === e.docId)} onOpen={(id) => onOpen?.(id)} onAttach={() => { setKbFor(e); kbFile.current?.click(); }}
+    onScan={() => onScan?.((file, o) => kbAttach(e, file, { ...(o || {}), scanned: true }))} onPickDoc={() => setKbPick(e)} onDetach={() => confirm(`Beleg von ${kbNo(e)} lösen? Das Dokument bleibt in „Dokumente“.`) && kbSetDoc(e, null)} />;
+  const kbModals = (<>
+    <input ref={kbFile} type="file" accept="image/*,application/pdf" hidden onChange={(ev) => { const f = ev.target.files[0]; ev.target.value = ""; if (f && kbFor) kbAttach(kbFor, f); }} />
+    {kbPick && <DocPickWin docs={docs} title={`Beleg für ${kbNo(kbPick)} wählen`} onClose={() => setKbPick(null)} onPick={(d) => { kbSetDoc(kbPick, d.id); setKbPick(null); }} />}
+  </>);
   const kCounts = counts.filter((c) => c.kasse === kasse.id).sort((a, b) => (b.created || "").localeCompare(a.created || ""));
   const lastCount = kCounts[0];
   const months = [...new Set([todayISO().slice(0, 7), ...mine.map((e) => e.date.slice(0, 7))])].sort().reverse();
   const years = [...new Set(months.map((m) => m.slice(0, 4)))];
   const inPer = (e) => per === "alle" || e.date.startsWith(per);
   const perEntries = mine.filter(inPer).sort(kbSort);
-  const shown = perEntries.filter((e) => !q || norm(`${e.text} ${e.cat} ${e.beleg} ${kbNo(e)} ${e.amount}`).includes(norm(q)));
+  const [kbS, setKbS, kbDir] = useSortState("kassa", "datum");
+  const KB_SORTS = { datum: ["Datum", "Kassabuch-Reihenfolge", kbSort], neu: SORT_NEW, betrag: ["Betrag", "höchster zuerst", (a, b) => b.amount - a.amount], text: ["Text", "A–Z", (a, b) => (a.text || "").localeCompare(b.text || "", "de")] };
+  const shown = sortList(perEntries.filter((e) => !q || norm(`${e.text} ${e.cat} ${e.beleg} ${kbNo(e)} ${e.amount}`).includes(norm(q))), KB_SORTS, kbS, kbDir);
+  const kbLk = { sortBy: kbS, setSortBy: setKbS, dir: kbDir, sorts: KB_SORTS };
   const sumIn = kbR2(perEntries.filter((e) => e.kind === "ein").reduce((s, e) => s + e.amount, 0)), sumOut = kbR2(perEntries.filter((e) => e.kind === "aus").reduce((s, e) => s + e.amount, 0));
   const first = per === "alle" ? "" : per.length === 4 ? per + "-01-01" : per + "-01";
   const opening = first ? kbBalAt(entries, kasse, first, true) : Number(kasse.start) || 0;
@@ -14217,7 +14476,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
         <span className="invacts kbacts"><button className="iconbtn" title="Protokoll anzeigen" aria-label="Protokoll anzeigen" onClick={() => countShow(c)}><IcoEye /></button><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => countPrint(c)}><IcoPrint /></button></span></div>)}
     </section>
   );
-  const modals = (<>
+  const modals = (<>{kbModals}
     {form && <KassaEntryWin init={form} kasse={kasse} entries={entries} lastCount={lastCount} docs={docs} onUpload={onUpload} onScan={onScan} onOpen={onOpen} notify={notify} onSave={(n) => { setEntries((l) => [...l, n]); notify?.(`Gebucht: ${kbNo(n)}`); }} onClose={() => setForm(null)} />}
     {countOpen && <KassaCountWin kasse={kasse} entries={entries} onSave={saveCount} onClose={() => setCountOpen(false)} />}
     {det && <KassaDetailWin e={entries.find((x) => x.id === det) || {}} kasse={kasse} saldo={saldo[det]} entries={entries} docs={docs} onOpen={onOpen} onStorno={doStorno} onClose={() => setDet(null)} />}
@@ -14230,19 +14489,19 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
       <div className="mpage">
         <MStats items={stats} />
         <MActs items={[{ label: "＋ Einnahme", primary: true, run: () => newEntry("ein") }, { label: "− Ausgabe", run: () => newEntry("aus") }, { label: "🧮 Kassensturz", run: () => setCountOpen(true) }]} />
-        <MBar q={q} setQ={setQ} placeholder="Text, Kategorie, Beleg suchen">
+        <MBar q={q} setQ={setQ} placeholder="Text, Kategorie, Beleg suchen" lk={kbLk}>
         </MBar>
         <div className="mchips">{kassaSel}{perSel}<ExportMenu items={exportItems} /><button className="chip" onClick={() => setSetup(true)}>⚙︎</button><button className={"chip" + (showCounts ? " on" : "")} onClick={() => setShowCounts(!showCounts)}>Protokolle</button></div>
         {showCounts && countsList}
         <MScroll>
           {!shown.length && <MEmpty>{mine.length ? "Keine Buchungen in diesem Zeitraum." : "Noch keine Buchungen – mit „＋ Einnahme“ oder „− Ausgabe“ beginnen."}</MEmpty>}
-          {mGroup([...shown].reverse(), (e) => e.date).map(([d, l]) => (
+          {mGroup(kbS === "datum" && kbDir === 1 ? [...shown].reverse() : shown, (e) => e.date).map(([d, l]) => (
             <React.Fragment key={d}>
               <MHead right={"Saldo " + fmtMoney(saldo[l[0].id])}>{fmtDate(d)}</MHead>
               {l.map((e) => <MItem key={e.id} dim={!!(e.stornoBy || e.stornoOf)} icon={<MIco e={e.kind === "ein" ? "💶" : "🧾"} />} title={e.text}
                 tags={[e.stornoBy && "storniert", e.stornoOf && "Storno", !e.docId && !e.beleg && e.eigen && "Eigenbeleg"]}
                 sub={`${kbNo(e)} · ${e.cat}${e.docId ? " · 📎" : ""}`} amount={(e.kind === "ein" ? "+" : "−") + fmtMoney(e.amount)} amountCls={e.kind === "ein" ? "pos" : "neg"}
-                onClick={() => setDet(e.id)} swipe={!e.stornoBy && !e.stornoOf ? { right: [{ icon: "↩︎", label: "Storno", bg: "#ef4444", run: () => doStorno(e) }] } : undefined} />)}
+                onClick={() => setDet(e.id)} swipe={{ left: e.stornoOf ? [] : e.docId ? [{ icon: <IcoEye />, label: "Beleg", bg: "#3b82f6", run: () => onOpen?.(e.docId) }] : [{ icon: "📎", label: "Beleg", bg: "#3b82f6", run: () => { setKbFor(e); kbFile.current?.click(); } }, { icon: "📷", label: "Scannen", bg: "#8b5cf6", run: () => onScan?.((file, o) => kbAttach(e, file, { ...(o || {}), scanned: true })) }], right: !e.stornoBy && !e.stornoOf ? [{ icon: "↩︎", label: "Storno", bg: "#ef4444", run: () => doStorno(e) }] : [] }} />)}
             </React.Fragment>
           ))}
         </MScroll>
@@ -14260,12 +14519,12 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
         <button className={"chip" + (showCounts ? " on" : "")} onClick={() => setShowCounts(!showCounts)}>Protokolle ({kCounts.length})</button>
         <button className="chip" title="Kassen verwalten" onClick={() => setSetup(true)}>⚙︎</button>
       </div>
-      <ListBar q={q} setQ={setQ} placeholder="Text, Kategorie, Beleg, Nummer suchen" id="kassa" hits={shown.length} />
+      <ListBar q={q} setQ={setQ} placeholder="Text, Kategorie, Beleg, Nummer suchen" id="kassa" hits={shown.length} lk={kbLk} />
       {showCounts && countsList}
       <FitScroll card>
       <section className="tile kbtable">
-        <div className="kbr kbh"><span>Nr.</span><span>Datum</span><span>Text</span><span>Kategorie</span><span className="r">Einnahme</span><span className="r">Ausgabe</span><span className="r">Saldo</span></div>
-        {per !== "alle" && <div className="kbr kbopen"><span /><span>{fmtDate(first)}</span><span>Anfangsbestand</span><span /><span /><span /><span className="r">{fmtMoney(opening)}</span></div>}
+        <div className="kbr kbh"><span>Nr.</span><span>Datum</span><span>Text</span><span>Kategorie</span><span className="r">Einnahme</span><span className="r">Ausgabe</span><span className="r">Saldo</span><span className="kbacth">Beleg</span></div>
+        {per !== "alle" && <div className="kbr kbopen"><span /><span>{fmtDate(first)}</span><span>Anfangsbestand</span><span /><span /><span /><span className="r">{fmtMoney(opening)}</span><span /></div>}
         {!shown.length && <p className="muted small" style={{ padding: 12 }}>{mine.length ? "Keine Buchungen in diesem Zeitraum." : "Noch keine Buchungen. Jede Bareinnahme und -ausgabe einzeln mit Beleg erfassen."}</p>}
         {shown.map((e) => (
           <div key={e.id} className={"kbr click" + rowCls(e)} onClick={() => setDet(e.id)}>
@@ -14273,9 +14532,10 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
             <span className="one kbctext"><b>{e.text}</b>{e.docId && " 📎"}{e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}<small className="muted kbsub one">{e.cat}</small></span>
             <span className="muted one kbccat">{e.cat}</span>
             <span className="r pos">{e.kind === "ein" ? fmtMoney(e.amount) : ""}</span><span className="r neg">{e.kind === "aus" ? fmtMoney(e.amount) : ""}</span><span className="r"><b>{fmtMoney(saldo[e.id])}</b></span>
+            {kbActs(e)}
           </div>
         ))}
-        {!!shown.length && <div className="kbr kbh kbfoot"><span /><span /><span>Summe {perLabel}</span><span /><span className="r pos">{fmtMoney(sumIn)}</span><span className="r neg">{fmtMoney(sumOut)}</span><span className="r">{fmtMoney(kbR2(opening + sumIn - sumOut))}</span></div>}
+        {!!shown.length && <div className="kbr kbh kbfoot"><span /><span /><span>Summe {perLabel}</span><span /><span className="r pos">{fmtMoney(sumIn)}</span><span className="r neg">{fmtMoney(sumOut)}</span><span className="r">{fmtMoney(kbR2(opening + sumIn - sumOut))}</span><span /></div>}
       </section>
       <p className="muted small fsnote">🔒 Unveränderbare Einzelaufzeichnung mit fortlaufender Nummer je Jahr, Storno statt Löschen, Kassenminus wird verhindert. Ersetzt keine Registrierkasse (RKSV).</p>
       </FitScroll>
@@ -14504,6 +14764,9 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
   const stockArts = arts.filter((a) => a.stock && !a.inactive);
   const allMoves = useMemo(() => [...moves, ...stockSales(arts, invoices)], [moves, arts]);
   const st = (a) => stockAt(a, allMoves);
+  const [ivS, setIvS, ivDir] = useSortState("inventur", "name");
+  const INV_SORTS2 = { name: ["Name", "A–Z", (x, y) => (x.text || "").localeCompare(y.text || "", "de")], neu: SORT_NEW, bestand: ["Bestand", "niedrigster zuerst", (x, y) => st(x) - st(y)], wert: ["Lagerwert", "höchster zuerst", (x, y) => st(y) * (Number(y.ek) || 0) - st(x) * (Number(x.ek) || 0)] };
+  const ivLk = ["bewegungen", "inventur"].includes(view) ? null : { sortBy: ivS, setSortBy: setIvS, dir: ivDir, sorts: INV_SORTS2 };
   const locs = [...new Set(stockArts.map((a) => a.loc).filter(Boolean))].sort();
   const low = stockArts.filter((a) => a.min !== "" && a.min != null && st(a) <= Number(a.min));
   const value = kbR2(stockArts.reduce((s, a) => s + Math.max(0, st(a)) * (Number(a.ek) || 0), 0));
@@ -14580,10 +14843,10 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
         {closed ? <span className="invacts kbacts" onClick={(e) => e.stopPropagation()}><button className="iconbtn" title="Bericht anzeigen" aria-label="Bericht anzeigen" onClick={() => invShow(c)}><IcoEye /></button><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => invPrint(c)}><IcoPrint /></button><button className="iconbtn" title="PDF herunterladen" aria-label="PDF herunterladen" onClick={() => invPdf(c)}><IcoPdf /></button><button className="iconbtn" title="Excel herunterladen" aria-label="Excel herunterladen" onClick={() => invXlsx(c)}><IcoXls /></button></span>
           : <><span className="stpill st-open">offen</span><span className="invacts kbacts" onClick={(e) => e.stopPropagation()}><button className="iconbtn" title="Zählliste drucken" aria-label="Zählliste drucken" onClick={() => listPdf(c)}><IcoPrint /></button></span></>}
       </div>); })}
-  </>) : (() => { const l = filt(view === "nachbestellen" ? low : stockArts).sort((x, y) => (x.text || "").localeCompare(y.text || "", "de"));
+  </>) : (() => { const l = sortList(filt(view === "nachbestellen" ? low : stockArts), INV_SORTS2, ivS, ivDir);
     if (!stockArts.length) return <MEmpty>Noch keine Lagerartikel. Öffne einen Artikel und aktiviere „Lagerartikel“ – oder lege direkt einen neuen an.</MEmpty>;
     if (!l.length) return <MEmpty>{view === "nachbestellen" ? "Alles ausreichend auf Lager 👍" : "Keine Treffer."}</MEmpty>;
-    return mob && loc === "alle" ? mGroup([...l].sort((x, y) => (x.loc || "~").localeCompare(y.loc || "~", "de")), (a) => a.loc || "Ohne Lagerort").map(([g, x]) => <React.Fragment key={g}><MHead right={x.length}>{g}</MHead>{x.map(artRow)}</React.Fragment>) : l.map(artRow); })();
+    return mob && loc === "alle" && ivS === "name" && ivDir === 1 ? mGroup([...l].sort((x, y) => (x.loc || "~").localeCompare(y.loc || "~", "de")), (a) => a.loc || "Ohne Lagerort").map(([g, x]) => <React.Fragment key={g}><MHead right={x.length}>{g}</MHead>{x.map(artRow)}</React.Fragment>) : l.map(artRow); })();
   const newArt = () => setEdit({ id: uid(), text: "", unit: "Stk", price: "", number: "", group: "", stock: true, autoSales: true, initQty: "" });
   const scanHit = (code) => { setScan(false); const a = arts.find((x) => x.ean === code); if (a?.stock) setMv({ a }); else if (a) setEdit({ ...a, stock: true }); else setEdit({ id: uid(), text: "", unit: "Stk", price: "", number: "", group: "", ean: code, stock: true, autoSales: true, initQty: "", autoLookup: true }); };
   const locChips = locs.length ? [["alle", "Alle Orte"], ...locs.map((l) => [l, l]), ["ohne", "Ohne Ort"]] : [];
@@ -14594,7 +14857,7 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
       <div className="mpage">
         <MStats items={stats} />
         <MActs items={[{ label: "📷 Scannen", primary: true, run: () => setScan(true) }, onUpload && { label: "🧾 Beleg (KI)", run: () => setRcpt(true) }, { label: "＋ Lagerartikel", run: newArt }, { label: "📋 Inventur", run: () => setView("inventur") }]} />
-        <MBar q={q} setQ={setQ} placeholder="Artikel, Nummer, Lagerort suchen">{null}</MBar>
+        <MBar q={q} setQ={setQ} placeholder="Artikel, Nummer, Lagerort suchen" lk={ivLk}>{null}</MBar>
         <div className="mchips">{viewChips}<ExportMenu items={exportItems} /></div>
         {!!locChips.length && (view === "bestand" || view === "nachbestellen") && <div className="mchips">{locChips.map(([k, l]) => <button key={k} className={"chip" + (loc === k ? " on" : "")} onClick={() => setLoc(k)}>{l}</button>)}</div>}
         <MScroll>{body}</MScroll>
@@ -14610,7 +14873,7 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
         <ExportMenu items={exportItems} />
         {setTab && <button className="chip" onClick={() => setTab("artikel")}>📦 Artikel</button>}
       </div>
-      <ListBar q={q} setQ={setQ} placeholder="Artikel, Nummer, Lagerort, Lieferant suchen" id="inventur" tabs={VIEWS.map(([k, l, n]) => [k, l, n || null])} tab={view} setTab={setView}
+      <ListBar q={q} setQ={setQ} placeholder="Artikel, Nummer, Lagerort, Lieferant suchen" id="inventur" lk={ivLk} tabs={VIEWS.map(([k, l, n]) => [k, l, n || null])} tab={view} setTab={setView}
         tokens={[loc !== "alle" && [loc === "ohne" ? "📍 ohne Ort" : "📍 " + loc, () => setLoc("alle")]]} smart={locs.map((l) => ({ label: "📍 " + l, kind: "Lagerort", words: [l.toLowerCase()], run: () => setLoc(l) }))}
         sheet={!!locChips.length && <><h4 className="lbh">Lagerort</h4><div className="lbchips">{locChips.map(([k, l]) => <button key={k} className={"chip" + (loc === k ? " on" : "")} onClick={() => setLoc(k)}>{l}</button>)}</div></>} />
       <FitScroll card cols={view === "inventur" ? ["Inventur", "Stichtag · Umfang", "Status"] : view === "bewegungen" ? ["Artikel", "Datum · Art", "Menge"] : ["Artikel", "Lagerort · Lieferant", "Bestand"]}><section className="tile ctlist">{body}</section></FitScroll>
@@ -16539,7 +16802,7 @@ html,body{min-height:100%}
 .kbbeleg{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;display:flex;flex-direction:column;gap:6px}
 .kbbelegrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .kbtable{padding:0;overflow:hidden}
-.kbr{display:grid;grid-template-columns:86px 92px minmax(0,2.4fr) minmax(0,1.3fr) 110px 110px 120px;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);font-size:14px}
+.kbr{display:grid;grid-template-columns:86px 92px minmax(0,2.4fr) minmax(0,1.3fr) 110px 110px 120px auto;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);font-size:14px}
 .kbr .r{text-align:right;font-variant-numeric:tabular-nums}.kbr .stpill{margin-left:8px;min-width:0}
 .kbh{font-size:12px;font-weight:700;color:var(--mut);position:sticky;top:0;background:var(--card);z-index:2}
 .kbfoot{position:static;border-top:2px solid var(--line);border-bottom:0;font-size:14px;color:inherit}
@@ -16600,14 +16863,14 @@ html,body{min-height:100%}
 .kbcnt{margin-left:3px;font-weight:400}
 .kbr>span{min-width:0}
 @container (max-width:860px){
-  .kbr{grid-template-columns:96px minmax(0,1fr) 92px 92px 100px;gap:8px;padding:9px 12px}
+  .kbr{grid-template-columns:96px minmax(0,1fr) 92px 92px 100px auto;gap:8px;padding:9px 12px}
   .kbr>.kbcno,.kbr>.kbccat,.kbh>span:nth-child(1),.kbh>span:nth-child(4),.kbopen>span:nth-child(1),.kbopen>span:nth-child(4),.kbfoot>span:nth-child(1),.kbfoot>span:nth-child(4){display:none}
   .kbr .kbsub{display:block;font-size:11px;font-weight:400;line-height:1.3}
   .kbr .kbctext{display:flex;flex-direction:column;white-space:normal}
   .kbr .kbctext>b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .kbr .kbctext .stpill{align-self:flex-start;margin:2px 0 0}
 }
-@container (max-width:520px){ .kbr{grid-template-columns:82px minmax(0,1fr) 80px 80px 88px;font-size:13px;gap:6px;padding:8px 10px} }
+@container (max-width:520px){ .kbr{grid-template-columns:82px minmax(0,1fr) 80px 80px 88px auto;font-size:13px;gap:6px;padding:8px 10px} }
 
 /* v0.68 Listen als abgerundete Karte mit innerer Scroll-Liste (wie Konten) */
 .fitscroll.fscard{background:var(--card);border-radius:26px;box-shadow:var(--shadow);margin:0!important;padding:0!important;gap:0!important;overflow:hidden;isolation:isolate}
@@ -16642,16 +16905,16 @@ html:not(.fg) .fitscroll.fscard{border-radius:18px}
   .kbfoot>span{font-size:20px!important;font-weight:600!important}
   .kbr .stpill{font-size:12px}
   .kbr .kbsub{font-size:15px;margin-top:2px}
-  @container (min-width:1001px){ .kbr{grid-template-columns:112px 116px minmax(0,2fr) minmax(0,1fr) 124px 124px 134px} }
+  @container (min-width:1001px){ .kbr{grid-template-columns:112px 116px minmax(0,2fr) minmax(0,1fr) 124px 124px 134px auto} }
   @container (max-width:1000px){
-    .kbr{grid-template-columns:124px minmax(0,1fr) 120px 120px 132px}
+    .kbr{grid-template-columns:124px minmax(0,1fr) 120px 120px 132px auto}
     .kbr>.kbcno,.kbr>.kbccat,.kbh>span:nth-child(1),.kbh>span:nth-child(4),.kbopen>span:nth-child(1),.kbopen>span:nth-child(4),.kbfoot>span:nth-child(1),.kbfoot>span:nth-child(4){display:none}
     .kbr .kbsub{display:block;font-weight:400;line-height:1.3}
     .kbr .kbctext{display:flex;flex-direction:column;white-space:normal}
     .kbr .kbctext>b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   }
   @container (max-width:640px){
-    .kbr{grid-template-columns:88px minmax(0,1fr) 74px 74px 86px;gap:8px;padding:12px 12px;font-size:15px}
+    .kbr{grid-template-columns:88px minmax(0,1fr) 74px 74px 86px auto;gap:8px;padding:12px 12px;font-size:15px}
     .kbr>.kbcdate,.kbopen>span{font-size:15px}
     .kbr>.r,.kbr .kbctext>b,.kbr>.r>b,.kbfoot>span{font-size:16px!important}
     .kbr .kbsub{font-size:13px}
@@ -17487,6 +17750,53 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .dupbar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;background:color-mix(in srgb,#f5a524 14%,var(--card2));margin:6px 0 10px;font-size:14px}.dupbar.on{outline:1.5px solid #f5a524}
 .dupbox{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,#f5a524 14%,var(--card2));margin:8px 0;font-size:14px}.dupbox .row{gap:14px}
 .dupdoc{display:flex;gap:10px;align-items:center;padding:10px;border-radius:12px;background:var(--card2);margin:6px 0 10px}.dupacts{flex-wrap:wrap}
+.flatacc{margin:10px 0 14px}.flataccpv{font-weight:500}
+.dlvamt{display:flex;justify-content:space-between;align-items:baseline;padding:10px 12px;border-radius:12px;background:var(--card2);margin:6px 0}.dlvamt b{font-size:20px}
+.kbacts{display:flex;gap:2px;justify-content:flex-end;align-items:center}.kbacts button{width:30px;height:30px}.kbacth{text-align:right}
+@container (max-width:900px){.kbacts .kbx{display:none}}
+.stbmh.click{cursor:pointer;user-select:none}.stbchev{width:14px;color:var(--mut);font-size:12px}.stbmonth.shut{padding-bottom:12px}.seg.sm{margin:0}.seg.sm button{padding:4px 8px;font-size:12px}
+/* v0.99.54 Ansichten */
+.optsec{margin:10px 0 16px}.optpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:8px}
+.optcard{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:inherit;cursor:pointer;font:inherit}
+.optcard.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}.optcard small{font-size:11px;line-height:1.3}
+.optpv{display:flex;align-items:center;justify-content:center;width:100%;height:58px;border-radius:8px;background:var(--bg);margin-bottom:4px;overflow:hidden;font-size:10px;color:var(--mut)}
+.opd{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none}.opd.ok{background:#22c55e}.opd.w{background:#f59e0b}.opd.b{background:#ef4444}.opd.e{background:#94a3b8}
+.pvl{display:inline-block;height:5px;border-radius:3px;background:var(--line);flex:1;min-width:24px}.pvl.s{flex:0 0 18px;min-width:18px}
+.pvcol,.pvtl,.pvmx{display:flex;flex-direction:column;gap:5px;width:80%}.pvrow{display:flex;align-items:center;gap:5px;width:100%}.pvrow.dash{border:1px dashed var(--line);border-radius:5px;padding:2px 4px}
+.pvtl{border-left:2px solid var(--line);padding-left:6px}.pvg2{display:grid;grid-template-columns:1fr 1fr;gap:4px;width:80%}.pvbox{display:flex;gap:4px;align-items:center;padding:4px;border-radius:5px;background:var(--card2)}
+.pvg6{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;width:80%}.pvg6 span{display:flex;justify-content:center;padding:4px 0;border-radius:4px;background:var(--card2)}
+.pvbtn{padding:3px 8px;border-radius:7px;background:var(--card2);font-size:11px}.pvbtn.ok{color:#22c55e}.pvseg,.pvhead{display:flex;gap:2px;font-size:10px}.pvseg span{padding:3px 6px;border-radius:6px;background:var(--card2)}.pvseg .on,.pvhead .on{color:var(--acc);font-weight:600}
+.pvhead{border-bottom:1px solid var(--line);padding-bottom:3px;gap:10px}.pvpill{padding:2px 6px;border-radius:8px;background:rgba(34,197,94,.15);color:#22c55e;font-size:10px}.pvic{position:relative;width:18px;height:18px;border-radius:5px;background:var(--card2);flex:none}
+/* Sortierung */
+.sortseg{flex-wrap:nowrap;overflow-x:auto;max-width:100%}.sortseg button{white-space:nowrap}
+.sorthead{display:flex;align-items:center;width:100%}.sortheadcols{display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--line);width:100%;padding-bottom:2px}
+.sortheadcols button{background:none;border:0;color:var(--mut);font:inherit;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;padding:6px 10px;border-radius:8px;cursor:pointer}
+.sortheadcols button.on{color:var(--acc)}.sortheadcols button i{font-style:normal;margin-left:4px;opacity:.7}.sortheaddd{display:none}
+@media (max-width:700px){.sortheadcols{display:none}.sortheaddd{display:inline-flex}}
+.lbsortrow{display:flex;padding:6px 0 2px}.expsearch{gap:8px;align-items:center;flex-wrap:wrap}.expsearch>.sorthead{flex-basis:100%}.mtxsort{display:flex;padding:4px 0}.fbsort{display:flex;justify-content:flex-end;margin-bottom:6px}.fbsort .sorthead{justify-content:flex-start}
+/* Abos */
+.abock{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;border:0;cursor:pointer;flex:none;background:var(--card2);color:var(--mut)}
+.abock.ok{background:rgba(34,197,94,.16);color:#22c55e}.abock.chk{background:transparent;border:1.5px dashed var(--mut)}.abock.end,.abock.inaktiv{opacity:.7}.abock.in{width:22px;height:22px;font-size:12px;pointer-events:none}
+.abodd{display:inline-flex;align-items:center;gap:2px;padding:2px 6px 2px 3px;border-radius:16px;border:0;background:var(--card2);color:inherit;cursor:pointer}.abodd.ok{background:rgba(34,197,94,.12)}.abodd .caret{font-size:10px;opacity:.7}
+.abosel{border:0;cursor:pointer}.abosel .caret{font-size:9px;margin-left:2px}
+.abodotwrap{position:relative;display:inline-flex;flex:none}.abodot{position:absolute;right:-3px;bottom:-3px;width:12px;height:12px;border-radius:50%;border:2px solid var(--card);background:#94a3b8}
+.abodot.ok{background:#22c55e}.abodot.chk{background:#f59e0b}.abodot.over{background:#ef4444}
+/* Monatsansichten */
+.stbmlist{padding:4px 0}.stbmrow{border-bottom:1px solid var(--line)}.stbmrow:last-child{border-bottom:0}
+.stbmrh{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer}.stbmrh .stbpill,.stbmrh .stpill{flex:none}.stbmrb{padding:0 14px 12px}
+.stbtrack.mini{flex:0 0 90px;height:5px}.stbmrf{white-space:nowrap}
+.stbmrh b{white-space:nowrap}
+@media (max-width:700px){.stbmrf{display:none}.stbtrack.mini{flex-basis:44px}.stbmrh{padding:10px}.stbmx th,.stbmx td{padding:5px 3px}.stbmx table{font-size:13px}}
+.stbmx{overflow-x:auto;padding:4px}.stbmx table{width:100%;border-collapse:collapse;font-size:14px}.stbmx th{font-size:12px;color:var(--mut);font-weight:600;text-align:center;padding:8px 6px;white-space:nowrap}.stbmx th:first-child{text-align:left}
+.stbmx td{text-align:center;padding:6px;border-top:1px solid var(--line)}.stbmx td:first-child{text-align:left;white-space:nowrap}.stbmx tr.on td{background:var(--card2)}
+.stbmxc{display:inline-flex;align-items:center;gap:3px;background:none;border:0;font:inherit;color:inherit;padding:4px 6px;border-radius:8px}button.stbmxc{cursor:pointer}button.stbmxc:hover{background:var(--card2)}.stbmxc small{font-size:11px;color:var(--mut)}
+.stbtl{padding:14px 14px 6px 26px;position:relative}.stbtl::before{content:"";position:absolute;left:19px;top:16px;bottom:16px;width:2px;background:var(--line)}
+.stbtli{position:relative;padding:0 0 14px 12px}.stbtli>.stbdot{position:absolute;left:-11px;top:5px;box-shadow:0 0 0 3px var(--card)}.stbtlh{cursor:pointer}.stbtliss{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:3px}.stbtlb{margin-top:8px}
+.stbyear{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:12px}@container (max-width:520px){.stbyear{grid-template-columns:repeat(4,1fr)}}
+.stbyt{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:inherit;font:inherit;cursor:pointer}.stbyt.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}.stbyt small{color:var(--mut);font-size:11px}
+.stbmwrap>.stbmonth,.stbmwrap>.tile{margin-bottom:12px}
+.stbfrest{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;border-radius:14px;border:1px dashed var(--line);background:none;color:var(--mut);font:inherit;cursor:pointer;grid-column:1/-1}
+.stbfocus .stbmlist{grid-column:1/-1}
 .stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
 .stbmacts{justify-content:space-between;margin-top:4px}
 .stbstmts{display:flex;flex-direction:column;gap:10px}

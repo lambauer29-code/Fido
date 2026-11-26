@@ -2,6 +2,20 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.54 – Ansichten wählbar: Monate, Sortierung, Abo-Status
+- Einstellungen → Design → „Ansichten“: drei Auswahlen mit Vorschau
+- Steuerberater → Monate: Karten, Liste, Tabelle (Monate × Prüfpunkte), Zeitleiste, Jahres-Kacheln, Nur Offene – auch direkt im Reiter über „▦“ umschaltbar
+- Sortierung in allen Listen-Reitern (Dokumente, Journal, Konten, Ausgabe, Rechnungen, Mahnungen, Kunden, Artikel, Lager, Kassabuch, Fahrtenbuch, Verträge, Fixkosten, Besitz) inkl. „Zuletzt hinzugefügt“; nochmal tippen dreht die Reihenfolge um; jeder Reiter merkt sich seine Sortierung
+- Sortier-Darstellung: Dropdown-Button, Segment-Schalter oder Spaltenkopf (am Handy Dropdown)
+- Fixkosten & Abos: Status als Status + ✓ ✕ (bisher), nur grüner Haken, Haken + Auswahl, Status-Auswahl oder Punkt am Symbol
+
+## v0.99.53 – Monate, Kassabuch-Belege, Fristen-Popups, Akzentfarben
+- Steuerberater → Monate: Monate ein-/ausklappbar (merkt sich den Zustand), „Alle aufklappen/zuklappen“
+- Offene Punkte eines Monats öffnen ein Popup mit den Objekten (Buchungen ohne Beleg mit „Beleg zuordnen“, Firma/Privat-Auswahl, Rechnungen als PDF, Kassabuch-Belege, offene Fragen)
+- Kassabuch: neue Spalte „Beleg“ – mit Beleg: Ansehen · Drucken · Teilen · ⋯ (ersetzen, scannen, anderes Dokument, lösen); ohne Beleg: 📎 Hinzufügen · 📷 Scannen · ⋯ vorhandenes Dokument; am Handy per Wischen
+- Fristen: Verträge, Besitz/Garantien, Rechnungen, Steuer/SVS, Monatsabschluss und Aufbewahrung öffnen als Popup statt den Reiter zu wechseln
+- Design: Markierungsfarbe für Graphit, Sand, Nacht, Schiefer, Salbei und Papier wählbar (z. B. Gold)
+
 ## v0.99.52 – Flache Stile näher an der Vorlage
 
 - Systemschrift (San Francisco) jetzt auch für Buttons, Navigation und Eingabefelder – vorher setzte der Handy-Look dort noch Outfit durch. Eine selbst gewählte Schrift hat weiterhin Vorrang.
