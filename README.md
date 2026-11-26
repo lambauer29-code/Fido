@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.52 – Flache Stile näher an der Vorlage
+
+- Systemschrift (San Francisco) jetzt auch für Buttons, Navigation und Eingabefelder – vorher setzte der Handy-Look dort noch Outfit durch. Eine selbst gewählte Schrift hat weiterhin Vorrang.
+- Ruhigere Größen am Computer: Grundschrift 15 px, Kachel-Titel 19 px, Seitentitel 30 px, Kennzahlen 26 px mit grauer Beschriftung, Zeilen 15 px mit kleiner grauer Erklärung, Zusatzinfo im Kachelkopf grau statt farbig, mehr Innenabstand.
+
 ## v0.99.51 – Flache Designs Schiefer, Salbei, Papier
 
 - Drei weitere flache Stile unter Einstellungen › Design: „Schiefer“ (kühles Blaugrau, Indigo), „Salbei“ (gedämpftes Grün), „Papier“ (reines Schwarz-Weiß) – jeweils hell und dunkel.
