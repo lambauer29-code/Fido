@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.84 – Spalten zentriert, Breite natürlich ziehen
+- Kontobuchungen: alle Überschriften und Spalten (Datum, Kategorie, Konto, Betrag) zentriert
+- Spalten rechts von „Empfänger“ haben den Ziehgriff am linken Rand – nach links ziehen macht sie breiter (vorher gegenläufig)
+
 ## v0.99.83 – Spalten in den Konten verschiebbar
 - Kontobuchungen (Tabelle am Desktop/iPad quer): Spaltenbreite am rechten Rand der Überschrift ziehen (Doppelklick = Standardbreite)
 - Reihenfolge ändern: Überschrift (Datum, Empfänger, Kategorie, Konto, Betrag) an eine andere Stelle ziehen

@@ -6716,7 +6716,8 @@ const txColTpl = (c, withAcc) => txColKeys(c, withAcc).map((k) => (k === "desc" 
 function TxHead({ cfg, setCfg, withAcc }) {
   const keys = txColKeys(cfg, withAcc), ref = useRef(null), [drag, setDrag] = useState(null);
   const changed = JSON.stringify(cfg) !== JSON.stringify(txColNorm(TX_COL_DEF));
-  const startResize = (e, k) => { e.preventDefault(); e.stopPropagation(); const x0 = e.clientX, w0 = cfg.w[k], dir = k === "amt" ? 1 : 1;
+  const leftOf = (k) => keys.indexOf(k) > keys.indexOf("desc");   // rechts von „Empfänger“: Griff am linken Rand, Ziehen nach links macht breiter
+  const startResize = (e, k) => { e.preventDefault(); e.stopPropagation(); const x0 = e.clientX, w0 = cfg.w[k], dir = leftOf(k) ? -1 : 1;
     const mv = (ev) => setCfg({ ...cfg, w: { ...cfg.w, [k]: Math.max(56, Math.min(520, w0 + (ev.clientX - x0) * dir)) } });
     const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); document.documentElement.classList.remove("colresizing"); };
     document.documentElement.classList.add("colresizing"); addEventListener("pointermove", mv); addEventListener("pointerup", up); };
@@ -6728,9 +6729,9 @@ function TxHead({ cfg, setCfg, withAcc }) {
       const o = cfg.order.filter((x) => x !== k); let i = o.indexOf(over) + (right ? 1 : 0); o.splice(i, 0, k); setCfg({ ...cfg, order: o }); };
     addEventListener("pointermove", mv); addEventListener("pointerup", up); };
   return (<div className="txhead" ref={ref}>
-    {keys.map((k) => <span key={k} data-col={k} className={"txcolh c-" + k + (k === "amt" ? " r" : "") + (drag?.k === k ? " dragging" : "") + (drag && drag.over === k && drag.k !== k ? " over-" + drag.side : "")}
+    {keys.map((k) => <span key={k} data-col={k} className={"txcolh c-" + k + (drag?.k === k ? " dragging" : "") + (drag && drag.over === k && drag.k !== k ? " over-" + drag.side : "")}
       onPointerDown={(e) => startMove(e, k)} title="Ziehen zum Verschieben · Rand ziehen für die Breite">{TX_COL_LBL[k]}
-      {k !== "desc" && <i className="colgrip" onPointerDown={(e) => startResize(e, k)} onDoubleClick={(e) => { e.stopPropagation(); setCfg({ ...cfg, w: { ...cfg.w, [k]: TX_COL_DEF.w[k] } }); }} title="Breite ändern (Doppelklick = Standard)" />}</span>)}
+      {k !== "desc" && <i className={"colgrip" + (leftOf(k) ? " lft" : "")} onPointerDown={(e) => startResize(e, k)} onDoubleClick={(e) => { e.stopPropagation(); setCfg({ ...cfg, w: { ...cfg.w, [k]: TX_COL_DEF.w[k] } }); }} title="Breite ändern (Doppelklick = Standard)" />}</span>)}
     <span className="txcolreset">{changed && <button type="button" className="link small" onClick={() => setCfg(TX_COL_DEF)} title="Spaltenbreite und Reihenfolge zurücksetzen">↺ Spalten</button>}</span>
   </div>);
 }
@@ -18764,9 +18765,10 @@ html.sty-graphit.sty-graphit nav.bottom>button.on,html.sty-sand.sty-sand nav.bot
 .ctlogoprev.has{background:repeating-conic-gradient(#8883 0 25%,transparent 0 50%) 50%/12px 12px;padding:0}
 #ctrypick .sblist,.ctrypick .sblist{display:flex;flex-direction:column;gap:2px}.sbrow.ctryrow{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:10px;background:transparent;font-size:15px;text-align:left;color:var(--txt);border:0!important;box-shadow:none}.sbrow.ctryrow:hover{background:color-mix(in srgb,var(--txt) 7%,transparent)}.ctrybar>.seg.ctrymode{flex:none;width:auto;display:inline-flex}.stbku .row{gap:8px;flex-wrap:wrap}
 .txtable.txcustom .txhead,.txtable.txcustom .txrow,.txtable.txcustom.withacc .txhead,.txtable.txcustom.withacc .txrow{grid-template-columns:var(--txcols)}
-.txcolh{position:relative;cursor:grab;user-select:none;-webkit-user-select:none;align-self:stretch;display:flex;align-items:center}.txcolh.r{justify-content:flex-end}.txcolh.dragging{opacity:.45;cursor:grabbing}
+.txcolh{position:relative;cursor:grab;user-select:none;-webkit-user-select:none;align-self:stretch;display:flex;align-items:center;justify-content:center;text-align:center}
+.txtable.txcustom .txrow>.c-date,.txtable.txcustom .txrow>.c-cat,.txtable.txcustom .txrow>.c-acc,.txtable.txcustom .txrow>.c-amt{text-align:center;justify-self:stretch}.txcolh.dragging{opacity:.45;cursor:grabbing}
 .txcolh.over-l{box-shadow:inset 3px 0 0 var(--acc)}.txcolh.over-r{box-shadow:inset -3px 0 0 var(--acc)}
-.colgrip{position:absolute;top:8px;bottom:8px;right:-9px;width:10px;cursor:col-resize;z-index:2;display:flex;justify-content:center}.colgrip::after{content:"";width:2px;border-radius:2px;background:var(--line)}.txcolh:hover .colgrip::after,.colgrip:hover::after{background:var(--acc)}
+.colgrip.lft{right:auto;left:-9px}.colgrip{position:absolute;top:8px;bottom:8px;right:-9px;width:10px;cursor:col-resize;z-index:2;display:flex;justify-content:center}.colgrip::after{content:"";width:2px;border-radius:2px;background:var(--line)}.txcolh:hover .colgrip::after,.colgrip:hover::after{background:var(--acc)}
 html.colresizing,html.colresizing *{cursor:col-resize!important;user-select:none!important}.txcolreset{display:flex;justify-content:flex-end;align-items:center}
 .amtgrid{align-items:end}.amtgrid>label{display:flex;flex-direction:column;justify-content:flex-end;min-width:0;white-space:nowrap}.amtgrid>label>input{width:100%}
 .fxrow{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:12px;background:color-mix(in srgb,var(--acc) 5%,transparent)}.fxrow .fxinfo{font-size:13.5px}.fxins{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.fxins label{flex:1 1 140px;margin:0;font-size:12.5px}.fxins .btn{flex:none}
