@@ -2,6 +2,18 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.51 – Flache Designs Schiefer, Salbei, Papier
+
+- Drei weitere flache Stile unter Einstellungen › Design: „Schiefer“ (kühles Blaugrau, Indigo), „Salbei“ (gedämpftes Grün), „Papier“ (reines Schwarz-Weiß) – jeweils hell und dunkel.
+- Flache Stile verwenden ihre eigene Akzentfarbe; eine selbst gewählte Akzentfarbe hat weiterhin Vorrang.
+- Papier dunkel: Häkchen und Markierungen bleiben auf weißem Akzent lesbar.
+
+## v0.99.50 – Flache Designs Graphit, Sand, Nacht
+
+- Neue Stile unter Einstellungen › Design: „Graphit“ (neutral, Akzent Blau), „Sand“ (warm, Ton-Orange, Titel mit Serifen), „Nacht“ (fast schwarz, Petrol) – jeweils hell und dunkel.
+- Flach in der ganzen App: keine Schatten/Verläufe, feine Haarlinien, Kacheln mit getönten Kennzahl-Feldern, Hauptbutton in Textfarbe, übrige Buttons mit Umrisslinie, getönte Chips/Pills, ruhige Eingabefelder, Menüs und Fenster; Systemschrift mit zwei Strichstärken.
+- Akzentfarbe bleibt über die Farbvorlagen bzw. eigene Farbe änderbar.
+
 ## v0.99.49 – Duplikaterkennung
 
 - Gleiche Datei: Beim Hochladen wird ein Fingerabdruck (SHA-256) verglichen – sofort und vor der KI. Nachfragen (Überspringen / Vorhandenes ansehen / Trotzdem ablegen, „für alle weiteren übernehmen“), automatisch überspringen oder immer ablegen – in den Einstellungen wählbar. Beim Beleg-Zuordnen wird ein vorhandener Beleg direkt verknüpft.
