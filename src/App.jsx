@@ -17975,7 +17975,7 @@ html.ics-b.ics-b .caticon.caticon.caticon:not(.logo):not(.avatar):not(.own),html
 html.ics-c.ics-c .caticon.caticon.caticon:not(.logo):not(.avatar):not(.own),html.ics-c.ics-c .fbtldot.fbtldot.fbtldot:not(.own){background:color-mix(in srgb,var(--c) 15%,transparent)!important;border-radius:28%!important;border:0!important;box-shadow:none!important}
 html.ics-d.ics-d .caticon.caticon.caticon:not(.logo):not(.avatar):not(.own),html.ics-d.ics-d .fbtldot.fbtldot.fbtldot:not(.own){background:transparent!important;color:var(--c)!important;border:0!important;box-shadow:none!important}
 html.ics-d.ics-d .caticon.caticon.caticon .gll,html.ics-d.ics-d .fbtldot.fbtldot.fbtldot .gll{width:80%;height:80%}
-html[class*="ics-"][class*="ics-"] .caticon.caticon.caticon.own,html[class*="ics-"][class*="ics-"] .fbtldot.fbtldot.fbtldot.own{overflow:hidden;border-radius:50%!important;padding:0!important}html.ics-c.ics-c .caticon.caticon.caticon.own{border-radius:28%!important}
+html[class*="ics-"][class*="ics-"] .caticon.caticon.caticon.own,html[class*="ics-"][class*="ics-"] .fbtldot.fbtldot.fbtldot.own{overflow:hidden;border-radius:50%!important;padding:0!important}html.ics-c.ics-c .caticon.caticon.caticon.own,html.ics-c.ics-c .fbtldot.fbtldot.fbtldot.own{border-radius:28%!important}html[class*="ics-"][class*="ics-"] .fbtldot.fbtldot.fbtldot.own{background:#fff!important}
 .caticon.own img,.fbtldot.own img{width:100%!important;height:100%!important;object-fit:cover;display:block;border-radius:inherit}
 html[class*="ics-"][class*="ics-"] .fbtl::before{left:calc(4px + var(--icsz,32px) / 2 - 1px)}
 .accitem .ki .gll,.ki .gll{width:1.05em;height:1.05em}
