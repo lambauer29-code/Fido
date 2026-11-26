@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.57 – Kontoauszug: PDF und Liste gekoppelt
+- Ansicht „Beides“: Scrollt man links im PDF, läuft die Buchungsliste rechts mit (und umgekehrt) – die gleiche Buchung steht auf beiden Seiten auf gleicher Höhe, am Ende sind beide Seiten ganz unten
+- Maus über bzw. Antippen einer markierten PDF-Zeile holt die Buchung rechts ins Bild
+- Schalter „🔗 Gekoppelt / Entkoppelt“ in der Leiste (wird gemerkt)
+
 ## v0.99.56 – Kassabuch: Beleg-Spalte wählbar + neue Beleg-Optionen
 - Einstellungen → Design → Ansichten → „Kassabuch – Beleg-Spalte“: Icons, ein Knopf „Beleg ▾“ oder Status + Auge
 - Neues Beleg-Menü: Datei hochladen, Kamera live (Webcam, iPhone als Continuity-Kamera, Handy-Kamera – danach Ecken anpassen), passende Belege vorschlagen (gleicher Betrag, Datum ±7 Tage), aus Dokumenten wählen, aus Zwischenablage einfügen (⌘V), Eigenbeleg als PDF erstellen, Belegnummer/Ablageort eintragen

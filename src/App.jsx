@@ -8203,10 +8203,32 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
     finally { setBusy(false); }
   }
   const showPdf = view !== "liste", showList = view !== "pdf";
+  // v0.99.57: PDF und Liste gekoppelt scrollen + Liste folgt der Markierung im PDF (Schalter „Gekoppelt“)
+  const [linkOn, setLinkOn] = useLsState("stmtLink", true), listRef = useRef(null), syncLock = useRef({ src: null, t: 0 });
+  const twoPane = showPdf && showList && !mob;
+  const anchors = () => { const pane = paneRef.current, lst = listRef.current; if (!pane || !lst) return null;
+    const pr = pane.getBoundingClientRect(), lr = lst.getBoundingClientRect(), a = [];
+    for (const r of rows) { if (!r.box) continue; const b = document.getElementById(`stmtbox-${doc.id}-${r.i}`), w = document.getElementById(`stmtrow-${doc.id}-${r.i}`); if (!b || !w) continue;
+      a.push([b.getBoundingClientRect().top - pr.top + pane.scrollTop, w.getBoundingClientRect().top - lr.top + lst.scrollTop]); }
+    return a.sort((x, y) => x[0] - y[0]); };
+  const mapPos = (a, v, from) => { const to = 1 - from; if (!a.length) return null; if (v <= a[0][from]) return Math.max(0, a[0][to] - (a[0][from] - v) * (a[0][to] / Math.max(1, a[0][from])));
+    for (let k = 0; k < a.length - 1; k++) if (v < a[k + 1][from]) { const f = (v - a[k][from]) / Math.max(1, a[k + 1][from] - a[k][from]); return a[k][to] + f * (a[k + 1][to] - a[k][to]); }
+    return a[a.length - 1][to] + (v - a[a.length - 1][from]); };
+  const syncFrom = (src) => { if (!linkOn || !twoPane) return; const L = syncLock.current, now = performance.now(); if (L.src && L.src !== src && now - L.t < 150) return;
+    const pane = paneRef.current, lst = listRef.current, a = anchors(); if (!a?.length) return;
+    const fromEl = src === "pdf" ? pane : lst, toEl = src === "pdf" ? lst : pane;
+    // Bezugslinie wandert mit dem Fortschritt von oben (0 %) nach unten (100 %) – so erreichen beide Seiten gemeinsam Anfang und Ende
+    const prog = Math.min(1, Math.max(0, fromEl.scrollTop / Math.max(1, fromEl.scrollHeight - fromEl.clientHeight)));
+    const v = mapPos(a, fromEl.scrollTop + 8 + prog * (fromEl.clientHeight - 16), src === "pdf" ? 0 : 1); if (v == null) return;
+    syncLock.current = { src, t: now }; toEl.scrollTop = Math.max(0, v - 8 - prog * (toEl.clientHeight - 16)); };
+  const followHi = (r) => { if (!linkOn || !twoPane) return; const w = document.getElementById(`stmtrow-${doc.id}-${r.i}`), lst = listRef.current; if (!w || !lst) return;
+    const wr = w.getBoundingClientRect(), lr = lst.getBoundingClientRect(); if (wr.top >= lr.top && wr.bottom <= lr.bottom) return;
+    syncLock.current = { src: "pdf", t: performance.now() + 400 }; lst.scrollTo({ top: lst.scrollTop + wr.top - lr.top - (lr.height - wr.height) / 2, behavior: "smooth" }); };
+
   const list = (
-    <div className="stmtlist">
+    <div className="stmtlist" ref={listRef} onScroll={() => syncFrom("list")}>
       {rows.map((r) => (
-        <div key={r.i} className={"stmtrow sc-" + r.scope + (hi === r.i ? " hi" : "") + (dropRow === r.i ? " sbdrop" : "")} onMouseEnter={() => setHi(r.i)} onMouseLeave={() => setHi(null)}
+        <div key={r.i} id={`stmtrow-${doc.id}-${r.i}`} className={"stmtrow sc-" + r.scope + (hi === r.i ? " hi" : "") + (dropRow === r.i ? " sbdrop" : "")} onMouseEnter={() => setHi(r.i)} onMouseLeave={() => setHi(null)}
           onDragOver={(e) => { if (!r.t || !e.dataTransfer?.types?.includes("Files")) return; e.preventDefault(); setDropRow(r.i); }} onDragLeave={() => setDropRow((x) => (x === r.i ? null : x))}
           onDrop={(e) => { if (!r.t) return; e.preventDefault(); setDropRow(null); const f = [...(e.dataTransfer?.files || [])].find((x) => isDocFile(x)); if (f) { belegUi?.upload(r.t.id, f); notify?.("Beleg wird hochgeladen und zugeordnet …"); } }}
           onClick={() => { setHi(r.i); if (r.box && showPdf) document.getElementById(`stmtbox-${doc.id}-${r.i}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); }}>
@@ -8249,6 +8271,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
         {noTx > 0 && <span className="stpill st-draft">{noTx} ohne Buchung</span>}
         <span className="grow" />
         <div className="seg">{[["pdf", "PDF"], ["beides", "Beides"], ["liste", "Liste"]].filter(([k]) => !mob || k !== "beides").map(([k, l]) => <button key={k} className={(mob && view === "beides" ? k === "liste" : view === k) ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div>
+        {twoPane && <button type="button" className={"btn sm stmtlink" + (linkOn ? " on" : "")} aria-pressed={linkOn} title={linkOn ? "PDF und Liste scrollen gemeinsam – tippen zum Entkoppeln" : "PDF und Liste gemeinsam scrollen"} onClick={() => setLinkOn(!linkOn)}>🔗 {linkOn ? "Gekoppelt" : "Entkoppelt"}</button>}
         <button className="btn sm" disabled={busy} onClick={reAi}>{busy ? "…" : "✨ KI neu prüfen"}</button>
         {zui !== "schwebend" && showPdf && !(mob && view === "beides") && zctl("inbar")}
         {canHover && <button type="button" className={"btn sm lupetog" + (lupeOn && showPdf ? " on" : "")} aria-pressed={lupeOn} disabled={!showPdf} title={!showPdf ? "Lupe nur in der Ansicht PDF oder Beides" : lupeOn ? "Lupe ausschalten" : "Lupe einschalten"} onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍 Lupe {lupeOn ? "ein" : "aus"}</button>}
@@ -8259,7 +8282,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
       <div className={"stmtbody" + (showPdf && showList && !mob ? " two" : "")}>
         {showPdf && !(mob && view === "beides") && (
           <div className="stmtpdfwrap">
-          <div className={"stmtpdf" + (zoom > 1 ? " zoomed" : "")} ref={paneRef} onMouseLeave={() => setLens(null)}>
+          <div className={"stmtpdf" + (zoom > 1 ? " zoomed" : "")} ref={paneRef} onMouseLeave={() => setLens(null)} onScroll={() => syncFrom("pdf")}>
             <div className="stmtzoomin" style={{ width: zoom * 100 + "%" }}>
             {!pages && <div className="dpload">Auszug wird geladen …</div>}
             {pages?.map((src, p) => (
@@ -8268,7 +8291,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
                 {rows.filter((r) => r.box?.p === p).map((r) => (
                   <button key={r.i} id={`stmtbox-${doc.id}-${r.i}`} className={"stmtbox sc-" + r.scope + (hi === r.i ? " hi" : "")} title={`${r.cp} ${fmtMoney(r.amount)} – ${r.label} (antippen zum Wechseln)`}
                     style={{ top: r.box.t * 100 + "%", height: (r.box.b - r.box.t) * 100 + "%", left: r.box.l * 100 + "%", width: (r.box.r - r.box.l) * 100 + "%" }}
-                    onMouseEnter={() => setHi(r.i)} onMouseLeave={() => setHi(null)} onClick={() => cycle(r)} />
+                    onMouseEnter={() => { setHi(r.i); followHi(r); }} onMouseLeave={() => setHi(null)} onClick={() => { cycle(r); followHi(r); }} />
                 ))}
               </div>
             ))}
@@ -17912,6 +17935,7 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 @media (max-width:700px){.stmtseg button span{display:none}.stmtseg button{padding:5px 9px}.stmtrow{padding:9px 10px}}
 .stmtwin .panelhead b{flex:1;min-width:0}
 .stmtbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+.stmtlink.on{background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc)}
 .stmtbody{display:block}.stmtbody.two{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start}
 .stmtbody.two .stmtlist{max-height:calc(100vh - 230px);overflow:auto}
 .stmtpdf{max-height:calc(100vh - 230px);overflow:auto;overscroll-behavior:contain}
