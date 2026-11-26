@@ -1,6 +1,6 @@
 [package]
 name = "findocu"
-version = "0.99.47"
+version = "0.99.48"
 description = "FinDocu – Finanzen & Dokumente"
 authors = ["Roli"]
 license = ""

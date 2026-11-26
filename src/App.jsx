@@ -414,7 +414,7 @@ const ls = {
 if (typeof document !== "undefined" && ls.get("tabbarIcons", false)) document.documentElement.classList.add("tbicons");
 const IS_TABLET = typeof navigator !== "undefined" && (/iPad/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
   || (/Android/.test(navigator.userAgent) && !/Mobile/.test(navigator.userAgent)) || (typeof matchMedia !== "undefined" && matchMedia("(pointer:coarse)").matches && Math.min(screen.width, screen.height) >= 600));
-const BACKUP_SKIP = /^(dev:|appToken|appLock|srch:|pending|openSettingsSec|win:|scanFilter)/;
+const BACKUP_SKIP = /^(dev:|appToken|appLock|rtPw|srch:|pending|openSettingsSec|win:|scanFilter)/;
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -1824,10 +1824,10 @@ function AppMain() {
     (async () => {
       const all = await db.allDocs();
       const cutoff = Date.now() - TRASH_DAYS * 864e5;
-      const old = all.filter((d) => d.deletedAt && new Date(d.deletedAt).getTime() < cutoff);
+      const old = all.filter((d) => d.deletedAt && new Date(d.deletedAt).getTime() < cutoff && !((rtDocEnd(d) || "") >= todayISO()));
       for (const d of old) { await db.delDoc(d.id); await db.delFile(d.id); }
       if (old.length) setTimeout(() => unlinkDocRefsRef.current?.(old.map((d) => d.id)), 3000);
-      const kept = all.filter((d) => !(d.deletedAt && new Date(d.deletedAt).getTime() < cutoff))
+      const kept = all.filter((d) => !old.includes(d))
         .map((x) => (x.status === "processing" ? { ...x, status: "error", error: "Abgebrochen" } : x));
       setDocs(kept);
       // Vorschaubilder für ältere Dokumente nachziehen
@@ -2033,7 +2033,7 @@ function AppMain() {
     async unlink(txId, removeCreated) {
       const t = txsRef.current.find((x) => x.id === txId); if (!t) return;
       const belegDoc = t.docId && docsRef.current.find((d) => d.id === t.docId && d.invoiceId);
-      if (removeCreated && t.manual && t.invoiceId) await deleteTx(t); else await updateTx({ ...t, invoiceId: undefined, ...(belegDoc ? { docId: undefined } : {}) });
+      if (removeCreated && t.manual && t.invoiceId) await deleteTx(t, { force: true }); else await updateTx({ ...t, invoiceId: undefined, ...(belegDoc ? { docId: undefined } : {}) });
     },
   };
   const scanCb = useRef(null);
@@ -2108,7 +2108,8 @@ function AppMain() {
     }
     const fb = ls.get("fbook", null); if (fb?.entries?.some((e) => e.txId && set.has(e.txId))) ls.set("fbook", { ...fb, entries: fb.entries.map((e) => (e.txId && set.has(e.txId) ? { ...e, txId: null } : e)) });
   }
-  async function deleteTx(t) {
+  async function deleteTx(t, o = {}) {
+    if (!o.force && !(await retainGuard([{ title: `Buchung ${fmtDate(t.date)} · ${t.counterparty || t.purpose || ""} · ${fmtMoney(t.amount)}`, end: rtTxEnd(t, accounts) }], "data"))) return false;
     unlinkTxRefs([t.id]);
     await db.delTxs([t.id]); setTxs((p) => p.filter((x) => x.id !== t.id));
     if (t.docId) { const d = docs.find((x) => x.id === t.docId); if (d && !d.invoiceId) await saveDoc({ ...d, paid: false, paidCash: false }); }
@@ -2124,6 +2125,8 @@ function AppMain() {
   }
 
   async function deleteAccount(id) {
+    const prot = txs.filter((t) => t.accountId === id && (rtTxEnd(t, accounts) || "") >= todayISO());
+    if (prot.length && !(await retainGuard(prot.map((t) => ({ title: `Buchung ${fmtDate(t.date)} · ${t.counterparty || t.purpose || ""}`, end: rtTxEnd(t, accounts) })), "data"))) return false;
     const ids = txs.filter((t) => t.accountId === id).map((t) => t.id);
     unlinkTxRefs(ids);
     ls.set("invoices", ls.get("invoices", []).map((x) => (x.paidAccount === id ? { ...x, paidAccount: undefined } : x)));
@@ -2136,7 +2139,17 @@ function AppMain() {
   }
   async function trashDoc(doc) { await saveDoc({ ...doc, deletedAt: new Date().toISOString() }); setOpenId(null); notify("In den Papierkorb verschoben"); }
   unlinkDocRefsRef.current = (ids) => unlinkDocRefs(ids);
-  async function purgeDoc(id) { setDocs((p) => p.filter((d) => d.id !== id)); await db.delDoc(id); await db.delFile(id); await unlinkDocRefs([id]); }
+  async function purgeRaw(id) { setDocs((p) => p.filter((d) => d.id !== id)); await db.delDoc(id); await db.delFile(id); await unlinkDocRefs([id]); }
+  // v0.99.48: Löschschutz – noch aufbewahrungspflichtige Dokumente nur nach Bestätigung
+  async function purgeDoc(id) { const d = docsRef.current.find((x) => x.id === id); if (d && !(await retainGuard([{ title: d.title, end: rtDocEnd(d) }], "doc"))) return false; await purgeRaw(id); return true; }
+  async function purgeMany(ids) {
+    const l = docsRef.current.filter((d) => ids.includes(d.id)), prot = l.filter((d) => (rtDocEnd(d) || "") >= todayISO());
+    const ok = !prot.length || (await retainGuard(prot.map((d) => ({ title: d.title, end: rtDocEnd(d) })), "doc"));
+    const go = ok ? l : l.filter((d) => !prot.includes(d)); for (const d of go) await purgeRaw(d.id);
+    notify(`${go.length} Dokument(e) endgültig gelöscht${!ok && prot.length ? ` · ${prot.length} geschützte behalten` : ""}`); return go.length;
+  }
+  const [rtReq, setRtReq] = useState(null);
+  rtUi = (req) => new Promise((res) => setRtReq({ ...req, res }));
   // Verweise auf endgültig gelöschte Dokumente lösen: Buchungen, Rechnungs-Beleg, Verträge, Besitz, Fahrtenbuch, Kassabuch
   async function unlinkDocRefs(ids) {
     const set = new Set(ids); if (!set.size) return;
@@ -2277,7 +2290,7 @@ function AppMain() {
   const ctDocs = useMemo(() => contractDlDocs(ls.get("contractList", []), active), [tab, ctVer, active]);
   const astDocs = useMemo(() => assetDlDocs(ls.get("besitz", [])), [tab, ctVer]);
   const [dlCfgApp] = useLsState("dlCfg", DL_DEF), [dlVD] = useLsState("dlVirtDone", {}), [stbDoneApp] = useLsState("stbDone", {});
-  const fixDocs = useMemo(() => { try { return fixedDlDocs(txs); } catch (e) { console.warn(e); return []; } }, [txs, tab, ctVer, dlCfgApp, dlVD, stbDoneApp]);
+  const fixDocs = useMemo(() => { try { return fixedDlDocs(txs, active); } catch (e) { console.warn(e); return []; } }, [txs, active, tab, ctVer, dlCfgApp, dlVD, stbDoneApp]);
   const dlDocs = useMemo(() => [...active, ...ctDocs, ...astDocs, ...fixDocs], [active, ctDocs, astDocs, fixDocs]);
   const saveDl = async (d) => {
     if (d.isVirt) { const orig = fixDocs.find((x) => x.id === d.id); if (orig && d.deadlines.some((x) => x.date !== orig.deadlines.find((o) => o.id === x.id)?.date)) { notify("Diese Termine ergeben sich automatisch – Datum hier nicht änderbar"); return; } dlSaveVirt(d); setCtVer((v) => v + 1); return; }
@@ -2294,6 +2307,7 @@ function AppMain() {
   };
   const openDl = (id) => { id = String(id);
     if (id.startsWith("vt:steuer:")) { lsSetEv("stbSec", /svs|est/.test(id) ? "ruecklage" : "paket"); setTab("steuer"); return; }
+    if (id.startsWith("vt:retain:")) { ls.set("openSettingsSec", "retain"); setTab("settings"); return; }
     if (id.startsWith("vt:close:")) { lsSetEv("stbSec", "monate"); setTab("steuer"); return; }
     if (id.startsWith("vt:inv:")) { const x = ls.get("invoices", []).find((y) => y.id === id.slice(7)); setTab(x && invState(x) === "überfällig" ? "mahnungen" : "invoices"); return; }
     if (String(id).startsWith("as:")) { ls.set("assetOpenReq", String(id).slice(3)); setTab("besitz"); return; }
@@ -2377,6 +2391,7 @@ function AppMain() {
           deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null}
           journalTab={{ label: tabLabel(nav, "journal") || "Journal", open: () => setTab("journal") }} />}
         {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify} />}
+        {rtReq && <RtGuardWin req={rtReq} onDone={(v) => { rtReq.res(v); setRtReq(null); }} />}
         {tab === "deadlines" && <Deadlines docs={dlDocs} onOpen={openDl} saveDoc={saveDl} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "cash" && <ExpensePage accounts={visAccounts} txs={txs} categories={TX_CATS(categories)} onSave={saveExpense} onScan={scanFor} addCategory={addCategory} notify={notify}
           onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]}
@@ -2406,7 +2421,7 @@ function AppMain() {
         {(tab === "settings" || tab === "backup") && (
           <Settings key={tab} only={tab === "backup" ? "backup" : ""} theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
-            docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} notify={notify} />
+            docs={docs} setDocs={setDocs} saveDoc={saveDoc} purgeDoc={purgeDoc} purgeMany={purgeMany} notify={notify} />
         )}
       </main>
 
@@ -3951,6 +3966,7 @@ function WipeAll({ docs, txs }) {
           {err && <p className="red small">{err}</p>}
           <div className="actions">
             <button className="btn danger" disabled={!ok || !match || busy} onClick={async () => {
+              if (/pw/.test(rtCfgGet().dataMode) && ls.get("rtPw", null) && rtUi && !(await rtUi({ items: [{ title: "Alle Daten dieser App", end: "9999-12-31" }], mode: "pw", word: "", kind: "data" }))) return;
               setBusy(true);
               try { await wipeAllData(); location.reload(); } catch (e) { setErr("Löschen fehlgeschlagen: " + (e.message || e)); setBusy(false); }
             }}>{busy ? "Löscht …" : "Endgültig löschen"}</button>
@@ -5955,7 +5971,7 @@ function atHolidays(y) {
 }
 function nextWorkday(iso) { let d = iso; for (let i = 0; i < 7; i++) { const wd = new Date(d + "T12:00:00").getDay(); if (wd !== 0 && wd !== 6 && !atHolidays(+d.slice(0, 4)).has(d)) return d; d = addDays(d, 1); } return iso; }
 const lastDayOf = (y, m) => new Date(y, m, 0).toLocaleDateString("sv-SE");
-function fixedDlDocs(txs) {
+function fixedDlDocs(txs, docs = []) {
   const cfg = dlCfgGet(), today = todayISO(), y0 = +today.slice(0, 4), from = addDays(today, -120), to = addDays(today, 430);
   const vd = ls.get("dlVirtDone", {}), out = [], inR = (d) => d >= from && d <= to;
   const txt = (t) => `${t.counterparty || ""} ${t.purpose || ""}`;
@@ -5981,6 +5997,11 @@ function fixedDlDocs(txs) {
       if (cfg.mahn && s === "überfällig" && (x.reminders || []).length < REMIND.length) { const last = lastReminder(x), md = last ? addDays(last.due || due, dn.waitDays || 0) : addDays(invDue(x), 1); dls.push(mk(`vt-mahn-${x.id}-${(x.reminders || []).length}`, md, (x.reminders || []).length ? `${remindName((x.reminders || []).length)} fällig` : "Mahnung fällig")); }
       if (dls.length) virt("vt:inv:" + x.id, "rechnung", `Rechnung ${x.number} · ${x.customer?.name || "Kunde"}`, dls, { amt: invTotal(x), sender: x.customer?.name || "", short: (x.customer?.name || x.number).split(" ").slice(-1)[0] });
     }
+  }
+  if (rtCfgGet().remind) {
+    const live = docs.filter((d) => !d.deletedAt && !d.isVirt && !d.isContract && !d.isAsset);
+    for (const yy of [y0, y0 + 1]) { const d = `${yy}-01-02`, n = live.filter((x) => { const e = rtDocEnd(x); return e && e < d; }).length; if (!n || !inR(d)) continue; const id = `vt-retain-${yy}`;
+      virt("vt:retain:" + yy, "dokument", `Aufbewahrungsfrist abgelaufen – ${n} Beleg${n === 1 ? "" : "e"} prüfen`, [mk(id, d, "Alte Belege prüfen (dürfen gelöscht werden)")], { short: `Aufbewahrung ${n}` }); }
   }
   if (cfg.close) {
     const done = ls.get("stbDone", {}), day = Math.min(28, Math.max(1, +cfg.closeDay || 10));
@@ -10079,6 +10100,9 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
           <button className="link" onClick={() => set({ deadlines: [...(d.deadlines || []), { id: uid(), label: "Frist", date: todayISO(), done: false }] })}>＋ Frist hinzufügen</button>
         </fieldset>
 
+        {(() => { const e = rtDocEnd(d); const on = e && e >= todayISO(); return (<div className={"rtbox" + (on ? " on" : "")}>
+          <span className="grow">{on ? <>🔒 Aufbewahrungspflicht bis <b>{fmtDate(e)}</b></> : e ? <>Aufbewahrungsfrist abgelaufen ({fmtDate(e)}) – darf gelöscht werden</> : <>Keine Aufbewahrungspflicht</>}</span>
+          <span className="rtsel"><PSelect title="Aufbewahrung" value={d.retainYears == null ? "" : String(d.retainYears)} onChange={(ev) => set({ retainYears: ev.target.value === "" ? undefined : +ev.target.value })}>{RT_YEARS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</PSelect></span></div>); })()}
         {d.einvoice && <div className="eibox"><b>🧾 E-Rechnung · {d.einvoice.format}</b><small className="muted block">Daten exakt aus dem eingebetteten XML übernommen{d.einvoice.source === "xml" ? " · aus XML-Datei erzeugte Ansicht, Original-XML ist im PDF enthalten" : ""}</small>
           <div className="row"><button className="link" onClick={async () => { const b = blob || (await db.getFile(doc.id)); const l = b ? await (await import("./einvoice.js")).pdfEmbeddedXml(new Uint8Array(await b.arrayBuffer())) : []; if (!l.length) return notify("Kein XML gefunden"); download(new Blob([l[0].xml], { type: "application/xml" }), l[0].name || `${safeName}.xml`); }}>⬇︎ XML herunterladen</button>
             <button className="link" onClick={() => reanalyze(doc, { ai: true })}>↻ Stattdessen mit KI auslesen</button></div></div>}
@@ -10113,6 +10137,83 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
   );
 }
 
+/* ======================= v0.99.48: Aufbewahrungspflicht (§ 132 BAO) & Löschschutz ======================= */
+const RT_DEF = { scope: "firma_steuer", docMode: "word", dataMode: "word", remind: true };
+const RT_MODES = [["warn", "Nur Warnung mit Bestätigung"], ["word", "Bestätigen durch Eingabe eines Worts"], ["pw", "Nur mit Passwort löschbar"], ["pwword", "Passwort und Eingabe"], ["block", "Gar nicht löschbar, solange die Frist läuft"]];
+const RT_YEARS = [["", "Standard (7 Jahre, wenn Firma/steuerrelevant)"], ["7", "7 Jahre (§ 132 BAO)"], ["12", "12 Jahre (Grundstücke)"], ["22", "22 Jahre (Grundstücke, § 18 Abs 10 UStG)"], ["0", "Keine Aufbewahrungspflicht"]];
+const rtCfgGet = () => ({ ...RT_DEF, ...ls.get("rtCfg", {}) });
+const rtEndOf = (date, years) => (date && years ? `${+String(date).slice(0, 4) + years}-12-31` : null);
+function rtDocEnd(d, cfg = rtCfgGet()) {
+  const y = d.retainYears === "" || d.retainYears == null ? null : +d.retainYears;
+  if (y === 0) return null;
+  const inScope = docScope(d) === "firma" || d.category === "Ausgangsrechnung" || !!d.invoiceId || (cfg.scope === "firma_steuer" && !!d.taxRelevant);
+  if (y == null && !inScope) return null;
+  return rtEndOf(d.documentDate || d.purchaseDate || d.createdAt, y || 7);
+}
+function rtTxEnd(t, accounts = []) { const a = accounts.find((x) => x.id === t.accountId); return t.scope === "firma" || (a?.use === "firma" && t.scope !== "privat") ? rtEndOf(t.date, 7) : null; }
+let rtUi = null;   // in App gesetzt: (req) => Promise<boolean>
+// Prüft vor dem endgültigen Löschen. items: [{ title, end }] – nur noch laufende Fristen zählen
+async function retainGuard(items, kind = "doc") {
+  const today = todayISO(), prot = items.filter((x) => x.end && x.end >= today);
+  if (!prot.length) return true;
+  const cfg = rtCfgGet(), mode = kind === "doc" ? cfg.docMode : cfg.dataMode;
+  if (!rtUi) return confirm(`${prot.length} Eintrag/Einträge sind noch aufbewahrungspflichtig. Trotzdem löschen?`);
+  return rtUi({ items: prot, mode, word: kind === "doc" && prot.length === 1 ? "LÖSCHEN" : "ALLES LÖSCHEN", kind });
+}
+function RtGuardWin({ req, onDone }) {
+  const hasPw = !!ls.get("rtPw", null), mode = /pw/.test(req.mode) && !hasPw ? "word" : req.mode;
+  const [w, setW] = useState(""), [pw, setPw] = useState(""), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+  const needW = mode === "word" || mode === "pwword", needPw = mode === "pw" || mode === "pwword", n = req.items.length, last = [...req.items].sort((a, b) => b.end.localeCompare(a.end))[0];
+  const ok = async () => {
+    if (needW && w.trim() !== req.word) return setErr(`Bitte genau „${req.word}“ eingeben`);
+    if (needPw) { setBusy(true); const s = ls.get("rtPw", null); const h = await lockHash(pw, s.salt, s.iter); setBusy(false); if (h.hash !== s.hash) return setErr("Passwort falsch"); }
+    onDone(true);
+  };
+  return createPortal(<Win id="rtguard" onClose={() => onDone(false)} small defW={520} dirty={false} stay>
+    <div className="panelhead"><b>🔒 Noch aufbewahrungspflichtig</b><XBtn /></div>
+    <p>{n === 1 && req.items[0].end.startsWith("9999") ? <>Zum Löschen aller Daten ist das Löschschutz-Passwort nötig.</> : n === 1 ? <>„{req.items[0].title}“ muss bis <b>{fmtDate(req.items[0].end)}</b> aufbewahrt werden.</> : <><b>{n}</b> {req.kind === "doc" ? "Dokumente" : "Einträge"} müssen noch aufbewahrt werden – der letzte bis <b>{fmtDate(last.end)}</b>.</>}</p>
+    {n > 1 && <ul className="rtlist">{req.items.slice(0, 6).map((x, i) => <li key={i}><span className="grow one">{x.title}</span><small className="muted">bis {fmtDate(x.end)}</small></li>)}{n > 6 && <li className="muted">… und {n - 6} weitere</li>}</ul>}
+    <p className="muted small">Belege und Aufzeichnungen sind 7 Jahre ab Ende des Kalenderjahres aufzubewahren (§ 132 BAO). Löschen kann bei einer Prüfung zu Problemen führen.</p>
+    {/pw/.test(req.mode) && !hasPw && <p className="small warnc">Kein Löschschutz-Passwort gesetzt – stattdessen Eingabe nötig (Einstellungen › Papierkorb & Aufbewahrung).</p>}
+    {mode === "block" ? <><p className="red small">Löschen ist gesperrt, solange die Frist läuft (Einstellungen › Papierkorb & Aufbewahrung).</p><div className="actions"><button className="btn primary" onClick={() => onDone(false)}>OK</button></div></>
+      : <>
+        {needPw && <label>Löschschutz-Passwort<input type="password" autoComplete="current-password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && ok()} autoFocus /></label>}
+        {needW && <label>Zum Bestätigen <b>{req.word}</b> eingeben<input value={w} autoComplete="off" autoCapitalize="characters" spellCheck={false} placeholder={req.word} onChange={(e) => { setW(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && ok()} autoFocus={!needPw} /></label>}
+        {err && <p className="red small">{err}</p>}
+        <div className="actions"><button className="btn primary" onClick={() => onDone(false)}>Behalten</button><button className="btn danger" disabled={busy || (needW && !w) || (needPw && !pw)} onClick={ok}>{mode === "warn" ? "Trotzdem löschen" : "Endgültig löschen"}</button></div>
+      </>}
+  </Win>, document.querySelector(".app") || document.body);
+}
+function RtSettings({ docs = [], purgeMany, notify }) {
+  const [c0] = useLsState("rtCfg", RT_DEF), cfg = { ...RT_DEF, ...c0 }, set = (p) => lsSetEv("rtCfg", { ...rtCfgGet(), ...p });
+  const [pwOn, setPwOn] = useState(() => !!ls.get("rtPw", null)), [p1, setP1] = useState(""), [p2, setP2] = useState(""), [showExp, setShowExp] = useState(false), [sel, setSel] = useState([]);
+  const today = todayISO(), live = docs.filter((d) => !d.deletedAt);
+  const prot = live.filter((d) => (rtDocEnd(d, cfg) || "") >= today), exp = live.filter((d) => { const e = rtDocEnd(d, cfg); return e && e < today; }), long = live.filter((d) => +d.retainYears > 7);
+  const savePw = async () => { if (p1.length < 4) return notify?.("Passwort zu kurz (mind. 4 Zeichen)"); if (p1 !== p2) return notify?.("Passwörter stimmen nicht überein"); ls.set("rtPw", await lockHash(p1)); setPwOn(true); setP1(""); setP2(""); notify?.("Löschschutz-Passwort gespeichert"); };
+  return (<div className="rtset">
+    <p className="muted small">Belege und Aufzeichnungen sind 7 Jahre ab Ende des Kalenderjahres aufzubewahren (§ 132 BAO), Unterlagen zu Grundstücken 12 bzw. 22 Jahre. Nichts wird automatisch gelöscht.</p>
+    <label>Geschützt sind<PSelect value={cfg.scope} onChange={(e) => set({ scope: e.target.value })}><option value="firma">nur Firmenbelege</option><option value="firma_steuer">Firmenbelege und private steuerrelevante Belege</option></PSelect></label>
+    <label>Schutz für Dokumente<PSelect value={cfg.docMode} onChange={(e) => set({ docMode: e.target.value })}>{RT_MODES.map(([k, l]) => <option key={k} value={k}>{l}{k === "word" ? " (LÖSCHEN)" : k === "pwword" ? " (LÖSCHEN)" : ""}</option>)}</PSelect></label>
+    <label>Schutz für Buchungen, Rechnungen und Kassabuch<PSelect value={cfg.dataMode} onChange={(e) => set({ dataMode: e.target.value })}>{RT_MODES.map(([k, l]) => <option key={k} value={k}>{l}{k === "word" || k === "pwword" ? " (ALLES LÖSCHEN)" : ""}</option>)}</PSelect></label>
+    <fieldset><legend>Löschschutz-Passwort</legend>
+      {pwOn ? <div className="row"><span className="grow">✓ Passwort gesetzt</span><button className="link red" onClick={() => { if (!confirm("Löschschutz-Passwort entfernen?")) return; localStorage.removeItem("rtPw"); setPwOn(false); notify?.("Passwort entfernt"); }}>Entfernen</button></div>
+        : <><div className="grid2"><label>Passwort<input type="password" autoComplete="new-password" value={p1} onChange={(e) => setP1(e.target.value)} /></label><label>Wiederholen<input type="password" autoComplete="new-password" value={p2} onChange={(e) => setP2(e.target.value)} /></label></div>
+          <button className="btn" disabled={!p1} onClick={savePw}>Passwort speichern</button></>}
+      <small className="muted block">Wird nur als Prüfsumme auf diesem Gerät gespeichert und nicht ins Backup übernommen.</small>
+    </fieldset>
+    <label className="check"><input type="checkbox" checked={cfg.remind} onChange={(e) => set({ remind: e.target.checked })} /> Jährliche Erinnerung in „Fristen“, wenn Aufbewahrungsfristen abgelaufen sind</label>
+    <div className="rtstats">
+      <div><small>Geschützt (Frist läuft)</small><b>{prot.length}</b></div>
+      <div className="click" onClick={() => setShowExp(!showExp)}><small>Frist abgelaufen</small><b>{exp.length}</b>{exp.length > 0 && <span className="link small">{showExp ? "ausblenden" : "prüfen ›"}</span>}</div>
+      <div><small>Grundstücke (12/22 Jahre)</small><b>{long.length}</b></div>
+    </div>
+    {showExp && exp.length > 0 && <div className="rtexp">
+      <div className="row"><label className="check"><input type="checkbox" checked={sel.length === exp.length} onChange={(e) => setSel(e.target.checked ? exp.map((d) => d.id) : [])} /> Alle auswählen</label><span className="grow" />
+        <button className="btn danger sm" disabled={!sel.length} onClick={async () => { if (!confirm(`${sel.length} Dokument(e) mit abgelaufener Aufbewahrungsfrist endgültig löschen?`)) return; await purgeMany?.(sel); setSel([]); }}>Ausgewählte löschen ({sel.length})</button></div>
+      <ul className="rtlist">{exp.map((d) => <li key={d.id}><label className="check grow"><input type="checkbox" checked={sel.includes(d.id)} onChange={(e) => setSel((s) => (e.target.checked ? [...s, d.id] : s.filter((x) => x !== d.id)))} /> <span className="one">{d.title}</span></label><small className="muted">abgelaufen {fmtDate(rtDocEnd(d, cfg))}</small></li>)}</ul>
+    </div>}
+  </div>);
+}
 /* ---------- Einstellungen, Budgets, Papierkorb, Backup ---------- */
 const SetCtx = React.createContext(null);
 /* Einstellungs-Bereich: auf-/zuklappbar und per Griff verschiebbar */
@@ -10656,7 +10757,7 @@ async function decryptBackup(j, pw) {
   } catch { throw new Error("Passwort falsch oder Datei beschädigt"); }
 }
 
-function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, notify }) {
+function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode, importTxs, hideAmounts, setHideAmounts, nav, setNav, deleteAccount, renameCategory, deleteCategory, txs, setTxs, accounts, setAccounts, rules, setRules, setTab, categories, setCategories, budgets, setBudgets, me, setMe, token, setToken, docs, setDocs, saveDoc, purgeDoc, purgeMany, notify }) {
   const [secOrder, setSecOrder] = useState(() => ls.get("settingsOrder", []));
   const phoneSet = useMedia("(max-width:700px)");
   const [drill, setDrill] = useState("");
@@ -10813,18 +10914,18 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
       )}</>,
     "trash": <><SetSec id="trash" title={`Papierkorb (${trash.length})`}>
         <div className="trashbar">
-          <p className="muted small grow">Wird nach {TRASH_DAYS} Tagen automatisch geleert.</p>
+          <p className="muted small grow">Wird nach {TRASH_DAYS} Tagen automatisch geleert – außer Dokumente mit laufender Aufbewahrungsfrist.</p>
           {!!trash.length && <>
             <button className="btn" title="Alle wiederherstellen" onClick={async () => { for (const d of trash) await saveDoc({ ...d, deletedAt: null }); notify(`${trash.length} Dokument(e) wiederhergestellt`); }}>↺ Alle</button>
             <button className="btn danger trashall" title="Papierkorb leeren – alles endgültig löschen"
-              onClick={async () => { if (!confirm(`Papierkorb leeren? ${trash.length} Dokument(e) werden endgültig gelöscht.`)) return; const n = trash.length; for (const d of trash) await purgeDoc(d.id); notify(`${n} Dokument(e) endgültig gelöscht`); }}>
+              onClick={async () => { if (!confirm(`Papierkorb leeren? ${trash.length} Dokument(e) werden endgültig gelöscht.`)) return; await purgeMany(trash.map((d) => d.id)); }}>
               <IcoTrash /> Leeren</button>
           </>}
         </div>
         <ul className="list">
           {trash.map((d) => (
             <li key={d.id} className="static">
-              <div className="row1"><span>{d.title}</span></div>
+              <div className="row1"><span>{d.title}</span>{(rtDocEnd(d) || "") >= todayISO() && <small className="muted">🔒 bis {fmtDate(rtDocEnd(d))}</small>}</div>
               <div className="actions" style={{ margin: "6px 0 0" }}>
                 <button className="btn" onClick={() => saveDoc({ ...d, deletedAt: null })}>Wiederherstellen</button>
                 <button className="btn danger" onClick={() => confirm("Endgültig löschen?") && purgeDoc(d.id)}>Endgültig löschen</button>
@@ -10832,7 +10933,8 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
             </li>
           ))}
         </ul>
-      </SetSec></>,
+      </SetSec>
+      <SetSec id="retain" title="Aufbewahrungspflicht & Löschschutz"><RtSettings docs={docs} purgeMany={purgeMany} notify={notify} /></SetSec></>,
     "backup": <><SetSec id="backup" title="Datensicherung">
         <SyncSettings notify={notify} />
         <section className="bkcard">
@@ -17198,6 +17300,9 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .k-steuer{--kc:#e5484d}.k-rechnung{--kc:#3b82f6}.k-abschluss{--kc:#22a06b}.k-dokument{--kc:#8b5cf6}.k-kuendigung{--kc:#f5a524}.k-garantie{--kc:#0ea5e9}
 .calchip[class*="k-"]{box-shadow:inset 3px 0 0 var(--kc)}.calrow[class*="k-"],.wev[class*="k-"]{box-shadow:inset 3px 0 0 var(--kc)}
 .dlper summary{cursor:pointer;margin:6px 0}.dlperrow{display:grid;grid-template-columns:1fr 110px auto;align-items:center;gap:8px;margin:4px 0}
+.rtbox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;border-radius:12px;background:var(--card2);margin:8px 0;font-size:14px}.rtbox.on{background:color-mix(in srgb,#f5a524 14%,var(--card2))}.rtsel{width:260px;max-width:100%}
+.rtlist{list-style:none;margin:6px 0;padding:0;max-height:300px;overflow:auto}.rtlist li{display:flex;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:14px}
+.rtset{display:flex;flex-direction:column;gap:10px}.rtstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.rtstats>div{background:var(--card2);border-radius:12px;padding:10px 12px}.rtstats small{display:block;color:var(--muted);font-size:12px}.rtstats b{font-size:20px;display:block}.rtstats .click{cursor:pointer}
 .stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
 .stbmacts{justify-content:space-between;margin-top:4px}
 .stbstmts{display:flex;flex-direction:column;gap:10px}

@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.48 – Aufbewahrungspflicht & Löschschutz
+
+- Jedes Dokument zeigt „🔒 Aufbewahrungspflicht bis 31.12.JJJJ“ (7 Jahre ab Ende des Belegjahres, § 132 BAO); pro Dokument änderbar: Standard / 7 / 12 / 22 Jahre (Grundstücke) / keine.
+- Geschützt sind wahlweise nur Firmenbelege oder Firmen- plus private steuerrelevante Belege (Standard).
+- Löschschutz beim endgültigen Löschen (einzeln, „Papierkorb leeren“) – getrennt einstellbar für Dokumente sowie für Buchungen/Konten, Rechnungen und Kassabuch: nur Warnung, Eingabe von „LÖSCHEN“ bzw. „ALLES LÖSCHEN“, Löschschutz-Passwort, Passwort + Eingabe oder komplett gesperrt.
+- Papierkorb leert geschützte Dokumente nicht mehr automatisch nach 30 Tagen.
+- Einstellungen › Aufbewahrungspflicht & Löschschutz: Übersicht (geschützt / abgelaufen / Grundstücke), Liste der abgelaufenen Belege zum Prüfen und Löschen; jährliche Erinnerung in „Fristen“. Es wird nie automatisch gelöscht.
+
 ## v0.99.47 – Fristenkalender mit Steuerterminen und Erinnerungen
 
 - Reiter „Umtauschfrist“ heißt jetzt „Fristen“ und zeigt alle Termine an einem Ort, farbig nach Art und filterbar: Steuer & SVS, Rechnungen, Monatsabschluss, Dokumente, Kündigungen, Garantien.
