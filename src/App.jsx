@@ -17668,9 +17668,9 @@ html .caticon.avatar,html.fg .caticon.avatar{background:color-mix(in srgb,var(--
 
 /* v0.96 eigene Symbole */
 .icslots{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-top:8px}
-.icslot{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:14px;padding:8px 10px;background:var(--card)}
+.icslot{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:14px;padding:8px 10px;background:var(--card)}
 .icprev{width:44px;height:44px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:21px;flex:none;background:var(--card2);overflow:hidden}
-.icprev.round{border-radius:50%}.icprev img{width:100%;height:100%;object-fit:cover}.icprev:not(.round) img{object-fit:contain;padding:4px}
+.icprev.round{border-radius:50%}.icslot>.icprev{margin-top:2px}.icslot .grow>b{display:block;line-height:1.3;min-height:20px}.icprev img{width:100%;height:100%;object-fit:cover}.icprev:not(.round) img{object-fit:contain;padding:4px}
 .icctl{display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap}
 .icemoji{width:58px!important;text-align:center;font-size:16px;padding:4px!important;min-height:34px!important}
 .iccolor{width:34px;height:34px;padding:0;border:1px solid var(--line);border-radius:8px;background:none}

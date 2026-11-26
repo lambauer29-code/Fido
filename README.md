@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.64 – Symbol-Einstellungen sauber ausgerichtet
+- Eigene Symbole (Fahrtenbuch, Kategorien, Kontoarten): Symbol, Titel und Eingabefelder stehen in allen Karten oben auf gleicher Höhe – nach „↺ Standard“ rutscht nichts mehr nach unten
+
 ## v0.99.63 – Fahrtenbuch-Symbole wie in den Konten
 - Eigene Fahrtenbuch-Bilder im Verlauf haben jetzt dieselbe Form wie Symbole und Logos in den Konten (beim Stil „Emoji“ abgerundetes Quadrat statt Kreis) und einen weißen Grund
 - Größe folgt der Symbolgröße aus Einstellungen → Design → Symbole
