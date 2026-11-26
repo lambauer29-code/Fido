@@ -3993,40 +3993,57 @@ async function wipeAllData() {
   try { localStorage.clear(); } catch {}
   try { sessionStorage.clear(); } catch {}
 }
+// v0.99.78: „Daten löschen, Design behalten“ – erhalten bleiben nur Darstellung, Design und Schrift-/Button-Größen
+const WIPE_KEEP = /^(design|theme|iconStyle|iconSize|catIcons|kindIcons|fbIcons|cpIcons|vehIcons|tabbarIcons|stmtColors|stmtZoom|stmtZoomUi|stmtLupe2|stmtLink|chartHover|sortStyle|aboStyle|kbBelegStyle|stbMonView|jDetail|jStripPos|jMode|cmpTest|mobileBeta|homeLayout|homeTiles|bizGrid|sideMini|sideW|settingsOrder|settingsClosed|view|invView|astView|deadlineView|docMode|fbViews|calMode|hideAmounts)$|^(dev:|sort:|views:|win:)/;
+async function wipeDataOnly({ cloud }) {
+  if (!cloud && syncOn()) await disconnect();   // nur dieses Gerät: Sync trennen, damit das Löschen nicht an die anderen Geräte geht
+  const d = await openDB();
+  await new Promise((res, rej) => { const t = d.transaction(["docs", "files", "tx", "logos"], "readwrite"); ["docs", "files", "tx", "logos"].forEach((n) => t.objectStore(n).clear()); t.oncomplete = res; t.onerror = () => rej(t.error); });
+  try { await abRun("readwrite", (st) => st.clear()); } catch {}   // automatische Sicherungen enthalten die Daten ebenfalls
+  const keys = []; for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+  for (const k of keys) if (!WIPE_KEEP.test(k) && !(cloud && k === "syncCfg")) localStorage.removeItem(k);
+  try { sessionStorage.clear(); } catch {}
+}
 function WipeAll({ docs, txs }) {
-  const [open, setOpen] = useState(false), [ok, setOk] = useState(false), [word, setWord] = useState(""), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const [open, setOpen] = useState(""), [ok, setOk] = useState(false), [word, setWord] = useState(""), [busy, setBusy] = useState(false), [err, setErr] = useState(""), [cloud, setCloud] = useState(false);
   const n = (k) => { const v = ls.get(k, []); return Array.isArray(v) ? v.length : 0; };
   const fb = ls.get("fbook", null);
-  const match = word.trim() === WIPE_WORD;
-  const close = () => { setOpen(false); setOk(false); setWord(""); setErr(""); };
+  const data = open === "data", W = data ? "DATEN LÖSCHEN" : WIPE_WORD;
+  const match = word.trim() === W, sync = syncOn();
+  const close = () => { setOpen(""); setOk(false); setWord(""); setErr(""); setCloud(false); };
   return (
     <div className="wipezone">
       <h4 className="bkh">⚠️ Gefahrenzone</h4>
-      {!open ? (
-        <button className="btn danger" onClick={() => setOpen(true)}>🗑 Alle Daten löschen …</button>
+      {!open ? (<div className="actions">
+        <button className="btn danger" onClick={() => setOpen("data")}>🧹 Daten löschen, Design behalten …</button>
+        <button className="btn danger" onClick={() => setOpen("all")}>🗑 Alle Daten löschen …</button>
+        <small className="muted block">„Design behalten“ löscht alles außer Darstellung, Design und Schrift-/Button-Größen.</small></div>
       ) : (
-        <div className="wipebox" role="alertdialog" aria-label="Alle Daten löschen">
-          <b>Wirklich ALLE Daten in FinDocu löschen?</b>
+        <div className="wipebox" role="alertdialog" aria-label={data ? "Daten löschen, Design behalten" : "Alle Daten löschen"}>
+          <b>{data ? "Alle Daten löschen und nur das Design behalten?" : "Wirklich ALLE Daten in FinDocu löschen?"}</b>
           <p className="small">Das kann <b>nicht rückgängig</b> gemacht werden. Gelöscht wird auf diesem Gerät:</p>
           <ul className="small">
             <li>{docs} Dokumente samt Dateien (auch im Papierkorb)</li>
             <li>{txs} Umsätze und {n("accounts")} Konten</li>
             <li>{n("invoices")} Rechnungen & Angebote, {n("customers")} Kunden, {n("articles")} Artikel</li>
-            <li>Fahrtenbuch ({fb?.vehicles?.length || 0} Fahrzeuge, {fb?.entries?.length || 0} Einträge), Vermögenswerte, Budgets, Regeln</li>
-            <li>alle Einstellungen, Firmendaten, App-Token und das App-Passwort</li>
+            <li>{data ? `Fahrtenbuch (${fb?.vehicles?.length || 0} Fahrzeuge, ${fb?.entries?.length || 0} Fahrten), Kassabuch, Lager, Verträge, Besitz, Vermögen, Budgets, Regeln` : `Fahrtenbuch (${fb?.vehicles?.length || 0} Fahrzeuge, ${fb?.entries?.length || 0} Einträge), Vermögenswerte, Budgets, Regeln`}</li>
+            <li>alle Einstellungen, Firmendaten{data ? " & Rechnungsdesign" : ""}, App-Token und das App-Passwort</li>
+            {data && <li>die automatischen Sicherungen auf diesem Gerät</li>}
           </ul>
-          <p className="small">Erstelle vorher ein <b>Backup</b> (oben), wenn du die Daten noch brauchst. Daten auf anderen Geräten und deine Dateien in Vercel/GitHub bleiben unberührt.</p>
+          {data && <p className="small">✓ Bleibt erhalten: Darstellung und Design (Stil, hell/dunkel, Farben, Icons, Ansichten, Startseiten-Kacheln) sowie Schrift- und Button-Größen.</p>}
+          {data && sync && <label className="check"><input type="checkbox" checked={cloud} onChange={(e) => setCloud(e.target.checked)} /> Auch in der Cloud und auf allen verbundenen Geräten löschen <small className="muted block">{cloud ? "Das Löschen wird beim nächsten Sync an alle Geräte weitergegeben." : "Aus: die Synchronisierung wird auf diesem Gerät getrennt, damit die anderen Geräte ihre Daten behalten."}</small></label>}
+          <p className="small">Erstelle vorher ein <b>Backup</b> (oben), wenn du die Daten noch brauchst.{data && sync ? "" : " Daten auf anderen Geräten und deine Dateien in Vercel/GitHub bleiben unberührt."}</p>
           <label className="check"><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} /> Ich habe verstanden, dass alle Daten endgültig gelöscht werden.</label>
-          <label>Zum Bestätigen genau <b className="wipeword">{WIPE_WORD}</b> eintippen (Großbuchstaben)
-            <input value={word} autoComplete="off" autoCapitalize="characters" spellCheck={false} placeholder={WIPE_WORD} onChange={(e) => setWord(e.target.value)} disabled={!ok} />
+          <label>Zum Bestätigen genau <b className="wipeword">{W}</b> eintippen (Großbuchstaben)
+            <input value={word} autoComplete="off" autoCapitalize="characters" spellCheck={false} placeholder={W} onChange={(e) => setWord(e.target.value)} disabled={!ok} />
           </label>
           {err && <p className="red small">{err}</p>}
           <div className="actions">
             <button className="btn danger" disabled={!ok || !match || busy} onClick={async () => {
-              if (/pw/.test(rtCfgGet().dataMode) && ls.get("rtPw", null) && rtUi && !(await rtUi({ items: [{ title: "Alle Daten dieser App", end: "9999-12-31" }], mode: "pw", word: "", kind: "data" }))) return;
+              if (/pw/.test(rtCfgGet().dataMode) && ls.get("rtPw", null) && rtUi && !(await rtUi({ items: [{ title: data ? "Daten dieser App" : "Alle Daten dieser App", end: "9999-12-31" }], mode: "pw", word: "", kind: "data" }))) return;
               setBusy(true);
-              try { await wipeAllData(); location.reload(); } catch (e) { setErr("Löschen fehlgeschlagen: " + (e.message || e)); setBusy(false); }
-            }}>{busy ? "Löscht …" : "Endgültig löschen"}</button>
+              try { if (data) await wipeDataOnly({ cloud }); else await wipeAllData(); location.reload(); } catch (e) { setErr("Löschen fehlgeschlagen: " + (e.message || e)); setBusy(false); }
+            }}>{busy ? "Löscht …" : data ? "Daten endgültig löschen" : "Endgültig löschen"}</button>
             <button className="btn" onClick={close}>Abbrechen</button>
           </div>
         </div>

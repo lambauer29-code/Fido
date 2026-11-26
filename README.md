@@ -2,6 +2,16 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.78 – Daten löschen, Design behalten
+- Backup → Gefahrenzone: „Daten löschen, Design behalten …“ löscht jetzt ALLES (auch Fahrzeuge, Firmendaten, Einstellungen, Regeln, Budgets, App-Token/Passwort, automatische Sicherungen)
+- Erhalten bleiben nur Darstellung und Design (Stil, hell/dunkel, Farben, Icons, Ansichten, Startseiten-Kacheln) sowie Schrift- und Button-Größen
+
+## v0.99.77 – Nur Daten löschen
+- Backup → Gefahrenzone: neuer Knopf „Nur Daten löschen …“ (Bestätigung mit DATEN LÖSCHEN)
+- Gelöscht: Dokumente, Umsätze, Konten, Rechnungen, Kunden, Artikel, Kassabuch, Lager, Verträge, Besitz, Vermögen, Fahrten
+- Bleibt: Design (Stil, Farben, Icons, Schriftgrößen, Ansichten), App-Einstellungen (Kategorien, Regeln, Budgets, Kontaktarten, Steuerberater, Länderprofile), Firmendaten & Rechnungsdesign, App-Token & Passwort, Fahrzeuge
+- Mit aktiver Synchronisierung: Wahl, ob auch in der Cloud/auf allen Geräten gelöscht wird (sonst wird der Sync auf diesem Gerät getrennt)
+
 ## v0.99.76 – Schrift- & Button-Größen im Backup
 - Backup (Datei) enthält jetzt auch Schrift- & Zahlengrößen (allgemein und je Design) sowie die Button-/Menü-Skalierung, getrennt mit Gerätename
 - Beim Wiederherstellen wird gefragt, ob die Größen übernommen werden (sonst bleiben die des aktuellen Geräts); automatische Sicherungen auf dem Gerät unverändert
