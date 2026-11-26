@@ -1,6 +1,6 @@
 [package]
 name = "findocu"
-version = "0.99.46"
+version = "0.99.47"
 description = "FinDocu – Finanzen & Dokumente"
 authors = ["Roli"]
 license = ""
@@ -26,6 +26,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+tauri-plugin-notification = "2"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

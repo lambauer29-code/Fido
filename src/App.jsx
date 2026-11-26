@@ -492,8 +492,7 @@ function icsEvent(dl, doc) {
     "BEGIN:VEVENT", `UID:${dl.id}@dokumente`, `DTSTAMP:${stamp}`,
     `DTSTART;VALUE=DATE:${d}`, `DTEND;VALUE=DATE:${d2}`,
     `SUMMARY:${sum}`, `DESCRIPTION:${icsEsc(doc.summary || "")}`,
-    "BEGIN:VALARM", "TRIGGER:-P2DT15H", "ACTION:DISPLAY", `DESCRIPTION:${sum}`, "END:VALARM",
-    "BEGIN:VALARM", "TRIGGER:-PT15H", "ACTION:DISPLAY", `DESCRIPTION:${sum}`, "END:VALARM",
+    ...dlAlarms(dlKindOf(doc), sum),
     "END:VEVENT"
   ].join("\r\n");
 }
@@ -540,7 +539,7 @@ function cancelLetter(c, me) {
 }
 
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
-const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Umtauschfrist"], journal: ["📓", "Journal"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], steuer: ["🧑‍💼", "Steuerberater"], auszuege: ["📃", "Kontoauszüge"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], inventur: ["📋", "Lager & Inventur"], besitz: ["🛡️", "Besitz & Garantie"], kassa: ["📒", "Kassabuch"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
+const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Fristen"], journal: ["📓", "Journal"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], steuer: ["🧑‍💼", "Steuerberater"], auszuege: ["📃", "Kontoauszüge"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], inventur: ["📋", "Lager & Inventur"], besitz: ["🛡️", "Besitz & Garantie"], kassa: ["📒", "Kassabuch"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
 const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
@@ -2277,8 +2276,11 @@ function AppMain() {
   const [ctVer, setCtVer] = useState(0);
   const ctDocs = useMemo(() => contractDlDocs(ls.get("contractList", []), active), [tab, ctVer, active]);
   const astDocs = useMemo(() => assetDlDocs(ls.get("besitz", [])), [tab, ctVer]);
-  const dlDocs = useMemo(() => [...active, ...ctDocs, ...astDocs], [active, ctDocs, astDocs]);
+  const [dlCfgApp] = useLsState("dlCfg", DL_DEF), [dlVD] = useLsState("dlVirtDone", {}), [stbDoneApp] = useLsState("stbDone", {});
+  const fixDocs = useMemo(() => { try { return fixedDlDocs(txs); } catch (e) { console.warn(e); return []; } }, [txs, tab, ctVer, dlCfgApp, dlVD, stbDoneApp]);
+  const dlDocs = useMemo(() => [...active, ...ctDocs, ...astDocs, ...fixDocs], [active, ctDocs, astDocs, fixDocs]);
   const saveDl = async (d) => {
+    if (d.isVirt) { const orig = fixDocs.find((x) => x.id === d.id); if (orig && d.deadlines.some((x) => x.date !== orig.deadlines.find((o) => o.id === x.id)?.date)) { notify("Diese Termine ergeben sich automatisch – Datum hier nicht änderbar"); return; } dlSaveVirt(d); setCtVer((v) => v + 1); return; }
     if (d.isAsset) {
       const dl = d.deadlines.find((x) => x.date && (astDocs.find((y) => y.id === d.id)?.deadlines || []).some((o) => o.id === x.id && o.done !== x.done)) || d.deadlines[0];
       ls.set("besitz", ls.get("besitz", []).map((a) => (a.id === d.astId ? { ...a, dlDone: dl.done ? [...new Set([...(a.dlDone || []), dl.date])] : (a.dlDone || []).filter((x) => x !== dl.date) } : a)));
@@ -2290,10 +2292,15 @@ function AppMain() {
     ls.set("contractList", ls.get("contractList", []).map((c) => (c.id === d.ctId ? { ...c, dlDone: dl.done ? [...new Set([...(c.dlDone || []), dl.date])] : (c.dlDone || []).filter((x) => x !== dl.date) } : c)));
     setCtVer((v) => v + 1);
   };
-  const openDl = (id) => { if (String(id).startsWith("as:")) { ls.set("assetOpenReq", String(id).slice(3)); setTab("besitz"); return; }
+  const openDl = (id) => { id = String(id);
+    if (id.startsWith("vt:steuer:")) { lsSetEv("stbSec", /svs|est/.test(id) ? "ruecklage" : "paket"); setTab("steuer"); return; }
+    if (id.startsWith("vt:close:")) { lsSetEv("stbSec", "monate"); setTab("steuer"); return; }
+    if (id.startsWith("vt:inv:")) { const x = ls.get("invoices", []).find((y) => y.id === id.slice(7)); setTab(x && invState(x) === "überfällig" ? "mahnungen" : "invoices"); return; }
+    if (String(id).startsWith("as:")) { ls.set("assetOpenReq", String(id).slice(3)); setTab("besitz"); return; }
     if (String(id).startsWith("ct:")) { ls.set("ctOpenReq", String(id).slice(3)); setTab("vertraege"); } else setOpenId(id); };
   // Kalender-Abo: bei jeder Änderung der Fristen (verzögert) neu hochladen
-  const calSig = useMemo(() => JSON.stringify(dlDocs.flatMap((d) => (d.deadlines || []).filter((x) => !x.done).map((x) => [x.id, x.date, x.label, d.title, payAmt(d)]))), [dlDocs]);
+  const calSig = useMemo(() => JSON.stringify([dlCfgApp.lead, dlCfgApp.time, dlCfgApp.leadBy, dlCfgApp.onDay, dlDocs.flatMap((d) => (d.deadlines || []).filter((x) => !x.done).map((x) => [x.id, x.date, x.label, d.title, payAmt(d)]))]), [dlDocs, dlCfgApp]);
+  useDlNotify(dlDocs, notify, openDl);
   const calFirst = useRef(true);
   useEffect(() => {
     if (!calSync.on || !calSync.key) return;
@@ -5847,7 +5854,10 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
 }
 
 /* ---------- Fristen ---------- */
-function Deadlines({ docs, onOpen: onEdit, saveDoc, calSync, setCalSync, token, notify }) {
+function Deadlines({ docs: docsAll, onOpen: onEdit, saveDoc, calSync, setCalSync, token, notify }) {
+  const [dlc0] = useLsState("dlCfg", DL_DEF), dlc = { ...DL_DEF, ...dlc0 }, [setOpen, setSetOpen] = useState(false);
+  const kindN = (k) => docsAll.filter((d) => dlKindOf(d) === k).reduce((n, d) => n + (d.deadlines || []).filter((x) => !x.done).length, 0);
+  const docs = docsAll.filter((d) => !dlc.hide?.[dlKindOf(d)]);
   // Klick auf eine Frist: verknüpfte Rechnung/Datei direkt anzeigen (Bearbeiten über ✎ im Fenster)
   const [prev, setPrev] = useState(null);
   const onOpen = (id) => { const d = docs.find((x) => x.id === id); if (d && !d.isContract && d.mimeType) setPrev(d); else onEdit(id); };
@@ -5880,10 +5890,13 @@ function Deadlines({ docs, onOpen: onEdit, saveDoc, calSync, setCalSync, token, 
           <button className={mode === "list" ? "on" : ""} onClick={() => setMode("list")}>☰ Liste</button>
         </div>
         <span className="grow" />
-        <button className={"btn" + (calSync.on ? " synced" : "")} onClick={() => setSyncOpen(true)}><IcoCalSync /> {calSync.on ? "Apple Kalender verbunden" : "Mit Apple Kalender verbinden"}</button>
+        <button className="btn" onClick={() => setSetOpen(true)} title="Vorlauf, Uhrzeit, Benachrichtigungen, automatische Termine">🔔 Erinnerungen</button>
+        <button className={"btn" + (calSync.on ? " synced" : "")} onClick={() => setSyncOpen(true)}><IcoCalSync /> {calSync.on ? "Kalender verbunden" : "Mit Kalender verbinden"}</button>
         <button className="btn" onClick={() => downloadIcs(allItems.filter(([dl]) => !dl.done), "fristen.ics")} disabled={!allItems.length} title="Einmalig als .ics herunterladen">⬇︎ .ics</button>
         {mode === "list" && <label className="check"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Erledigte zeigen</label>}
       </div>
+      <div className="chips dlkinds">{DL_KINDS.map(([k, i, l]) => <button key={k} className={"chip k-" + k + (dlc.hide?.[k] ? "" : " on")} onClick={() => lsSetEv("dlCfg", { ...dlCfgGet(), hide: { ...dlc.hide, [k]: !dlc.hide?.[k] } })}><i className="dlkdot" />{i} {l}{kindN(k) ? <span className="cnt">{kindN(k)}</span> : null}</button>)}</div>
+      {setOpen && <DlSettingsWin onClose={() => setSetOpen(false)} notify={notify} />}
       {prev && (
         <Win id="docprev" onClose={() => setPrev(null)} dirty={false} className="docprevwin">
           <div className="panelhead"><b className="clamp">{prev.title}</b>
@@ -5928,6 +5941,141 @@ function Deadlines({ docs, onOpen: onEdit, saveDoc, calSync, setCalSync, token, 
   );
 }
 
+/* ======================= v0.99.47: Fristenkalender – Steuertermine, Rechnungen, Monatsabschluss, Erinnerungen ======================= */
+const DL_KINDS = [["steuer", "🏛️", "Steuer & SVS"], ["rechnung", "🧾", "Rechnungen"], ["abschluss", "🚦", "Monatsabschluss"], ["dokument", "📄", "Dokumente"], ["kuendigung", "✍️", "Kündigungen"], ["garantie", "🛡️", "Garantien"]];
+const DL_DEF = { lead: 3, time: "09:00", leadBy: {}, onDay: false, notify: false, est: true, svs: true, erkl: true, inv: true, mahn: true, close: true, closeDay: 10, hide: {} };
+const dlCfgGet = () => ({ ...DL_DEF, ...ls.get("dlCfg", {}) });
+const dlKindOf = (doc) => doc.dlKind || (doc.isContract ? "kuendigung" : doc.isAsset ? "garantie" : "dokument");
+const dlLeadOf = (cfg, kind) => { const v = cfg.leadBy?.[kind]; return v === "" || v == null ? +cfg.lead || 0 : +v; };
+// österreichische Feiertage (für „Fristende am Wochenende/Feiertag → nächster Werktag“, § 108 BAO)
+function atHolidays(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const em = Math.floor((h + l - 7 * m + 114) / 31), ed = ((h + l - 7 * m + 114) % 31) + 1, easter = `${y}-${String(em).padStart(2, "0")}-${String(ed).padStart(2, "0")}`;
+  return new Set([..."01-01 01-06 05-01 08-15 10-26 11-01 12-08 12-25 12-26".split(" ").map((x) => `${y}-${x}`), ...[1, 39, 50, 60].map((n) => addDays(easter, n))]);
+}
+function nextWorkday(iso) { let d = iso; for (let i = 0; i < 7; i++) { const wd = new Date(d + "T12:00:00").getDay(); if (wd !== 0 && wd !== 6 && !atHolidays(+d.slice(0, 4)).has(d)) return d; d = addDays(d, 1); } return iso; }
+const lastDayOf = (y, m) => new Date(y, m, 0).toLocaleDateString("sv-SE");
+function fixedDlDocs(txs) {
+  const cfg = dlCfgGet(), today = todayISO(), y0 = +today.slice(0, 4), from = addDays(today, -120), to = addDays(today, 430);
+  const vd = ls.get("dlVirtDone", {}), out = [], inR = (d) => d >= from && d <= to;
+  const txt = (t) => `${t.counterparty || ""} ${t.purpose || ""}`;
+  const paidNear = (re, date) => txs.find((t) => t.amount < 0 && re.test(txt(t)) && Math.abs((new Date(t.date) - new Date(date)) / 864e5) <= 20);
+  const lastAmt = (re) => { const l = txs.filter((t) => t.amount < 0 && re.test(txt(t))).sort((a, b) => b.date.localeCompare(a.date))[0]; return l ? -l.amount : null; };
+  const reEst = /finanzamt.*(einkommensteuer|vorauszahlung|\bE-?VZ\b)|(einkommensteuer|\bE-?VZ\b).*vorauszahlung/i, reSvs = /\bSVS\b|sozialversicherung der selbst/i;
+  const virt = (id, kind, title, dls, extra = {}) => out.push({ id, isVirt: true, dlKind: kind, title, category: "", direction: "keine", amount: extra.amt != null ? { total: extra.amt, currency: "EUR" } : null, deadlines: dls, ...extra });
+  const mk = (id, date, label, auto) => ({ id, date, label, done: vd[id] ?? !!auto, auto: !!auto });
+  for (const y of [y0 - 1, y0, y0 + 1]) {
+    if (cfg.est) { const a = lastAmt(reEst); [2, 5, 8, 11].forEach((m, q) => { const d = nextWorkday(`${y}-${String(m).padStart(2, "0")}-15`); if (!inR(d)) return; const id = `vt-est-${y}-${q + 1}`;
+      virt("vt:steuer:" + id, "steuer", `Einkommensteuer-Vorauszahlung ${q + 1}. Viertel ${y}`, [mk(id, d, "ESt-Vorauszahlung fällig", d <= today && paidNear(reEst, d))], { amt: a, sender: "Finanzamt Österreich", short: `ESt-VZ ${q + 1}/${y}` }); }); }
+    if (cfg.svs) { const a = lastAmt(reSvs); [2, 5, 8, 11].forEach((m, q) => { const d = lastDayOf(y, m); if (!inR(d)) return; const id = `vt-svs-${y}-${q + 1}`;
+      virt("vt:steuer:" + id, "steuer", `SVS-Beiträge ${q + 1}. Quartal ${y}`, [mk(id, d, "SVS-Beitrag fällig", d <= addDays(today, 10) && paidNear(reSvs, d))], { amt: a, sender: "SVS", short: `SVS Q${q + 1}` }); }); }
+    if (cfg.erkl) { const d = nextWorkday(`${y}-06-30`); if (inR(d)) { const id = `vt-erkl-${y - 1}`; virt("vt:steuer:" + id, "steuer", `Einkommensteuererklärung ${y - 1} (FinanzOnline; Papier bis 30.4.)`, [mk(id, d, "Steuererklärung abgeben")], { sender: "Finanzamt Österreich", short: `Steuererklärung ${y - 1}` }); } }
+  }
+  if (cfg.inv || cfg.mahn) {
+    const dn = dunning();
+    for (const x of ls.get("invoices", [])) {
+      if (x.kind !== "rechnung" || !x.number) continue; const s = invState(x); if (!["offen", "überfällig"].includes(s)) continue;
+      const dls = [], due = invDueEff(x);
+      if (due && due < from) continue;
+      if (cfg.inv && due) dls.push(mk(`vt-inv-${x.id}-${due}`, due, "Zahlungseingang fällig"));
+      if (cfg.mahn && s === "überfällig" && (x.reminders || []).length < REMIND.length) { const last = lastReminder(x), md = last ? addDays(last.due || due, dn.waitDays || 0) : addDays(invDue(x), 1); dls.push(mk(`vt-mahn-${x.id}-${(x.reminders || []).length}`, md, (x.reminders || []).length ? `${remindName((x.reminders || []).length)} fällig` : "Mahnung fällig")); }
+      if (dls.length) virt("vt:inv:" + x.id, "rechnung", `Rechnung ${x.number} · ${x.customer?.name || "Kunde"}`, dls, { amt: invTotal(x), sender: x.customer?.name || "", short: (x.customer?.name || x.number).split(" ").slice(-1)[0] });
+    }
+  }
+  if (cfg.close) {
+    const done = ls.get("stbDone", {}), day = Math.min(28, Math.max(1, +cfg.closeDay || 10));
+    for (let i = -3; i <= 1; i++) { const m = addMon(today.slice(0, 7), i - 1), d = `${addMon(m, 1)}-${String(day).padStart(2, "0")}`, id = `vt-close-${m}`;
+      virt("vt:close:" + m, "abschluss", `Monatsabschluss ${monthLabel(m)}`, [{ id, date: d, label: "Monatsabschluss erledigen", done: !!done[m] }], { closeMonth: m, short: "Abschluss " + monthLabel(m).split(" ")[0] }); }
+  }
+  return out;
+}
+function dlSaveVirt(d) {
+  const vd = { ...ls.get("dlVirtDone", {}) };
+  for (const x of d.deadlines) {
+    if (d.closeMonth) { const done = { ...ls.get("stbDone", {}) }; if (x.done) done[d.closeMonth] = done[d.closeMonth] || todayISO(); else delete done[d.closeMonth]; lsSetEv("stbDone", done); continue; }
+    if (x.done !== !!x.auto) vd[x.id] = x.done; else delete vd[x.id];
+  }
+  lsSetEv("dlVirtDone", vd);
+}
+// ICS-Erinnerung: Vorlauf in Tagen + Uhrzeit
+function dlAlarms(kind, sum) {
+  const cfg = dlCfgGet(), lead = dlLeadOf(cfg, kind), [h, m] = String(cfg.time || "09:00").split(":").map((n) => +n || 0);
+  const trig = (days) => { const min = days * 1440 - (h * 60 + m); return min > 0 ? `-P${Math.floor(min / 1440) ? Math.floor(min / 1440) + "D" : ""}T${Math.floor((min % 1440) / 60)}H${min % 60}M`.replace("PT0H0M", "PT0M") : `PT${Math.floor(-min / 60)}H${-min % 60}M`; };
+  const al = (t) => ["BEGIN:VALARM", "TRIGGER:" + t, "ACTION:DISPLAY", `DESCRIPTION:${sum}`, "END:VALARM"];
+  return [...al(trig(lead)), ...(cfg.onDay && lead > 0 ? al(trig(0)) : [])];
+}
+// b) Benachrichtigung in der App / am Mac
+async function dlNotifyOS(title, body) {
+  try {
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+      const N = await import("@tauri-apps/plugin-notification");
+      let ok = await N.isPermissionGranted(); if (!ok) ok = (await N.requestPermission()) === "granted";
+      if (ok) { N.sendNotification({ title, body }); return true; }
+    }
+    if ("Notification" in window && Notification.permission === "granted") { new Notification(title, { body, icon: "/icon-192.png", tag: title }); return true; }
+  } catch {}
+  return false;
+}
+async function dlAskPermission() {
+  try {
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) { const N = await import("@tauri-apps/plugin-notification"); return (await N.isPermissionGranted()) || (await N.requestPermission()) === "granted"; }
+    if (!("Notification" in window)) return false;
+    return Notification.permission === "granted" || (await Notification.requestPermission()) === "granted";
+  } catch { return false; }
+}
+function useDlNotify(dlDocs, notify, openDl) {
+  const sig = useMemo(() => JSON.stringify(dlDocs.flatMap((d) => (d.deadlines || []).filter((x) => !x.done).map((x) => [x.id, x.date]))), [dlDocs]);
+  useEffect(() => {
+    const run = async () => {
+      const cfg = dlCfgGet(); if (!cfg.notify) return;
+      const now = new Date(), hm = now.toTimeString().slice(0, 5), today = todayISO(), sent = { ...ls.get("dlNotified", {}) };
+      const due = dlDocs.flatMap((doc) => (doc.deadlines || []).filter((x) => !x.done).map((x) => [x, doc]))
+        .filter(([x, doc]) => { const lead = dlLeadOf(cfg, dlKindOf(doc)), at = addDays(x.date, -lead); return (at < today || (at === today && hm >= cfg.time)) && x.date >= addDays(today, -1) && !sent[x.id + "@" + x.date]; });
+      if (!due.length) return;
+      for (const [x] of due) sent[x.id + "@" + x.date] = today;
+      for (const k of Object.keys(sent)) if (sent[k] < addDays(today, -60)) delete sent[k];
+      ls.set("dlNotified", sent);
+      const lines = due.slice(0, 6).map(([x, doc]) => { const n = daysUntil(x.date); return `${n === 0 ? "heute" : n === 1 ? "morgen" : n < 0 ? "überfällig" : `in ${n} Tagen`}: ${x.label} – ${doc.title}`; });
+      const title = due.length === 1 ? "FinDocu · Frist" : `FinDocu · ${due.length} Fristen`;
+      const shown = await dlNotifyOS(title, lines.join("\n") + (due.length > 6 ? `\n… und ${due.length - 6} weitere` : ""));
+      if (!shown) notify?.(`🔔 ${title}: ${lines[0]}${due.length > 1 ? ` (+${due.length - 1})` : ""}`);
+    };
+    const t = setTimeout(run, 2500), iv = setInterval(run, 15 * 60e3);
+    return () => { clearTimeout(t); clearInterval(iv); };
+  }, [sig]);
+}
+function DlSettingsWin({ onClose, notify }) {
+  const [c0] = useLsState("dlCfg", DL_DEF), cfg = { ...DL_DEF, ...c0 };
+  const set = (p) => lsSetEv("dlCfg", { ...dlCfgGet(), ...p });
+  const [perm, setPerm] = useState(() => (typeof Notification !== "undefined" ? Notification.permission : "default"));
+  return (<Win id="dlset" onClose={onClose} small defW={560} dirty={false}>
+    <div className="panelhead"><b>🔔 Erinnerungen & Termine</b><XBtn /></div>
+    <fieldset><legend>Erinnerung</legend>
+      <div className="grid2"><label>Vorlauf (Tage vorher)<input type="number" min="0" max="60" value={cfg.lead} onChange={(e) => set({ lead: Math.max(0, Math.min(60, +e.target.value || 0)) })} /></label>
+        <label>Uhrzeit<input type="time" value={cfg.time} onChange={(e) => set({ time: e.target.value || "09:00" })} /></label></div>
+      <label className="check"><input type="checkbox" checked={cfg.onDay} onChange={(e) => set({ onDay: e.target.checked })} /> Zusätzlich am Fälligkeitstag erinnern</label>
+      <small className="muted block">Gilt für das Kalender-Abo (Apple, Google, Outlook) und die Benachrichtigungen der App.</small>
+      <details className="dlper"><summary>Vorlauf je Art anpassen</summary>
+        {DL_KINDS.map(([k, i, l]) => <label key={k} className="dlperrow"><span>{i} {l}</span><input type="number" min="0" max="60" placeholder={`${cfg.lead} (Standard)`} value={cfg.leadBy?.[k] ?? ""} onChange={(e) => set({ leadBy: { ...cfg.leadBy, [k]: e.target.value === "" ? "" : Math.max(0, Math.min(60, +e.target.value || 0)) } })} /><small className="muted">Tage</small></label>)}
+      </details>
+    </fieldset>
+    <fieldset><legend>Benachrichtigungen</legend>
+      <label className="check"><input type="checkbox" checked={cfg.notify} onChange={async (e) => { const on = e.target.checked; if (on) { const ok = await dlAskPermission(); setPerm(typeof Notification !== "undefined" ? Notification.permission : ok ? "granted" : "denied"); if (!ok) notify?.("Benachrichtigungen nicht erlaubt – Hinweise erscheinen dann in der App"); } set({ notify: on }); }} /> Benachrichtigung am Mac / im Browser, solange FinDocu offen ist</label>
+      {cfg.notify && perm === "denied" && <small className="red block">Der Browser blockiert Benachrichtigungen – in den Website-Einstellungen erlauben. Bis dahin erscheinen sie als Hinweis in der App.</small>}
+      <small className="muted block">Für Erinnerungen auch bei geschlossener App: Kalender-Abo verbinden – der Kalender meldet sich dann selbst.</small>
+      {cfg.notify && <button className="link" onClick={async () => { const ok = await dlNotifyOS("FinDocu · Test", "So sehen deine Frist-Erinnerungen aus."); if (!ok) notify?.("🔔 FinDocu · Test – so sehen deine Erinnerungen aus"); }}>Test-Benachrichtigung senden</button>}
+    </fieldset>
+    <fieldset><legend>Automatische Termine</legend>
+      <label className="check"><input type="checkbox" checked={cfg.est} onChange={(e) => set({ est: e.target.checked })} /> Einkommensteuer-Vorauszahlungen (15.2., 15.5., 15.8., 15.11.)</label>
+      <label className="check"><input type="checkbox" checked={cfg.svs} onChange={(e) => set({ svs: e.target.checked })} /> SVS-Beiträge (Ende Februar, Mai, August, November)</label>
+      <label className="check"><input type="checkbox" checked={cfg.erkl} onChange={(e) => set({ erkl: e.target.checked })} /> Einkommensteuererklärung (30.6. über FinanzOnline)</label>
+      <label className="check"><input type="checkbox" checked={cfg.inv} onChange={(e) => set({ inv: e.target.checked })} /> Zahlungseingang offener Rechnungen</label>
+      <label className="check"><input type="checkbox" checked={cfg.mahn} onChange={(e) => set({ mahn: e.target.checked })} /> Mahnung fällig</label>
+      <label className="check"><input type="checkbox" checked={cfg.close} onChange={(e) => set({ close: e.target.checked })} /> Monatsabschluss am <input type="number" min="1" max="28" value={cfg.closeDay} style={{ width: 56, display: "inline-block", margin: "0 4px" }} onClick={(e) => e.preventDefault()} onChange={(e) => set({ closeDay: Math.max(1, Math.min(28, +e.target.value || 10)) })} />. des Folgemonats</label>
+      <small className="muted block">Fällt ein Steuertermin auf ein Wochenende oder einen Feiertag, gilt der nächste Werktag. Bezahlte Vorauszahlungen/SVS werden anhand der Buchungen automatisch abgehakt.</small>
+    </fieldset>
+  </Win>);
+}
 /* ---------- Kalender-Abo (Apple Kalender, Google, Outlook) ---------- */
 function buildIcs(items, name = "FinDocu – Fristen") {
   return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FinDocu//Fristen//DE", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
@@ -6033,11 +6181,11 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
         <h3>{new Date(selDay + "T12:00").toLocaleDateString("de-AT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}{selDay === today ? " · heute" : ""}</h3>
         {!sel.length && <p className="muted small">Keine Fristen an diesem Tag.</p>}
         {sel.map(([dl, doc]) => (
-          <div key={dl.id} className={"frow calrow " + tone(dl)}>
+          <div key={dl.id} className={"frow calrow k-" + dlKindOf(doc) + " " + tone(dl)}>
             <input type="checkbox" checked={!!dl.done} onChange={() => toggle(dl, doc)} aria-label="Erledigt" />
             <div className="grow click" onClick={() => onOpen(doc.id)}><b>{dl.label}</b><small className="muted block">{doc.title}</small></div>
             {payAmt(doc) != null && <b>{fmtMoney(payAmt(doc), doc.amount.currency)}</b>}
-            <input type="date" value={dl.date} onChange={(e) => e.target.value && moveTo(doc.id, dl.id, e.target.value)} aria-label="Datum ändern" />
+            <input type="date" value={dl.date} disabled={!!doc.isVirt} title={doc.isVirt ? "Ergibt sich automatisch" : undefined} onChange={(e) => e.target.value && moveTo(doc.id, dl.id, e.target.value)} aria-label="Datum ändern" />
           </div>
         ))}
       </div>
@@ -6049,7 +6197,7 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
             {[...overdue, ...upcoming].map(([dl, doc]) => {
               const n = daysUntil(dl.date);
               return (
-                <div key={dl.id} className={"frow calrow click " + tone(dl) + (dl.date === selDay ? " cur" : "")} onClick={() => pick(dl.date)}>
+                <div key={dl.id} className={"frow calrow click k-" + dlKindOf(doc) + " " + tone(dl) + (dl.date === selDay ? " cur" : "")} onClick={() => pick(dl.date)}>
                   <div className={"datebox" + (n < 0 ? " red" : n <= 7 ? " warn" : "")}><b>{new Date(dl.date + "T12:00").getDate()}</b><small>{new Date(dl.date + "T12:00").toLocaleDateString("de-AT", { month: "short" })}</small></div>
                   <div className="grow"><b>{dl.label}</b><small className="muted block">{doc.title}</small></div>
                   {payAmt(doc) != null && <b>{fmtMoney(payAmt(doc), doc.amount.currency)}</b>}
@@ -6087,7 +6235,7 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
                 onDrop={(e) => { e.preventDefault(); setDragOver(""); const [docId, dlId] = e.dataTransfer.getData("text/plain").split("|"); moveTo(docId, dlId, d); setSelDay(d); }}>
                 <div className="wdhead"><small>{new Date(d + "T12:00").toLocaleDateString("de-AT", { weekday: "short" })}</small><span className="calnum">{+d.slice(8)}</span></div>
                 {list.map(([dl, doc]) => (
-                  <div key={dl.id} className={"wev " + tone(dl)} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", `${doc.id}|${dl.id}`)}
+                  <div key={dl.id} className={"wev k-" + dlKindOf(doc) + " " + tone(dl)} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", `${doc.id}|${dl.id}`)}
                     onClick={(e) => { e.stopPropagation(); onOpen(doc.id); }} title="Klicken: Dokument öffnen · Ziehen: verschieben">
                     <b>{dl.label}</b><small>{doc.title}</small>{payAmt(doc) != null && <small className="amt">{fmtMoney(payAmt(doc), doc.amount.currency)}</small>}
                   </div>
@@ -6138,9 +6286,9 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
               <span className="calnum">{+d.slice(8)}</span>
               <div className="calev">
                 {list.slice(0, 3).map(([dl, doc]) => (
-                  <span key={dl.id} className={"calchip " + tone(dl)} draggable title={`${dl.label}: ${doc.title} – zum Verschieben ziehen`}
+                  <span key={dl.id} className={"calchip k-" + dlKindOf(doc) + " " + tone(dl)} draggable title={`${dl.label}: ${doc.title} – zum Verschieben ziehen`}
                     onDragStart={(e) => e.dataTransfer.setData("text/plain", `${doc.id}|${dl.id}`)}
-                    onClick={(e) => { e.stopPropagation(); onOpen(doc.id); }}>{dl.label}</span>
+                    onClick={(e) => { e.stopPropagation(); onOpen(doc.id); }}>{doc.isVirt && doc.dlKind === "rechnung" ? `${/Mahn/.test(dl.label) ? "Mahnung" : "Zahlung"} ${doc.short}` : doc.short || dl.label}</span>
                 ))}
                 {list.length > 3 && <span className="calmore">+{list.length - 3}</span>}
                 {!!list.length && <span className="caldots">{list.slice(0, 4).map(([dl]) => <i key={dl.id} className={tone(dl)} />)}</span>}
@@ -17046,6 +17194,10 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .rlset{display:flex;flex-direction:column;gap:10px}.rlgrid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:560px){.rlgrid2{grid-template-columns:1fr}}
 .rlcard.click{cursor:pointer}
 .eibox{padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--acc) 10%,var(--card2));margin:8px 0;display:flex;flex-direction:column;gap:4px}.eibox .row{gap:14px}
+.dlkinds{margin:4px 0 10px;flex-wrap:wrap}.dlkinds .chip:not(.on){opacity:.5}.dlkdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:var(--kc)}
+.k-steuer{--kc:#e5484d}.k-rechnung{--kc:#3b82f6}.k-abschluss{--kc:#22a06b}.k-dokument{--kc:#8b5cf6}.k-kuendigung{--kc:#f5a524}.k-garantie{--kc:#0ea5e9}
+.calchip[class*="k-"]{box-shadow:inset 3px 0 0 var(--kc)}.calrow[class*="k-"],.wev[class*="k-"]{box-shadow:inset 3px 0 0 var(--kc)}
+.dlper summary{cursor:pointer;margin:6px 0}.dlperrow{display:grid;grid-template-columns:1fr 110px auto;align-items:center;gap:8px;margin:4px 0}
 .stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
 .stbmacts{justify-content:space-between;margin-top:4px}
 .stbstmts{display:flex;flex-direction:column;gap:10px}

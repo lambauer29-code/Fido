@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.47 – Fristenkalender mit Steuerterminen und Erinnerungen
+
+- Reiter „Umtauschfrist“ heißt jetzt „Fristen“ und zeigt alle Termine an einem Ort, farbig nach Art und filterbar: Steuer & SVS, Rechnungen, Monatsabschluss, Dokumente, Kündigungen, Garantien.
+- Neue automatische Termine: ESt-Vorauszahlungen (15.2./15.5./15.8./15.11., bei Wochenende/Feiertag nächster Werktag), SVS-Beiträge (Ende Feb/Mai/Aug/Nov), Einkommensteuererklärung (30.6.), Zahlungseingang offener Rechnungen, Mahnung fällig, Monatsabschluss (einstellbarer Tag, Standard 10.). Bezahlte Vorauszahlungen/SVS werden anhand der Buchungen automatisch abgehakt; Betrag aus der letzten Zahlung.
+- 🔔 Erinnerungen: Vorlauf in Tagen und Uhrzeit frei einstellbar (Standard 3 Tage vorher, 9:00), optional je Art und zusätzlich am Fälligkeitstag. Gilt für das Kalender-Abo (Apple, Google, Outlook) und für Benachrichtigungen am Mac bzw. im Browser, solange FinDocu offen ist.
+- Mac-App: Benachrichtigungen über tauri-plugin-notification (neuer App-Build nötig).
+
 ## v0.99.46 – E-Rechnungen lesen und schreiben
 
 - Lesen: ZUGFeRD 1.0/2.x / Factur-X (PDF mit eingebettetem XML), XRechnung (CII und UBL), Peppol-UBL, ebInterface 4.x–6.1. Daten (Nummer, Datum, Fälligkeit, Absender, UID, Netto/USt/Brutto je Satz, IBAN, Referenz, Positionen) werden exakt und kostenlos übernommen – die KI nur als Fallback. Kategorie und Firma/Privat aus früheren Belegen desselben Absenders.
