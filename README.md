@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.75 – Kontakte als PDF
+- Kunden → Menü ⋯ → Export: „PDF (Kontaktliste)“ – Querformat mit Nr., Art, Name, Ansprechperson, Anschrift, E-Mail, Telefon, Mobil, UID; nimmt den aktuellen Filter/Reiter und die Sortierung
+
 ## v0.99.74 – Konten in der Seitenleiste wie die Reiter
 - Konten (und Dokumenten-Ordner) in der Seitenleiste: gleiche Schrift, Größe und Stärke wie die übrigen Reiter (wie Fristen/Journal)
 - Schriftgröße „Seitenleiste & Leiste unten“ gilt jetzt auch für die Konten samt Beträgen; „Beträge in Listen“ wirkt nicht mehr auf die Seitenleiste
