@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.40 – Kontoauszug-Leiste wie vorher
+- Leiste (PDF/Beides/Liste, KI neu prüfen, Lupe, Abgleichen) wieder im vorherigen Design; Drucken/Teilen/Speichern oben bleiben
+
 ## v0.99.39 – Kontoauszug-Fenster: Drucken & Teilen
 - Oben rechts Drucken, Teilen und Speichern (markierter Auszug) als schlanke Icons wie in Dokumente
 - Leiste (PDF/Beides/Liste, KI neu prüfen, Zoom, Lupe, Abgleichen) als kleine flache Pills im App-Design

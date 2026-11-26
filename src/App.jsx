@@ -7832,12 +7832,11 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
         {noBeleg > 0 && <span className="stpill st-over">{noBeleg} Beleg fehlt</span>}
         {noTx > 0 && <span className="stpill st-draft">{noTx} ohne Buchung</span>}
         <span className="grow" />
-        <div className="stmtpills">{[["pdf", "PDF"], ["beides", "Beides"], ["liste", "Liste"]].filter(([k]) => !mob || k !== "beides").map(([k, l]) => <button key={k} type="button" className={"chip" + ((mob && view === "beides" ? k === "liste" : view === k) ? " on" : "")} onClick={() => setView(k)}>{l}</button>)}</div>
-        <span className="stmtgap" />
-        <button className="chip" disabled={busy} onClick={reAi}>{busy ? "…" : "✨ KI neu prüfen"}</button>
+        <div className="seg">{[["pdf", "PDF"], ["beides", "Beides"], ["liste", "Liste"]].filter(([k]) => !mob || k !== "beides").map(([k, l]) => <button key={k} className={(mob && view === "beides" ? k === "liste" : view === k) ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div>
+        <button className="btn sm" disabled={busy} onClick={reAi}>{busy ? "…" : "✨ KI neu prüfen"}</button>
         {zui !== "schwebend" && showPdf && !(mob && view === "beides") && zctl("inbar")}
-        {showPdf && canHover && <button type="button" className={"chip lupetog" + (lupeOn ? " on" : "")} aria-pressed={lupeOn} title={lupeOn ? "Lupe ausschalten" : "Lupe einschalten"} onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍 Lupe {lupeOn ? "ein" : "aus"}</button>}
-        <button className="chip" disabled={busy} onClick={reMatch} title="Zeilen erneut mit den Buchungen abgleichen">⇄ Abgleichen</button>
+        {showPdf && canHover && <button type="button" className={"btn sm lupetog" + (lupeOn ? " on" : "")} aria-pressed={lupeOn} title={lupeOn ? "Lupe ausschalten" : "Lupe einschalten"} onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍 Lupe {lupeOn ? "ein" : "aus"}</button>}
+        <button className="btn sm" disabled={busy} onClick={reMatch} title="Zeilen erneut mit den Buchungen abgleichen">⇄ Abgleichen</button>
       </div>
       </div>
       <div className={"stmtbody" + (showPdf && showList && !mob ? " two" : "")}>
@@ -17267,6 +17266,4 @@ html body .stmtbar .chip{height:28px;min-height:0!important;padding:0 12px!impor
 html body .stmtbar .chip:hover:not(:disabled){background:var(--card2)!important}
 html body .stmtbar .chip.on{background:color-mix(in srgb,var(--acc) 18%,transparent)!important;color:var(--acc)!important;border-color:color-mix(in srgb,var(--acc) 45%,transparent)!important}
 .stmtpills{display:inline-flex;gap:4px}.stmtgap{width:8px}
-html body .stmtbar .stmtzoom{box-shadow:none!important;height:28px;padding:0 2px;border-radius:999px}
-html body .stmtbar .stmtzoom button{height:24px;min-width:24px;font-size:13px}
 `;
