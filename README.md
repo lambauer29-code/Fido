@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.46 – E-Rechnungen lesen und schreiben
+
+- Lesen: ZUGFeRD 1.0/2.x / Factur-X (PDF mit eingebettetem XML), XRechnung (CII und UBL), Peppol-UBL, ebInterface 4.x–6.1. Daten (Nummer, Datum, Fälligkeit, Absender, UID, Netto/USt/Brutto je Satz, IBAN, Referenz, Positionen) werden exakt und kostenlos übernommen – die KI nur als Fallback. Kategorie und Firma/Privat aus früheren Belegen desselben Absenders.
+- Reine XML-Rechnungen: lesbare PDF-Ansicht wird erzeugt, Original-XML ist im PDF eingebettet (ein Dokument). Im Dokument: „XML herunterladen“, „Stattdessen mit KI auslesen“.
+- Schreiben: eigene Rechnungs-PDFs enthalten automatisch Factur-X/ZUGFeRD (EN 16931) – abschaltbar in den Firmendaten. Zusätzlich im ⋯-Menü der Rechnung: XRechnung 3.0 (CII-XML) und ebInterface 6.1 (XML). Kleinunternehmer: Steuerkategorie E mit Befreiungshinweis.
+- Geprüft: Factur-X/XRechnung gegen das offizielle EN-16931-XSD, ebInterface gegen das offizielle 6.1-Schema (beide gültig).
+
 ## v0.99.45 – Rücklage für Einkommensteuer & SVS, Kleinunternehmergrenze
 
 - Steuerberater → 💰 Rücklage: wie viel für Einkommensteuer und SVS zurückzulegen ist (Gewinn hochgerechnet, Gewinnfreibetrag, Veranlagungsfreibetrag, Grenzsteuersatz zusätzlich zum Gehalt, bereits bezahlte Vorauszahlungen/SVS aus den Buchungen erkannt), Empfehlung pro Monat.

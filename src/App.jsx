@@ -428,6 +428,31 @@ function base64ToBlob(b64, type) {
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
   return new Blob([arr], { type });
 }
+/* v0.99.46: E-Rechnung → dieselbe Struktur wie die KI-Auswertung (Kategorie/Firma-Privat aus früheren Belegen desselben Absenders) */
+const isXmlFile = (f) => /\.xml$/i.test(f.name || "") || /(^|\/)(xml|text\/xml)$/i.test(f.type || "") || /application\/xml/i.test(f.type || "");
+function eiToAnalysis(e, docs) {
+  const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
+  const nrm = (x) => norm(x || "").replace(/\b(gmbh|gesmbh|ag|kg|og|e\.?u\.?|ltd|inc|co)\b/g, "").replace(/[^a-z0-9äöüß]/g, "");
+  const uidN = (x) => String(x || "").replace(/\s/g, "").toUpperCase();
+  const mine = (p) => !!p && ((co.uid && p.uid && uidN(p.uid) === uidN(co.uid)) || (!!co.name && !!nrm(p.name) && nrm(p.name) === nrm(co.name)));
+  const outgoing = mine(e.seller), partner = (outgoing ? e.buyer : e.seller) || {};
+  const prev = docs.filter((d) => !d.deletedAt && d.status === "done" && d.sender && nrm(d.sender) === nrm(partner.name)).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))[0];
+  const scope = prev?.scope || (outgoing || mine(e.buyer) || e.buyer?.uid ? "firma" : "privat");
+  const kind = e.type === "credit" ? "Gutschrift" : "Rechnung";
+  const title = `${kind} ${partner.name || ""} ${e.number}`.replace(/\s+/g, " ").trim();
+  const sign = e.type === "credit" ? -1 : 1;
+  return {
+    __learned: !!prev, title, category: prev?.category || (outgoing ? "Ausgangsrechnung" : "Rechnungen"), doc_type: "Rechnung",
+    tags: [...new Set([...(prev?.tags || []).slice(0, 3), "e-rechnung"])],
+    sender: partner.name || "", document_date: e.date, summary: `E-Rechnung (${e.format}) – Daten exakt aus dem XML übernommen, ohne KI.`,
+    full_text: [title, [partner.street, partner.zip, partner.city].filter(Boolean).join(" "), partner.uid && "UID " + partner.uid, ...(e.lines || []).map((l) => l.name), ...(e.notes || []), e.iban && "IBAN " + e.iban, e.ref && "Referenz " + e.ref].filter(Boolean).join("\n"),
+    line_items: (e.lines || []).filter((l) => l.name && l.total != null).map((l) => ({ name: l.name, qty: l.qty ?? 1, unit_price: l.price, total: sign * l.total, category: "Sonstiges" })),
+    amount: { total: e.gross, net: e.net, vat: e.vat, vat_lines: (e.vatLines || []).map((v) => ({ rate: v.rate, net: v.net, vat: v.vat, gross: v.gross })), payout: e.payable != null && Math.abs(e.payable - e.gross) > 0.005 ? e.payable : null, currency: e.currency || "EUR" },
+    direction: outgoing || e.type === "credit" ? "einnahme" : "ausgabe", area: prev?.area || "finanzen", tax_relevant: scope === "firma" || !!prev?.taxRelevant, scope,
+    payment: !outgoing && e.type !== "credit" && e.iban ? { recipient: e.seller?.name || "", iban: e.iban, bic: e.bic || null, reference: e.ref || e.number } : null,
+    deadlines: !outgoing && e.type !== "credit" && e.due ? [{ date: e.due, label: "Zahlung fällig" }] : []
+  };
+}
 async function prepareFile(file) {
   if (file.type === "application/pdf") return file;
   if (!file.type.startsWith("image/")) throw new Error("Nur PDF oder Bilder");
@@ -1942,6 +1967,7 @@ function AppMain() {
     for (const f of list) {
       if (f.name.startsWith(".")) continue;
       if (/\.vcf$/i.test(f.name) || /vcard/i.test(f.type)) vcf.push(f);
+      else if (isXmlFile(f) && await f.slice(0, 4000).text().then((x) => /CrossIndustryInvoice|CrossIndustryDocument|ubl:schema:xsd:(Invoice|CreditNote)-2|ebinterface\.at\/schema/i.test(x)).catch(() => false)) docs.push(f);
       else if (STMT_RE.test(f.name)) stmts.push(f);
       else if (/\.pdf$/i.test(f.name) || /pdf$/i.test(f.type) || /^image\//.test(f.type) || /\.(jpe?g|png|heic|heif|webp)$/i.test(f.name))
         (/(konto|auszug|umsatz|umsätze|statement|camt|depot)/i.test(f.name) ? (f.__ai = true, stmts) : docs).push(f);
@@ -2125,9 +2151,14 @@ function AppMain() {
     upd("fbook", (o) => (o?.entries ? { ...o, entries: o.entries.map((e) => (e.docId && set.has(e.docId) ? { ...e, docId: null } : e)) } : o), null);
   }
 
-  async function analyze(doc, blob) {
+  async function analyze(doc, blob, aopt = {}) {
     await saveDoc({ ...doc, status: "processing", error: null });
     try {
+      // v0.99.46: E-Rechnung (ZUGFeRD/Factur-X, XRechnung, ebInterface) → Daten exakt aus dem XML, KI nur als Fallback
+      let ei = null; if (!aopt.ai) try { ei = await (await import("./einvoice.js")).readEInvoice(blob, doc.fileName); } catch {}
+      let j;
+      if (ei) j = eiToAnalysis(ei.data, docsRef.current, me);
+      else {
       // Vercel nimmt max. ~4,5 MB pro Anfrage: große PDFs fürs Auslesen verkleinern
       const send = blob.type === "application/pdf" && blob.size > 3.6 * 1024 * 1024 ? await shrinkPdf(blob) : blob;
       const data = await blobToBase64(send);
@@ -2137,8 +2168,9 @@ function AppMain() {
         body: JSON.stringify({ data, mediaType: send.type, categories, itemCategories: itemCats(), today: todayISO(), company: me.company || "", person: me.name || "",
           groups: nav.docGroups.map((g) => `${g.title || "Gruppe"} (${AREAS[g.area][1]}): ${g.cats.join(", ")}`).join("\n") })
       });
-      const j = await r.json().catch(() => ({ error: r.status === 413 ? "Datei zu groß für den Server (max. ca. 4 MB)" : `HTTP ${r.status}` }));
+      j = await r.json().catch(() => ({ error: r.status === 413 ? "Datei zu groß für den Server (max. ca. 4 MB)" : `HTTP ${r.status}` }));
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      }
       const c = j.contract;
       const done = ({
         ...doc,
@@ -2167,7 +2199,8 @@ function AppMain() {
         } : null,
         deadlines: (j.deadlines || []).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date)).map((x) => ({ id: uid(), date: x.date, label: x.label, done: false })),
         paid: doc.paid || txsRef.current.some((t) => t.docId === doc.id),
-        paidDate: doc.paidDate || txsRef.current.find((t) => t.docId === doc.id)?.date
+        paidDate: doc.paidDate || txsRef.current.find((t) => t.docId === doc.id)?.date,
+        ...(ei ? { einvoice: { format: ei.data.format, syntax: ei.data.syntax, number: ei.data.number, source: ei.source, xmlName: ei.xmlName, seller: ei.data.seller, buyer: ei.data.buyer, iban: ei.data.iban, ref: ei.data.ref } } : {})
       });
       await saveDoc(done);
       const uf = uniFiles.current[doc.id];
@@ -2200,12 +2233,18 @@ function AppMain() {
     const files = [...list], ids = [];
     for (const [fi, f] of files.entries()) {
       setUpl({ i: fi + 1, n: files.length, name: f.name });
-      let blob;
+      let blob, fname = f.name;
+      if (isXmlFile(f)) {
+        try { const EI = await import("./einvoice.js"); const x = await f.text(), d = EI.parseEInvoiceXml(x);
+          if (!d) { notify(`${f.name}: keine E-Rechnung erkannt (ZUGFeRD, XRechnung, ebInterface)`); continue; }
+          blob = await EI.eInvoiceViewPdf(d, x, f.name); fname = f.name.replace(/\.xml$/i, "") + ".pdf"; }
+        catch (e) { notify(`${f.name}: ${e.message}`); continue; }
+      } else
       try { blob = await prepareFile(f); } catch (e) { notify(`${f.name}: ${e.message}`); continue; }
       if (blob.size > 3.6 * 1024 * 1024) notify(`${f.name}: ${(blob.size / 1048576).toFixed(0)} MB – wird zum Auslesen automatisch verkleinert`);
       const doc = {
-        id: uid(), createdAt: new Date().toISOString(), fileName: f.name, mimeType: blob.type, size: blob.size,
-        title: f.name, category: "Sonstiges", tags: [], deadlines: [], amount: null, paid: false, notes: "", status: "processing",
+        id: uid(), createdAt: new Date().toISOString(), fileName: fname, mimeType: blob.type, size: blob.size,
+        title: fname, category: "Sonstiges", tags: [], deadlines: [], amount: null, paid: false, notes: "", status: "processing",
         ...(opts.cash ? { payCash: true } : {}), ...(opts.scanned ? { scanned: true } : {}), ...(opts.uni ? { uniCheck: true } : {}), ...(opts.receipt ? { receiptFlow: true, category: "Garantie & Kaufbelege" } : {})
       };
       try { doc.thumb = await makeThumb(blob); } catch {}
@@ -2220,10 +2259,10 @@ function AppMain() {
     if (files.length && !opts.linkTx && !opts.stay) setTab("docs");
     return ids;
   }
-  async function reanalyze(doc) {
+  async function reanalyze(doc, aopt = {}) {
     const blob = await db.getFile(doc.id);
     if (!blob) return notify("Datei nicht gefunden");
-    queue.current = queue.current.then(() => analyze(doc, blob));
+    queue.current = queue.current.then(() => analyze(doc, blob, aopt));
   }
 
   const procN = docs.filter((d) => d.status === "processing" && !d.deletedAt).length;
@@ -2375,7 +2414,7 @@ function AppMain() {
         try { setImp({ file: f, result: await parseFile(f, ls.get("mappings", {})) }); } catch (err) { notify("Datei nicht lesbar: " + err.message); }
       }} />
       {imp && <ImportSheet imp={imp} accounts={accounts} setAccounts={setAccounts} importTxs={importTxs} token={token} notify={notify} onClose={() => { const u = imp.uni; setImp(null); if (u) setTimeout(nextAppImp, 50); }} />}
-      <input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden
+      <input ref={fileInput} type="file" accept="application/pdf,image/*,.xml,application/xml,text/xml" multiple hidden
         onChange={(e) => { const l = pendingLink.current; pendingLink.current = null; onFiles(e.target.files, l ? { linkTx: l } : {}); e.target.value = ""; }} />
       {fabOpen && <div className="fabmenu-bg" onClick={() => setFabOpen(false)} />}
       {fabOpen && (
@@ -5747,7 +5786,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
       </div>}
       {akte && <AkteHead akte={akte} docs={docs} sub={akteSub} setSub={setAkteSub} />}
       {area === "sonstiges" && <p className="muted small" style={{ margin: "4px 2px 8px" }}>Dokumente in „Sonstiges“ zählen nicht in Übersicht, Budgets und Auswertungen.</p>}
-      {onFiles && showDrop && !overview && !subOpen && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} />}
+      {onFiles && showDrop && !overview && !subOpen && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} what="PDF, Fotos & E-Rechnungen (XML)" accept="application/pdf,image/*,.xml,application/xml,text/xml" isOk={(x) => isDocFile(x) || isXmlFile(x)} />}
       {docBusy && <ImportBar {...docBusy} />}
       {!overview && <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>}
       <FitScroll card={view !== "grid" && !overview} className="docbox">
@@ -9892,6 +9931,9 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
           <button className="link" onClick={() => set({ deadlines: [...(d.deadlines || []), { id: uid(), label: "Frist", date: todayISO(), done: false }] })}>＋ Frist hinzufügen</button>
         </fieldset>
 
+        {d.einvoice && <div className="eibox"><b>🧾 E-Rechnung · {d.einvoice.format}</b><small className="muted block">Daten exakt aus dem eingebetteten XML übernommen{d.einvoice.source === "xml" ? " · aus XML-Datei erzeugte Ansicht, Original-XML ist im PDF enthalten" : ""}</small>
+          <div className="row"><button className="link" onClick={async () => { const b = blob || (await db.getFile(doc.id)); const l = b ? await (await import("./einvoice.js")).pdfEmbeddedXml(new Uint8Array(await b.arrayBuffer())) : []; if (!l.length) return notify("Kein XML gefunden"); download(new Blob([l[0].xml], { type: "application/xml" }), l[0].name || `${safeName}.xml`); }}>⬇︎ XML herunterladen</button>
+            <button className="link" onClick={() => reanalyze(doc, { ai: true })}>↻ Stattdessen mit KI auslesen</button></div></div>}
         {d.summary && <p className="summary">{d.summary}</p>}
         <label>Notizen<textarea rows={3} value={d.notes || ""} onChange={(e) => set({ notes: e.target.value })} /></label>
 
@@ -10772,7 +10814,7 @@ const KU_NOTE = "Umsatzsteuerbefreit – Kleinunternehmer gemäß § 6 Abs. 1 Z 
 const KU_LIMIT = 55000;
 const CO_DEFAULT = {
   name: "", owner: "", street: "", zip: "", city: "", email: "", phone: "", web: "", iban: "", bic: "", bank: "", taxNo: "", uid: "", fn: "", logo: "",
-  dueDays: 14, validDays: 30, prefixR: "RE", prefixA: "AN",
+  dueDays: 14, validDays: 30, prefixR: "RE", prefixA: "AN", eInvoice: true,
   intro: "Vielen Dank für Ihren Auftrag. Ich erlaube mir, folgende Leistungen in Rechnung zu stellen:",
   introA: "Gerne unterbreite ich Ihnen folgendes Angebot:",
   outro: "Bei Fragen stehe ich Ihnen gerne zur Verfügung.",
@@ -11216,7 +11258,19 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   txt(co.owner || co.name, M, y - 8, { size: fs + 0.5 });
   footer();
   pdf.getPages().forEach((p, i, all) => { if (all.length > 1) p.drawText(`Seite ${i + 1} von ${all.length}`, { x: W - M - 60, y: lhFoot ? Math.max(14, botMin - 16) : 72, size: 7, font: F, color: grey }); });
-  return new Blob([await pdf.save()], { type: "application/pdf" });
+  const out = new Blob([await pdf.save()], { type: "application/pdf" });
+  // v0.99.46: E-Rechnung (Factur-X/ZUGFeRD) einbetten – nur echte Rechnungen, keine Mahnungen/Angebote
+  if (!remind && inv.kind === "rechnung" && inv.number && co.eInvoice !== false) {
+    try { const EI = await import("./einvoice.js"); return await EI.embedFacturX(out, EI.buildCII(inv, co, { kuNote: KU_NOTE }), { title: `Rechnung ${inv.number}`, author: co.name || co.owner }); } catch (e) { console.warn("E-Rechnung nicht eingebettet", e); }
+  }
+  return out;
+}
+async function downloadEInvoice(inv, co, kind) {
+  co = { ...CO_DEFAULT, ...co }; const EI = await import("./einvoice.js");
+  const miss = [!(co.uid || co.taxNo) && "UID oder Steuernummer", !(co.street && co.zip && co.city) && "Firmenanschrift", !co.iban && "IBAN", kind !== "ebi" && !co.email && "E-Mail", kind !== "ebi" && !co.phone && "Telefon", kind !== "ebi" && !inv.customer?.email && "E-Mail des Kunden"].filter(Boolean);
+  if (miss.length && !confirm(`Für die E-Rechnung fehlt noch: ${miss.join(", ")} (Firmendaten bzw. Kunde).\nDie E-Rechnung wird trotzdem erstellt, kann aber vom Empfänger abgelehnt werden. Fortfahren?`)) return;
+  const xml = kind === "ebi" ? EI.buildEbInterface(inv, co, { kuNote: KU_NOTE }) : EI.buildCII(inv, co, { kuNote: KU_NOTE, xrechnung: true });
+  download(new Blob([xml], { type: "application/xml" }), `${invFileName(inv).replace(/\.pdf$/i, "")}_${kind === "ebi" ? "ebInterface" : "XRechnung"}.xml`);
 }
 const invFileName = (inv, remind) => safeName(`${remind ? remindName(remind.level) : inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"} ${inv.customer?.name || ""}`) + ".pdf";
 async function openPdf(blob, name = "Dokument.pdf", title = "", to = "", o = {}) {
@@ -11362,6 +11416,10 @@ function CompanyFields({ v, setV }) {
       <label>Einleitung Rechnung<textarea rows={2} value={v.intro} onChange={(e) => setV({ ...v, intro: e.target.value })} /></label>
       <label>Einleitung Angebot<textarea rows={2} value={v.introA} onChange={(e) => setV({ ...v, introA: e.target.value })} /></label>
       <label>Schlusstext<textarea rows={2} value={v.outro} onChange={(e) => setV({ ...v, outro: e.target.value })} /></label>
+    </fieldset>
+    <fieldset><legend>E-Rechnung</legend>
+      <label className="check"><input type="checkbox" checked={v.eInvoice !== false} onChange={(e) => setV({ ...v, eInvoice: e.target.checked })} /> E-Rechnung (ZUGFeRD / Factur-X, EN 16931) in jedes Rechnungs-PDF einbetten</label>
+      <small className="muted block">Das PDF sieht gleich aus, enthält aber zusätzlich die Rechnungsdaten als XML – Buchhaltungsprogramme lesen sie automatisch. XRechnung und ebInterface gibt es zusätzlich als eigene Datei im ⋯-Menü der Rechnung. Für XRechnung/ebInterface sind UID oder Steuernummer, Anschrift und IBAN nötig.</small>
     </fieldset>
   </>);
 }
@@ -12055,6 +12113,8 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                       {lt && <button onClick={(e) => { e.currentTarget.closest("details").open = false; editTags([x.id]); }}># Tags bearbeiten</button>}
                       <button onClick={() => copyAsNew(x)}>Als neue {x.kind === "angebot" ? "Angebot" : "Rechnung"} kopieren</button>
                       {s !== "entwurf" && onArchive && <button onClick={async () => { await onArchive(await buildInvoicePdf(x, co), invFileName(x), x); }}>In Dokumente ablegen</button>}
+                      {s !== "entwurf" && x.kind === "rechnung" && x.number && <button onClick={(e) => { e.currentTarget.closest("details").open = false; downloadEInvoice(x, co, "xr"); }}>⬇︎ E-Rechnung XRechnung (XML)</button>}
+                      {s !== "entwurf" && x.kind === "rechnung" && x.number && <button onClick={(e) => { e.currentTarget.closest("details").open = false; downloadEInvoice(x, co, "ebi"); }}>⬇︎ E-Rechnung ebInterface (XML)</button>}
                       {s === "entwurf" && <button className="red" onClick={() => confirm("Entwurf löschen?") && setList((l) => l.filter((y) => y.id !== x.id))}>Entwurf löschen</button>}
                     <MenuCancel /></div>
                   </details>
@@ -16985,6 +17045,7 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .rlnotes{margin:4px 0 8px 18px;font-size:14px}.rlnotes li{margin:3px 0}
 .rlset{display:flex;flex-direction:column;gap:10px}.rlgrid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:560px){.rlgrid2{grid-template-columns:1fr}}
 .rlcard.click{cursor:pointer}
+.eibox{padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--acc) 10%,var(--card2));margin:8px 0;display:flex;flex-direction:column;gap:4px}.eibox .row{gap:14px}
 .stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
 .stbmacts{justify-content:space-between;margin-top:4px}
 .stbstmts{display:flex;flex-direction:column;gap:10px}
