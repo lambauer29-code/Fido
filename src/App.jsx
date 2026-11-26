@@ -3380,7 +3380,8 @@ function VehicleWin({ init, onSave, onDelete, onClose }) {
 function PickMenu({ label, icon, items, extra = [], title, wide = false, click = true, btnClass = "chip", disabled = false, block = false, menuClass = "" }) {
   const [open, setOpen] = useState(false), [pos, setPos] = useState(null);
   const ref = useRef(null), t = useRef(null), lastPtr = useRef("mouse");
-  const W = wide ? 320 : 292;
+  const mnz = typeof document !== "undefined" ? parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--mnz")) || 1 : 1;
+  const W = Math.round((wide ? 320 : 292) * (matchMedia?.("(hover:hover)").matches ? 0.86 : 1) * mnz);   // v0.99.69: Breite folgt der Menü-Größe
   // wenig Platz darunter → Menü nach oben öffnen
   const place = () => { const r = ref.current?.getBoundingClientRect(); if (!r) return; const left = Math.round(Math.max(12, Math.min(r.left, innerWidth - W))), nb = [...document.querySelectorAll("nav.bottom")].find((n) => { const q = n.getBoundingClientRect(); return getComputedStyle(n).position === "fixed" && q.width >= innerWidth * 0.6 && q.top > innerHeight / 2; }), bot = nb ? nb.getBoundingClientRect().top - 10 : innerHeight - 24, below = bot - r.bottom - 6, above = r.top - 24;
     setPos(below < 300 && above > below ? { bottom: Math.round(innerHeight - r.top + 6), left, maxH: Math.round(above) } : { top: Math.round(r.bottom + 6), left, maxH: Math.max(160, Math.round(below)) }); };
@@ -3402,7 +3403,7 @@ function PickMenu({ label, icon, items, extra = [], title, wide = false, click =
         onPointerDown={(e) => { lastPtr.current = e.pointerType; }}
         onClick={(e) => { e.stopPropagation(); if (!click && lastPtr.current === "mouse" && open) return; open ? setOpen(false) : show(); }}>{icon ? <>{icon} </> : null}{label} <span className="caret">▾</span></button>
       {open && pos && createPortal(
-        <div className={"moremenu vehmenu pickmenu " + menuClass} role="menu" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ position: "fixed", top: pos.top ?? "auto", bottom: pos.bottom ?? "auto", left: pos.left, right: "auto", maxHeight: pos.maxH, overflowY: "auto" }} {...hov}>
+        <div className={"moremenu vehmenu pickmenu " + menuClass} role="menu" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ position: "fixed", top: pos.top ?? "auto", bottom: pos.bottom ?? "auto", left: pos.left, right: "auto", width: W, maxWidth: "calc(100vw - 24px)", maxHeight: pos.maxH, overflowY: "auto" }} {...hov}>
           {items.map((x, i) => x.head ? <small key={"h" + i} className="muted pickhead">{x.head}</small> : (
             <button type="button" key={x.k} role="menuitemradio" aria-checked={!!x.on} disabled={!!x.disabled} className={x.on ? "on" : ""} onClick={() => { x.run(); setOpen(false); }}>
               {x.icon != null && <span className="vehmi">{x.icon}</span>}<span className="grow"><b>{x.title}</b>{x.sub && <small className="muted block">{x.sub}</small>}</span>{x.right && <span className="pickright">{x.right}</span>}{x.on && <span className="ok">✓</span>}
@@ -14253,15 +14254,24 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
         <FitScroll card cols={["Gerät", "Marke · Kauf · Garantie", "Kaufpreis"]}>
           <section className="tile ctlist">
             {!shown.length && empty}
-            {shownV.map((a) => (
-              <div key={a.id} className={"frow click" + (astOut(a) ? " ended" : "")} onClick={() => setEdit(a)}>
+            {shown.length > 0 && <div className="astrow asthead" aria-hidden="true"><span /><span>Gerät</span><span className="r">Kaufpreis</span><span className="r">Status · Aktionen</span></div>}
+            {shownV.map((a) => { const d = a.docId && docs.find((x) => x.id === a.docId), st = astState(a), end = astEndAll(a);
+              const stp = astOut(a) ? <span className="stpill st-void">ausgeschieden</span> : st === "bald" ? <span className="stpill st-over" title={"Garantie bis " + fmtDate(end)}>in {daysUntil(end)} T.</span> : st === "aktiv" ? <span className="stpill st-paid" title={"Garantie bis " + fmtDate(end)}>Garantie</span> : st === "abgelaufen" ? <span className="stpill astexp" title={"abgelaufen " + fmtDate(end)}>abgelaufen</span> : <span className="stpill st-draft">ohne Garantie</span>;
+              const stop = (f) => (e) => { e.stopPropagation(); f(); };
+              return (
+              <div key={a.id} className={"astrow click" + (astOut(a) ? " ended" : "")} onClick={() => setEdit(a)}>
                 <AstIco a={a} size={42} />
-                <div className="grow"><b>{a.name}</b>{(a.scope || "privat") === "firma" && <span className="stpill st-draft" style={{ marginLeft: 8 }}>🏢 Firma</span>}{pill(a) && <span style={{ marginLeft: 8 }}>{pill(a)}</span>}
-                  <small className="muted block">{[sub(a), a.serial && "Nr. " + a.serial, a.dealer].filter(Boolean).join(" · ")}</small></div>
-                <div className="right astamt"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"}</b><small className="muted block">{a.date ? fmtDate(a.date) : ""}</small></div>
-                <span className="astclip">{a.docId && <button type="button" className="astclipbtn" title="Kaufbeleg öffnen" aria-label="Kaufbeleg öffnen" onClick={(e) => { e.stopPropagation(); onOpen(a.docId); }}><IcoClip /></button>}</span>
-              </div>
-            ))}
+                <div className="astmain"><b className="one">{a.name}</b>
+                  <small className="muted block one">{[sub(a), a.serial && "Nr. " + a.serial, a.dealer].filter(Boolean).join(" · ")}</small></div>
+                <div className="r astamt"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"}</b><small className="muted block">{a.date ? fmtDate(a.date) : ""}</small></div>
+                <div className="aststat" onClick={(e) => e.stopPropagation()}>
+                  <span className="astslot astslot1">{stp}</span><span className="astslot astslot2">{(a.scope || "privat") === "firma" && <span className="stpill st-draft astfirma" title="Firma">🏢 Firma</span>}</span>
+                  <span className="astacts dactions">
+                    <button type="button" className={d ? "" : "astnone"} disabled={!d} title={d ? "Kaufbeleg ansehen" : "Kein Kaufbeleg"} aria-label="Kaufbeleg ansehen" onClick={stop(() => d && onOpen(d.id))}><IcoEye /></button>
+                    <button type="button" title="Bearbeiten" aria-label="Bearbeiten" onClick={stop(() => setEdit(a))}><IcoEdit /></button>
+                    <MoreMenu items={[{ icon: "✎", title: "Bearbeiten", run: () => setEdit(a) }, d && { icon: "🖨", title: "Kaufbeleg drucken", run: () => printDoc(d) }, d && { icon: "⤴", title: "Kaufbeleg teilen", run: () => shareDocs([d]) }, !d && { icon: "📎", title: "Kaufbeleg hinzufügen", sub: "im Gerät unter „Kaufbeleg“", run: () => setEdit(a) }, end && { icon: "📅", title: "Im Kalender zeigen", sub: "Garantie bis " + fmtDate(end), run: () => setMode("cal") }]} />
+                  </span></div>
+              </div>); })}
           </section>
           <p className="muted small fsnote">Gewährleistung in Österreich: 2 Jahre ab Übergabe; eine Herstellergarantie kann länger laufen. Garantie-Enden erscheinen automatisch im Reiter „Umtauschfrist“ und im Kalender-Abo.</p>
         </FitScroll>
@@ -18053,6 +18063,18 @@ html.stmtcol.stmtcol .stpill.sc-unklar.sc-unklar{background:color-mix(in srgb,va
 .uisrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 0;border-bottom:1px solid var(--line)}.uish{flex:1 1 200px;min-width:0}
 .uisctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.uisctl input[type=range]{width:160px}.uisv{width:46px;font-variant-numeric:tabular-nums;text-align:right}
 .uisprev{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px;margin:10px 0 4px;border-radius:12px;background:var(--card2)}
+/* v0.99.68 Besitz-Liste mit Status-Spalte */
+.astrow{display:grid;grid-template-columns:42px minmax(0,1fr) 120px auto;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line)}.astrow:last-child{border-bottom:0}
+.astrow.click{cursor:pointer}.astrow.click:hover{background:var(--card2)}.astrow.ended{opacity:.6}
+.astrow.asthead{padding:6px 14px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);cursor:default}.astrow.asthead:hover{background:none}
+.astrow .r{text-align:right}.astmain{min-width:0}.astmain b{display:block}
+.aststat{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-width:270px}
+.astslot{display:flex;justify-content:center}.astslot1{width:104px}.astslot2{width:86px}.astfirma{font-size:12px}.stpill.astexp{background:var(--card2);color:var(--mut);text-decoration:none}
+.astacts{display:flex;align-items:center;gap:2px}.astacts button.astnone{opacity:.25;cursor:default}
+@media (max-width:1180px){.astrow{grid-template-columns:38px minmax(0,1fr) 100px}.aststat{grid-column:2/-1;justify-content:flex-start;min-width:0}.astrow.asthead>span:last-child{display:none}.astslot{justify-content:flex-start;width:auto}}
+/* v0.99.69: Dropdown-Menüs am Desktop kompakter (Grundgröße), Regler unter Design → Buttons & Menüs */
+@media (hover:hover) and (min-width:768px){html.fg .moremenu button,html .pickmenu button{font-size:15px;padding:8px 10px}html .pickmenu small,html.fg .moremenu small{font-size:12.5px}html .pickmenu .vehmi{font-size:17px;width:24px}}
+.vehmenu.pickmenu{min-width:calc(200px * var(--mnz,1))!important;max-width:min(calc(320px * var(--mnz,1)),calc(100vw - 24px))!important}
 /* v0.99.58 Symbole */
 .glw{display:inline-flex;align-items:center;justify-content:center;line-height:1}.gll{width:1.15em;height:1.15em;flex:none}.gle{line-height:1}
 html.ics-c.ics-c .glw .gll{display:none}html:not(.ics-c) .glw .gle{display:none}

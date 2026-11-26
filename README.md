@@ -2,6 +2,17 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.69 – Kompaktere Dropdown-Menüs
+- Am Desktop/Mac sind Dropdown-Menüs in allen Designs kompakter: 15 px statt 18 px Schrift (die 18 px stammten aus dem Finanzguru-Stil für Touch), weniger Innenabstand, schmaler
+- Einstellungen → Design → Buttons & Menüs: der Regler für Dropdown-Menüs verkleinert jetzt auch die Breite des Menüs (vorher nur die Schrift)
+- Am Handy/iPad bleiben Menüs fingerfreundlich groß
+
+## v0.99.68 – Besitz & Garantie: Spalte „Status · Aktionen“
+- Liste wie bei Rechnungen: Gerät · Kaufpreis · Status · Aktionen mit Spaltenkopf
+- Status mit festem Platz: „in X T.“ (läuft bald ab), „Garantie“, „abgelaufen“ (nicht mehr durchgestrichen), „ausgeschieden“, „ohne Garantie“; daneben fester Platz für „🏢 Firma“
+- Aktionen: 👁 Kaufbeleg ansehen (blass, wenn keiner da ist), ✎ Bearbeiten, ⋯ (Kaufbeleg drucken / teilen / hinzufügen, im Kalender zeigen)
+- Schmale Fenster: Status und Aktionen in einer zweiten Zeile
+
 ## v0.99.67 – Besitz-Beträge bündig, Kontoauszug-Farben überall, Größe von Buttons & Menüs
 - Besitz & Garantie (Liste): Beträge stehen genau untereinander, die Beleg-Klammer hat einen festen schmalen Platz dahinter (ohne Rahmen)
 - Kontoauszug-Farben: Farbkreise statt leerer Farbfelder (auch für Privat), eigene Farben möglich; die Farbe gilt für PDF/Druck, die Markierung im Auszug, den Streifen links an der Zeile und den Knopf „Firma / Privat / Unklar“ sowie Etiketten
