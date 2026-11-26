@@ -420,6 +420,9 @@ const ls = {
 if (typeof document !== "undefined" && ls.get("tabbarIcons", false)) document.documentElement.classList.add("tbicons");
 const IS_TABLET = typeof navigator !== "undefined" && (/iPad/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
   || (/Android/.test(navigator.userAgent) && !/Mobile/.test(navigator.userAgent)) || (typeof matchMedia !== "undefined" && matchMedia("(pointer:coarse)").matches && Math.min(screen.width, screen.height) >= 600));
+// v0.99.76: Schrift-/Button-Größen sind pro Gerät – im Backup separat (devSizes), beim Wiederherstellen wird gefragt
+const DEV_SIZE_KEYS = ["dev:fontSizes", "dev:fontSizesSty", "dev:uiScale"];
+const devLabel = () => { const u = navigator.userAgent || ""; return /iPad|Macintosh.*Mobile/.test(u) || (/Macintosh/.test(u) && navigator.maxTouchPoints > 1) ? "iPad" : /iPhone/.test(u) ? "iPhone" : /Android/.test(u) ? "Android" : /Macintosh|Mac OS/.test(u) ? "Mac" : /Windows/.test(u) ? "Windows" : "anderes Gerät"; };
 const BACKUP_SKIP = /^(dev:|appToken|appLock|rtPw|srch:|pending|openSettingsSec|win:|scanFilter)/;
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
@@ -11693,7 +11696,8 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
       // alle App-Einstellungen und Firmendaten (Rechnungen, Kunden, Artikel, Verträge, Design …) – ohne Zugangscode und Zwischenstände
       const store = {};
       for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!BACKUP_SKIP.test(k)) store[k] = localStorage.getItem(k); }
-      const plain = JSON.stringify({ version: 5, exported: new Date().toISOString(), categories, nav, budgets, accounts, rules, txs, store, items: out });
+      const devSizes = Object.fromEntries(DEV_SIZE_KEYS.map((k) => [k, localStorage.getItem(k)]).filter(([, v]) => v != null && v !== "{}"));
+      const plain = JSON.stringify({ version: 5, exported: new Date().toISOString(), categories, nav, budgets, accounts, rules, txs, store, ...(Object.keys(devSizes).length ? { devSizes, devFrom: devLabel() } : {}), items: out });
       const enc = !bkPlain;
       download(new Blob([enc ? await encryptBackup(plain, bkPw) : plain], { type: "application/json" }),
         `findocu-backup-${todayISO()}${enc ? "-verschluesselt" : ""}.json`);
@@ -11720,6 +11724,8 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
       setDocs(await db.allDocs());
       if (j.store) {
         for (const [k, v] of Object.entries(j.store)) if (!BACKUP_SKIP.test(k)) try { localStorage.setItem(k, v); } catch {}
+        const ds = j.devSizes && typeof j.devSizes === "object" ? Object.entries(j.devSizes).filter(([k, v]) => DEV_SIZE_KEYS.includes(k) && typeof v === "string") : [];
+        if (ds.length && confirm(`Das Backup enthält Schrift- und Button-Größen${j.devFrom ? " vom " + j.devFrom : ""}.\n\nAuch auf diesem Gerät übernehmen?\nOK = übernehmen · Abbrechen = Größen dieses Geräts behalten`)) for (const [k, v] of ds) try { localStorage.setItem(k, v); } catch {}
         notify(`${n} Dokumente + Einstellungen, Rechnungen, Kunden importiert – App wird neu geladen`);
         setTimeout(() => location.reload(), 1200); return;
       }

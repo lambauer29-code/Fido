@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.76 – Schrift- & Button-Größen im Backup
+- Backup (Datei) enthält jetzt auch Schrift- & Zahlengrößen (allgemein und je Design) sowie die Button-/Menü-Skalierung, getrennt mit Gerätename
+- Beim Wiederherstellen wird gefragt, ob die Größen übernommen werden (sonst bleiben die des aktuellen Geräts); automatische Sicherungen auf dem Gerät unverändert
+
 ## v0.99.75 – Kontakte als PDF
 - Kunden → Menü ⋯ → Export: „PDF (Kontaktliste)“ – Querformat mit Nr., Art, Name, Ansprechperson, Anschrift, E-Mail, Telefon, Mobil, UID; nimmt den aktuellen Filter/Reiter und die Sortierung
 
