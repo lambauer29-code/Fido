@@ -2149,6 +2149,8 @@ function AppMain() {
     notify(`${go.length} Dokument(e) endgültig gelöscht${!ok && prot.length ? ` · ${prot.length} geschützte behalten` : ""}`); return go.length;
   }
   const [rtReq, setRtReq] = useState(null);
+  const [dupQ, setDupQ] = useState([]);
+  dupCtx = { docs: () => docsRef.current, ask: (req) => new Promise((res) => setDupQ((q) => [...q, { ...req, res }])), open: (id) => setOpenId(id) };
   rtUi = (req) => new Promise((res) => setRtReq({ ...req, res }));
   // Verweise auf endgültig gelöschte Dokumente lösen: Buchungen, Rechnungs-Beleg, Verträge, Besitz, Fahrtenbuch, Kassabuch
   async function unlinkDocRefs(ids) {
@@ -2215,6 +2217,17 @@ function AppMain() {
         ...(ei ? { einvoice: { format: ei.data.format, syntax: ei.data.syntax, number: ei.data.number, source: ei.source, xmlName: ei.xmlName, seller: ei.data.seller, buyer: ei.data.buyer, iban: ei.data.iban, ref: ei.data.ref } } : {})
       });
       await saveDoc(done);
+      // v0.99.49: gleicher Beleg in anderer Datei?
+      const dc = dupCfgGet();
+      if (dc.contentMode !== "off" && !doc.dupChecked) { const cd = findContentDup(done, docsRef.current); if (cd) {
+        const marked = { ...done, dupOf: cd.doc.id, dupWhy: cd.why, dupChecked: true }; await saveDoc(marked);
+        if (dc.contentMode === "ask") dupCtx.ask({ kind: "content", doc: marked, existing: cd.doc, why: cd.why }).then(async ({ act }) => {
+          const cur = docsRef.current.find((x) => x.id === marked.id) || marked;
+          if (act === "ok") await saveDoc({ ...cur, dupOf: undefined, dupWhy: undefined, dupOk: [...(cur.dupOk || []), cd.doc.id] });
+          else if (act === "trash") await trashDoc(cur);
+          else if (act === "open") setOpenId(cd.doc.id);
+        });
+      } }
       const uf = uniFiles.current[doc.id];
       if (uf) {
         delete uniFiles.current[doc.id];
@@ -2242,7 +2255,7 @@ function AppMain() {
   }
 
   async function onFiles(list, opts = {}) {
-    const files = [...list], ids = [];
+    const files = [...list], ids = []; let dupAll = null;
     for (const [fi, f] of files.entries()) {
       setUpl({ i: fi + 1, n: files.length, name: f.name });
       let blob, fname = f.name;
@@ -2253,9 +2266,21 @@ function AppMain() {
         catch (e) { notify(`${f.name}: ${e.message}`); continue; }
       } else
       try { blob = await prepareFile(f); } catch (e) { notify(`${f.name}: ${e.message}`); continue; }
+      // v0.99.49: identische Datei schon abgelegt?
+      const fileHash = await sha256Hex(f), blobHash = blob === f ? fileHash : await sha256Hex(blob);
+      const dcfg = dupCfgGet(), ex = !opts.noDup && dcfg.fileMode !== "keep" ? dupByHash([fileHash, blobHash]) : null;
+      if (ex) {
+        let act = dcfg.fileMode === "skip" ? "skip" : dupAll;
+        if (!act) { setUpl(null); const r = await dupCtx.ask({ kind: "file", name: f.name, existing: ex, left: files.length - fi - 1 }); act = r.act; if (r.all) dupAll = r.act === "open" ? "skip" : r.act; }
+        if (act !== "keep") {
+          if (act === "open") setOpenId(ex.id);
+          if (opts.linkTx) await linkTx(opts.linkTx, ex.id);
+          notify(`${f.name}: schon vorhanden${opts.linkTx ? " – vorhandener Beleg wurde zugeordnet" : " – übersprungen"}`); ids.push(ex.id); continue;
+        }
+      }
       if (blob.size > 3.6 * 1024 * 1024) notify(`${f.name}: ${(blob.size / 1048576).toFixed(0)} MB – wird zum Auslesen automatisch verkleinert`);
       const doc = {
-        id: uid(), createdAt: new Date().toISOString(), fileName: fname, mimeType: blob.type, size: blob.size,
+        id: uid(), createdAt: new Date().toISOString(), fileName: fname, mimeType: blob.type, size: blob.size, fileHash, blobHash,
         title: fname, category: "Sonstiges", tags: [], deadlines: [], amount: null, paid: false, notes: "", status: "processing",
         ...(opts.cash ? { payCash: true } : {}), ...(opts.scanned ? { scanned: true } : {}), ...(opts.uni ? { uniCheck: true } : {}), ...(opts.receipt ? { receiptFlow: true, category: "Garantie & Kaufbelege" } : {})
       };
@@ -2391,6 +2416,7 @@ function AppMain() {
           deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null}
           journalTab={{ label: tabLabel(nav, "journal") || "Journal", open: () => setTab("journal") }} />}
         {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify} />}
+        {dupQ[0] && <DupWin key={dupQ[0].name + (dupQ[0].existing?.id || "")} req={dupQ[0]} onDone={(v) => { dupQ[0].res(v); setDupQ((q) => q.slice(1)); }} />}
         {rtReq && <RtGuardWin req={rtReq} onDone={(v) => { rtReq.res(v); setRtReq(null); }} />}
         {tab === "deadlines" && <Deadlines docs={dlDocs} onOpen={openDl} saveDoc={saveDl} calSync={calSync} setCalSync={setCalSync} token={token} notify={notify} />}
         {tab === "cash" && <ExpensePage accounts={visAccounts} txs={txs} categories={TX_CATS(categories)} onSave={saveExpense} onScan={scanFor} addCategory={addCategory} notify={notify}
@@ -5725,6 +5751,8 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
   const [scope, setScope] = useState(() => ls.get("docScope", "alle"));
   useEffect(() => ls.set("docScope", scope), [scope]);
   const [unpaid, setUnpaid] = useState(false);
+  const [dupOnly, setDupOnly] = useState(false);
+  const dupN = useMemo(() => docs.filter((d) => d.dupOf && docs.some((x) => x.id === d.dupOf)).length, [docs]);
   const [view, setView] = useState(() => ls.get("view", "list"));
   useEffect(() => ls.set("view", view), [view]);
   // Ablage-Ansicht (v0.90): Liste · Ordner · Akten – frei kombinierbar mit Darstellung Liste/Galerie
@@ -5746,11 +5774,11 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
     const terms = norm(qDef).split(/\s+/).filter(Boolean);
     return docs
       .filter((d) => (scope === "alle" || docScope(d) === scope) && (area === "alle" || docArea(d) === area) && (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) && (!month || monthKey(d).slice(5, 7) === month) &&
-        (!taxOnly || d.taxRelevant) && (!unpaid || (d.direction === "ausgabe" && d.amount?.total && !d.paid)))
+        (!taxOnly || d.taxRelevant) && (!unpaid || (d.direction === "ausgabe" && d.amount?.total && !d.paid)) && (!dupOnly || (d.dupOf && docs.some((x) => x.id === d.dupOf))))
       .filter((d) => { if (!terms.length) return true; const h = haystack(d); return terms.every((t) => h.includes(t)); })
       .filter((d) => !akte || (akteMatch(akte, d) && (akteSub === "alle" || (akteSub === "vertraege" ? !!d.contract : akteSub === "fristen" ? (d.deadlines || []).some((x) => !x.done && x.date && daysUntil(x.date) >= -60) : d.direction === "ausgabe" && d.amount?.total && !d.paid))))
       .sort(kit.sorts[sort]?.[2] || kit.sorts.date[2]);
-  }, [docs, qDef, cat, tag, year, month, sort, taxOnly, unpaid, area, scope, akte, akteSub]);
+  }, [docs, qDef, cat, tag, year, month, sort, taxOnly, unpaid, area, scope, akte, akteSub, dupOnly]);
 
   const rowH = useRef({});
   const [visList, docSent] = useProgressive(list);
@@ -5809,6 +5837,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
       </div>}
       {akte && <AkteHead akte={akte} docs={docs} sub={akteSub} setSub={setAkteSub} />}
       {area === "sonstiges" && <p className="muted small" style={{ margin: "4px 2px 8px" }}>Dokumente in „Sonstiges“ zählen nicht in Übersicht, Budgets und Auswertungen.</p>}
+      {(dupN > 0 || dupOnly) && <div className={"dupbar" + (dupOnly ? " on" : "")}><span className="grow">⚠️ {dupN} mögliche{dupN === 1 ? "s" : ""} Duplikat{dupN === 1 ? "" : "e"}</span><button className="btn sm" onClick={() => setDupOnly(!dupOnly)}>{dupOnly ? "Alle Dokumente zeigen" : "Mögliche Duplikate anzeigen"}</button></div>}
       {onFiles && showDrop && !overview && !subOpen && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} what="PDF, Fotos & E-Rechnungen (XML)" accept="application/pdf,image/*,.xml,application/xml,text/xml" isOk={(x) => isDocFile(x) || isXmlFile(x)} />}
       {docBusy && <ImportBar {...docBusy} />}
       {!overview && <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>}
@@ -8228,6 +8257,14 @@ function StmtImportWin({ file, accounts, txs, getTxs, importTxs, saveDoc, update
         tags: ["kontoauszug"], deadlines: [], sender: st.inst || acc?.name || "", documentDate: to, amount: null, direction: "keine", paid: false, notes: "", status: "done", scope: acc?.use === "firma" ? "firma" : "privat",
         summary: `Kontoauszug ${acc?.name || ""} mit ${lines.length} Buchungen`, stmt: { accountId: accId, from, to, months: monthsBetween(from, to), lines, at: new Date().toISOString() } };
       try { doc.thumb = await makeThumb(blob); } catch {}
+      doc.fileHash = file.__hash || (await sha256Hex(file)); doc.blobHash = blob === file ? doc.fileHash : await sha256Hex(blob);
+      // v0.99.49: gleiches Konto + gleicher Zeitraum schon abgelegt?
+      const sd = dupCfgGet().stmtMode !== "keep" ? findStmtDup(accId, from, to) : null;
+      if (sd) {
+        const act = dupCfgGet().stmtMode === "skip" ? "skip" : (await dupCtx.ask({ kind: "stmtPeriod", existing: sd, acc: acc?.name || "Konto", from, to })).act;
+        if (act === "skip") { notify?.("Buchungen abgeglichen – PDF nicht nochmal abgelegt"); onDone(sd); return; }
+        if (act === "replace") await saveDoc({ ...sd, deletedAt: new Date().toISOString() });
+      }
       await db.putFile(id, blob); await saveDoc(doc);
       notify?.(`Auszug gespeichert · ${lines.filter((l) => l.txId).length}/${lines.length} Zeilen zugeordnet${lines.some((l) => l.box) ? "" : " · keine Positionen im PDF gefunden"}`);
       onDone(doc);
@@ -9238,7 +9275,16 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
       {["monate", "auszuege"].includes(sec) && <div className="chips">{years.map((y) => <button key={y} className={"chip" + (year === y ? " on" : "")} onClick={() => setYear(y)}>{y}</button>)}</div>}
     </div>
   );
-  const uploadInput = <input ref={fileRef} type="file" accept="application/pdf,image/*" multiple hidden onChange={(e) => { const l = [...e.target.files]; e.target.value = ""; if (l.length) setImpFiles(l); }} />;
+  // v0.99.49: denselben Kontoauszug nicht doppelt einlesen (spart auch die KI)
+  const addStmtFiles = async (l) => {
+    const keep = [], mode = dupCfgGet().stmtMode;
+    for (const f of l) { const h = await sha256Hex(f), ex = mode !== "keep" ? dupByHash([h]) : null; f.__hash = h;
+      if (!ex) { keep.push(f); continue; }
+      const act = mode === "skip" ? "skip" : (await dupCtx.ask({ kind: "stmt", name: f.name, existing: ex })).act;
+      if (act === "keep") keep.push(f); else { if (act === "open") (ex.stmt ? setStmtOpen(ex.id) : onOpen?.(ex.id)); notify?.(`${f.name}: schon vorhanden – übersprungen`); } }
+    if (keep.length) setImpFiles(keep);
+  };
+  const uploadInput = <input ref={fileRef} type="file" accept="application/pdf,image/*" multiple hidden onChange={(e) => { const l = [...e.target.files]; e.target.value = ""; if (l.length) addStmtFiles(l); }} />;
   const upload = (<>
     {uploadInput}
     <button className="btn primary" onClick={() => fileRef.current.click()}>＋ Kontoauszug hochladen</button>
@@ -9325,7 +9371,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
   const auszuege = (
     <div className="stbstmts">
       {uploadInput}
-      <DropField onFiles={(l) => setImpFiles(l)} title="Kontoauszüge hierher ziehen" what="PDF & Fotos" />
+      <DropField onFiles={(l) => addStmtFiles(l)} title="Kontoauszüge hierher ziehen" what="PDF & Fotos" />
       <div className="row stbtoolbar">
         {stmtAccs.length > 1 && <PSelect value={accF} onChange={(e) => setAccF(e.target.value)}><option value="">Alle Konten</option>{stmtAccs.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</PSelect>}
         <span className="grow" />
@@ -10100,6 +10146,9 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
           <button className="link" onClick={() => set({ deadlines: [...(d.deadlines || []), { id: uid(), label: "Frist", date: todayISO(), done: false }] })}>＋ Frist hinzufügen</button>
         </fieldset>
 
+        {d.dupOf && dupCtx.docs().some((x) => x.id === d.dupOf && !x.deletedAt) && (() => { const o = dupCtx.docs().find((x) => x.id === d.dupOf); return (<div className="dupbox">
+          <span className="grow">⚠️ Mögliches Duplikat von „<b>{o.title}</b>“{d.dupWhy ? ` – ${d.dupWhy}` : ""}</span>
+          <div className="row"><button className="link" onClick={() => dupCtx.open?.(o.id)}>Vergleichen</button><button className="link" onClick={() => set({ dupOf: undefined, dupWhy: undefined, dupOk: [...(d.dupOk || []), o.id] })}>Ist kein Duplikat</button><button className="link red" onClick={() => trashDoc(doc)}>In den Papierkorb</button></div></div>); })()}
         {(() => { const e = rtDocEnd(d); const on = e && e >= todayISO(); return (<div className={"rtbox" + (on ? " on" : "")}>
           <span className="grow">{on ? <>🔒 Aufbewahrungspflicht bis <b>{fmtDate(e)}</b></> : e ? <>Aufbewahrungsfrist abgelaufen ({fmtDate(e)}) – darf gelöscht werden</> : <>Keine Aufbewahrungspflicht</>}</span>
           <span className="rtsel"><PSelect title="Aufbewahrung" value={d.retainYears == null ? "" : String(d.retainYears)} onChange={(ev) => set({ retainYears: ev.target.value === "" ? undefined : +ev.target.value })}>{RT_YEARS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</PSelect></span></div>); })()}
@@ -10212,6 +10261,85 @@ function RtSettings({ docs = [], purgeMany, notify }) {
         <button className="btn danger sm" disabled={!sel.length} onClick={async () => { if (!confirm(`${sel.length} Dokument(e) mit abgelaufener Aufbewahrungsfrist endgültig löschen?`)) return; await purgeMany?.(sel); setSel([]); }}>Ausgewählte löschen ({sel.length})</button></div>
       <ul className="rtlist">{exp.map((d) => <li key={d.id}><label className="check grow"><input type="checkbox" checked={sel.includes(d.id)} onChange={(e) => setSel((s) => (e.target.checked ? [...s, d.id] : s.filter((x) => x !== d.id)))} /> <span className="one">{d.title}</span></label><small className="muted">abgelaufen {fmtDate(rtDocEnd(d, cfg))}</small></li>)}</ul>
     </div>}
+  </div>);
+}
+/* ======================= v0.99.49: Duplikaterkennung (Dateien, Inhalte, Kontoauszüge) ======================= */
+const DUP_DEF = { fileMode: "ask", contentMode: "ask", stmtMode: "ask" };
+const dupCfgGet = () => ({ ...DUP_DEF, ...ls.get("dupCfg", {}) });
+async function sha256Hex(blobOrBuf) { try { const buf = blobOrBuf instanceof ArrayBuffer ? blobOrBuf : await blobOrBuf.arrayBuffer(); const h = await crypto.subtle.digest("SHA-256", buf); return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join(""); } catch { return ""; } }
+let dupCtx = { docs: () => [], ask: null, open: null };
+function dupByHash(hashes, exceptId) { const hs = hashes.filter(Boolean); if (!hs.length) return null; return dupCtx.docs().find((d) => !d.deletedAt && d.id !== exceptId && ((d.fileHash && hs.includes(d.fileHash)) || (d.blobHash && hs.includes(d.blobHash)))) || null; }
+const dupNrm = (x) => norm(x || "").replace(/\b(gmbh|gesmbh|ag|kg|og|e\.?u\.?|co|ltd|inc)\b/g, "").replace(/[^a-z0-9äöüß]/g, "");
+const dupInvNo = (d) => d.einvoice?.number || (((`${d.title || ""} ${d.payment?.reference || ""}`).match(/\b(?:[A-Z]{1,5}[-/ ]?)?\d{2,4}[-/]\d{2,7}\b|\b(?:RE|RG|R|INV|NR)[-.: ]?\d{3,}\b/gi) || []).find((x) => !/^\d{1,2}[-/]\d{4}$|^\d{4}[-/]\d{1,2}$|^\d{1,2}[-/]\d{2}$/.test(x.trim()))) || "";
+function findContentDup(d, docs) {
+  if (!d || d.docType === "Kontoauszug" || d.stmt) return null;
+  const s = dupNrm(d.sender || d.merchant); if (!s) return null;
+  const tot = d.amount?.total, dt = d.documentDate || d.purchaseDate, num = dupInvNo(d).toUpperCase();
+  for (const x of docs) {
+    if (x.id === d.id || x.deletedAt || x.status !== "done" || x.stmt || (d.dupOk || []).includes(x.id) || (x.dupOk || []).includes(d.id)) continue;
+    if (dupNrm(x.sender || x.merchant) !== s) continue;
+    const xn = dupInvNo(x).toUpperCase(), xt = x.amount?.total, xd = x.documentDate || x.purchaseDate;
+    if (num && xn && num === xn) { if (tot != null && xt != null && Math.abs(tot - xt) >= 0.01) continue; return { doc: x, why: "gleiche Rechnungsnummer" + (tot != null && xt != null ? " und gleicher Betrag" : "") }; }
+    if (num && xn && num !== xn) continue;
+    if (tot != null && xt != null && Math.abs(tot - xt) < 0.01 && dt && xd && Math.abs((new Date(dt) - new Date(xd)) / 864e5) <= 3) return { doc: x, why: "gleicher Absender, Betrag und Datum" };
+  }
+  return null;
+}
+function findStmtDup(accId, from, to, exceptId) {
+  const span = (a, b) => (new Date(b) - new Date(a)) / 864e5 + 1;
+  return dupCtx.docs().find((d) => { if (d.deletedAt || d.id === exceptId || d.stmt?.accountId !== accId || !d.stmt.from) return false;
+    const lo = from > d.stmt.from ? from : d.stmt.from, hi = to < d.stmt.to ? to : d.stmt.to; return hi >= lo && span(lo, hi) >= 0.8 * Math.min(span(from, to), span(d.stmt.from, d.stmt.to)); }) || null;
+}
+function DupWin({ req, onDone }) {
+  const [all, setAll] = useState(false), x = req.existing;
+  const info = x && <div className="dupdoc"><Thumb d={x} /><span className="grow"><b className="one">{x.title}</b><small className="muted block">{[x.documentDate && fmtDate(x.documentDate), x.amount?.total != null && fmtMoney(x.amount.total), x.createdAt && "hochgeladen " + fmtDate(x.createdAt.slice(0, 10)), docScope(x) === "firma" && "Firma", x.category].filter(Boolean).join(" · ")}</small></span></div>;
+  const done = (act) => onDone({ act, all });
+  return createPortal(<Win id="dupwin" onClose={() => done(req.kind === "content" ? "later" : "skip")} small defW={540} dirty={false} stay>
+    <div className="panelhead"><b>{req.kind === "content" ? "⚠️ Mögliches Duplikat" : req.kind === "stmtPeriod" ? "📄 Kontoauszug schon vorhanden" : "📑 Diese Datei ist schon abgelegt"}</b><XBtn /></div>
+    {req.kind === "file" && <p><b>{req.name}</b> ist identisch mit einem vorhandenen Dokument{req.left > 0 ? ` (noch ${req.left} weitere Datei${req.left === 1 ? "" : "en"} im Upload)` : ""}:</p>}
+    {req.kind === "stmt" && <p>Der Kontoauszug <b>{req.name}</b> wurde schon hochgeladen:</p>}
+    {req.kind === "stmtPeriod" && <p>Für <b>{req.acc}</b> gibt es bereits einen Auszug für {fmtDate(req.from)}–{fmtDate(req.to)}. Die Buchungen sind schon abgeglichen – es geht nur um das PDF.</p>}
+    {req.kind === "content" && <p>„<b>{req.doc.title}</b>“ sieht aus wie ein vorhandener Beleg – {req.why}:</p>}
+    {info}
+    <div className="actions dupacts">
+      {req.kind === "content" ? <>
+        <button className="btn" onClick={() => done("open")}>Vergleichen</button>
+        <button className="btn" onClick={() => done("ok")}>Ist kein Duplikat</button>
+        <button className="btn danger" onClick={() => done("trash")}>Neues in den Papierkorb</button>
+        <button className="link" onClick={() => done("later")}>Später</button>
+      </> : req.kind === "stmtPeriod" ? <>
+        <button className="btn primary" onClick={() => done("skip")}>Neues nicht ablegen</button>
+        <button className="btn" onClick={() => done("replace")}>Altes ersetzen</button>
+        <button className="btn" onClick={() => done("keep")}>Beide behalten</button>
+      </> : <>
+        <button className="btn primary" onClick={() => done("skip")}>Überspringen</button>
+        <button className="btn" onClick={() => done("open")}>Vorhandenes ansehen</button>
+        <button className="btn" onClick={() => done("keep")}>Trotzdem ablegen</button>
+      </>}
+    </div>
+    {req.kind === "file" && req.left > 0 && <label className="check small"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Für alle weiteren Duplikate dieses Uploads übernehmen</label>}
+  </Win>, document.querySelector(".app") || document.body);
+}
+function DupSettings({ docs = [], saveDoc, notify }) {
+  const [c0] = useLsState("dupCfg", DUP_DEF), cfg = { ...DUP_DEF, ...c0 }, set = (p) => lsSetEv("dupCfg", { ...dupCfgGet(), ...p });
+  const [busy, setBusy] = useState(""), [res, setRes] = useState(null);
+  const scan = async () => {
+    const live = docs.filter((d) => !d.deletedAt); let n = 0;
+    for (const d of live) { if (d.blobHash) continue; const b = await db.getFile(d.id); if (b) { const h = await sha256Hex(b); if (h) { d.blobHash = h; await saveDoc({ ...d, blobHash: h }); } } if (++n % 10 === 0) setBusy(`Berechne Fingerabdrücke … ${n}/${live.length}`); }
+    setBusy("Vergleiche Inhalte …");
+    const byHash = {}; let same = 0, cont = 0;
+    for (const d of live) { const h = d.blobHash || d.fileHash; if (!h) continue; if (byHash[h] && !(d.dupOk || []).includes(byHash[h].id)) { same++; if (d.dupOf !== byHash[h].id) await saveDoc({ ...d, dupOf: byHash[h].id, dupWhy: "identische Datei" }); } else byHash[h] = d; }
+    const sorted = [...live].sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+    for (let i = 0; i < sorted.length; i++) { const d = sorted[i]; if (d.dupOf) continue; const c = findContentDup(d, sorted.slice(0, i)); if (c) { cont++; await saveDoc({ ...d, dupOf: c.doc.id, dupWhy: c.why }); } }
+    setBusy(""); setRes({ same, cont, total: live.length }); notify?.(same + cont ? `${same + cont} mögliche Duplikate gefunden – in Dokumente unter „Mögliche Duplikate“` : "Keine Duplikate gefunden");
+  };
+  const marked = docs.filter((d) => !d.deletedAt && d.dupOf).length;
+  return (<div className="rtset">
+    <label>Gleiche Datei wird nochmal hochgeladen<PSelect value={cfg.fileMode} onChange={(e) => set({ fileMode: e.target.value })}><option value="ask">Nachfragen (Überspringen / Ansehen / Trotzdem ablegen)</option><option value="skip">Automatisch überspringen (mit Hinweis)</option><option value="keep">Immer ablegen</option></PSelect></label>
+    <label>Gleicher Beleg in anderer Datei (nach dem Auslesen)<PSelect value={cfg.contentMode} onChange={(e) => set({ contentMode: e.target.value })}><option value="ask">Nachfragen und markieren</option><option value="mark">Nur markieren</option><option value="off">Nicht prüfen</option></PSelect></label>
+    <label>Kontoauszug für gleiches Konto und gleichen Zeitraum<PSelect value={cfg.stmtMode} onChange={(e) => set({ stmtMode: e.target.value })}><option value="ask">Nachfragen</option><option value="skip">Automatisch nicht nochmal ablegen</option><option value="keep">Immer ablegen</option></PSelect></label>
+    <div className="row"><button className="btn" disabled={!!busy} onClick={() => scan().catch((e) => { setBusy(""); notify?.("Prüfung fehlgeschlagen: " + e.message); })}>{busy || "🔍 Vorhandene Dokumente jetzt prüfen"}</button><span className="grow" /><small className="muted">{marked ? `${marked} markiert` : ""}</small></div>
+    {res && <small className="muted block">{res.total} Dokumente geprüft · {res.same} identische Dateien · {res.cont} inhaltlich gleiche Belege</small>}
   </div>);
 }
 /* ---------- Einstellungen, Budgets, Papierkorb, Backup ---------- */
@@ -10934,6 +11062,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
           ))}
         </ul>
       </SetSec>
+      <SetSec id="dups" title="Duplikaterkennung"><DupSettings docs={docs} saveDoc={saveDoc} notify={notify} /></SetSec>
       <SetSec id="retain" title="Aufbewahrungspflicht & Löschschutz"><RtSettings docs={docs} purgeMany={purgeMany} notify={notify} /></SetSec></>,
     "backup": <><SetSec id="backup" title="Datensicherung">
         <SyncSettings notify={notify} />
@@ -17303,6 +17432,9 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .rtbox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;border-radius:12px;background:var(--card2);margin:8px 0;font-size:14px}.rtbox.on{background:color-mix(in srgb,#f5a524 14%,var(--card2))}.rtsel{width:260px;max-width:100%}
 .rtlist{list-style:none;margin:6px 0;padding:0;max-height:300px;overflow:auto}.rtlist li{display:flex;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:14px}
 .rtset{display:flex;flex-direction:column;gap:10px}.rtstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.rtstats>div{background:var(--card2);border-radius:12px;padding:10px 12px}.rtstats small{display:block;color:var(--muted);font-size:12px}.rtstats b{font-size:20px;display:block}.rtstats .click{cursor:pointer}
+.dupbar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;background:color-mix(in srgb,#f5a524 14%,var(--card2));margin:6px 0 10px;font-size:14px}.dupbar.on{outline:1.5px solid #f5a524}
+.dupbox{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,#f5a524 14%,var(--card2));margin:8px 0;font-size:14px}.dupbox .row{gap:14px}
+.dupdoc{display:flex;gap:10px;align-items:center;padding:10px;border-radius:12px;background:var(--card2);margin:6px 0 10px}.dupacts{flex-wrap:wrap}
 .stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
 .stbmacts{justify-content:space-between;margin-top:4px}
 .stbstmts{display:flex;flex-direction:column;gap:10px}

@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.49 – Duplikaterkennung
+
+- Gleiche Datei: Beim Hochladen wird ein Fingerabdruck (SHA-256) verglichen – sofort und vor der KI. Nachfragen (Überspringen / Vorhandenes ansehen / Trotzdem ablegen, „für alle weiteren übernehmen“), automatisch überspringen oder immer ablegen – in den Einstellungen wählbar. Beim Beleg-Zuordnen wird ein vorhandener Beleg direkt verknüpft.
+- Gleicher Beleg in anderer Datei (Foto + PDF): nach dem Auslesen anhand Rechnungsnummer bzw. Absender + Betrag + Datum (± 3 Tage) – nachfragen und markieren oder nur markieren. Hinweis im Dokument (Vergleichen / Ist kein Duplikat / Papierkorb) und Filter „Mögliche Duplikate“ in Dokumente.
+- Kontoauszüge: gleiche Datei wird vor dem KI-Auslesen erkannt; gleiches Konto + gleicher Zeitraum → nicht ablegen / altes ersetzen / beide behalten.
+- Einstellungen › Duplikaterkennung: Verhalten wählen, vorhandene Dokumente einmal komplett prüfen.
+
 ## v0.99.48 – Aufbewahrungspflicht & Löschschutz
 
 - Jedes Dokument zeigt „🔒 Aufbewahrungspflicht bis 31.12.JJJJ“ (7 Jahre ab Ende des Belegjahres, § 132 BAO); pro Dokument änderbar: Standard / 7 / 12 / 22 Jahre (Grundstücke) / keine.
