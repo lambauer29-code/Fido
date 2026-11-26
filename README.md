@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.82 – Betragsfelder in einer Linie
+- Dokument → Betrag: Brutto, Netto, USt und Zahlbetrag stehen in einer Linie (Beschriftung „Zahlbetrag“ kurz, Erklärung beim Darüberfahren)
+
 ## v0.99.81 – Journal in Originalwährung
 - Journal (Liste, Kopfzeile, Karte am Handy): Beträge in der Originalwährung des Belegs (z. B. −$ 24,00), darunter ≈ Euro-Betrag
 - Monats- und Jahressummen im Journal rechnen Fremdwährungen in Euro um

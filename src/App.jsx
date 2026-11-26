@@ -10865,9 +10865,9 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
               <button key={k} className={(d.direction || "keine") === k ? "on" : ""} onClick={() => set({ direction: k })}>{l}</button>
             ))}
           </div><CurSelect value={d.amount?.currency} onChange={(c) => set({ amount: { ...(d.amount || {}), currency: c, fx: null, fxDate: null, fxSrc: null, eur: null } })} /></div>
-          <div className="grid4">
-            {[["total", "Brutto"], ["net", "Netto"], ["vat", "USt"], ["payout", "Ausbezahlt / Zahlbetrag"]].map(([k, l]) => (
-              <label key={k}>{l}
+          <div className="grid4 amtgrid">
+            {[["total", "Brutto"], ["net", "Netto"], ["vat", "USt"], ["payout", "Zahlbetrag"]].map(([k, l]) => (
+              <label key={k} title={k === "payout" ? "Ausbezahlt / Zahlbetrag – z. B. Netto-Auszahlung beim Lohnzettel" : undefined}>{l}
                 <input inputMode="decimal" value={d.amount?.[k] ?? ""} placeholder={k === "payout" && d.amount ? String(payAmt(d) ?? "") : ""}
                   onChange={(e) => set({ amount: { currency: "EUR", ...d.amount, [k]: numIn(e.target.value) } })} />
               </label>
@@ -18735,6 +18735,7 @@ html.sty-graphit.sty-graphit nav.bottom>button.on,html.sty-sand.sty-sand nav.bot
 .ctlogoprev{width:64px;height:64px;border-radius:14px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;background:var(--card2);color:var(--mut);overflow:hidden}
 .ctlogoprev.has{background:repeating-conic-gradient(#8883 0 25%,transparent 0 50%) 50%/12px 12px;padding:0}
 #ctrypick .sblist,.ctrypick .sblist{display:flex;flex-direction:column;gap:2px}.sbrow.ctryrow{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:10px;background:transparent;font-size:15px;text-align:left;color:var(--txt);border:0!important;box-shadow:none}.sbrow.ctryrow:hover{background:color-mix(in srgb,var(--txt) 7%,transparent)}.ctrybar>.seg.ctrymode{flex:none;width:auto;display:inline-flex}.stbku .row{gap:8px;flex-wrap:wrap}
+.amtgrid{align-items:end}.amtgrid>label{display:flex;flex-direction:column;justify-content:flex-end;min-width:0;white-space:nowrap}.amtgrid>label>input{width:100%}
 .fxrow{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:12px;background:color-mix(in srgb,var(--acc) 5%,transparent)}.fxrow .fxinfo{font-size:13.5px}.fxins{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.fxins label{flex:1 1 140px;margin:0;font-size:12.5px}.fxins .btn{flex:none}
 .expcur{display:flex;gap:8px;align-items:stretch;flex-wrap:nowrap}.expcur>input{flex:1;min-width:0}.expcur>.vehpick,.fxhead>.vehpick{flex:none!important;width:auto!important;display:inline-flex}.expcur .cursel,.fxhead .cursel{width:auto!important;min-width:96px;white-space:nowrap}.fxhead{gap:10px;align-items:center;flex-wrap:wrap}.fxhead .seg{flex:1}
 .fxeur{display:block;font-size:11px;font-weight:400;color:var(--mut)}.fxnote{align-self:end}
