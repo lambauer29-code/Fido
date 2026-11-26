@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.62 – Übersicht: Konten-Kachel in normaler Größe
+- Graphit, Sand, Nacht, Schiefer, Salbei, Papier: Namen und Beträge in Zeilen-Listen (Konten-Kachel, Dokumente, Rechnungen, Kunden, Verträge) am Desktop 15 px statt 20 px (Handy-Größe aus dem Finanzguru-Stil)
+
+## v0.99.61 – Schrift- & Zahlengrößen je Design
+- Einstellungen → Design → „Schrift- & Zahlengrößen“: Schalter „Eigene Größen für <Design>“ – jedes Design (Graphit, Sand, Nacht, Schiefer, Salbei, Papier, Klassisch, Glas …) kann eigene Größen haben; ohne eigene gelten die allgemeinen
+- Zahlen jetzt in drei Stufen einstellbar: große Beträge (Kontostand, Saldo), Kennzahlen-Kacheln, Beträge in Listen
+- Sprung-Link direkt unter der Design-Auswahl
+
 ## v0.99.60 – Fix: riesige weiße Logo-Kästen
 - Firmenlogos in Buchungszeilen waren nach v0.99.59 riesig und leer: der Innenabstand war in Prozent angegeben und bezog sich auf die Breite der Tabellenzeile – jetzt fester Anteil der Symbolgröße, Logo wieder sichtbar und gleich groß wie die anderen Symbole
 

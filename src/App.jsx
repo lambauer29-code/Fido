@@ -10639,6 +10639,7 @@ function applyDesign(design, theme) {
   set("--neg", design.neg ? (dark ? mixWhite(design.neg, 0.18) : design.neg) : null);
   document.body.classList.toggle("outneg", !!design.outNeg);
   applyUiStyle(design.style || "klassisch");
+  applyFontSizes(fsFor(design.style));
   applyAppFonts(design);
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = surf.bg || (dark ? "#0d1117" : "#f3f5f9");
 }
@@ -10678,7 +10679,9 @@ const FS_CATS = [
   ["head", "Karten- & Bereichsüberschriften", ".tilehead b, .panelhead > b, .ssectitle, .docsubtitle, .setdrilltitle, .app h2, .subhead, .hubtile b, .akte b, .aktehead b", "Nächste Fristen", "fsx-head"],
   ["group", "Gruppen-Titel (GROSSBUCHSTABEN)", ".app h3, .foldersec, .setgrouph, .tbsethead, .mgrouphead, .side h4", "FINANZEN", "fsx-group"],
   ["row", "Listen-Titel (Zeilen)", ".dtitle, .mtitle, .grow > b.one, .invname, .gbody > b, .folder > b, .setrow > .grow, .ditem .grow > b", "Rechnung Rexel Austria", "fsx-row"],
-  ["num", "Beträge & Kennzahlen", ".amt, .invamt, .cmpmain b, .tile > b, .aktekpis b, .kpi b", "€ 1.234,56", "fsx-num"],
+  ["hero", "Große Beträge (Kontostand, Saldo)", ".hero-v, b.big, .kbstat b, .rlkpis b", "€ 16.817,42", "fsx-hero"],
+  ["kpi", "Kennzahlen-Kacheln", ".kpiv, .hero-row b, .aktekpis b, .kpi b, .tile > b, .cmpmain b", "€ 1.539,36", "fsx-kpi"],
+  ["num", "Beträge in Listen", ".amt, .invamt, .cdamt, .mamt, .mmoney, .jra b, .kbr .r, .accitem .ab, .invamt b", "−€ 59,33", "fsx-num"],
   ["text", "Text & Eingabefelder", ".app p, .app input, .app select, .app textarea, .win input, .win select, .win textarea", "Normaler Text in Beschreibungen", "fsx-text"],
   ["btn", "Buttons, Filter & Reiter", ".app .btn, .app .chip, .app .seg > button, .navback, .win .btn", "Steuerrelevant", "fsx-btn"],
   ["small", "Kleintext (Datum, Hinweise)", ".app small:not(.btn small):not(.chip small):not(.seg small), .win small", "Finanzamt · 08.07.2026", "fsx-small"],
@@ -10690,15 +10693,23 @@ function applyFontSizes(fs) {
   if (!el) { el = document.createElement("style"); el.id = "fs-style"; document.head.appendChild(el); }
   el.textContent = FS_CATS.filter(([k]) => fs?.[k] && fs[k] !== 100).map(([k, , sel]) => `${sel}{zoom:${fs[k] / 100}}`).join("\n");
 }
-if (typeof window !== "undefined") try { applyFontSizes(JSON.parse(localStorage.getItem("dev:fontSizes") || "{}")); } catch {}
-function FontSizeSettings() {
-  const [fs, setFs] = useLsState("dev:fontSizes", {});
-  useEffect(() => applyFontSizes(fs), [fs]);
+// v0.99.61: eigene Schrift- & Zahlengrößen je Design (Stil); ohne eigene gelten die allgemeinen
+const fsFor = (sty) => { try { const by = JSON.parse(localStorage.getItem("dev:fontSizesSty") || "{}"); return by[sty || "klassisch"] || JSON.parse(localStorage.getItem("dev:fontSizes") || "{}"); } catch { return {}; } };
+if (typeof window !== "undefined") try { applyFontSizes(fsFor(JSON.parse(localStorage.getItem("design") || "{}").style)); } catch {}
+function FontSizeSettings({ sty = "klassisch" }) {
+  const [gl, setGl] = useLsState("dev:fontSizes", {}), [by, setBy] = useLsState("dev:fontSizesSty", {});
+  const own = !!by[sty], fs = own ? by[sty] : gl, styName = UI_STYLES.find((x) => x[0] === sty)?.[1] || sty;
+  const setFs = (n) => (own ? setBy({ ...by, [sty]: n }) : setGl(n));
+  useEffect(() => applyFontSizes(fs), [JSON.stringify(fs)]);
   const v = (k) => fs[k] || 100, set = (k, n) => setFs({ ...fs, [k]: Math.max(70, Math.min(170, n)) });
+  const setOwn = (on) => { const n = { ...by }; if (on) n[sty] = { ...gl }; else delete n[sty]; setBy(n); };
   const all = FS_CATS.every(([k]) => v(k) === v(FS_CATS[0][0])) ? v(FS_CATS[0][0]) : null;
   return (<>
-    <h4 className="subhead">Schriftgrößen</h4>
+    <h4 className="subhead" id="fs-sec">Schrift- & Zahlengrößen</h4>
     <p className="muted small">Gilt nur für dieses Gerät (iPad, Mac und Handy getrennt) – in % der Standardgröße.</p>
+    <label className="switchrow fsown"><span><b>Eigene Größen für „{styName}“</b><small className="muted block">{own ? `Diese Größen gelten nur, solange „${styName}“ gewählt ist.` : "Aus: es gelten die allgemeinen Größen (für alle Designs ohne eigene Größen)."}</small></span>
+      <input type="checkbox" className="switch" checked={own} onChange={(e) => setOwn(e.target.checked)} /></label>
+    {Object.keys(by).length > 0 && <small className="muted block fsownlist">Eigene Größen bei: {Object.keys(by).map((k) => UI_STYLES.find((x) => x[0] === k)?.[1] || k).join(", ")}</small>}
     <div className="seg fspreset">{FS_PRESETS.map(([l, n]) => <button key={n} className={all === n ? "on" : ""} onClick={() => setFs(Object.fromEntries(FS_CATS.map(([k]) => [k, n])))}>{l}</button>)}</div>
     <div className="fslist">{FS_CATS.map(([k, label, , sample, cls]) => (
       <div key={k} className="fsrow">
@@ -10728,6 +10739,7 @@ function DesignSettings({ design, setDesign, theme }) {
       <h4 className="subhead">Stil</h4>
       <p className="muted small">Ändert Schriftart, Ecken, Schatten, Kartenform, Dichte und Grundfarben der ganzen App. „Aurora“, „Kompakt Pro“ und „Großer Kontrast“ bringen eigene Farben mit; bei den anderen gilt zusätzlich der Farbstil darunter.</p>
       <StylePicker value={design.style} onPick={(k) => pick("style", k)} />
+      <button type="button" className="link small fsjump" onClick={() => document.getElementById("fs-sec")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Aa Schrift- & Zahlengrößen für „{UI_STYLES.find((x) => x[0] === (design.style || "klassisch"))?.[1] || "dieses Design"}“ ›</button>
       {UI_STYLES.find((x) => x[0] === design.style)?.[4]?.flat && (() => { const st = UI_STYLES.find((x) => x[0] === design.style), cur = design.flatAcc?.[design.style] || null;
         const setFa = (c) => setDesign({ ...design, flatAcc: { ...(design.flatAcc || {}), [design.style]: c || undefined } });
         return (<div className="flatacc"><div className="colorrow"><span><b>Markierungsfarbe für „{st[1]}“</b><small className="muted block">Links, ausgewählte Chips, Fortschrittsbalken und Hinweise – „A“ = Farbe des Stils</small></span><span className="flataccpv" style={{ color: "var(--acc)" }}>● Markierung</span></div>
@@ -10768,7 +10780,7 @@ function DesignSettings({ design, setDesign, theme }) {
         <span><b>Ausgaben in Schulden-Farbe</b><small className="muted block">Auch einzelne Abbuchungen in Listen einfärben (sonst neutral)</small></span>
         <input type="checkbox" className="switch" checked={!!design.outNeg} onChange={(e) => pick("outNeg", e.target.checked)} />
       </label>
-      <FontSizeSettings />
+      <FontSizeSettings sty={design.style || "klassisch"} />
     </>
   );
 }
@@ -17526,7 +17538,7 @@ html.setdrill-on header.top{min-height:0}
 .fssample{display:inline-block;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .fsx-title{font-size:30px;font-weight:700;letter-spacing:-.02em}.fsx-head{font-size:18px;font-weight:600}
 .fsx-group{font-size:12px;font-weight:600;color:var(--mut);letter-spacing:.05em}.fsx-row{font-size:16px;font-weight:600}
-.fsx-num{font-size:20px;font-weight:700}.fsx-text{font-size:15px}.fsx-btn{font-size:14px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--card2,rgba(127,127,127,.12))}
+.fsx-num{font-size:16px;font-weight:600}.fsx-hero{font-size:30px;font-weight:700;letter-spacing:-.02em}.fsx-kpi{font-size:20px;font-weight:700}.fsown{margin:6px 0}.fsjump{display:block;margin:4px 0 10px}.fsownlist{margin:0 0 8px}.fsx-text{font-size:15px}.fsx-btn{font-size:14px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--card2,rgba(127,127,127,.12))}
 .fsx-small{font-size:12.5px;color:var(--mut)}.fsx-nav{font-size:15px;font-weight:500}
 .fsctl{display:flex;align-items:center;gap:4px;flex:none;margin-left:auto}
 .fsctl .iconbtn{width:40px;height:36px;font-weight:700;font-size:14px}
@@ -17719,6 +17731,8 @@ html.sty-graphit:not(.ufont) body,html.sty-graphit:not(.ufont) button,html.sty-g
 html.sty-graphit nav.bottom>button,html.sty-graphit nav.bottom>button.on,html.sty-graphit .seg button,html.sty-graphit .lbtab,html.sty-graphit .tilehead b,html.sty-graphit .panelhead>b,html.sty-sand nav.bottom>button,html.sty-sand nav.bottom>button.on,html.sty-sand .seg button,html.sty-sand .lbtab,html.sty-sand .tilehead b,html.sty-sand .panelhead>b,html.sty-nacht nav.bottom>button,html.sty-nacht nav.bottom>button.on,html.sty-nacht .seg button,html.sty-nacht .lbtab,html.sty-nacht .tilehead b,html.sty-nacht .panelhead>b,html.sty-schiefer nav.bottom>button,html.sty-schiefer nav.bottom>button.on,html.sty-schiefer .seg button,html.sty-schiefer .lbtab,html.sty-schiefer .tilehead b,html.sty-schiefer .panelhead>b,html.sty-salbei nav.bottom>button,html.sty-salbei nav.bottom>button.on,html.sty-salbei .seg button,html.sty-salbei .lbtab,html.sty-salbei .tilehead b,html.sty-salbei .panelhead>b,html.sty-papier nav.bottom>button,html.sty-papier nav.bottom>button.on,html.sty-papier .seg button,html.sty-papier .lbtab,html.sty-papier .tilehead b,html.sty-papier .panelhead>b{font-weight:500!important}
 @media (min-width:768px){html.sty-graphit body,html.sty-sand body,html.sty-nacht body,html.sty-schiefer body,html.sty-salbei body,html.sty-papier body{font-size:15px!important}html.sty-graphit .tilehead b,html.sty-sand .tilehead b,html.sty-nacht .tilehead b,html.sty-schiefer .tilehead b,html.sty-salbei .tilehead b,html.sty-papier .tilehead b{font-size:17px!important}html.sty-graphit header.top h1,html.sty-sand header.top h1,html.sty-nacht header.top h1,html.sty-schiefer header.top h1,html.sty-salbei header.top h1,html.sty-papier header.top h1{font-size:30px!important}html.sty-graphit .tilehead small,html.sty-graphit .muted.small,html.sty-graphit small.muted,html.sty-sand .tilehead small,html.sty-sand .muted.small,html.sty-sand small.muted,html.sty-nacht .tilehead small,html.sty-nacht .muted.small,html.sty-nacht small.muted,html.sty-schiefer .tilehead small,html.sty-schiefer .muted.small,html.sty-schiefer small.muted,html.sty-salbei .tilehead small,html.sty-salbei .muted.small,html.sty-salbei small.muted,html.sty-papier .tilehead small,html.sty-papier .muted.small,html.sty-papier small.muted{font-size:13px}html.sty-graphit .kpiv,html.sty-graphit .rlkpis b,html.sty-sand .kpiv,html.sty-sand .rlkpis b,html.sty-nacht .kpiv,html.sty-nacht .rlkpis b,html.sty-schiefer .kpiv,html.sty-schiefer .rlkpis b,html.sty-salbei .kpiv,html.sty-salbei .rlkpis b,html.sty-papier .kpiv,html.sty-papier .rlkpis b{font-size:24px!important}html.sty-graphit .rlkpis small,html.sty-sand .rlkpis small,html.sty-nacht .rlkpis small,html.sty-schiefer .rlkpis small,html.sty-salbei .rlkpis small,html.sty-papier .rlkpis small{font-size:13px!important}html.sty-graphit .rlrows>div,html.sty-sand .rlrows>div,html.sty-nacht .rlrows>div,html.sty-schiefer .rlrows>div,html.sty-salbei .rlrows>div,html.sty-papier .rlrows>div{font-size:15px!important;padding:9px 0!important}}
 html.sty-graphit .tilehead small,html.sty-sand .tilehead small,html.sty-nacht .tilehead small,html.sty-schiefer .tilehead small,html.sty-salbei .tilehead small,html.sty-papier .tilehead small{color:var(--mut)!important}@media (min-width:768px){html.sty-graphit .tile,html.sty-sand .tile,html.sty-nacht .tile,html.sty-schiefer .tile,html.sty-salbei .tile,html.sty-papier .tile{padding:20px 22px!important}html.sty-graphit .tilehead b,html.sty-sand .tilehead b,html.sty-nacht .tilehead b,html.sty-schiefer .tilehead b,html.sty-salbei .tilehead b,html.sty-papier .tilehead b{font-size:19px!important}html.sty-graphit .rlkpis>div,html.sty-sand .rlkpis>div,html.sty-nacht .rlkpis>div,html.sty-schiefer .rlkpis>div,html.sty-salbei .rlkpis>div,html.sty-papier .rlkpis>div{padding:14px 16px!important;border-radius:12px!important}html.sty-graphit .rlkpis small,html.sty-sand .rlkpis small,html.sty-nacht .rlkpis small,html.sty-schiefer .rlkpis small,html.sty-salbei .rlkpis small,html.sty-papier .rlkpis small{font-size:14px!important;color:var(--mut)!important}html.sty-graphit .rlkpis b,html.sty-sand .rlkpis b,html.sty-nacht .rlkpis b,html.sty-schiefer .rlkpis b,html.sty-salbei .rlkpis b,html.sty-papier .rlkpis b{font-size:26px!important;font-weight:500!important}html.sty-graphit .rlrows>div>span,html.sty-graphit .rlrows>div>b,html.sty-sand .rlrows>div>span,html.sty-sand .rlrows>div>b,html.sty-nacht .rlrows>div>span,html.sty-nacht .rlrows>div>b,html.sty-schiefer .rlrows>div>span,html.sty-schiefer .rlrows>div>b,html.sty-salbei .rlrows>div>span,html.sty-salbei .rlrows>div>b,html.sty-papier .rlrows>div>span,html.sty-papier .rlrows>div>b{font-size:15px!important}html.sty-graphit .rlrows small,html.sty-graphit .rlrows small.muted,html.sty-sand .rlrows small,html.sty-sand .rlrows small.muted,html.sty-nacht .rlrows small,html.sty-nacht .rlrows small.muted,html.sty-schiefer .rlrows small,html.sty-schiefer .rlrows small.muted,html.sty-salbei .rlrows small,html.sty-salbei .rlrows small.muted,html.sty-papier .rlrows small,html.sty-papier .rlrows small.muted{font-size:13px!important;color:var(--mut)!important}html.sty-graphit .rlrows>div>b,html.sty-sand .rlrows>div>b,html.sty-nacht .rlrows>div>b,html.sty-schiefer .rlrows>div>b,html.sty-salbei .rlrows>div>b,html.sty-papier .rlrows>div>b{font-weight:500!important}}
+/* v0.99.62: neue Designs am Desktop – Zeilen-Listen nicht mehr in Handy-Größe (20 px) */
+@media (min-width:768px){html.sty-graphit .frow b,html.sty-graphit .ditem .dtitle,html.sty-graphit .invrow .row1 b,html.sty-graphit .contactrow b,html.sty-graphit .ctrow b,html.sty-sand .frow b,html.sty-sand .ditem .dtitle,html.sty-sand .invrow .row1 b,html.sty-sand .contactrow b,html.sty-sand .ctrow b,html.sty-nacht .frow b,html.sty-nacht .ditem .dtitle,html.sty-nacht .invrow .row1 b,html.sty-nacht .contactrow b,html.sty-nacht .ctrow b,html.sty-schiefer .frow b,html.sty-schiefer .ditem .dtitle,html.sty-schiefer .invrow .row1 b,html.sty-schiefer .contactrow b,html.sty-schiefer .ctrow b,html.sty-salbei .frow b,html.sty-salbei .ditem .dtitle,html.sty-salbei .invrow .row1 b,html.sty-salbei .contactrow b,html.sty-salbei .ctrow b,html.sty-papier .frow b,html.sty-papier .ditem .dtitle,html.sty-papier .invrow .row1 b,html.sty-papier .contactrow b,html.sty-papier .ctrow b{font-size:15px!important;font-weight:600!important}html.sty-graphit .frow .right b,html.sty-graphit .ditem b.amt,html.sty-graphit .invamt,html.sty-graphit .ditem .row1 .amt,html.sty-sand .frow .right b,html.sty-sand .ditem b.amt,html.sty-sand .invamt,html.sty-sand .ditem .row1 .amt,html.sty-nacht .frow .right b,html.sty-nacht .ditem b.amt,html.sty-nacht .invamt,html.sty-nacht .ditem .row1 .amt,html.sty-schiefer .frow .right b,html.sty-schiefer .ditem b.amt,html.sty-schiefer .invamt,html.sty-schiefer .ditem .row1 .amt,html.sty-salbei .frow .right b,html.sty-salbei .ditem b.amt,html.sty-salbei .invamt,html.sty-salbei .ditem .row1 .amt,html.sty-papier .frow .right b,html.sty-papier .ditem b.amt,html.sty-papier .invamt,html.sty-papier .ditem .row1 .amt{font-size:15px!important;font-weight:600!important;font-variant-numeric:tabular-nums}html.sty-graphit .frow small,html.sty-graphit .ditem small,html.sty-sand .frow small,html.sty-sand .ditem small,html.sty-nacht .frow small,html.sty-nacht .ditem small,html.sty-schiefer .frow small,html.sty-schiefer .ditem small,html.sty-salbei .frow small,html.sty-salbei .ditem small,html.sty-papier .frow small,html.sty-papier .ditem small{font-size:12.5px!important}}
 
 
 /* 2 Glas */
