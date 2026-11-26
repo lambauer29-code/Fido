@@ -1903,6 +1903,7 @@ function AppMain() {
   const [shareData, setShareData] = useState(null);
   const [pdfView, setPdfView] = useState(null);
   pdfUi = setPdfView;
+  belegUi = { link: linkTx, upload: (txId, file) => onFiles([file], { stay: true, linkTx: txId }) };
   const impRef = useRef(null), vcfApp = useRef(null);
   const [sideMiniSet, setSideMiniRaw] = useState(() => ls.get("sideMini", null));
   const tabletAuto = false; // iPad quer: volle Seitenleiste wie am Mac; iPad hoch: iPhone-Ansicht (siehe index.html)
@@ -7647,7 +7648,7 @@ async function stmtMarkedPdf(doc, blob, txs, accounts, docs, o = {}) {
       pg.drawRectangle({ x: b.l * W - 3, y: H * (1 - b.b), width: 2.2, height: (b.b - b.t) * H, color: col, opacity: 0.95 });
       // Hinweis neben der Zeile: Kategorie · Beleg
       const cat = r.t?.category || tm.get(r.l?.txId)?.category || "";
-      const note = r.scope === "unklar" ? "unklar" : [r.label?.match(/\d+ %/)?.[0], cat, r.amount < 0 ? (r.beleg ? "Beleg ok" : "Beleg fehlt") : ""].filter(Boolean).join(" · ");
+      const note = r.scope === "unklar" ? "unklar" : [r.label?.match(/\d+ %/)?.[0], cat, r.amount < 0 ? (r.beleg ? "Beleg: " + (r.belegTitle || "ok").slice(0, 30) : "Beleg fehlt") : ""].filter(Boolean).join(" · ");
       if (r.scope === "privat") continue;   // Privat: nur Farbe, kein Hinweis
       const avail = b.l * W - 9, size = 5.6, yTop = H * (1 - b.t);
       const belegTxt = r.scope === "unklar" ? "unklar" : r.amount < 0 ? (r.beleg ? "Beleg ok" : "Beleg fehlt") : cat;
@@ -7683,6 +7684,77 @@ async function stmtMarkedPdf(doc, blob, txs, accounts, docs, o = {}) {
   return new Blob([await out.save()], { type: "application/pdf" });
 }
 // Zeilen eines Auszugs mit aktuellem Stand (verknüpfte Buchung ist führend)
+/* ======================= v0.99.41: Belege direkt im Kontoauszug zuordnen ======================= */
+let belegUi = null;   // { link(txId, docId), upload(txId, file) } – wird in App gesetzt
+const docAmt = (d) => { const a = d?.amount ? (d.amount.payout ?? d.amount.total) : null; return a == null ? null : Math.abs(+a); };
+const daysBetween = (a, b) => (a && b ? Math.abs((new Date(a) - new Date(b)) / 864e5) : 999);
+function belegCands(t, docs, txs) {
+  if (!t) return [];
+  const amt = Math.abs(t.amount), hay = norm(`${t.counterparty || ""} ${t.purpose || ""}`), linked = new Map(txs.filter((x) => x.docId).map((x) => [x.docId, x]));
+  return docs.filter((d) => !d.deletedAt && d.status !== "processing" && d.docType !== "Kontoauszug" && !d.stmt).map((d) => {
+    const a = docAmt(d), dd = d.documentDate || d.paidDate || (d.createdAt || "").slice(0, 10), days = daysBetween(dd, t.date);
+    const snd = norm(d.sender || d.merchant || "").split(/\s+/).filter((w) => w.length > 2);
+    let sc = 0;
+    if (a != null && Math.abs(a - amt) < 0.01) sc += 55; else if (a != null && amt && Math.abs(a - amt) / amt < 0.03) sc += 25;
+    sc += days <= 3 ? 25 : days <= 10 ? 15 : days <= 31 ? 5 : 0;
+    if (snd.some((w) => hay.includes(w))) sc += 20;
+    const other = linked.get(d.id); if (other && other.id !== t.id) sc -= 25;
+    return { d, sc, a, dd, other: other && other.id !== t.id ? other : null };
+  }).filter((x) => x.sc > 0).sort((x, y) => y.sc - x.sc);
+}
+function StmtBelegWin({ r, docs, txs, onClose, onOpenDoc }) {
+  const [q, setQ] = useState(""), [busy, setBusy] = useState("");
+  const t = r.t, cur = t?.docId && docs.find((d) => d.id === t.docId);
+  const cands = useMemo(() => belegCands(t, docs, txs), [t?.id, docs.length]);
+  const list = q.trim() ? docs.filter((d) => !d.deletedAt && d.docType !== "Kontoauszug" && norm(`${d.title} ${d.sender || ""} ${d.category || ""}`).includes(norm(q))).slice(0, 30).map((d) => ({ d, sc: 0, a: docAmt(d), dd: d.documentDate })) : cands.slice(0, 10);
+  const link = async (d) => { setBusy(d?.id || "x"); await belegUi?.link(t.id, d ? d.id : null); setBusy(""); onClose(); };
+  const up = async (files) => { if (!files?.length) return; setBusy("up"); await belegUi?.upload(t.id, files[0]); setBusy(""); onClose(); };
+  return (<Win id="stmtbeleg" onClose={onClose} small defW={560} stay>
+    <div className="panelhead"><b className="clamp">📎 Beleg zuordnen</b><XBtn /></div>
+    <div className="sbhead"><b>{r.cp || r.purpose || "Buchung"}</b><span className="muted"> · {fmtDate(r.date)} · </span><b>{fmtMoney(r.amount)}</b></div>
+    {cur && <div className="sbcur"><span className="grow">Zugeordnet: <b>{cur.title}</b></span><button className="link" onClick={() => onOpenDoc?.(cur.id)}>Ansehen</button><button className="link red" onClick={() => link(null)}>Entfernen</button></div>}
+    <DropField onFiles={up} title="Beleg hierher ziehen oder Foto/PDF wählen" what="wird in Dokumente abgelegt und zugeordnet" busy={busy === "up"} />
+    <input className="sbsearch" value={q} placeholder="Alle Dokumente durchsuchen …" onChange={(e) => setQ(e.target.value)} />
+    <small className="muted">{q.trim() ? `${list.length} Treffer` : list.length ? "Passende Dokumente (Betrag, Datum, Absender)" : "Keine passenden Dokumente gefunden – Beleg hochladen oder suchen."}</small>
+    <div className="sblist">{list.map(({ d, sc, a, dd, other }) => (
+      <button key={d.id} type="button" className={"sbrow" + (cur?.id === d.id ? " on" : "")} disabled={!!busy} onClick={() => link(d)}>
+        <Thumb d={d} /><span className="grow"><b className="one">{d.title}</b><small className="muted block one">{[dd && fmtDate(dd), d.sender, d.category].filter(Boolean).join(" · ")}{other ? ` · bereits bei ${fmtDate(other.date)} ${fmtMoney(other.amount)}` : ""}</small></span>
+        <span className="sbr">{a != null && <b>{fmtMoney(a)}</b>}{sc >= 70 ? <span className="stpill st-paid">passt</span> : sc >= 40 ? <span className="stpill st-open">möglich</span> : null}</span>
+      </button>))}</div>
+  </Win>);
+}
+async function stmtAutoBelege(rows, docs, txs, onlyFirma = true) {
+  let done = 0, sugg = 0; const used = new Set(txs.filter((x) => x.docId).map((x) => x.docId));
+  for (const r of rows) {
+    if (!r.t || r.beleg || r.amount >= 0 || (onlyFirma && r.scope !== "firma")) continue;
+    const c = belegCands(r.t, docs, txs).filter((x) => !used.has(x.d.id));
+    if (!c.length) continue;
+    if (c[0].sc >= 80 && (!c[1] || c[1].sc <= c[0].sc - 20)) { await belegUi?.link(r.t.id, c[0].d.id); used.add(c[0].d.id); done++; } else if (c[0].sc >= 40) sugg++;
+  }
+  return { done, sugg };
+}
+// markierter Auszug + alle zugeordneten Belege als ein PDF (für den Steuerberater-Ordner)
+async function stmtWithBelege(doc, blob, txs, accounts, docs) {
+  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+  const out = await PDFDocument.create(), font = await out.embedFont(StandardFonts.Helvetica), bold = await out.embedFont(StandardFonts.HelveticaBold);
+  const add = async (b) => { const src = await PDFDocument.load(await b.arrayBuffer(), { ignoreEncryption: true }); (await out.copyPages(src, src.getPageIndices())).forEach((p) => out.addPage(p)); };
+  await add(await stmtMarkedPdf(doc, blob, txs, accounts, docs));
+  const rows = stmtRows(doc, txs, accounts, docs).filter((r) => r.t?.docId);
+  let n = 0;
+  for (const r of rows) {
+    const d = docs.find((x) => x.id === r.t.docId); const f = d && await db.getFile(d.id).catch(() => null); if (!f) continue;
+    n++; const label = pdfSafe(`Beleg ${n} zu ${fmtDate(r.date)} · ${r.cp || r.purpose || ""} · ${fmtMoney(r.amount)}${r.scope === "firma" ? " · Firma" : ""}`).slice(0, 120);
+    const first = out.getPageCount();
+    try {
+      if (f.type === "application/pdf") await add(f);
+      else { const img = f.type === "image/png" ? await out.embedPng(await f.arrayBuffer()) : await out.embedJpg(await f.arrayBuffer()); const sc = Math.min(535 / img.width, 760 / img.height), pg = out.addPage([595, 842]); pg.drawImage(img, { x: (595 - img.width * sc) / 2, y: 40 + (760 - img.height * sc) / 2, width: img.width * sc, height: img.height * sc }); }
+    } catch { continue; }
+    const pg = out.getPage(first), { width: W, height: H } = pg.getSize();
+    pg.drawRectangle({ x: 0, y: H - 16, width: W, height: 16, color: rgb(1, 1, 1), opacity: 0.9 });
+    pg.drawText(label, { x: 10, y: H - 11.5, size: 7.5, font: bold, color: rgb(0.2, 0.2, 0.25) });
+  }
+  return { blob: new Blob([await out.save()], { type: "application/pdf" }), n };
+}
 function stmtRows(doc, txs, accounts, docs) {
   const tm = new Map(txs.map((t) => [t.id, t])), acc = accounts.find((a) => a.id === doc.stmt.accountId);
   return (doc.stmt.lines || []).map((l, i) => {
@@ -7691,7 +7763,7 @@ function stmtRows(doc, txs, accounts, docs) {
     const scope = info.scope, base = t || { amount: l.amount, bizPct: l.bizPct };
     return { i, l, t, box: l.box, date: l.date, cp: t?.counterparty || l.counterparty || "", purpose: (t?.purpose || l.purpose || "").slice(0, 140), amount: l.amount, scope, src: info.src,
       label: (TX_SCOPES.find((s) => s[0] === scope) || [])[2] + (scope === "firma" && bizPctOf(base, scope) < 100 ? ` ${bizPctOf(base, scope)} %` : ""),
-      biz: bizAmt(base, scope), beleg: !!bd, reason: t?.ask?.q || t?.scopeWhy || l.reason || "" };
+      biz: bizAmt(base, scope), beleg: !!bd, belegTitle: bd?.title || "", reason: t?.ask?.q || t?.scopeWhy || l.reason || "" };
   });
 }
 /* Kontoauszug ansehen: PDF mit Markierungen + Zeilenliste */
@@ -7708,7 +7780,8 @@ function MoreMenu({ items, title = "Mehr" }) {
   return <span className="rowmore" onClick={(e) => e.stopPropagation()}><PickMenu btnClass="iconbtn morebtn rowmorebtn" label={<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>} title={title}
     items={l.map((x, i) => ({ k: x.k || "m" + i, icon: x.icon, title: x.title, sub: x.sub, disabled: x.disabled, run: x.run }))} /></span>;
 }
-function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openTx, notify, token, onClose }) {
+function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openTx, notify, token, onClose, onOpenDoc }) {
+  const [belegRow, setBelegRow] = useState(null), [dropRow, setDropRow] = useState(null);
   const [pages, setPages] = useState(null), [view, setView] = useState("beides"), [hi, setHi] = useState(null), [busy, setBusy] = useState(false);
   const mob = useMobileBeta();
   const blobRef = useRef(null);
@@ -7790,18 +7863,32 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
       if (share === "print") { notify?.("Druck wird vorbereitet …"); await printImages(await blobToImages(b, 1700, 200), doc.title); } else share ? sharePdf(b, name, doc.title) : saveBlob(b, name); }
     catch (e) { notify?.("Export fehlgeschlagen: " + e.message); } finally { setBusy(false); }
   }
+  async function withBelege() {
+    setBusy(true);
+    try { const { blob, n } = await stmtWithBelege(doc, blobRef.current, txs, accounts, docs); const name = (doc.title || "Kontoauszug").replace(/[\\/:*?"<>|]/g, "-") + " mit Belegen.pdf";
+      notify?.(`${n} Beleg${n === 1 ? "" : "e"} angehängt`); await openPdf(blob, name, (doc.title || "Kontoauszug") + " · mit Belegen", "", { stay: true }); }
+    catch (e) { notify?.("Fehlgeschlagen: " + e.message); } finally { setBusy(false); }
+  }
+  async function autoBelege() {
+    setBusy(true);
+    try { const { done, sugg } = await stmtAutoBelege(rows, docs, txs); notify?.(done ? `${done} Beleg${done === 1 ? "" : "e"} automatisch zugeordnet${sugg ? ` · bei ${sugg} weiteren gibt es Vorschläge („Beleg fehlt“ antippen)` : ""}` : sugg ? `Keine eindeutigen Treffer – bei ${sugg} Zeilen gibt es Vorschläge („Beleg fehlt“ antippen)` : "Keine passenden Belege gefunden"); }
+    finally { setBusy(false); }
+  }
   const showPdf = view !== "liste", showList = view !== "pdf";
   const list = (
     <div className="stmtlist">
       {rows.map((r) => (
-        <div key={r.i} className={"stmtrow sc-" + r.scope + (hi === r.i ? " hi" : "")} onMouseEnter={() => setHi(r.i)} onMouseLeave={() => setHi(null)}
+        <div key={r.i} className={"stmtrow sc-" + r.scope + (hi === r.i ? " hi" : "") + (dropRow === r.i ? " sbdrop" : "")} onMouseEnter={() => setHi(r.i)} onMouseLeave={() => setHi(null)}
+          onDragOver={(e) => { if (!r.t || !e.dataTransfer?.types?.includes("Files")) return; e.preventDefault(); setDropRow(r.i); }} onDragLeave={() => setDropRow((x) => (x === r.i ? null : x))}
+          onDrop={(e) => { if (!r.t) return; e.preventDefault(); setDropRow(null); const f = [...(e.dataTransfer?.files || [])].find((x) => isDocFile(x)); if (f) { belegUi?.upload(r.t.id, f); notify?.("Beleg wird hochgeladen und zugeordnet …"); } }}
           onClick={() => { setHi(r.i); if (r.box && showPdf) document.getElementById(`stmtbox-${doc.id}-${r.i}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); }}>
           <div className="grow">
             <b className="one">{r.cp || r.purpose || "Buchung"}</b>
             <small className="muted block one">{fmtDate(r.date)}{r.purpose && r.cp ? " · " + r.purpose : ""}</small>
             <div className="stmtflags">
               {r.t ? <span className="stpill st-paid" title="In den Konten vorhanden">✓ Buchung</span> : <span className="stpill st-draft">keine Buchung</span>}
-              {r.beleg ? <span className="stpill st-paid">📎 Beleg</span> : r.scope === "firma" && r.amount < 0 ? <span className="stpill st-over">Beleg fehlt</span> : null}
+              {r.beleg ? <button type="button" className="stpill st-paid sbpill" title={"Beleg ansehen: " + r.belegTitle} onClick={(e) => { e.stopPropagation(); onOpenDoc?.(r.t.docId); }}>📎 {r.belegTitle ? r.belegTitle.slice(0, 26) : "Beleg"}</button>
+                : r.t && r.amount < 0 ? <button type="button" className={"stpill sbpill " + (r.scope === "firma" ? "st-over" : "st-draft")} title="Beleg zuordnen oder hochladen" onClick={(e) => { e.stopPropagation(); setBelegRow(r); }}>{r.scope === "firma" ? "Beleg fehlt · zuordnen" : "📎 Beleg zuordnen"}</button> : null}
               {r.t?.ask && <span className={"stpill " + (r.t.ask.state === "geklärt" ? "st-paid" : "st-open")}>❓ Frage</span>}
               {r.src && <small className="muted">{r.src}</small>}
               {r.reason && <small className="muted one">· {r.reason}</small>}
@@ -7810,14 +7897,15 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
           <div className="stmtright">
             <b className={r.amount > 0 ? "pos" : ""}>{fmtMoney(r.amount)}</b>
             <div className="row stmtctl"><ScopePick scope={r.scope} onPick={(k) => setScope(r, k)} onSplit={r.t ? () => openTx(r.t) : null} />
-              <MoreMenu items={[r.t && { icon: "↗", title: "Buchung öffnen", run: () => openTx(r.t) }, r.box && { icon: "📍", title: "Im PDF zeigen", run: () => { setHi(r.i); document.getElementById(`stmtbox-${doc.id}-${r.i}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); } }]} /></div>
+              <MoreMenu items={[r.t && r.amount < 0 && { icon: "📎", title: r.beleg ? "Beleg ändern" : "Beleg zuordnen", run: () => setBelegRow(r) }, r.t && { icon: "↗", title: "Buchung öffnen", run: () => openTx(r.t) }, r.box && { icon: "📍", title: "Im PDF zeigen", run: () => { setHi(r.i); document.getElementById(`stmtbox-${doc.id}-${r.i}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); } }]} /></div>
           </div>
         </div>
       ))}
       {!rows.length && <MEmpty>Keine Zeilen erkannt.</MEmpty>}
     </div>
   );
-  return createPortal(
+  return createPortal(<>
+    {belegRow && <StmtBelegWin r={belegRow} docs={docs} txs={txs} onClose={() => setBelegRow(null)} onOpenDoc={onOpenDoc} />}
     <Win id="stmt" onClose={onClose} dirty={false} defW={1100} className="stmtwin" stay>
       <div className="stmtsticky">
       <div className="panelhead"><b className="clamp">{doc.title}</b>
@@ -7825,6 +7913,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
           <button type="button" title="Markierten Auszug drucken" aria-label="Drucken" disabled={busy} onClick={() => exportPdf("print")}><IcoPrint /></button>
           <button type="button" title="Markierten Auszug teilen" aria-label="Teilen" disabled={busy} onClick={() => exportPdf(true)}><IcoShare /></button>
           <button type="button" title="Markierten Auszug speichern (PDF)" aria-label="Speichern" disabled={busy} onClick={() => exportPdf(false)}><Ico d={<><path d="M12 3v12" /><path d="M7 10l5 5 5-5" /><path d="M5 21h14" /></>} /></button>
+          <button type="button" title="Auszug + alle zugeordneten Belege als ein PDF" aria-label="Auszug mit Belegen" disabled={busy} onClick={withBelege}><Ico d={<><path d="M21.4 11.6 12.5 20.5a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.7 1.7 0 0 1-2.4-2.4l8.3-8.3" /></>} /></button>
         </div>
         <XBtn /></div>
       <div className="stmtbar">
@@ -7835,7 +7924,8 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
         <div className="seg">{[["pdf", "PDF"], ["beides", "Beides"], ["liste", "Liste"]].filter(([k]) => !mob || k !== "beides").map(([k, l]) => <button key={k} className={(mob && view === "beides" ? k === "liste" : view === k) ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div>
         <button className="btn sm" disabled={busy} onClick={reAi}>{busy ? "…" : "✨ KI neu prüfen"}</button>
         {zui !== "schwebend" && showPdf && !(mob && view === "beides") && zctl("inbar")}
-        {showPdf && canHover && <button type="button" className={"btn sm lupetog" + (lupeOn ? " on" : "")} aria-pressed={lupeOn} title={lupeOn ? "Lupe ausschalten" : "Lupe einschalten"} onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍 Lupe {lupeOn ? "ein" : "aus"}</button>}
+        {canHover && <button type="button" className={"btn sm lupetog" + (lupeOn && showPdf ? " on" : "")} aria-pressed={lupeOn} disabled={!showPdf} title={!showPdf ? "Lupe nur in der Ansicht PDF oder Beides" : lupeOn ? "Lupe ausschalten" : "Lupe einschalten"} onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍 Lupe {lupeOn ? "ein" : "aus"}</button>}
+        {noBeleg > 0 && <button className="btn sm" disabled={busy} onClick={autoBelege} title="Passende Dokumente automatisch den Buchungen zuordnen">📎 Belege zuordnen</button>}
         <button className="btn sm" disabled={busy} onClick={reMatch} title="Zeilen erneut mit den Buchungen abgleichen">⇄ Abgleichen</button>
       </div>
       </div>
@@ -7866,7 +7956,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
         {(showList || (mob && view === "beides")) && list}
       </div>
       <small className="muted stmtfoot">Farbe antippen wechselt Firma → Privat → Unklar. Änderungen gelten auch für die Buchung in den Konten.</small>
-    </Win>, document.querySelector(".app") || document.body);
+    </Win></>, document.querySelector(".app") || document.body);
 }
 /* Kontoauszug hochladen: auslesen → Konto wählen → abgleichen → KI-Zuordnung */
 function StmtImportWin({ file, accounts, txs, getTxs, importTxs, saveDoc, updateTxs, categories, token, notify, onDone, onClose }) {
@@ -8970,7 +9060,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
       {sec === "setup" && setup}
       {impFiles[0] && <StmtImportWin key={impFiles[0].name + impFiles.length} file={impFiles[0]} accounts={accounts} txs={txs} getTxs={getTxs} importTxs={importTxs} saveDoc={saveDoc} updateTxs={updateTxs} categories={categories} token={token} notify={notify}
         onClose={() => setImpFiles((l) => l.slice(1))} onDone={(d) => { setImpFiles((l) => { if (l.length === 1) setStmtOpen(d.id); return l.slice(1); }); }} />}
-      {curStmt && <StmtWin doc={curStmt} txs={txs} accounts={accounts} docs={docs} saveDoc={saveDoc} updateTx={updateTx} updateTxs={updateTxs} openTx={(t) => openTx(t)} notify={notify} token={token} onClose={() => setStmtOpen(null)} />}
+      {curStmt && <StmtWin doc={curStmt} txs={txs} accounts={accounts} docs={docs} saveDoc={saveDoc} updateTx={updateTx} updateTxs={updateTxs} openTx={(t) => openTx(t)} notify={notify} token={token} onClose={() => setStmtOpen(null)} onOpenDoc={onOpen} />}
     </div>
   );
 }
@@ -17266,4 +17356,18 @@ html body .stmtbar .chip{height:28px;min-height:0!important;padding:0 12px!impor
 html body .stmtbar .chip:hover:not(:disabled){background:var(--card2)!important}
 html body .stmtbar .chip.on{background:color-mix(in srgb,var(--acc) 18%,transparent)!important;color:var(--acc)!important;border-color:color-mix(in srgb,var(--acc) 45%,transparent)!important}
 .stmtpills{display:inline-flex;gap:4px}.stmtgap{width:8px}
+
+/* v0.99.41: Belege im Kontoauszug */
+.sbpill{border:0;cursor:pointer;font:inherit;font-size:11px;font-weight:700}
+.sbpill:hover{filter:brightness(1.15);text-decoration:underline}
+.stmtrow.sbdrop{outline:2px dashed var(--acc);outline-offset:-2px;background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.sbhead{padding:2px 2px 8px;font-size:14px}
+.sbcur{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;background:var(--card2);margin-bottom:8px;font-size:13.5px}
+.sbsearch{margin:10px 0 4px}
+.sblist{display:flex;flex-direction:column;gap:4px;max-height:46vh;overflow:auto;margin-top:6px}
+.sbrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;background:none;color:var(--txt);font:inherit;text-align:left;padding:6px 10px;cursor:pointer}
+.sbrow:hover{background:var(--card2)}.sbrow.on{border-color:var(--acc)}
+.sbrow .thumb,.sbrow img{width:38px!important;height:48px!important;flex:none;border-radius:6px;object-fit:cover}
+.sbr{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none;font-size:13px}
+.lupetog:disabled{opacity:.4;cursor:not-allowed}
 `;

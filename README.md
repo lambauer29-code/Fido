@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.41 – Belege im Kontoauszug zuordnen
+
+- Kontoauszug: „Beleg fehlt · zuordnen“ bzw. „📎 Beleg zuordnen“ öffnet eine Auswahl mit passenden Belegen (Betrag, Datum, Absender), mit Suche und Upload.
+- Datei direkt auf eine Buchungszeile ziehen → wird hochgeladen und zugeordnet.
+- „📎 Belege zuordnen“ ordnet eindeutige Treffer automatisch zu.
+- Klick auf „📎 Belegname“ öffnet den Beleg; Menü „Beleg zuordnen/ändern“.
+- Druck zeigt den Belegnamen; neues Kopf-Icon „Auszug mit Belegen“ (ein PDF mit allen Belegen dahinter).
+- Lupe-Button bleibt in der Ansicht „Liste“ sichtbar, ist dort aber deaktiviert.
+
 ## v0.99.40 – Kontoauszug-Leiste wie vorher
 - Leiste (PDF/Beides/Liste, KI neu prüfen, Lupe, Abgleichen) wieder im vorherigen Design; Drucken/Teilen/Speichern oben bleiben
 
