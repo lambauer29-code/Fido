@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.91 – „＋ Buchung“ in den Konten
+- Konten: neuer Knopf „＋ Buchung ▾“ vor dem Ablagefeld – Klick = Ausgabe für das gewählte Konto, Pfeil = Ausgabe, Einnahme, Umbuchung zu anderem Konto, Beleg scannen
+- Umbuchung: Von-/Auf-Konto, Betrag, Datum, Text → zwei Buchungen mit Kategorie „Umbuchung“ (zählen nicht als Einnahme/Ausgabe), z. B. Kreditrate oder Rückzahlung
+
+## v0.99.90 – Einstellungen exportieren/importieren & eigene Standardwerte
+- Backup → „🎨 Einstellungen übertragen“: Einstellungen exportieren/importieren – nur Optik & Struktur, ohne Daten (Design, hell/dunkel, Farben, Icons, Schrift-/Button-Größen, Spalten, Ansichten, Kategorien mit Gruppen & Unterkategorien, Seitenleiste, Kontoauszug-Farben, Konto-Gruppen ohne Konten)
+- Neu: src/defaults.json – persönliche Standardwerte, die bei neuer Installation, neuem Gerät und nach „Daten löschen“ übernommen werden (nur für noch nicht gesetzte Einstellungen); noch leer
+
 ## v0.99.89 – Seitenleiste: Kategorien ohne Farbtext
 - Dokument-Kategorien in der Seitenleiste immer in normaler Schriftfarbe (vorher erschienen Kategorien mit eigener Farbe, z. B. nach dem Umbenennen, farbig – etwa „Software“ in Rot); die Farbe bleibt bei Symbol und Etikett
 

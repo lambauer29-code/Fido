@@ -1,3 +1,4 @@
+import "./defaults.js";   // v0.99.90: persönliche Standard-Einstellungen zuerst
 import { createPortal } from "react-dom";
 import { version as APP_VER } from "../package.json";
 // v0.98.1: Intl-Formatierer wiederverwenden – jeder toLocale…-Aufruf legt sonst einen neuen an (am Handy sehr teuer)
@@ -783,6 +784,8 @@ function loadNav() {
   const n = ls.get("nav", null);
   const docGroups = n?.docGroups || buildDocGroups(ls.get("categories", DEFAULT_CATEGORIES));
   if (!n) return { ...DEFAULT_NAV, docGroups };
+  if (!Array.isArray(n.groups)) n.groups = DEFAULT_NAV.groups.map((g) => ({ ...g, ids: [] }));
+  if (!Array.isArray(n.tabs)) n.tabs = DEFAULT_NAV.tabs;
   n.docGroups = normGroups(docGroups);
   if (!n.v27 && !n.docGroups.some((g) => g.cats.includes("Ausgangsrechnung"))) {
     const fi = n.docGroups.findIndex((g) => g.area === "finanzen");
@@ -2791,12 +2794,12 @@ function docTaxRows(am) {
   if (am.vat > 0 && am.net > 0) { const q = am.vat / am.net * 100; const r = [20, 13, 10].reduce((b, v) => (Math.abs(q - v) < Math.abs(q - b) ? v : b), 20); return [{ id: uid(), rate: r, gross: "" }]; }
   return [];
 }
-function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload, addCategory, suggestCat, notify, initAccount }) {
+function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload, addCategory, suggestCat, notify, initAccount, initDir, autoScan }) {
   const today = todayISO();
   const cashAcc = accounts.find((a) => a.kind === "cash");
   const lastAcc = ls.get("expAcc", "");
   const defAcc = initAccount && accounts.some((a) => a.id === initAccount) ? initAccount : accounts.some((a) => a.id === lastAcc) ? lastAcc : cashAcc?.id || accounts[0]?.id || "new-cash";
-  const blank = () => ({ dir: "out", merchant: "", amount: "", cur: "EUR", fx: null, fxDate: null, fxSrc: null, eur: null, date: today, accountId: defAcc, category: "", note: "", items: [], taxes: [], docId: null, file: null, url: null, qr: null, touched: {} });
+  const blank = () => ({ dir: initDir === "in" ? "in" : "out", merchant: "", amount: "", cur: "EUR", fx: null, fxDate: null, fxSrc: null, eur: null, date: today, accountId: defAcc, category: "", note: "", items: [], taxes: [], docId: null, file: null, url: null, qr: null, touched: {} });
   const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false), [qrOpen, setQrOpen] = useState(false), [extraCats, setExtraCats] = useState([]);
   const [icats, setIcats] = useState(itemCats);
@@ -2825,6 +2828,7 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
     notify(tr.length ? `Beleg ausgelesen · USt ${tr.map((t) => t.rate + " %").join(", ")}` : "Beleg ausgelesen");
   }, [doc?.status, doc?.id]);
   useEffect(() => () => f.url && URL.revokeObjectURL(f.url), []);
+  useEffect(() => { if (autoScan) setTimeout(() => onScan?.((file, o) => attach(file, { ...o, scanned: true })), 50); }, []);   // v0.99.91: „Beleg scannen“ aus dem Konto
 
   const attach = async (file, opts = {}) => {
     if (f.url) URL.revokeObjectURL(f.url);
@@ -4172,6 +4176,38 @@ async function wipeAllData() {
 }
 // v0.99.78: „Daten löschen, Design behalten“ – erhalten bleiben nur Darstellung, Design und Schrift-/Button-Größen
 const WIPE_KEEP = /^(design|theme|iconStyle|iconSize|catIcons|kindIcons|fbIcons|cpIcons|vehIcons|tabbarIcons|stmtColors|stmtZoom|stmtZoomUi|stmtLupe2|stmtLink|chartHover|sortStyle|aboStyle|kbBelegStyle|stbMonView|jDetail|jStripPos|jMode|cmpTest|mobileBeta|homeLayout|homeTiles|bizGrid|sideMini|sideW|settingsOrder|settingsClosed|view|invView|astView|deadlineView|docMode|fbViews|calMode|hideAmounts|txCols)$|^(dev:|sort:|views:|win:)/;
+// v0.99.90: Einstellungen (Optik & Struktur) ohne Daten exportieren/importieren
+const SET_EXTRA = /^(stmtColors|nav|contactTypes|ctCats|itemCats|units)$/;
+const settingsKeyOk = (k) => (WIPE_KEEP.test(k) || SET_EXTRA.test(k)) && !/^win:/.test(k);
+function settingsSnapshot() {
+  const store = {};
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!settingsKeyOk(k)) continue; let v = localStorage.getItem(k);
+    if (k === "nav") try { const n = JSON.parse(v); n.groups = (n.groups || []).map((g) => ({ ...g, ids: [] })); v = JSON.stringify(n); } catch {}   // Kontogruppen ohne Konto-IDs (die sind persönlich)
+    store[k] = v; }
+  return { findocu: "settings-v1", app: APP_VER, exported: new Date().toISOString(), device: devLabel(), store };
+}
+function exportSettings() { const j = settingsSnapshot(); saveBlob(new Blob([JSON.stringify(j, null, 1)], { type: "application/json" }), `findocu-einstellungen-${new Date().toLocaleDateString("sv-SE")}.json`); return Object.keys(j.store).length; }
+async function importSettings(file) {
+  const j = JSON.parse(await file.text()); if (j?.findocu !== "settings-v1" || !j.store) throw new Error("Keine FinDocu-Einstellungsdatei");
+  let n = 0;
+  for (const [k, v] of Object.entries(j.store)) { if (!settingsKeyOk(k) || typeof v !== "string") continue;
+    if (k === "nav") try { const cur = JSON.parse(localStorage.getItem("nav") || "{}"), inc = JSON.parse(v); localStorage.setItem("nav", JSON.stringify({ ...cur, ...inc, groups: cur.groups })); n++; continue; } catch { continue; }
+    localStorage.setItem(k, v); n++; }
+  return n;
+}
+function SettingsTransfer({ notify }) {
+  const ref = useRef(null);
+  return (<section className="bkcard">
+    <h4>🎨 Einstellungen übertragen</h4>
+    <p className="muted small">Nur Optik und Struktur – <b>ohne Daten</b>: Design, hell/dunkel, Farben, Icons, Schrift- und Button-Größen, Spalten, Ansichten, Kategorien mit Gruppen und Unterkategorien, Seitenleiste, Kontoauszug-Farben. Keine Dokumente, Buchungen, Konten, Kunden, Firmendaten oder Zugangsdaten.</p>
+    <div className="actions">
+      <button className="btn" onClick={() => { const n = exportSettings(); notify?.(`${n} Einstellungen exportiert`); }}>⬇︎ Einstellungen exportieren</button>
+      <button className="btn" onClick={() => ref.current?.click()}>⬆︎ Einstellungen importieren</button>
+      <input ref={ref} type="file" accept="application/json,.json" hidden onChange={async (e) => { const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+        try { if (!confirm("Einstellungen aus der Datei übernehmen? Deine Daten bleiben unverändert, die App wird neu geladen.")) return; const n = await importSettings(f); notify?.(`${n} Einstellungen übernommen – App wird neu geladen`); setTimeout(() => location.reload(), 900); } catch (err) { alert("Import fehlgeschlagen: " + err.message); } }} />
+    </div>
+  </section>);
+}
 async function wipeDataOnly({ cloud }) {
   if (!cloud && syncOn()) await disconnect();   // nur dieses Gerät: Sync trennen, damit das Löschen nicht an die anderen Geräte geht
   const d = await openDB();
@@ -7120,6 +7156,14 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       )}
       {!!accounts.length && (
         <div className="chips">
+          {onManual && <span className="splitbtn">
+            <button className="chip on splitmain" title={`Ausgabe erfassen${selA ? " – " + selA.name : ""}`} onClick={() => onManual({ accountId: selA?.id, dir: "out" })}>＋ Buchung</button>
+            <PickMenu click btnClass="chip on splitarrow" title="Buchung hinzufügen" label="" items={[
+              { k: "out", icon: "↓", title: "Ausgabe", sub: selA ? selA.name : "Konto im Formular wählen", run: () => onManual({ accountId: selA?.id, dir: "out" }) },
+              { k: "in", icon: "↑", title: "Einnahme", sub: selA ? selA.name : "", run: () => onManual({ accountId: selA?.id, dir: "in" }) },
+              { k: "tr", icon: "⇄", title: "Umbuchung zu anderem Konto", sub: "z. B. Kreditrate, Rückzahlung", run: () => onManual({ accountId: selA?.id, transfer: true }) },
+              { k: "scan", icon: "📷", title: "Beleg scannen", sub: "KI liest Betrag & Händler", run: () => onManual({ accountId: selA?.id, dir: "out", scan: true }) }]} />
+          </span>}
           <button className={showDrop ? "chip on" : "chip"} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥 Ablagefeld</button>
           {!allSel && <button className="chip" onClick={() => setSel([])}>✕ Alle anzeigen</button>}
           {selA && !peek && <button className="chip" onClick={() => setEditAcc(selA)}>✎ Konto bearbeiten</button>}
@@ -10914,12 +10958,34 @@ function CashForm({ init, accounts, categories, onSave, onScan, addCategory, com
   );
 }
 function ManualTxSheet({ init, onClose, ...rest }) {
+  const title = init?.transfer ? "Umbuchung zu anderem Konto" : init?.dir === "in" ? "Einnahme erfassen" : init?.dir === "out" ? "Ausgabe erfassen" : "Ausgabe / Buchung erfassen";
   return (
     <Win id="manual" onClose={onClose} small defW={560}>
-      <div className="panelhead"><b>Ausgabe / Buchung erfassen</b><XBtn /></div>
-      <ExpenseForm {...rest} initAccount={init?.accountId} onSave={async (t, att) => { const r = await rest.onSave(t, att); onClose(); return r; }} />
+      <div className="panelhead"><b>{title}</b><XBtn /></div>
+      {init?.transfer ? <TransferForm accounts={rest.accounts} init={init} onSave={async (a, b) => { await rest.onSave(a, {}); await rest.onSave(b, {}); rest.notify?.(`Umbuchung ${fmtMoney(b.amount)} gespeichert`); onClose(); }} />
+        : <ExpenseForm {...rest} initAccount={init?.accountId} initDir={init?.dir} autoScan={!!init?.scan} onSave={async (t, att) => { const r = await rest.onSave(t, att); onClose(); return r; }} />}
     </Win>
   );
+}
+// v0.99.91: Umbuchung zwischen zwei eigenen Konten (z. B. Rate vom Privatkonto auf den Kredit) – zwei Buchungen mit Kategorie „Umbuchung“
+function TransferForm({ accounts, init, onSave }) {
+  const [from, setFrom] = useState(init?.accountId || accounts[0]?.id || ""), [to, setTo] = useState(() => accounts.find((a) => a.id !== (init?.accountId || accounts[0]?.id))?.id || "");
+  const [amount, setAmount] = useState(""), [date, setDate] = useState(todayISO()), [text, setText] = useState(""), [busy, setBusy] = useState(false);
+  const val = parseAmt(amount), A = (id) => accounts.find((a) => a.id === id);
+  const ok = val > 0 && from && to && from !== to && date && !busy;
+  const opt = (id, set, not) => <PickMenu click block btnClass="selbtn" title="Konto" label={A(id) ? A(id).name : "Konto wählen"} items={accounts.filter((a) => a.id !== not).map((a) => ({ k: a.id, icon: a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind), title: a.name, on: a.id === id, run: () => set(a.id) }))} />;
+  const save = async () => { if (!ok) return; setBusy(true); try { const pair = uid(), d = pastOrToday(date, todayISO()), pt = text.trim() || "Umbuchung";
+    await onSave({ accountId: from, date: d, amount: -Math.abs(val), counterparty: A(to)?.name || "Umbuchung", purpose: pt, category: "Umbuchung", transferPair: pair },
+      { accountId: to, date: d, amount: Math.abs(val), counterparty: A(from)?.name || "Umbuchung", purpose: pt, category: "Umbuchung", transferPair: pair }); } finally { setBusy(false); } };
+  return (<div className="expform trform">
+    <div className="grid2"><label>Von Konto{opt(from, setFrom, to)}</label><label>Auf Konto{opt(to, setTo, from)}</label></div>
+    <button type="button" className="link small" onClick={() => { setFrom(to); setTo(from); }}>⇅ Richtung tauschen</button>
+    <div className="grid2"><label>Betrag<input className="bigamount" inputMode="decimal" placeholder="0,00 €" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus /></label>
+      <label>Datum<input type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} /></label></div>
+    <label>Text<input value={text} placeholder="z. B. Kreditrate November, Rückzahlung Angela" onChange={(e) => setText(e.target.value)} /></label>
+    <small className="muted block">Es entstehen zwei Buchungen: −{val > 0 ? fmtMoney(val) : "…"} bei „{A(from)?.name || "…"}“ und +{val > 0 ? fmtMoney(val) : "…"} bei „{A(to)?.name || "…"}“. Umbuchungen zählen nicht als Einnahme oder Ausgabe.</small>
+    <button className="btn primary cashsave" disabled={!ok} onClick={save}>{busy ? "Speichert …" : "Umbuchung speichern"}</button>
+  </div>);
 }
 
 /* ---------- Detailansicht ---------- */
@@ -12123,6 +12189,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
           <p className="muted small bkline">Dauerhafter Speicher: {persist ? <b className="ok">✓ aktiv – der Browser löscht die Daten nicht von selbst</b> : <><b>nicht aktiv</b> <button className="link" onClick={async () => { const ok = await navigator.storage?.persist?.(); setPersist(!!ok); notify(ok ? "Dauerhafter Speicher aktiviert" : "Der Browser hat dauerhaften Speicher abgelehnt – am iPhone hilft „Zum Home-Bildschirm“"); }}>aktivieren</button></>}</p>
           <p className="muted small">Dokumente, Dateien und Umsätze liegen in IndexedDB, Einstellungen und Listen (Rechnungen, Kunden, Kassabuch …) im localStorage – beides nur in diesem Browser auf diesem Gerät.</p>
         </section>
+        <SettingsTransfer notify={notify} />
         <WipeAll docs={docs.length} txs={txs.length} />
         {bkOpen && <Win id="bksave" onClose={() => setBkOpen(false)} small dirty={!!(bkPw || bkPw2)}>
           <div className="panelhead"><b>🔐 Backup speichern</b><button className="btn primary" disabled={busy || !bkOk} onClick={exportBackup}>{busy ? "⏳ …" : "Speichern"}</button><XBtn /></div>
@@ -18909,6 +18976,7 @@ button.txmark.m-doc{cursor:pointer}button.txmark.m-doc:hover{background:var(--ca
 .txrow.sc-firma{box-shadow:inset 4px 0 0 var(--stc-firma);background:color-mix(in srgb,var(--stc-firma) 7%,transparent)}.txrow.sc-unklar{box-shadow:inset 4px 0 0 color-mix(in srgb,var(--stc-unklar) 70%,transparent)}
 .txrow.sc-firma:hover{background:color-mix(in srgb,var(--stc-firma) 12%,transparent)}
 nav .doctree .accitem .an{color:inherit!important}
+.splitbtn{display:inline-flex;align-items:stretch}.splitbtn>.splitmain{border-top-right-radius:0!important;border-bottom-right-radius:0!important;margin-right:0}.splitbtn .splitarrow{border-top-left-radius:0!important;border-bottom-left-radius:0!important;border-left:1px solid color-mix(in srgb,currentColor 30%,transparent)!important;padding-left:8px!important;padding-right:10px!important;height:100%}.splitbtn>.vehpick{display:inline-flex}
 .amtgrid{align-items:end}.amtgrid>label{display:flex;flex-direction:column;justify-content:flex-end;min-width:0;white-space:nowrap}.amtgrid>label>input{width:100%}
 .fxrow{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:12px;background:color-mix(in srgb,var(--acc) 5%,transparent)}.fxrow .fxinfo{font-size:13.5px}.fxins{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.fxins label{flex:1 1 140px;margin:0;font-size:12.5px}.fxins .btn{flex:none}
 .expcur{display:flex;gap:8px;align-items:stretch;flex-wrap:nowrap}.expcur>input{flex:1;min-width:0}.expcur>.vehpick,.fxhead>.vehpick{flex:none!important;width:auto!important;display:inline-flex}.expcur .cursel,.fxhead .cursel{width:auto!important;min-width:96px;white-space:nowrap}.fxhead{gap:10px;align-items:center;flex-wrap:wrap}.fxhead .seg{flex:1}
