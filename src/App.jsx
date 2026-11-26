@@ -7381,7 +7381,9 @@ const MBarOld = ({ q, setQ, placeholder, chips, children, inline }) => { const c
   </div>
 ); };
 const MHead = ({ children, right }) => <div className="mday mhead"><span>{children}</span>{right != null && <span className="muted">{right}</span>}</div>;
-const MAvatar = ({ text, color = "#64748b" }) => <span className="caticon mavatar" style={{ width: 46, height: 46, color }}>{(text || "?").trim().slice(0, 1).toUpperCase()}</span>;
+// v0.99.71: Kunden-Logo statt Anfangsbuchstabe (falls hinterlegt)
+const custLogo = (cu) => { if (!cu) return null; if (cu.logo) return cu.logo; const l = ls.get("customers", []); const n = norm(cu.name || ""); return (cu.id && l.find((x) => x.id === cu.id)?.logo) || (n && l.find((x) => norm(x.name || "") === n)?.logo) || null; };
+const MAvatar = ({ text, color = "#64748b", logo }) => logo ? <span className="caticon logo custlogo" style={{ width: 46, height: 46 }}><img src={logo} alt="" /></span> : <span className="caticon mavatar" style={{ width: 46, height: 46, color }}>{(text || "?").trim().slice(0, 1).toUpperCase()}</span>;
 const MIco = ({ e, c }) => <span className="caticon" style={{ width: 46, height: 46, "--c": c || "var(--acc)", fontSize: 22 }}>{typeof e === "string" ? <Glyph e={e} /> : e}</span>;
 function MItem({ icon, title, sub, tags = [], amount, amountCls = "", amountSub, pill, onClick, swipe, after, dim }) {
   return (<>
@@ -8618,7 +8620,7 @@ function RlKuBar({ r, small }) {
   const tone = { ok: "st-paid", warn: "st-open", tol: "st-open", over: "st-over", prev: "st-over" }[lv];
   const msg = { ok: `${Math.round((r.umsY / r.kuL) * 100)} % genutzt`, warn: "bald an der Grenze", tol: "in der Toleranz – bis Jahresende noch ohne USt", over: "überschritten – ab jetzt USt verrechnen", prev: "Vorjahr über der Grenze – Regelung gilt heuer nicht" }[lv];
   return (<div className={"rlku" + (small ? " sm" : "")}>
-    <div className="rlkuh"><b>Kleinunternehmergrenze {r.y}</b><span className="grow" /><span className={"stpill " + tone}>{msg}</span></div>
+    <div className="rlkuh"><b>{r.kuLabel || "Kleinunternehmergrenze"} {r.y}</b><span className="grow" /><span className={"stpill " + tone}>{msg}</span></div>
     <div className="rlbar"><i className={"rlfill " + lv} style={{ width: rlPct(r.umsY, max) + "%" }} />{r.cur && r.umsP > r.umsY && <i className="rlproj" style={{ left: rlPct(r.umsY, max) + "%", width: rlPct(r.umsP - r.umsY, max) + "%" }} />}
       <span className="rlmark" style={{ left: rlPct(r.kuL * 0.8, max) + "%" }} /><span className="rlmark lim" style={{ left: rlPct(r.kuL, max) + "%" }} /><span className="rlmark tol" style={{ left: rlPct(r.kuT, max) + "%" }} /></div>
     {small ? <small className="muted block" style={{ marginTop: 4 }}>{fmtMoney(r.umsY)} von {fmtMoney(r.kuL)} (Toleranz bis {fmtMoney(r.kuT)})</small> : <div className="rlscale"><span>0</span><span style={{ left: rlPct(r.kuL, max) + "%" }}>{fmtMoney(r.kuL)}</span><span style={{ left: rlPct(r.kuT, max) + "%" }}>{fmtMoney(r.kuT)}</span></div>}
@@ -8642,7 +8644,7 @@ async function rlRunAi(year, D, txs, cfg, notify) {
   notify?.("KI-Auswertung übernommen");
   return res;
 }
-function RlPanel({ txs, accounts, docs, year: year0, compact = false, setTab, notify }) {
+function RlPanelAT({ txs, accounts, docs, year: year0, compact = false, setTab, notify }) {
   const [year, setYear] = useState(year0 || todayISO().slice(0, 4));
   const { r, D, cfg, aiMap } = useRl(txs, accounts, docs, year);
   const [busy, setBusy] = useState(false), [err, setErr] = useState("");
@@ -8816,7 +8818,484 @@ function StbRSec({ id, title, sub, open, onTog, children }) {
     <button type="button" className="stbrsh" onClick={() => onTog(id)} aria-expanded={!!open[id]}><span className="ichev">▾</span><b>{title}</b>{sub && <small className="muted">{sub}</small>}</button>
     {open[id] && <div className="stbrsb">{children}</div>}</section>);
 }
-function StbReports({ D, notify, setTab, accounts, txs = [] }) {
+/* ======================= v0.99.73: Steuerberater für alle Länder (KI-Länderprofil) =======================
+   Österreich: eingebaute Berechnung (E 1a …) oder wahlweise KI-Länderprofil. Alle anderen Länder: KI-Länderprofil mit Websuche
+   (Formular & Zeilen, Grenzen, km-Satz, Abschreibung, Freibetrag, Wechselkurs) → die App rechnet die Berichte selbst. */
+const CTRY_CODES = ("AD AE AF AG AL AM AO AR AT AU AW AZ BA BB BD BE BF BG BH BI BJ BM BN BO BR BS BT BW BY BZ CA CD CF CG CH CI CL CM CN CO CR CU CV CW CY CZ DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FM FO FR GA GB GD GE GG GH GI GL GM GN GQ GR GT GW GY HK HN HR HT HU ID IE IL IM IN IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MG MH MK ML MM MN MO MR MT MU MV MW MX MY MZ NA NE NG NI NL NO NP NR NZ OM PA PE PG PH PK PL PR PS PT PW PY QA RO RS RU RW SA SB SC SD SE SG SI SK SL SM SN SO SR SS ST SV SY SZ TD TG TH TJ TL TM TN TO TR TT TV TW TZ UA UG US UY UZ VA VC VE VG VN VU WS XK YE ZA ZM ZW").split(" ");
+let CTRY_DN = null, CTRY_LIST = null;
+const ctryName = (cc) => { try { CTRY_DN = CTRY_DN || new Intl.DisplayNames(["de"], { type: "region" }); return CTRY_DN.of(cc) || cc; } catch { return cc; } };
+const flagOf = (cc) => String(cc || "").toUpperCase().replace(/[A-Z]/g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
+const CTRY_TOP = ["AT", "DE", "CH", "LI", "IT", "US", "GB"];
+const ctryList = () => CTRY_LIST || (CTRY_LIST = [...new Set(CTRY_CODES)].map((c) => ({ c, n: ctryName(c) })).sort((a, b) => a.n.localeCompare(b.n, "de")));
+const useCountry = () => useLsState("stbCountry", "AT");
+const ctryKey = (cc, y) => cc + ":" + y;
+const ctryUsesAi = (cc) => cc !== "AT" || ls.get("stbAtMode", "app") === "ki";
+function ctryProfile(cc, year) {
+  const all = ls.get("stbCtry", {}); if (all[ctryKey(cc, year)]) return all[ctryKey(cc, year)];
+  const ys = Object.keys(all).filter((k) => k.startsWith(cc + ":")).map((k) => +k.split(":")[1]).sort((a, b) => Math.abs(a - year) - Math.abs(b - year) || b - a);
+  return ys.length ? all[ctryKey(cc, ys[0])] : null;
+}
+const ctryFx = (C) => { if (!C) return 1; if (C.currency === "EUR") return 1; const o = +String(ls.get("stbFx:" + C.cc, "") || "").replace(",", "."); return o > 0 ? o : C.fx || null; };
+function ctrySanitize(r, cc, year) {
+  const id = (v) => String(v ?? "").replace(/[^\w.\-\/ ]/g, "").trim().slice(0, 16);
+  const str = (v, m = 200) => (v == null ? "" : String(v).slice(0, m));
+  const arr = (a, m) => (Array.isArray(a) ? a.map((x) => str(x, 300)).filter(Boolean).slice(0, m) : []);
+  let lines = (Array.isArray(r.lines) ? r.lines : []).map((l) => ({ id: id(l?.id), label: str(l?.label, 120), dir: l?.dir === "in" ? "in" : "out" })).filter((l) => l.id && l.label);
+  lines = lines.filter((l, i) => lines.findIndex((x) => x.id === l.id) === i).slice(0, 30);
+  if (!lines.some((l) => l.dir === "in")) lines.unshift({ id: "IN", label: "Betriebseinnahmen", dir: "in" });
+  if (!lines.some((l) => l.dir === "out")) lines.push({ id: "OUT", label: "Betriebsausgaben", dir: "out" });
+  const has = (x, dir) => lines.some((l) => l.id === x && (!dir || l.dir === dir));
+  const firstIn = lines.find((l) => l.dir === "in").id, lastOut = [...lines].reverse().find((l) => l.dir === "out").id;
+  const sp0 = r.special || {}, pick = (k, dir, fb) => (has(id(sp0[k]), dir) ? id(sp0[k]) : fb);
+  const special = { revenue: pick("revenue", "in", firstIn), otherIn: null, otherOut: pick("otherOut", "out", lastOut) };
+  special.otherIn = pick("otherIn", "in", special.revenue);
+  for (const k of ["goods", "depreciation", "travel", "vehicle", "social"]) special[k] = pick(k, "out", k === "depreciation" || k === "travel" ? special.otherOut : null);
+  const okKz = (v, dir) => (v === "skip" ? "skip" : has(id(v), dir) ? id(v) : null);
+  const fromAt = {}; for (const [kz, , d] of E1A_KZ) fromAt[kz] = okKz((r.fromAt || {})[kz], d) || (d === "in" ? (kz === "9040" ? special.revenue : special.otherIn) : kz === "9130" ? special.depreciation : kz === "9160" ? special.travel : special.otherOut);
+  const kzMap = {}; for (const [k, v] of Object.entries(r.kzMap || {})) { const z = okKz(v?.kz, k.startsWith("+") ? "in" : "out"); if (z) kzMap[k] = { kz: z, why: str(v?.why, 80) }; }
+  const R = r.rules || {}, n = (v, lo, hi) => aiNum(v, lo, hi);
+  const al = R.allowance && n(R.allowance.rate, 0.001, 0.5) != null ? { label: str(R.allowance.label, 60) || "Freibetrag", rate: R.allowance.rate, cap: n(R.allowance.cap, 1, 1e12) } : null;
+  const cur = /^[A-Z]{3}$/.test(String(r.currency || "")) ? r.currency : "EUR";
+  return { cc, year: String(year), at: r.at || new Date().toISOString(), currency: cur, fx: cur === "EUR" ? 1 : n(r.fxEur, 1e-4, 1e7), fxNote: str(r.fxNote),
+    authority: str(r.authority, 80), taxSystem: str(r.taxSystem, 500), form: str(r.form, 120) || "Gewinnermittlung", formShort: str(r.formShort, 40) || str(r.form, 40) || "Gewinnermittlung", lineWord: str(r.lineWord, 20) || "Zeile", profitMethod: str(r.profitMethod, 200),
+    forms: arr(r.forms, 6), lines, special, fromAt, kzMap,
+    rules: { smallLimit: n(R.smallLimit, 1, 1e13), smallLabel: str(R.smallLabel, 80) || "Kleinunternehmergrenze", smallTol: n(R.smallTol, 1, 1e13), smallBasis: R.smallBasis === "netto" ? "netto" : "brutto", smallPrev: n(R.smallPrev, 1, 1e13),
+      gwg: n(R.gwg, 0, 1e12), gwgLabel: str(R.gwgLabel, 80), afaFirstYear: ["half", "month", "full", "none"].includes(R.afaFirstYear) ? R.afaFirstYear : "month",
+      kmRate: n(R.kmRate, 0.001, 1e5), kmMaxKm: n(R.kmMaxKm, 1, 1e7), kmLabel: str(R.kmLabel, 80), allowance: al, vatStandard: n(R.vatStandard, 0, 0.6) },
+    reports: { km: r.reports?.km !== false, anlagen: r.reports?.anlagen !== false, umsatz: r.reports?.umsatz !== false, waren: r.reports?.waren !== false },
+    deadlines: arr(r.deadlines, 4), notes: arr(r.notes, 6), openQuestions: arr(r.openQuestions, 4), sources: (r.sources || []).filter((x) => /^https?:/.test(x?.url || "")).slice(0, 10) };
+}
+// Kategorien des Jahres (für die KI-Zuordnung)
+function stbCatsOf(D, year) {
+  const m = new Map(); for (const r of D.rows) { if (!(r.t.date || "").startsWith(String(year)) || r.scope !== "firma" || r.transfer || !r.biz) continue;
+    const key = (r.biz > 0 ? "+" : "-") + (r.t.category || "Sonstiges"), x = m.get(key) || { key, kategorie: r.t.category || "Sonstiges", art: r.biz > 0 ? "Einnahme" : "Ausgabe", summe: 0 }; x.summe = r2e(x.summe + Math.abs(r.biz)); m.set(key, x); }
+  return [...m.values()].sort((a, b) => b.summe - a.summe);
+}
+async function ctryRunAi(cc, year, D) {
+  const act = ls.get("stbActivity", {});
+  const activity = [act.label || STB_KINDS.find((k) => k[0] === act.kind)?.[1], act.text, ls.get("stbBizDesc", "")].filter(Boolean).join(" – ");
+  const fb = ls.get("fbook", FB_EMPTY), cats = stbCatsOf(D, year);
+  const ctx = { cats, trips: (fb.entries || []).filter((e) => e.type === "trip" && e.purpose === "business" && (e.date || "").startsWith(String(year))).length, assets: ls.get("assets", []).filter((a) => a.scope === "firma").length, umsatz: r2e(sumBy(cats.filter((c) => c.art === "Einnahme"), (c) => c.summe)) };
+  const r = await stbAiCall({ mode: "country", intl: true, year: String(year), country: { code: cc, name: ctryName(cc) }, activity, ctx });
+  const p = ctrySanitize(r, cc, year);
+  lsSetEv("stbCtry", { ...ls.get("stbCtry", {}), [ctryKey(cc, year)]: p });
+  return p;
+}
+function afaIntl(a, year, gwgEur, mode) {
+  const p = Number(a.price) || 0, d = a.date || "", y0 = +d.slice(0, 4), m0 = +d.slice(5, 7) || 1, nd = Math.max(1, Number(a.afaYears) || 0);
+  const isG = gwgEur != null && p <= gwgEur;
+  if (!p || !y0 || +year < y0) return { afa: 0, book: p, gwg: isG, nd };
+  if (isG) return { afa: +year === y0 ? p : 0, book: 0, gwg: true, nd: 1 };
+  if (!a.afaYears) return { afa: 0, book: p, gwg: false, nd: 0, missing: true };
+  const full = p / nd, first = mode === "half" ? (m0 > 6 ? 0.5 : 1) : mode === "month" ? (13 - m0) / 12 : mode === "none" ? 0 : 1; let rest = p, afa = 0;
+  for (let y = y0; y <= +year && rest > 0.004; y++) { const v = Math.min(rest, y === y0 ? full * first : full); if (y === +year) afa = v; rest -= v; }
+  return { afa: r2e(afa), book: r2e(Math.max(0, rest)), gwg: false, nd };
+}
+function stbYearDataIntl(year, D, opt, map, C) {
+  const yr = String(year), inY = (d) => (d || "").startsWith(yr), fx = ctryFx(C), toEur = (v) => (v == null || !fx ? null : r2e(v / fx));
+  const L = C.lines, dirOf = Object.fromEntries(L.map((l) => [l.id, l.dir])), has = (x) => x === E1A_SKIP || !!dirOf[x];
+  const kzOf = (key, cat, cp, txt, income) => { const u = map[key]; if (u && has(u)) return u; const a = C.kzMap[key]?.kz; if (a && has(a)) return a; return C.fromAt[kzGuess(cat, cp, txt, income)] || (income ? C.special.revenue : C.special.otherOut); };
+  const lines = [];
+  for (const r of D.rows) { if (!inY(r.t.date) || r.scope !== "firma" || r.transfer || !r.biz) continue;
+    const t = r.t, income = r.biz > 0, key = (income ? "+" : "-") + (t.category || "Sonstiges");
+    lines.push({ id: t.id, date: t.date, src: r.acc?.name || "Bank", partner: t.counterparty || "", text: (t.purpose || "").slice(0, 160), cat: t.category || "Sonstiges", mapKey: key, kz: kzOf(key, t.category, t.counterparty, t.purpose, income), amount: r.biz, beleg: r.doc ? (r.doc.title || "Beleg") : "", hasDoc: !!r.doc }); }
+  const kassen = ls.get("kassen", []), kent = ls.get("kassaEntries", []);
+  for (const e of kent) { if (!inY(e.date)) continue; const k = kassen.find((x) => x.id === e.kasse), atKz = KB_KZ[e.cat] || (e.kind === "ein" ? "9090" : "9230");
+    lines.push({ id: e.id, date: e.date, src: "Kassa " + (k?.name || ""), partner: "", text: e.text || "", cat: e.cat || "", mapKey: null, kz: atKz === E1A_SKIP ? E1A_SKIP : C.fromAt[atKz], amount: kbSigned(e), beleg: e.beleg || (e.eigen ? "Eigenbeleg" : e.docId ? "Dokument" : ""), hasDoc: !!(e.beleg || e.eigen || e.docId), kassa: true }); }
+  const R = C.rules, fb = ls.get("fbook", FB_EMPTY), veh = Object.fromEntries((fb.vehicles || []).map((v) => [v.id, v]));
+  const trips = (fb.entries || []).filter((e) => e.type === "trip" && e.purpose === "business" && inY(e.date)).sort((a, b) => a.date.localeCompare(b.date));
+  const km = sumBy(trips, (e) => Math.max(0, e.endKm - e.startKm)), kmBill = R.kmMaxKm ? Math.min(km, R.kmMaxKm) : km;
+  const rate = R.kmRate && fx ? R.kmRate / fx : 0, kmEur = r2e(kmBill * rate);
+  if (opt.km && kmEur) lines.push({ id: "km", date: yr + "-12-31", src: "Fahrtenbuch", partner: "", text: `${R.kmLabel || "Kilometerpauschale"}: ${km.toLocaleString("de-AT")} km × ${String(R.kmRate).replace(".", ",")} ${C.currency}`, cat: "Kilometerpauschale", kz: C.special.travel, amount: -kmEur, beleg: "Fahrtenbuch", hasDoc: true, auto: true });
+  const gwgEur = R.gwg != null ? toEur(R.gwg) : null;
+  const anl = ls.get("assets", []).filter((a) => (a.scope || "privat") === "firma").map((a) => ({ a, ...afaIntl(a, yr, gwgEur, R.afaFirstYear) }));
+  const afaSum = r2e(sumBy(anl, (x) => x.afa));
+  if (afaSum) lines.push({ id: "afa", date: yr + "-12-31", src: "Anlagenverzeichnis", partner: "", text: `Abschreibung ${anl.filter((x) => x.afa).length} Anlagegüter`, cat: "Abschreibung", kz: C.special.depreciation, amount: -afaSum, beleg: "Anlagenverzeichnis", hasDoc: true, auto: true });
+  lines.sort((a, b) => a.date.localeCompare(b.date));
+  for (const l of lines) if (!has(l.kz)) l.kz = l.amount > 0 ? C.special.otherIn : C.special.otherOut;
+  const used = lines.filter((l) => l.kz !== E1A_SKIP);
+  const byKz = {}; for (const l0 of L) byKz[l0.id] = { sum: 0, n: 0, lines: [] };
+  for (const l of used) { const b = byKz[l.kz]; b.sum = r2e(b.sum + (dirOf[l.kz] === "in" ? l.amount : -l.amount)); b.n++; b.lines.push(l); }
+  const inc = r2e(sumBy(L.filter((l) => l.dir === "in"), (l) => byKz[l.id].sum)), out = r2e(sumBy(L.filter((l) => l.dir === "out"), (l) => byKz[l.id].sum)), profit = r2e(inc - out);
+  const al = R.allowance, alCap = al?.cap != null ? toEur(al.cap) : null, gfb = al && profit > 0 ? r2e(Math.min(profit, alCap ?? profit) * al.rate) : 0;
+  const invs = ls.get("invoices", []).filter((x) => x.kind === "rechnung" && x.number && !["entwurf", "storniert"].includes(invState(x)) && inY(x.date));
+  const rev = byKz[C.special.revenue] || { sum: 0, lines: [] };
+  const umsatzM = Array.from({ length: 12 }, (_, i) => { const m = `${yr}-${String(i + 1).padStart(2, "0")}`; return { m, inv: r2e(sumBy(invs.filter((x) => x.date.startsWith(m)), invTotal)), erl: r2e(sumBy(rev.lines.filter((l) => l.date.startsWith(m)), (l) => l.amount)) }; });
+  const umsatz = invs.length ? r2e(sumBy(invs, invTotal)) : rev.sum;
+  const kuLimit = R.smallLimit != null ? toEur(R.smallLimit) : null, kuTol = R.smallTol != null ? toEur(R.smallTol) : null;
+  const goods = C.special.goods ? byKz[C.special.goods].lines : [];
+  const priv = [];
+  for (const r of D.rows) if (inY(r.t.date) && r.transfer && r.acc?.use === "firma") priv.push({ date: r.t.date, art: r.t.amount < 0 ? "Entnahme (Umbuchung)" : "Einlage (Umbuchung)", text: `${r.t.counterparty || ""} ${r.t.purpose || ""}`.trim(), amount: r.t.amount, src: r.acc?.name || "" });
+  for (const e of kent) if (inY(e.date) && /Privat/.test(e.cat || "")) priv.push({ date: e.date, art: e.cat, text: e.text || "", amount: kbSigned(e), src: "Kassa" });
+  priv.sort((a, b) => a.date.localeCompare(b.date));
+  const noDoc = used.filter((l) => l.amount < 0 && !l.hasDoc), unklar = D.rows.filter((r) => inY(r.t.date) && r.scope === "unklar" && !r.transfer);
+  return { intl: true, C, fx, yr, lines, used, byKz, kzList: L.map((l) => [l.id, l.label, l.dir]), inc, out, profit, gfb, invs, umsatz, umsatzM, kuLimit, kuTol, anl, afaSum, trips, km, kmBill, kmEur, rate, veh, goods, priv, noDoc, unklar };
+}
+const ctryTwo = (Y) => Y.C.currency !== "EUR" && !!Y.fx;
+const fmtLoc = (Y, v) => (ctryTwo(Y) && v != null && isFinite(v) ? fmtMoney(v * Y.fx, Y.C.currency) : "");
+const STB_REPORTS_INTL = [
+  ["gesamt", "📘", "Jahresbericht für den Steuerberater", "Ergebnis, Formularzeilen, Freibetrag, Umsatzgrenze, Hinweise des Landes"],
+  ["form", "🧮", "Formular – Zeilen", "Einnahmen und Ausgaben je Zeile des Formulars, mit Einzelposten"],
+  ["journal", "📒", "Einnahmen-Ausgaben-Journal", "Alle Firmenbuchungen chronologisch mit Zeile und Beleg"],
+  ["umsatz", "📈", "Umsatz & Kleinunternehmergrenze", "Monatlicher Umsatz kumuliert gegen die Grenze des Landes"],
+  ["anlagen", "🏷️", "Anlagenverzeichnis mit Abschreibung", "Nach den Abschreibungsregeln des Landes"],
+  ["waren", "📦", "Wareneingangsbuch", "Wareneinkäufe mit laufender Nummer und Lieferant"],
+  ["km", "🚗", "Kilometerpauschale", "Geschäftliche Fahrten aus dem Fahrtenbuch × Satz des Landes"],
+  ["privat", "👤", "Privatentnahmen & -einlagen", "Umbuchungen Firmenkonto ↔ privat und Privatbuchungen der Kassa"],
+  ["offen", "📮", "Offene Posten (Forderungen)", "Unbezahlte Ausgangsrechnungen zum Stichtag"],
+  ["fehlt", "⚠️", "Fehlende Belege & unklare Buchungen", "Was der Steuerberater sonst nachfragen würde"]];
+const intlTitle = (k, C) => k === "form" ? `${C.formShort} – ${C.lineWord === "Zeile" ? "Zeilen" : C.lineWord}` : k === "umsatz" ? `Umsatz & ${C.rules.smallLabel}` : k === "km" ? C.rules.kmLabel || "Kilometerpauschale" : STB_REPORTS_INTL.find((r) => r[0] === k)?.[2] || k;
+async function stbReportIntl(k, fmt, Y, co) {
+  const C = Y.C, cur = C.currency, two = ctryTwo(Y), yr = Y.yr, LW = C.lineWord;
+  const X = (sheets) => (fmt === "csv" ? csvSheets(sheets) : xlsxBlob(sheets));
+  const LC = `Betrag ${cur}`, addL = (rows, i) => (two ? rows.map((r) => [...r, typeof r[i] === "number" ? r2e(r[i] * Y.fx) : ""]) : rows), H = (h) => (two ? [...h, LC] : h);
+  const lcol = two ? [{ label: LC, w: 1.2, align: "right" }] : [];
+  const who = `${co.name || "Firma"}${co.owner ? " · " + co.owner : ""}${co.taxNo ? " · StNr. " + co.taxNo : ""}`, sub = `${who} · ${ctryName(C.cc)} · Steuerjahr ${yr}`;
+  const num = (v) => (v == null ? "–" : v.toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + cur);
+  const kpi = (l, v) => [l + (two ? " · " + num(v * Y.fx) : ""), fmtMoney(v)];
+  const note = `Regeln für ${ctryName(C.cc)} ${C.year} laut KI-Websuche vom ${new Date(C.at).toLocaleDateString("de-AT")} – bitte prüfen. Formular: ${C.form}.\n` + (two ? `Umrechnung: 1 EUR = ${Y.fx.toLocaleString("de-AT", { maximumFractionDigits: 4 })} ${cur}${C.fxNote ? " (" + C.fxNote + ")" : ""}.\n` : "") + "Einnahmen/Ausgaben nach Zahlungsfluss (Bank + Kassabuch), Firmenanteil laut Zuordnung in FinDocu.\nVorbereitung für den Steuerberater – keine Steuerberatung.";
+  const P = (o) => tablePdf({ subtitle: sub, note, ...o });
+  const kzRows = Y.kzList.map(([id, l, d]) => [id, l, d === "in" ? "Einnahme" : "Ausgabe", Y.byKz[id].n, Y.byKz[id].sum]).filter((r) => r[3] || r[0] === C.special.revenue);
+  const jRow = (l) => [l.date, l.src, l.partner, l.text, l.cat, l.kz === E1A_SKIP ? "–" : l.kz, l.amount, l.beleg || (l.hasDoc ? "ja" : "FEHLT")];
+  const JH = ["Datum", "Konto/Quelle", "Partner", "Text", "Kategorie", LW, "Betrag €", "Beleg"];
+  const anlRows = Y.anl.map((x) => [x.a.name + (x.a.brand ? " · " + x.a.brand : ""), x.a.date || "", Number(x.a.price) || 0, x.a.dealer || "", x.gwg ? "GWG" : x.missing ? "fehlt" : x.nd + " J.", x.afa, x.gwg ? 0 : x.book]);
+  const AH = ["Anlagegut", "Anschaffung", "Kosten €", "Lieferant", "Nutzungsdauer", `Abschreibung ${yr} €`, "Restbuchwert €"];
+  let cum = 0; const uRows = Y.umsatzM.map((x) => { cum = r2e(cum + (Y.invs.length ? x.inv : x.erl)); return [monthLabel(x.m), Y.invs.length ? x.inv : x.erl, cum, Y.kuLimit != null ? r2e(Y.kuLimit - cum) : ""]; });
+  const UH = ["Monat", "Umsatz €", "kumuliert €", "bis Grenze €"];
+  const wRows = Y.goods.map((l, i) => [i + 1, l.date, l.partner || l.src, l.text, -l.amount, l.beleg || ""]), WH = ["Nr.", "Datum", "Lieferant", "Bezeichnung", "Betrag €", "Beleg"];
+  const kmRows = Y.trips.map((e) => [e.date, Y.veh[e.vid]?.name || "", Y.veh[e.vid]?.plate || "", e.from || "", e.to || "", e.note || "", Math.max(0, e.endKm - e.startKm), r2e(Math.max(0, e.endKm - e.startKm) * Y.rate)]);
+  const KH = ["Datum", "Fahrzeug", "Kennzeichen", "Von", "Nach", "Zweck", "km", "Betrag €"];
+  const pRows = Y.priv.map((x) => [x.date, x.art, x.src, x.text, x.amount]), PH = ["Datum", "Art", "Konto", "Text", "Betrag €"];
+  const R = C.rules, al = R.allowance;
+  const resRows = [["Betriebseinnahmen", Y.inc], ["Betriebsausgaben", -Y.out], ["Gewinn", Y.profit], ...(al ? [[al.label, -Y.gfb], ["Gewinn nach " + al.label, r2e(Y.profit - Y.gfb)]] : []), ["Umsatz", Y.umsatz], ...(Y.kuLimit != null ? [[R.smallLabel, Y.kuLimit]] : [])];
+  if (k === "gesamt") {
+    if (fmt !== "pdf") return X([{ name: "Ergebnis", head: H(["Position", "Betrag €"]), rows: addL(resRows, 1) }, { name: C.formShort.slice(0, 28), head: H([LW, "Bezeichnung", "Art", "Posten", "Betrag €"]), rows: addL(kzRows, 4) },
+      { name: "Journal", head: H(JH), rows: addL(Y.used.map(jRow), 6) }, { name: "Umsatz", head: UH, rows: uRows }, { name: "Anlagen", head: AH, rows: anlRows }, { name: "Wareneingang", head: WH, rows: wRows }, { name: "Kilometer", head: KH, rows: kmRows }, { name: "Privat", head: PH, rows: pRows }]);
+    const hin = [`${Y.noDoc.length} Ausgaben ohne Beleg · ${Y.unklar.length} Buchungen Privat/Firma unklar`, `${Y.anl.length} Anlagegüter, Abschreibung ${fmtMoney(Y.afaSum)}${Y.anl.some((x) => x.missing) ? " – bei manchen fehlt die Nutzungsdauer" : ""}`, `${Y.trips.length} geschäftliche Fahrten, ${Y.km.toLocaleString("de-AT")} km`, `${Y.priv.length} Privatentnahmen/-einlagen`, ...C.notes, ...C.openQuestions.map((q) => "Klären: " + q), ...C.deadlines.map((d) => "Frist: " + d)];
+    return P({ title: `Jahresbericht ${yr} – ${ctryName(C.cc)}`, kpis: [kpi("Einnahmen", Y.inc), kpi("Ausgaben", Y.out), kpi("Gewinn", Y.profit), al ? kpi("nach " + al.label, Y.profit - Y.gfb) : kpi("Umsatz", Y.umsatz)],
+      columns: [{ label: LW, w: 1.1 }, { label: "Bezeichnung", w: 5 }, { label: "Posten", w: 0.8, align: "right" }, { label: "Betrag €", w: 1.4, align: "right" }, ...lcol],
+      sections: [{ heading: C.form, rows: addL(kzRows.map((r) => [r[0], r[1], r[3], r[2] === "Ausgabe" ? -r[4] : r[4]]), 3), totals: ["", "Gewinn/Verlust", Y.used.length, Y.profit, ...(two ? [r2e(Y.profit * Y.fx)] : [])] },
+        ...(al ? [{ heading: al.label, rows: addL([["", `${String(+(al.rate * 100).toFixed(2)).replace(".", ",")} %${al.cap ? " bis " + num(al.cap) + " Gewinn" : ""}`, "", -Y.gfb]], 3), totals: ["", "Gewinn nach " + al.label, "", r2e(Y.profit - Y.gfb), ...(two ? [r2e((Y.profit - Y.gfb) * Y.fx)] : [])] }] : []),
+        ...(Y.kuLimit != null ? [{ heading: R.smallLabel, rows: addL([["", `Umsatz ${yr} (${Y.invs.length ? "Ausgangsrechnungen" : "Erlöse"}, ${R.smallBasis})`, "", Y.umsatz], ["", "Grenze", "", Y.kuLimit], ...(Y.kuTol ? [["", "zweite Grenze / Toleranz", "", Y.kuTol]] : []), ["", Y.umsatz <= Y.kuLimit ? "unter der Grenze ✓" : "ÜBER der Grenze – mit dem Steuerberater klären", "", ""]], 3) }] : []),
+        { heading: "Hinweise", rows: hin.map((t) => ["", t, "", "", ...(two ? [""] : [])]) }] });
+  }
+  if (k === "form") {
+    const KH2 = H([LW, "Bezeichnung", "Art", "Posten", "Betrag €"]);
+    if (fmt === "csv") return csvBlob(KH2, addL(kzRows, 4));
+    if (fmt !== "pdf") return X([{ name: C.formShort.slice(0, 28), head: KH2, rows: addL(kzRows, 4) }, ...Y.kzList.filter(([id]) => Y.byKz[id].n).map(([id]) => ({ name: (LW + " " + id).slice(0, 28), head: H(JH), rows: addL(Y.byKz[id].lines.map(jRow), 6) }))]);
+    return P({ title: `${C.form} ${yr}`, landscape: true, kpis: [kpi("Einnahmen", Y.inc), kpi("Ausgaben", Y.out), kpi("Gewinn", Y.profit), al ? kpi(al.label, Y.gfb) : kpi("Umsatz", Y.umsatz)],
+      columns: [{ label: "Datum", w: 1 }, { label: "Konto/Quelle", w: 1.6 }, { label: "Partner", w: 2.2 }, { label: "Text", w: 3.4 }, { label: "Kategorie", w: 1.8 }, { label: "Betrag €", w: 1.2, align: "right" }, ...lcol],
+      sections: Y.kzList.filter(([id]) => Y.byKz[id].n).map(([id, l]) => ({ heading: `${LW} ${id} – ${l}`, rows: addL(Y.byKz[id].lines.map((x) => [x.date, x.src, x.partner, x.text, x.cat, Math.abs(x.amount)]), 5), totals: ["", "", "", "", "Summe", Y.byKz[id].sum, ...(two ? [r2e(Y.byKz[id].sum * Y.fx)] : [])] })) });
+  }
+  if (k === "journal") {
+    if (fmt === "csv") return csvBlob(H(JH), addL(Y.lines.map(jRow), 6));
+    if (fmt !== "pdf") return X([{ name: "Journal", head: H(JH), rows: addL(Y.lines.map(jRow), 6) }]);
+    return P({ title: `Einnahmen-Ausgaben-Journal ${yr}`, landscape: true, columns: [{ label: "Datum", w: 1 }, { label: "Konto", w: 1.5 }, { label: "Partner", w: 2 }, { label: "Text", w: 3.2 }, { label: "Kategorie", w: 1.6 }, { label: LW, w: 0.7 }, { label: "Betrag €", w: 1.1, align: "right" }, { label: "Beleg", w: 1.6 }, ...lcol],
+      rows: two ? Y.lines.map((l) => [...jRow(l), r2e(l.amount * Y.fx)]) : Y.lines.map(jRow), totals: ["", "", "", "", "", "", Y.profit, "Gewinn", ...(two ? [r2e(Y.profit * Y.fx)] : [])] });
+  }
+  if (k === "umsatz") { if (fmt !== "pdf") return X([{ name: "Umsatz", head: UH, rows: uRows }]);
+    return P({ title: `Umsatz & ${R.smallLabel} ${yr}`, kpis: [kpi("Umsatz", Y.umsatz), ...(Y.kuLimit != null ? [kpi("Grenze", Y.kuLimit), kpi("Rest", Y.kuLimit - Y.umsatz)] : []), ...(Y.kuTol ? [kpi("zweite Grenze", Y.kuTol)] : [])],
+      columns: [{ label: "Monat", w: 2 }, { label: "Umsatz €", w: 1.4, align: "right" }, { label: "kumuliert €", w: 1.4, align: "right" }, { label: "bis Grenze €", w: 1.4, align: "right" }], rows: uRows }); }
+  if (k === "anlagen") { if (fmt !== "pdf") return X([{ name: "Anlagen", head: AH, rows: anlRows }]);
+    return P({ title: `Anlagenverzeichnis ${yr}`, landscape: true, columns: [{ label: "Anlagegut", w: 3.4 }, { label: "Anschaffung", w: 1.1 }, { label: "Kosten €", w: 1.1, align: "right" }, { label: "Lieferant", w: 2.2 }, { label: "Nutzungsdauer", w: 1.2 }, { label: `Abschreibung ${yr} €`, w: 1.3, align: "right" }, { label: "Restbuchwert €", w: 1.2, align: "right" }],
+      rows: anlRows, totals: ["Summe", "", sumBy(Y.anl, (x) => Number(x.a.price) || 0), "", "", Y.afaSum, sumBy(Y.anl, (x) => (x.gwg ? 0 : x.book))], empty: "Keine Anlagegüter mit Zuordnung „Firma“ in Besitz & Garantie.",
+      note: `${R.gwg != null ? `Sofortabschreibung bis ${num(R.gwg)}${R.gwgLabel ? " (" + R.gwgLabel + ")" : ""}. ` : ""}Anschaffungsjahr: ${{ half: "Halbjahresregel", month: "monatsgenau anteilig", full: "volles Jahr", none: "Abschreibung ab Folgejahr" }[R.afaFirstYear]}.\n` + note }); }
+  if (k === "waren") { if (fmt !== "pdf") return X([{ name: "Wareneingang", head: WH, rows: wRows }]);
+    return P({ title: `Wareneingangsbuch ${yr}`, landscape: true, columns: [{ label: "Nr.", w: 0.6 }, { label: "Datum", w: 1 }, { label: "Lieferant", w: 2.6 }, { label: "Bezeichnung", w: 4 }, { label: "Betrag €", w: 1.2, align: "right" }, { label: "Beleg", w: 2 }], rows: wRows, totals: ["", "", "", "Summe", C.special.goods ? Y.byKz[C.special.goods].sum : 0, ""] }); }
+  if (k === "km") { if (fmt !== "pdf") return X([{ name: "Kilometer", head: KH, rows: kmRows }]);
+    return P({ title: `${R.kmLabel || "Kilometerpauschale"} ${yr}`, landscape: true, kpis: [["Fahrten", String(Y.trips.length)], ["Kilometer", Y.km.toLocaleString("de-AT")], ["Satz", R.kmRate ? `${String(R.kmRate).replace(".", ",")} ${cur}/km` : "–"], kpi("Betrag", Y.kmEur)],
+      columns: [{ label: "Datum", w: 1 }, { label: "Fahrzeug", w: 1.6 }, { label: "Kennz.", w: 1 }, { label: "Von", w: 1.8 }, { label: "Nach", w: 1.8 }, { label: "Zweck", w: 2.6 }, { label: "km", w: 0.7, align: "right" }, { label: "Betrag €", w: 1, align: "right" }], rows: kmRows, totals: ["", "", "", "", "", R.kmMaxKm ? `Summe (max. ${R.kmMaxKm.toLocaleString("de-AT")} km)` : "Summe", Y.km, Y.kmEur] }); }
+  if (k === "privat") { if (fmt !== "pdf") return X([{ name: "Privat", head: PH, rows: pRows }]);
+    return P({ title: `Privatentnahmen & -einlagen ${yr}`, columns: [{ label: "Datum", w: 1 }, { label: "Art", w: 2 }, { label: "Konto", w: 1.6 }, { label: "Text", w: 3.4 }, { label: "Betrag €", w: 1.2, align: "right" }], rows: pRows, totals: ["", "", "", "Saldo", sumBy(Y.priv, (x) => x.amount)], empty: "Keine Einträge." }); }
+  if (k === "offen" && fmt !== "pdf") { const l = ls.get("invoices", []).filter((x) => x.kind === "rechnung" && x.number && !["bezahlt", "entwurf", "storniert"].includes(invState(x)));
+    return X([{ name: "Offene Posten", head: ["Rechnung", "Datum", "Kunde", "fällig", "Betrag €", "Status"], rows: l.map((x) => [x.number, x.date, x.customer?.name || "", x.due || "", invTotal(x), invState(x)]) }]); }
+  if (k === "offen") return openItemsPdf(ls.get("invoices", []));
+  const fRows = Y.noDoc.map((l) => [l.date, l.src, l.partner, l.text, l.amount]), uRows2 = Y.unklar.map((r) => [r.t.date, r.acc?.name || "", r.t.counterparty || "", (r.t.purpose || "").slice(0, 120), r.t.amount]);
+  if (fmt !== "pdf") return X([{ name: "Ohne Beleg", head: ["Datum", "Konto", "Partner", "Text", "Betrag €"], rows: fRows }, { name: "Unklar", head: ["Datum", "Konto", "Partner", "Text", "Betrag €"], rows: uRows2 }]);
+  return P({ title: `Fehlende Belege & unklare Buchungen ${yr}`, landscape: true, columns: [{ label: "Datum", w: 1 }, { label: "Konto", w: 1.6 }, { label: "Partner", w: 2.4 }, { label: "Text", w: 3.6 }, { label: "Betrag €", w: 1.1, align: "right" }],
+    sections: [{ heading: "Firmenausgaben ohne Beleg", rows: fRows, empty: "keine ✓" }, { heading: "Privat oder Firma unklar", rows: uRows2, empty: "keine ✓" }] });
+}
+function CountryPicker({ value, onChange }) {
+  const [open, setOpen] = useState(false), [q, setQ] = useState("");
+  const [prof] = useLsState("stbCtry", {});
+  const has = (c) => Object.keys(prof).some((k) => k.startsWith(c + ":"));
+  const L = ctryList().filter((x) => !q.trim() || norm(x.n + " " + x.c).includes(norm(q)));
+  const top = !q.trim() ? CTRY_TOP.map((c) => ({ c, n: ctryName(c) })) : [];
+  const row = (x) => <button key={x.c} type="button" className={"sbrow ctryrow" + (x.c === value ? " on" : "")} onClick={() => { onChange(x.c); setOpen(false); setQ(""); }}><span className="ctryflag">{flagOf(x.c)}</span><span className="grow">{x.n}</span>{x.c === "AT" ? <small className="muted">eingebaut{has("AT") ? " + KI" : ""}</small> : has(x.c) ? <small className="muted">✨ Profil vorhanden</small> : null}{x.c === value && <b className="ctryok">✓</b>}</button>;
+  return (<>
+    <button type="button" className="btn ctrybtn" onClick={() => setOpen(true)} title="Land für Steuerregeln und Berichte"><span className="ctryflag">{flagOf(value)}</span><span>{ctryName(value)}</span><span className="muted">▾</span></button>
+    {open && createPortal(<Win id="ctrypick" onClose={() => setOpen(false)} small defW={460} dirty={false} stay className="ctrypick">
+      <div className="panelhead"><b>Land für Steuer &amp; Berichte</b><XBtn /></div>
+      <input className="sbsearch" autoFocus value={q} placeholder={`${ctryList().length} Länder durchsuchen …`} onChange={(e) => setQ(e.target.value)} />
+      {top.length > 0 && <><small className="muted pickhead">Häufig</small><div className="sblist">{top.map(row)}</div><small className="muted pickhead">Alle Länder</small></>}
+      <div className="sblist">{L.length ? L.map(row) : <p className="muted small">Kein Land gefunden.</p>}</div>
+    </Win>, document.querySelector(".app") || document.body)}
+  </>);
+}
+function CountryBar({ cc, setCc, rl }) {
+  const [mode, setMode] = useLsState("stbAtMode", "app");
+  return (<div className="row ctrybar"><CountryPicker value={cc} onChange={setCc} />
+    {cc === "AT" && <div className="seg ctrymode"><button type="button" className={mode !== "ki" ? "on" : ""} onClick={() => setMode("app")}>Eingebaut (genau)</button><button type="button" className={mode === "ki" ? "on" : ""} onClick={() => setMode("ki")}>✨ KI-Länderprofil</button></div>}
+    <small className="muted grow">{cc === "AT" && mode !== "ki" ? (rl ? "Rücklage nach österreichischem Recht (eingebaut)" : "Berichte nach österreichischem Recht (E 1a, E 1kv …), ohne KI") : "Regeln per KI-Websuche – die App rechnet die Berichte selbst"}</small></div>);
+}
+function StbCountryInfo({ C, cc, year, D, Y, Yat, busy, setBusy, notify }) {
+  const [fxO, setFxO] = useLsState("stbFx:" + cc, "");
+  const R = C.rules, two = C.currency !== "EUR", n = (v) => (v == null ? "–" : fmtMoney(v, C.currency));
+  const re = async () => { setBusy("ctry"); try { await ctryRunAi(cc, year, D); notify?.("Länderprofil aktualisiert"); } catch (e) { notify?.("KI: " + e.message); } finally { setBusy(""); } };
+  const rows = [
+    ["Formular", C.form + (C.forms.length ? ` · ${C.forms.join(", ")}` : "")],
+    ["Gewinnermittlung", C.profitMethod],
+    [R.smallLabel, R.smallLimit != null ? `${n(R.smallLimit)} ${R.smallBasis}${R.smallTol ? " · zweite Grenze " + n(R.smallTol) : ""}${R.smallPrev ? " · Vorjahr " + n(R.smallPrev) : ""}` : "keine / unklar"],
+    ["Geringwertige Wirtschaftsgüter", R.gwg != null ? `${n(R.gwg)}${R.gwgLabel ? " · " + R.gwgLabel : ""}` : "–"],
+    ["Abschreibung im Anschaffungsjahr", { half: "Halbjahresregel", month: "monatsgenau anteilig", full: "volles Jahr", none: "ab Folgejahr" }[R.afaFirstYear]],
+    [R.kmLabel || "Kilometerpauschale", R.kmRate ? `${String(R.kmRate).replace(".", ",")} ${C.currency}/km${R.kmMaxKm ? " · max. " + R.kmMaxKm.toLocaleString("de-AT") + " km" : ""}` : "keine"],
+    [R.allowance?.label || "Freibetrag auf den Gewinn", R.allowance ? `${String(+(R.allowance.rate * 100).toFixed(2)).replace(".", ",")} %${R.allowance.cap ? " bis " + n(R.allowance.cap) : ""}` : "keiner"],
+    ["Umsatzsteuer Normalsatz", R.vatStandard != null ? String(+(R.vatStandard * 100).toFixed(2)).replace(".", ",") + " %" : "–"],
+    ["Steuerbehörde", C.authority]].filter((r) => r[1]);
+  return (<div className="ctryinfo">
+    {String(C.year) !== String(year) && <div className="rlnote">Die Regeln stammen aus {C.year}. <button className="link" disabled={!!busy} onClick={re}>Für {year} abfragen</button></div>}
+    {C.taxSystem && <p className="small">{C.taxSystem}</p>}
+    <div className="rlrows">{rows.map(([l, v]) => <div key={l}><span>{l}</span><b>{v}</b></div>)}
+      <div><span>Währung</span><b>{C.currency}{two ? ` · 1 EUR = ${(ctryFx(C) || 0).toLocaleString("de-AT", { maximumFractionDigits: 4 })} ${C.currency}` : ""}</b></div></div>
+    {two && <label className="ctryfx">Eigener Kurs (1 EUR = … {C.currency}, leer = KI-Kurs{C.fx ? " " + C.fx.toLocaleString("de-AT", { maximumFractionDigits: 4 }) : ""})<input inputMode="decimal" value={fxO} placeholder={C.fx ? String(C.fx).replace(".", ",") : "z. B. 0,94"} onChange={(e) => setFxO(e.target.value.replace(/[^\d.,]/g, ""))} /></label>}
+    {two && !ctryFx(C) && <p className="red small">Kein Wechselkurs bekannt – bitte oben eintragen, sonst fehlen Grenzen und km-Satz.</p>}
+    {cc === "AT" && Yat && <div className="rlnote">Gegencheck mit der eingebauten Berechnung: Gewinn {fmtMoney(Yat.profit)} (KI-Profil: {fmtMoney(Y.profit)}){Math.abs(Yat.profit - Y.profit) < 1 ? " ✓ gleich" : ` · Differenz ${fmtMoney(Y.profit - Yat.profit)}`}</div>}
+    {!!C.deadlines.length && <><small className="muted pickhead">Fristen</small><ul className="rlnotes">{C.deadlines.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
+    {!!C.notes.length && <><small className="muted pickhead">Hinweise</small><ul className="rlnotes">{C.notes.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
+    {!!C.openQuestions.length && <><small className="muted pickhead">Mit dem Steuerberater klären</small><ul className="rlnotes">{C.openQuestions.map((x, i) => <li key={i}>⚠ {x}</li>)}</ul></>}
+    {!!C.sources.length && <details className="airules"><summary>Quellen ({C.sources.length})</summary>{C.sources.map((s, i) => <a key={i} className="small block one" href={s.url} target="_blank" rel="noreferrer">{s.title || s.url}</a>)}</details>}
+    <div className="actions"><button className="btn" disabled={!!busy} onClick={re}>{busy === "ctry" ? "⏳ KI recherchiert …" : `✨ Regeln für ${year} neu abfragen`}</button><small className="muted">Stand {fmtStamp(C.at)} · KI mit Websuche – bitte prüfen</small></div>
+  </div>);
+}
+function StbCtryIntro({ cc, year, D, busy, setBusy, notify }) {
+  const [err, setErr] = useState("");
+  const run = async () => { setBusy("ctry"); setErr(""); try { await ctryRunAi(cc, year, D); notify?.("Länderprofil übernommen"); } catch (e) { setErr(e.message); } finally { setBusy(""); } };
+  return (<section className="tile ctryintro"><div className="tilehead"><b>{flagOf(cc)} {ctryName(cc)} – Steuerregeln {year}</b></div>
+    <p className="small">Die KI sucht im Web die aktuellen Regeln für {ctryName(cc)}. Dazu gehören das Formular für die Gewinnermittlung mit seinen Zeilen, die Kleinunternehmergrenze, geringwertige Wirtschaftsgüter, Abschreibung, Kilometerpauschale, Freibeträge, die Landeswährung und der Wechselkurs. Danach ordnet sie deine Kategorien den Zeilen zu.</p>
+    <p className="muted small">Die Berichte rechnet die App dann selbst aus deinen Buchungen. Beträge werden in Euro und in Landeswährung angezeigt. Die Abfrage dauert etwa 30–60 Sekunden.</p>
+    <div className="actions"><button className="btn primary" disabled={!!busy} onClick={run}>{busy === "ctry" ? "⏳ KI recherchiert …" : `✨ Steuerregeln für ${year} abfragen`}</button></div>
+    {err && <p className="red small">✕ {err}</p>}</section>);
+}
+function StbReportsIntl({ D, notify, setTab, accounts, txs = [], cc }) {
+  const thisY = todayISO().slice(0, 4);
+  const years = [...new Set([thisY, String(+thisY - 1), ...D.rows.map((r) => r.t.date.slice(0, 4))])].sort().reverse().slice(0, 6);
+  const [year, setYear] = useLsState("stbRepYear", String(+thisY - (+todayISO().slice(5, 7) <= 4 ? 1 : 0)));
+  const [opt, setOpt] = useLsState("stbRepOptI", { km: true });
+  const [map, setMap] = useLsState("stbKzMap:" + cc, {});
+  const [allC] = useLsState("stbCtry", {}), [fxO] = useLsState("stbFx:" + cc, "");
+  const [sel, setSel] = useLsState("stbRepSelI", ["gesamt", "form", "journal", "anlagen", "km", "fehlt"]);
+  const [open, setOpen] = useLsState("stbRepOpenI", { ctry: true, exp: true, ai: true });
+  const [kzOpen, setKzOpen] = useState(null), [busy, setBusy] = useState(""), [assetsV, setAssetsV] = useState(0);
+  const [aiV, setAiV] = useState(0), [aiErr, setAiErr] = useState("");
+  const C = useMemo(() => ctryProfile(cc, +year), [allC, cc, year]);
+  const Y = useMemo(() => (C ? stbYearDataIntl(year, D, opt, map, C) : null), [C, year, D, JSON.stringify(opt), map, assetsV, fxO]);
+  const Yat = useMemo(() => { if (cc !== "AT" || !C) return null; try { return stbYearData(year, D, stbOpt(), ls.get("stbKzMap", {})); } catch { return null; } }, [cc, C, year, D]);
+  const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
+  const head = <div className="row stbrepbar"><div className="chips">{years.map((y) => <button key={y} className={"chip" + (year === y ? " on" : "")} onClick={() => setYear(y)}>{y}</button>)}</div></div>;
+  if (!C || !Y) return <div className="stbrep">{head}<StbCtryIntro cc={cc} year={year} D={D} busy={busy} setBusy={setBusy} notify={notify} /></div>;
+  const R = C.rules, two = ctryTwo(Y), L2 = (v) => (two ? <small className="muted block">{fmtLoc(Y, v)}</small> : null);
+  const repOk = (k) => k === "umsatz" ? Y.kuLimit != null && R !== null && C.reports.umsatz : k === "km" ? !!R.kmRate && C.reports.km : k === "waren" ? !!C.special.goods && C.reports.waren : k === "anlagen" ? C.reports.anlagen || Y.anl.length > 0 : true;
+  const REPS = STB_REPORTS_INTL.filter((r) => repOk(r[0])), selV = sel.filter((k) => REPS.some((r) => r[0] === k));
+  const tag = (k) => `${intlTitle(k, C)} ${ctryName(cc)} ${year}`.replace(/[\\/:*?"<>|–]/g, "-");
+  const preview = async (k) => { setBusy(k + "prev"); try { await openPdf(await stbReportIntl(k, "pdf", Y, co), `${tag(k)}.pdf`, `${intlTitle(k, C)} ${year}`); } catch (e) { notify("Vorschau fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
+  const dl = async (k, fmt) => { setBusy(k + fmt); try { saveBlob(await stbReportIntl(k, fmt, Y, co), `${tag(k)}.${fmt}`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
+  const zipAll = async () => { setBusy("zip"); try { const files = []; for (const k of selV) for (const f of ["pdf", "xlsx"]) files.push({ name: `${String(STB_REPORTS_INTL.findIndex((r) => r[0] === k) + 1).padStart(2, "0")} ${tag(k)}.${f}`, data: await stbReportIntl(k, f, Y, co) });
+    saveBlob(await zipBlob(files), `Steuerberater ${ctryName(cc)} ${fileSafe(co.name || "")} ${year}.zip`.replace(/\s+/g, " ")); notify(`${files.length} Dateien als ZIP erstellt`); } catch (e) { notify("Export fehlgeschlagen: " + e.message); } finally { setBusy(""); } };
+  const tog = (k) => setOpen({ ...open, [k]: !open[k] });
+  const cats = (() => { const m = new Map(); for (const l of Y.lines) if (l.mapKey) { const x = m.get(l.mapKey) || { key: l.mapKey, cat: l.cat, inc: l.amount > 0, n: 0, sum: 0, kz: l.kz, ai: !map[l.mapKey] && C.kzMap[l.mapKey] }; x.n++; x.sum = r2e(x.sum + Math.abs(l.amount)); m.set(l.mapKey, x); } return [...m.values()].sort((a, b) => b.sum - a.sum); })();
+  const setAsset = (id, patch) => { ls.set("assets", ls.get("assets", []).map((a) => (a.id === id ? { ...a, ...patch } : a))); setAssetsV((v) => v + 1); };
+  const aiKey = `stbAi:${cc}:${year}`, aiC = ls.get(aiKey, null);
+  const aiData = () => ({ land: ctryName(cc), waehrung: C.currency, kurs1Eur: Y.fx, formular: C.form, jahr: year, einnahmen: Y.inc, ausgaben: Y.out, gewinn: Y.profit, freibetrag: Y.gfb, umsatz: Y.umsatz, grenzeEur: Y.kuLimit,
+    zeilen: Object.fromEntries(Y.kzList.filter(([id]) => Y.byKz[id].n).map(([id, l]) => [id, { bezeichnung: l, summe: Y.byKz[id].sum, posten: Y.byKz[id].n }])),
+    kategorien: cats.slice(0, 40).map((c) => ({ kategorie: c.cat, art: c.inc ? "Einnahme" : "Ausgabe", zeile: c.kz, summe: c.sum })),
+    anlagen: Y.anl.map((x) => ({ kategorie: x.a.cat || "Anlagegut", kaufdatum: x.a.date || null, kosten: Number(x.a.price) || 0, nutzungsdauer: x.gwg ? "GWG" : x.nd || null, abschreibung: x.afa })),
+    kilometer: { fahrten: Y.trips.length, km: Y.km, betrag: Y.kmEur }, ohneBeleg: { anzahl: Y.noDoc.length, summe: r2e(-sumBy(Y.noDoc, (l) => l.amount)) }, unklar: Y.unklar.length });
+  const runCheck = async () => { setBusy("ai"); setAiErr(""); try { const r = await stbAiCall({ mode: "check", intl: true, year, country: { code: cc, name: ctryName(cc) }, data: aiData() }); ls.set(aiKey, { at: r.at || new Date().toISOString(), res: r }); setAiV((v) => v + 1); } catch (e) { setAiErr(e.message); } finally { setBusy(""); } };
+  const pct = Y.kuLimit ? Math.min(100, Math.round((Y.umsatz / Y.kuLimit) * 100)) : 0;
+  return (<div className="stbrep">
+    {head}
+    <div className="stbrkpis">
+      <div><small className="muted">Betriebseinnahmen</small><b className="pos">{fmtMoney(Y.inc)}</b>{L2(Y.inc)}</div>
+      <div><small className="muted">Betriebsausgaben</small><b className="neg">{fmtMoney(Y.out)}</b>{L2(Y.out)}</div>
+      <div><small className="muted">Gewinn</small><b>{fmtMoney(Y.profit)}</b>{L2(Y.profit)}</div>
+      <div><small className="muted">{R.allowance ? R.allowance.label : "Umsatz"}</small><b>{fmtMoney(R.allowance ? Y.gfb : Y.umsatz)}</b>{L2(R.allowance ? Y.gfb : Y.umsatz)}</div>
+    </div>
+    {Y.kuLimit != null && <div className="stbku"><div className="row"><b>{R.smallLabel} {year}</b><span className="grow" /><small className="muted">{fmtMoney(Y.umsatz)} von {fmtMoney(Y.kuLimit)}{two ? ` (${fmtMoney(R.smallLimit, C.currency)})` : ""}</small></div>
+      <div className="stbkubar"><i style={{ width: pct + "%" }} className={pct >= 100 ? "over" : pct >= 85 ? "warn" : ""} /></div>
+      <small className="muted">{Y.umsatz <= Y.kuLimit ? `Noch ${fmtMoney(Y.kuLimit - Y.umsatz)} bis zur Grenze (${R.smallBasis})` : Y.kuTol && Y.umsatz <= Y.kuTol ? "Über der Grenze, aber unter der zweiten Grenze – mit dem Steuerberater klären" : "Über der Grenze – Umsatzsteuerpflicht mit dem Steuerberater klären"}</small></div>}
+
+    <StbRSec open={open} onTog={tog} id="ctry" title={`${flagOf(cc)} Länderprofil ${ctryName(cc)}`} sub={`${C.formShort} · Stand ${new Date(C.at).toLocaleDateString("de-AT")}`}>
+      <StbCountryInfo C={C} cc={cc} year={year} D={D} Y={Y} Yat={Yat} busy={busy} setBusy={setBusy} notify={notify} />
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="exp" title="📤 Berichte exportieren" sub={`${selV.length} ausgewählt`}>
+      <div className="stbrlist">{REPS.map(([k, ic, , d]) => (<div key={k} className="stbritem">
+        <input type="checkbox" checked={sel.includes(k)} onChange={(e) => setSel(e.target.checked ? [...sel, k] : sel.filter((x) => x !== k))} aria-label={intlTitle(k, C) + " für ZIP auswählen"} />
+        <span className="stbric">{ic}</span><div className="grow"><b>{intlTitle(k, C)}</b><small className="muted block">{k === "form" ? `${C.form} – ${d}` : d}</small></div>
+        <div className="stbrfmts">{["pdf", "xlsx", "csv"].map((f) => <button key={f} className="btn sm" disabled={!!busy} onClick={() => dl(k, f)}>{busy === k + f ? "…" : { pdf: "PDF", xlsx: "Excel", csv: "CSV" }[f]}</button>)}<button className="btn sm stbprev" disabled={!!busy} title="Vorschau" aria-label={intlTitle(k, C) + " – Vorschau"} onClick={() => preview(k)}>{busy === k + "prev" ? "…" : <IcoEye />}</button></div>
+      </div>))}</div>
+      <div className="actions"><button className="btn primary" disabled={!selV.length || !!busy} onClick={zipAll}>{busy === "zip" ? "Wird erstellt …" : `📦 Ausgewählte als ZIP (${selV.length})`}</button>
+        {two && <small className="muted">Beträge in Euro, zusätzlich in {C.currency} (Spalte „Betrag {C.currency}“)</small>}</div>
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="ai" title={`🛡️ KI-Prüfung (${ctryName(cc)})`} sub={aiC ? "geprüft " + new Date(aiC.at).toLocaleDateString("de-AT") : ""}>
+      <span hidden>{aiV}</span>
+      <p className="muted small">Die KI prüft deine Jahreswerte mit Websuche nach dem Recht von {ctryName(cc)}: Zuordnung der Zeilen, Grenzen, Abschreibung und fehlende Belege.</p>
+      <div className="actions"><button className="btn" disabled={!!busy} onClick={runCheck}>{busy === "ai" ? "⏳ KI prüft …" : aiC ? "🛡️ Neu prüfen" : "🛡️ Jetzt prüfen"}</button></div>
+      {aiErr && <p className="red small">✕ {aiErr}</p>}
+      {aiC && <StbAiFindings res={aiC.res} />}
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="kz" title={`🧮 ${C.formShort} – ${C.lineWord === "Zeile" ? "Zeilen" : C.lineWord}`} sub={`${Y.used.length} Posten`}>
+      <div className="stbkz">{Y.kzList.filter(([id]) => Y.byKz[id].n || id === C.special.revenue).map(([id, l, dir]) => (<React.Fragment key={id}>
+        <button type="button" className={"stbkzr" + (kzOpen === id ? " open" : "")} onClick={() => setKzOpen(kzOpen === id ? null : id)}><span className="kz">{id}</span><span className="grow">{l}<small className="muted"> · {Y.byKz[id].n} Posten</small></span><b className={dir === "in" ? "pos" : ""}>{dir === "in" ? "" : "−"}{fmtMoney(Y.byKz[id].sum)}{two && <small className="muted block">{fmtLoc(Y, Y.byKz[id].sum)}</small>}</b></button>
+        {kzOpen === id && <div className="stbkzl">{Y.byKz[id].lines.slice(0, 300).map((x) => <div key={x.id + x.date} className="stbkzi"><span>{fmtDate(x.date)}</span><span className="grow one">{x.partner || x.text || x.cat}<small className="muted"> · {x.src}{x.hasDoc ? "" : " · ohne Beleg"}</small></span><b>{fmtMoney(Math.abs(x.amount))}</b></div>)}</div>}
+      </React.Fragment>))}
+        <div className="stbkzr tot"><span className="kz" /><span className="grow">Gewinn / Verlust</span><b>{fmtMoney(Y.profit)}{two && <small className="muted block">{fmtLoc(Y, Y.profit)}</small>}</b></div>
+        {R.allowance && <div className="stbkzr tot"><span className="kz" /><span className="grow">{R.allowance.label}</span><b>−{fmtMoney(Y.gfb)}</b></div>}</div>
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="anl" title="🏷️ Anlagenverzeichnis & Abschreibung" sub={`${Y.anl.length} Anlagegüter · ${fmtMoney(Y.afaSum)}`}>
+      {!Y.anl.length ? <p className="muted small">Keine Geräte mit Zuordnung „Firma“. In <button className="link" onClick={() => setTab?.("besitz")}>Besitz &amp; Garantie</button> ein Gerät auf „Firma“ stellen, dann erscheint es hier.</p>
+        : <div className="stbanl">{Y.anl.map((x) => <div key={x.a.id} className="stbanli"><div className="grow"><b className="one">{x.a.name}</b><small className="muted block">{x.a.date ? fmtDate(x.a.date) : "kein Kaufdatum"} · {fmtMoney(Number(x.a.price) || 0)}{x.a.dealer ? " · " + x.a.dealer : ""}</small></div>
+          {x.gwg ? <span className="stpill st-paid">GWG – sofort</span> : <label className="stbnd">Nutzungsdauer<input inputMode="numeric" value={x.a.afaYears || ""} placeholder="Jahre" onChange={(e) => setAsset(x.a.id, { afaYears: e.target.value.replace(/\D/g, "").slice(0, 2) })} /></label>}
+          <div className="stbanlv"><small className="muted">{year}</small><b>{x.missing ? "–" : fmtMoney(x.afa)}</b></div></div>)}</div>}
+      <small className="muted">{R.gwg != null ? `Sofort absetzbar bis ${fmtMoney(R.gwg, C.currency)}${two && Y.fx ? ` (≈ ${fmtMoney(R.gwg / Y.fx)})` : ""}. ` : ""}Im Anschaffungsjahr: {{ half: "Halbjahresregel", month: "monatsgenau anteilig", full: "volles Jahr", none: "Abschreibung ab Folgejahr" }[R.afaFirstYear]}. Kaufbuchung unten bei „Zuordnung“ auf „nicht absetzen“ stellen, damit sie nicht doppelt zählt.</small>
+    </StbRSec>
+
+    <StbRSec open={open} onTog={tog} id="map" title={`🔗 Zuordnung Kategorien → ${C.lineWord === "Zeile" ? "Zeilen" : C.lineWord}`} sub={`${cats.length} Kategorien`}>
+      <div className="stbmap">{cats.map((c) => <div key={c.key} className="stbmapr"><span className="grow">{c.inc ? "＋" : "−"} {c.cat}<small className="muted"> · {c.n}× · {fmtMoney(c.sum)}</small>{c.ai && <small className="aitag" title={c.ai.why || ""}>✨ KI{c.ai.why ? ": " + c.ai.why : ""}</small>}</span>
+        <PSelect value={map[c.key] || c.kz} onChange={(e) => setMap({ ...map, [c.key]: e.target.value })}>{Y.kzList.filter((k) => (k[2] === "in") === c.inc).map(([id, l]) => <option key={id} value={id}>{id} · {l}</option>)}<option value={E1A_SKIP}>nicht absetzen / über Abschreibung / privat</option></PSelect></div>)}</div>
+      {Object.keys(map).length > 0 && <button className="link" onClick={() => setMap({})}>Eigene Änderungen zurücksetzen (KI-Zuordnung)</button>}
+    </StbRSec>
+
+    {!!R.kmRate && <StbRSec open={open} onTog={tog} id="opt" title="⚙︎ Angaben für die Berechnung">
+      <label className="switchrow"><span><b>{R.kmLabel || "Kilometerpauschale"} aus dem Fahrtenbuch</b><small className="muted block">{String(R.kmRate).replace(".", ",")} {C.currency}/km · {Y.trips.length} Fahrten, {Y.km.toLocaleString("de-AT")} km = {fmtMoney(Y.kmEur)}</small></span><input type="checkbox" className="switch" checked={opt.km !== false} onChange={(e) => setOpt({ ...opt, km: e.target.checked })} /></label>
+    </StbRSec>}
+    <p className="muted small">Vorbereitung für den Steuerberater nach den Regeln von {ctryName(cc)} laut KI-Websuche – keine Steuerberatung. Grundlage: Firmenbuchungen (Bank + Kassabuch) laut Zuordnung Firma/Privat.</p>
+  </div>);
+}
+function StbReports(p) {
+  const [cc, setCc] = useCountry(), [mode] = useLsState("stbAtMode", "app");
+  const ai = cc !== "AT" || mode === "ki";
+  return (<><CountryBar cc={cc} setCc={setCc} />{ai ? <StbReportsIntl key={cc} {...p} cc={cc} /> : <StbReportsAT {...p} />}</>);
+}
+/* Rücklage für andere Länder (bzw. Österreich im KI-Modus) */
+const RLI_DEF = { trade: "ki", salary: "ki", salL: {}, paidTax: {}, paidSoc: {}, proj: true };
+function rlComputeIntl(year, D, cfg, ai, cc) {
+  const y = String(year), C = ctryProfile(cc, +y); if (!C) return { y, noProfile: true };
+  const map = ls.get("stbKzMap:" + cc, {}), opt = ls.get("stbRepOptI", { km: true });
+  const Y = stbYearDataIntl(y, D, opt, map, C), Yp = stbYearDataIntl(String(+y - 1), D, opt, map, C);
+  const now = todayISO(), cur = now.slice(0, 4) === y, doy = cur ? Math.round((new Date(now) - new Date(y + "-01-01")) / 864e5) + 1 : 365;
+  const f = cur && cfg.proj && doy >= 30 ? 365 / doy : 1, fx = ctryFx(C) || aiNum(ai?.fxEur, 1e-4, 1e7) || 1, ccy = C.currency;
+  const socBooked = C.special.social ? Y.byKz[C.special.social]?.sum || 0 : 0;
+  const P = r2e((Y.profit + socBooked) * f);
+  const umsY = Y.umsatz, umsP = r2e(umsY * f), umsPrev = Yp.umsatz, kuL = Y.kuLimit, kuT = Y.kuTol || Y.kuLimit;
+  const kuLevel = kuL == null ? "ok" : umsPrev > kuL ? "prev" : umsY > kuT ? "over" : umsY > kuL ? "tol" : umsY > kuL * 0.8 || umsP > kuL ? "warn" : "ok";
+  const base0 = { y, C, Y, cur, f, fx, ccy, P, umsY, umsP, umsPrev, kuL, kuT, kuLevel, kuLabel: C.rules.smallLabel, profitY: Y.profit };
+  const R = ai?.rules; if (!R) return { ...base0, needAi: true };
+  const trade = cfg.trade !== "ki" ? cfg.trade : ai.trade || "betrieb", kShare = trade === "kapital" ? 1 : trade === "gemischt" ? aiNum(ai.kapitalShare, 0, 1) ?? 0.5 : 0;
+  const PbL = Math.max(0, P * (1 - kShare)) * fx, PkL = Math.max(0, P * kShare) * fx;
+  const mand = R.socialMandatory !== false, sRate = aiNum(R.socialRate, 0, 0.7) ?? 0, sMin = aiNum(R.socialMin, 0, 1e12) ?? 0, sMax = aiNum(R.socialMax, 1, 1e13) ?? Infinity;
+  const socBase = mand && PbL > 0 ? Math.min(Math.max(PbL, sMin), sMax) : 0, socL = mand && PbL > 0 ? socBase * sRate + (aiNum(R.socialFixed, 0, 1e9) ?? 0) : 0;
+  const b = Array.isArray(R.brackets) ? R.brackets : [];
+  const brOk = b.length >= 1 && b.length <= 15 && b.every((x, i) => Array.isArray(x) && aiNum(x[1], 0, 0.8) != null && (x[0] == null ? i === b.length - 1 : aiNum(x[0], 1, 1e13) != null && (!i || x[0] > b[i - 1][0])));
+  const br = brOk ? b.map(([h, t]) => [h ?? null, t]) : null;
+  const salL = cfg.salary === "manuell" ? +String(cfg.salL?.[cc + ":" + y] || 0).replace(",", ".") || 0 : cfg.salary === "keine" ? 0 : aiNum(ai.salaryTaxable, 0, 1e13);
+  const S = salL ?? 0, baseT = Math.max(0, PbL - (R.socialDeductible !== false ? socL : 0));
+  const alR = aiNum(R.allowanceRate, 0, 0.5), alC = aiNum(R.allowanceCap, 1, 1e13), allow = alR ? Math.min(baseT, alC ?? baseT) * alR : 0, T = Math.max(0, baseT - allow);
+  const taxBL = br ? rlTax(S + T, br) - rlTax(S, br) : 0, taxKL = PkL * (aiNum(R.capitalRate, 0, 0.7) ?? 0);
+  const E = (v) => r2e(v / fx);
+  const taxTotal = E(taxBL + taxKL), socTotal = E(socL);
+  const pv = (o) => +String(o?.[cc + ":" + y] ?? "").replace(",", ".") || 0;
+  const taxPaid = pv(cfg.paidTax), socPaid = pv(cfg.paidSoc);
+  const taxOwed = r2e(Math.max(0, taxTotal - taxPaid)), socOwed = r2e(Math.max(0, socTotal - socPaid)), total = r2e(taxOwed + socOwed);
+  return { ...base0, ai, R, br, trade, kShare, PbL, PkL, socBase, socL, socTotal, socPaid, socOwed, S, salNeed: salL == null, baseT, allow, T, taxBL, taxKL, taxTotal, taxPaid, taxOwed, total, monthly: r2e(total / 12), marg: br ? rlMarg(S + T, br) : null, sRate };
+}
+async function rlRunAiIntl(cc, year, D, cfg, r) {
+  const y = String(year), cats = stbCatsOf(D, y).slice(0, 25);
+  const data = { land: ctryName(cc), jahr: y, stand: todayISO(), waehrungProfil: r.ccy, kurs1EurProfil: r.fx, gewinnBisherEur: r.profitY, gewinnHochgerechnetEur: r.P, umsatzBisherEur: r.umsY,
+    taetigkeit: ls.get("stbActivity", {}), beschreibung: ls.get("stbBizDesc", ""), kategorien: cats, gehalt: { modus: cfg.salary, eingaengeEur: rlSalaryData(D, y) } };
+  const res = await stbAiCall({ mode: "reserve", intl: true, year: y, country: { code: cc, name: ctryName(cc) }, data });
+  lsSetEv("rlAi", { ...ls.get("rlAi", {}), [cc + ":" + y]: { ...res, year: y } });
+  return res;
+}
+function RlPanelIntl({ txs, accounts, docs, year: year0, compact = false, setTab, notify, cc }) {
+  const [year, setYear] = useState(year0 || todayISO().slice(0, 4));
+  const [cfg0] = useLsState("rlCfgI", {}), cfg = { ...RLI_DEF, ...cfg0 };
+  const [aiMap] = useLsState("rlAi", {}), [allC] = useLsState("stbCtry", {}), [fxO] = useLsState("stbFx:" + cc, "");
+  const D = useMemo(() => stbData(txs, accounts, docs), [txs, accounts, docs]);
+  const ai = aiMap?.[cc + ":" + year] || null;
+  const r = useMemo(() => { try { return rlComputeIntl(year, D, cfg, ai, cc); } catch (e) { console.error(e); return null; } }, [D, year, JSON.stringify(cfg), ai, allC, cc, fxO]);
+  const [busy, setBusy] = useState(""), [err, setErr] = useState("");
+  const setCfg = (p) => lsSetEv("rlCfgI", { ...RLI_DEF, ...ls.get("rlCfgI", {}), ...p });
+  const name = `${flagOf(cc)} ${ctryName(cc)}`;
+  if (!r) return <section className="tile"><p className="muted">Rücklage konnte nicht berechnet werden.</p></section>;
+  if (compact) return (<section className="tile rlcard click" onClick={() => rlGo(setTab)}>
+    <div className="tilehead"><b>💰 Rücklage {r.y}</b><small>{name}</small></div>
+    {r.noProfile || r.needAi ? <small className="muted block">{r.noProfile ? "Noch keine Steuerregeln für dieses Land" : "Noch keine KI-Werte"} – im Steuerberater-Reiter unter „Rücklage“ abfragen.</small> : <>
+      <div className="rlkpis sm"><div><small>Zurücklegen</small><b>{fmtMoney(r.total)}</b></div><div><small>Steuer</small><b>{fmtMoney(r.taxOwed)}</b></div><div><small>Sozialvers.</small><b>{fmtMoney(r.socOwed)}</b></div></div>
+      <small className="muted block">≈ {fmtMoney(r.monthly)} pro Monat{r.ccy !== "EUR" ? ` · ${fmtMoney(r.total * r.fx, r.ccy)}` : ""}</small></>}
+    {r.kuL != null && !r.noProfile && <RlKuBar r={r} small />}
+  </section>);
+  if (r.noProfile) return <StbCtryIntro cc={cc} year={year} D={D} busy={busy} setBusy={setBusy} notify={notify} />;
+  const runAi = async () => { setBusy("ai"); setErr(""); try { await rlRunAiIntl(cc, year, D, cfg, r); notify?.("KI-Auswertung übernommen"); } catch (e) { setErr(e.message); } finally { setBusy(""); } };
+  const years = [...new Set([todayISO().slice(0, 4), String(+todayISO().slice(0, 4) - 1), ...txs.map((t) => (t.date || "").slice(0, 4))])].filter(Boolean).sort().reverse().slice(0, 4);
+  const row = (l, v, sub) => <div><span>{l}{sub && <small className="muted block">{sub}</small>}</span><b>{v}</b></div>;
+  const pctTxt = (v) => String(+(v * 100).toFixed(2)).replace(".", ",") + " %";
+  const two = r.ccy !== "EUR", Lc = (v) => fmtMoney(v, r.ccy), both = (eur) => fmtMoney(eur) + (two ? ` · ${Lc(eur * r.fx)}` : "");
+  const R = r.R || {};
+  return (<div className="rlpage">
+    <div className="row stbtoolbar"><div className="chips">{years.map((y) => <button key={y} className={"chip" + (year === y ? " on" : "")} onClick={() => setYear(y)}>{y}</button>)}</div><span className="grow" />
+      <button className="btn" disabled={!!busy} onClick={runAi}>{busy === "ai" ? "⏳ KI recherchiert …" : ai ? "🤖 KI neu auswerten" : "🤖 Steuersätze mit KI abfragen"}</button></div>
+    {err && <p className="red small">✕ {err}</p>}
+    {r.needAi && <div className="rlnote">Für die Rücklage braucht die App die Steuer- und Sozialversicherungssätze von {ctryName(cc)} für {year}. <button className="link" disabled={!!busy} onClick={runAi}>Jetzt mit KI abfragen</button></div>}
+    {!r.needAi && <section className="tile">
+      <div className="tilehead"><b>💰 Rücklage {r.y} · {name}</b><small>{r.cur && r.f > 1 ? `Stand ${fmtDate(todayISO())} · aufs Jahr hochgerechnet` : "Gesamtjahr"}</small></div>
+      <div className="rlkpis"><div><small>Zurücklegen gesamt</small><b>{fmtMoney(r.total)}</b>{two && <small className="muted block">{Lc(r.total * r.fx)}</small>}</div><div><small>{R.taxLabel || "Einkommensteuer"}</small><b>{fmtMoney(r.taxOwed)}</b></div><div><small>{R.socialLabel || "Sozialversicherung"}</small><b>{fmtMoney(r.socOwed)}</b></div></div>
+      <div className="rlrows">
+        {row("Gewinn Firma bisher", both(r.profitY), "Einnahmen − Ausgaben laut Länderprofil")}
+        {r.f > 1 && row("Gewinn hochgerechnet", both(r.P))}
+        {row("Einordnung", RL_TRADE_TXT[r.trade] || r.trade, cfg.trade === "ki" ? ai?.tradeWhy || "" : "selbst gewählt")}
+        {r.PbL > 0 && row(R.socialLabel || "Sozialversicherung", both(r.socTotal), R.socialMandatory === false ? "keine Pflicht laut KI" : `${pctTxt(r.sRate)} auf ${Lc(r.socBase)}${R.socialFixed ? " + " + Lc(R.socialFixed) + " fix" : ""}`)}
+        {r.allow > 0 && row(R.allowanceLabel || "Freibetrag", "− " + Lc(r.allow))}
+        {r.PbL > 0 && row("Einkommen aus Anstellung", r.salNeed ? "fehlt" : Lc(r.S), cfg.salary === "ki" ? ai?.salaryWhy || "KI-Schätzung" : cfg.salary === "keine" ? "keine Anstellung" : "selbst eingetragen")}
+        {r.marg != null && r.PbL > 0 && row("Dein Grenzsteuersatz", pctTxt(r.marg))}
+        {!r.br && <p className="red small">Steuertarif konnte nicht übernommen werden – bitte neu abfragen.</p>}
+        {r.PbL > 0 && row(R.taxLabel || "Einkommensteuer", both(r.taxBL / r.fx), `auf ${Lc(r.T)} zusätzlich zum Gehalt`)}
+        {r.PkL > 0 && row("Steuer auf Kapitalerträge", both(r.taxKL / r.fx), R.capitalRate != null ? pctTxt(R.capitalRate) : "")}
+        {row("Schon bezahlt", fmtMoney(r.taxPaid + r.socPaid), "unten eintragen")}
+      </div>
+      {r.total > 0 && <div className="rlhint">➜ Empfehlung: <b>{fmtMoney(r.monthly)} pro Monat</b>{two ? ` (${Lc(r.monthly * r.fx)})` : ""} auf ein eigenes Sparkonto</div>}
+      <small className="muted block">Schätzung mit KI-Werten für {ctryName(cc)} – keine Steuerberechnung. Maßgeblich sind Bescheid bzw. Steuerberater im Land.</small>
+    </section>}
+    {r.kuL != null && <section className="tile"><RlKuBar r={r} /></section>}
+    {ai && <section className="tile">
+      <div className="tilehead"><b>🤖 KI-Auswertung</b><small>{fmtStamp(ai.at)}</small></div>
+      {(ai.notes || []).length > 0 && <ul className="rlnotes">{ai.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+      {(ai.sources || []).length > 0 && <div className="small muted">Quellen: {ai.sources.slice(0, 6).map((s, i) => <a key={i} href={s.url} target="_blank" rel="noreferrer">{s.title || s.url}{i < Math.min(5, ai.sources.length - 1) ? " · " : ""}</a>)}</div>}
+    </section>}
+    <section className="tile rlset">
+      <div className="tilehead"><b>⚙︎ Einstellungen Rücklage</b></div>
+      <label>Einkommen aus der Anstellung<PSelect value={cfg.salary} onChange={(e) => setCfg({ salary: e.target.value })}><option value="ki">🤖 KI schätzt aus den Gehaltseingängen</option><option value="manuell">✍️ Steuerpflichtiges Jahresgehalt eintragen</option><option value="keine">Kein Gehalt / keine Anstellung</option></PSelect></label>
+      {cfg.salary === "manuell" && <label>Steuerpflichtiges Jahresgehalt {r.y} ({r.ccy})<input inputMode="decimal" value={cfg.salL?.[cc + ":" + r.y] ?? ""} onChange={(e) => setCfg({ salL: { ...cfg.salL, [cc + ":" + r.y]: e.target.value } })} /></label>}
+      <label>Firmengewinn ist steuerlich<PSelect value={cfg.trade} onChange={(e) => setCfg({ trade: e.target.value })}>{RL_TRADE.map(([k, l]) => <option key={k} value={k}>{k === "kapital" ? "Kapitalerträge (Sondersatz)" : l}</option>)}</PSelect></label>
+      <div className="rlgrid2">
+        <label>Schon an die Steuer bezahlt {r.y} (€)<input inputMode="decimal" value={cfg.paidTax?.[cc + ":" + r.y] ?? ""} onChange={(e) => setCfg({ paidTax: { ...cfg.paidTax, [cc + ":" + r.y]: e.target.value } })} /></label>
+        <label>Schon an die Sozialvers. bezahlt {r.y} (€)<input inputMode="decimal" value={cfg.paidSoc?.[cc + ":" + r.y] ?? ""} onChange={(e) => setCfg({ paidSoc: { ...cfg.paidSoc, [cc + ":" + r.y]: e.target.value } })} /></label>
+      </div>
+      <label className="check"><input type="checkbox" checked={cfg.proj} onChange={(e) => setCfg({ proj: e.target.checked })} /> Laufendes Jahr aufs Gesamtjahr hochrechnen</label>
+      <RlShowToggles />
+    </section>
+  </div>);
+}
+function RlPanel(p) {
+  const [cc, setCc] = useCountry(), [mode] = useLsState("stbAtMode", "app");
+  const ai = cc !== "AT" || mode === "ki";
+  return (<>{!p.compact && <CountryBar cc={cc} setCc={setCc} rl />}{ai ? <RlPanelIntl key={cc} {...p} cc={cc} /> : <RlPanelAT {...p} />}</>);
+}
+
+function StbReportsAT({ D, notify, setTab, accounts, txs = [] }) {
   const thisY = todayISO().slice(0, 4);
   const years = [...new Set([thisY, String(+thisY - 1), ...D.rows.map((r) => r.t.date.slice(0, 4))])].sort().reverse().slice(0, 6);
   const [year, setYear] = useLsState("stbRepYear", String(+thisY - (+todayISO().slice(5, 7) <= 4 ? 1 : 0)));
@@ -10725,11 +11204,11 @@ const FS_CATS = [
   ["row", "Listen-Titel (Zeilen)", ".dtitle, .mtitle, .grow > b.one, .invname, .gbody > b, .folder > b, .setrow > .grow, .ditem .grow > b", "Rechnung Rexel Austria", "fsx-row"],
   ["hero", "Große Beträge (Kontostand, Saldo)", ".hero-v, b.big, .kbstat b, .rlkpis b", "€ 16.817,42", "fsx-hero"],
   ["kpi", "Kennzahlen-Kacheln", ".kpiv, .hero-row b, .aktekpis b, .kpi b, .tile > b, .cmpmain b", "€ 1.539,36", "fsx-kpi"],
-  ["num", "Beträge in Listen", ".amt, .invamt, .cdamt, .mamt, .mmoney, .jra b, .kbr .r, .accitem .ab, .invamt b", "−€ 59,33", "fsx-num"],
+  ["num", "Beträge in Listen", ".amt, .invamt, .cdamt, .mamt, .mmoney, .jra b, .kbr .r, .accitem .ab:not(nav .ab), .invamt b", "−€ 59,33", "fsx-num"],
   ["text", "Text & Eingabefelder", ".app p, .app input, .app select, .app textarea, .win input, .win select, .win textarea", "Normaler Text in Beschreibungen", "fsx-text"],
   ["btn", "Buttons, Filter & Reiter", ".app .btn, .app .chip, .app .seg > button, .navback, .win .btn", "Steuerrelevant", "fsx-btn"],
   ["small", "Kleintext (Datum, Hinweise)", ".app small:not(.btn small):not(.chip small):not(.seg small), .win small", "Finanzamt · 08.07.2026", "fsx-small"],
-  ["nav", "Seitenleiste & Leiste unten", "nav.bottom:not(.mtabbar) > button", "Übersicht", "fsx-nav"]
+  ["nav", "Seitenleiste & Leiste unten", "nav.bottom:not(.mtabbar) > button, nav.bottom .acctree", "Übersicht", "fsx-nav"]
 ];
 const FS_PRESETS = [["Kompakt", 90], ["Standard", 100], ["Groß", 115], ["Sehr groß", 130]];
 function applyFontSizes(fs) {
@@ -12693,7 +13172,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
               <React.Fragment key={m}>
                 <MHead right={fmtMoney(sumOf(l))}>{m ? monthLabel(m) : "Ohne Datum"}</MHead>
                 {l.map((x) => { const sx = x.kind === "angebot" ? (x.status || "offen") : st(x), ui = STATE_UI[sx] || [sx, ""]; const payable = x.kind === "rechnung" && ["offen", "überfällig"].includes(sx); return (
-                  <MItem key={x.id} icon={x.kind === "angebot" ? <MIco e="📝" /> : <MAvatar text={x.customer?.name} />} title={x.customer?.name || "Ohne Kunde"}
+                  <MItem key={x.id} icon={x.kind === "angebot" ? <MIco e="📝" /> : <MAvatar text={x.customer?.name} logo={custLogo(x.customer)} />} title={x.customer?.name || "Ohne Kunde"}
                     tags={[pick && (pick.has(x.id) ? "☑ gewählt" : "☐"), x.kind === "angebot" && "Angebot", ...(lt ? (x.tags || []).map((t) => "#" + t) : [])]} sub={`${x.number || "Entwurf"} · ${fmtDate(x.date)}${payable ? " · fällig " + fmtDate(invDueEff(x)) : ""}`}
                     amount={fmtMoney(invTotal(x))} amountCls={sx === "bezahlt" ? "in" : sx === "überfällig" ? "neg" : ""} pill={<span className="mpillrow"><span className={"stpill " + ui[1]}>{ui[0]}</span>{!pick && x.number && <button className="mieye" title="Vorschau" aria-label="Vorschau" onClick={async (e) => { e.stopPropagation(); openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email); }}><IcoEye /></button>}</span>}
                     onClick={() => (pick ? togglePick(x.id) : setEdit(x))}
@@ -13128,6 +13607,43 @@ function ContactTypeSettings() {
     {dnd.ghost}
   </>);
 }
+/* v0.99.71: Logo je Kunde – hochladen, aus Zwischenablage, von der Website laden */
+// Logo neu zeichnen: Original + Größe (50–200 %) + Hintergrund → 160-px-Bild, das überall gleich angezeigt wird
+function renderLogo(src, zoom = 100, bg = "weiss") {
+  return new Promise((res) => { const im = new Image(); im.onload = () => { const P = 160, c = document.createElement("canvas"); c.width = c.height = P; const g = c.getContext("2d");
+    if (bg === "weiss") { g.fillStyle = "#fff"; g.fillRect(0, 0, P, P); } else if (bg === "dunkel") { g.fillStyle = "#1c1c1e"; g.fillRect(0, 0, P, P); }
+    const k = Math.min(P / im.width, P / im.height) * (zoom / 100), w = im.width * k, h = im.height * k; g.imageSmoothingQuality = "high"; g.drawImage(im, (P - w) / 2, (P - h) / 2, w, h);
+    try { res(c.toDataURL("image/png")); } catch { res(src); } }; im.onerror = () => res(null); im.src = src; });
+}
+function ContactLogo({ c, set }) {
+  const [busy, setBusy] = useState(""), ref = useRef(null);
+  const z = c.logoZoom || 100, bg = c.logoBg || "weiss";
+  const apply = async (orig, zz = z, bb = bg) => { const img = await renderLogo(orig, zz, bb); if (img) set({ logo: img, logoOrig: orig, logoZoom: zz, logoBg: bb }); else alert("Bild konnte nicht gelesen werden"); };
+  const fromFile = async (f) => { if (!f) return; setBusy("Logo wird gelesen …"); try { const url = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); }); const orig = await shrinkLogo(url, 400); if (orig) await apply(orig, 100, bg); else alert("Bild konnte nicht gelesen werden"); } finally { setBusy(""); } };
+  const tune = (zz, bb) => { const orig = c.logoOrig || c.logo; if (orig) apply(orig, zz, bb); };
+  const fromWeb = async () => { if (!c.name?.trim()) return alert("Bitte zuerst den Namen eintragen."); setBusy("Logo wird auf der Website gesucht …");
+    try { const r = await fetch("/api/logo", { method: "POST", headers: { "content-type": "application/json", "x-app-token": ls.get("appToken", "") }, body: JSON.stringify({ items: [{ key: c.id || "k", name: c.name, purpose: [c.web, c.email && c.email.split("@")[1]].filter(Boolean).join(" ") }] }) });
+      const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+      const x = (j.results || [])[0], orig = x?.logo && await shrinkLogo(x.logo, 400); if (orig) await apply(orig, 100, bg); else alert("Kein Logo gefunden – du kannst eines hochladen."); }
+    catch (e) { alert("Logo-Suche nicht möglich: " + e.message); } finally { setBusy(""); } };
+  const fromClip = async () => { try { for (const it of await navigator.clipboard.read()) { const t = it.types.find((x) => x.startsWith("image/")); if (t) return fromFile(await it.getType(t)); } alert("In der Zwischenablage ist kein Bild."); } catch { alert("Zwischenablage nicht lesbar – Bild bitte als Datei hochladen."); } };
+  return (<div className="ctlogo" onPaste={(e) => { const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith("image/")); if (f) { e.preventDefault(); fromFile(f); } }}
+    onDragOver={(e) => e.preventDefault()} onDrop={(e) => { const f = [...(e.dataTransfer?.files || [])].find((x) => x.type.startsWith("image/")); if (f) { e.preventDefault(); fromFile(f); } }}>
+    <span className={"ctlogoprev" + (c.logo ? " has" : "")}>{c.logo ? <img src={c.logo} alt="Logo" /> : (c.name || "?").trim().slice(0, 1).toUpperCase()}</span>
+    <div className="grow"><b>Logo</b><small className="muted block">{busy || "Wird in Kundenliste, Rechnungen und Mahnungen angezeigt. Bild hierher ziehen geht auch."}</small>
+      <div className="row ctlogobtns">
+        <button type="button" className="btn sm" disabled={!!busy} onClick={() => ref.current?.click()}>📷 Hochladen</button>
+        <button type="button" className="btn sm" disabled={!!busy} onClick={fromWeb} title="Sucht das Logo über den Namen bzw. die Website">🌐 Von Website</button>
+        <button type="button" className="btn sm" disabled={!!busy} onClick={fromClip}>📋 Einfügen</button>
+        {c.logo && <button type="button" className="link small red" onClick={() => set({ logo: null, logoOrig: null, logoZoom: null, logoBg: null })}>Entfernen</button>}
+      </div>
+      {c.logo && <div className="ctlogotune">
+        <label className="ctlogoz"><span>Größe</span><input type="range" min="50" max="200" step="5" value={z} onChange={(e) => tune(+e.target.value, bg)} aria-label="Logo-Größe" /><span className="ctlogov">{z} %</span>{z !== 100 && <button type="button" className="link small" onClick={() => tune(100, bg)}>↺</button>}</label>
+        <div className="seg ctlogobg">{[["weiss", "Weiß"], ["transparent", "Transparent"], ["dunkel", "Dunkel"]].map(([k, l]) => <button key={k} type="button" className={bg === k ? "on" : ""} onClick={() => tune(z, k)}>{l}</button>)}</div>
+      </div>}</div>
+    <input ref={ref} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; fromFile(f); }} />
+  </div>);
+}
 function ContactEditor({ c: init, onSave, onDelete, onClose }) {
   const [types] = useContactTypes();
   const [c, setC] = useState(init);
@@ -13137,6 +13653,7 @@ function ContactEditor({ c: init, onSave, onDelete, onClose }) {
     <Win id="contact" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name || "Neuer Kontakt"}</b><button className="btn primary" disabled={!c.name?.trim()} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
       <div className="typepick">{types.map((t) => <button key={t.id} className={"chip" + ((c.type || types[0]?.name) === t.name ? " on" : "")} style={(c.type || types[0]?.name) === t.name ? undefined : { color: t.color }} onClick={() => set({ type: t.name })}><TypeGlyph t={t} /> {t.name}</button>)}</div>
+      <ContactLogo c={c} set={set} />
       <fieldset><legend>Kontakt</legend>
         <div className="grid2">{f("name", "Name / Firma", "z. B. Muster GmbH")}{f("contact", "Ansprechperson", "z. B. Frau Huber")}</div>
         <AddressText value={c.address || ""} onChange={(a) => set({ address: a })} />
@@ -13285,7 +13802,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
             <React.Fragment key={L}>
               <MHead right={l.length}>{L}</MHead>
               {l.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"), tp = typeOf(c), tel = (c.mobile || c.phone || "").replace(/\s/g, ""); return (
-                <MItem key={c.id} icon={<MAvatar text={c.name} color={tp.color} />} title={c.name || "Ohne Name"} tags={[{ label: <><TypeGlyph t={tp} /> {tp.name}</>, color: tp.color }]}
+                <MItem key={c.id} icon={<MAvatar text={c.name} color={tp.color} logo={c.logo} />} title={c.name || "Ohne Name"} tags={[{ label: <><TypeGlyph t={tp} /> {tp.name}</>, color: tp.color }]}
                   sub={[c.contact, cityOf(c.address), c.number].filter(Boolean).join(" · ")}
                   amount={inv.length ? fmtMoney(inv.reduce((s, i) => s + invTotal(i), 0)) : null} amountSub={inv.length ? `${inv.length} Rechn.${open.length ? " · " + open.length + " offen" : ""}` : null}
                   onClick={() => setSelId(c.id)}
@@ -13322,7 +13839,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📱 Aus Handy-Kontakten“ übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
         {shownV.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
           <div key={c.id} className={"frow click contactrow" + (selId === c.id && !mob ? " sel" : "")} onClick={() => setSelId(c.id)}>
-            <span className="caticon avatar" style={{ width: 42, height: 42 }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>
+            {c.logo ? <span className="caticon logo custlogo" style={{ width: 42, height: 42 }}><img src={c.logo} alt="" /></span> : <span className="caticon avatar" style={{ width: 42, height: 42 }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>}
             <div className="grow">
               <b>{c.name}</b> <small style={{ color: typeOf(c).color }}><TypeGlyph t={typeOf(c)} /> {typeOf(c).name}</small> <small className="muted">{c.number || ""}</small>
               <small className="muted block">{[c.contact, cityOf(c.address)].filter(Boolean).join(" · ")}</small>
@@ -13608,7 +14125,7 @@ function CustomerDetail({ c, customers = [], invoices, typeOf, back, onBack, onE
   return (<div className="custdet">
     {back && <div className="docsubbar"><button className="navback" data-fback="1" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>Kunden</span></button></div>}
     <div className="cdhead">
-      <span className="caticon avatar cdav" style={{ color: tp.color }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>
+      {c.logo ? <span className="caticon logo custlogo cdav"><img src={c.logo} alt="" /></span> : <span className="caticon avatar cdav" style={{ color: tp.color }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>}
       <div className="grow"><b className="cdname">{c.name}</b><small className="muted block"><span style={{ color: tp.color }}><TypeGlyph t={tp} /> {tp.name}</span>{c.number ? " · " + c.number : ""}{cityOf(c.address) ? " · " + cityOf(c.address) : ""}</small></div>
       <div className="cdacts">
         {c.email && <a className="iconbtn" href={`mailto:${c.email}`} title={c.email} aria-label="E-Mail">✉︎</a>}
@@ -15168,7 +15685,7 @@ function DunningPage({ setTab, book }) {
           {mf !== "verlauf" && <MHead right={overS.length}>Zu mahnen</MHead>}
           {mf !== "verlauf" && !overS.length && <MEmpty>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</MEmpty>}
           {overV.map(({ x, last, since, ready, next }) => (
-            <MItem key={x.id} icon={<MAvatar text={x.customer?.name} color="#ef4444" />} title={x.customer?.name || "Ohne Kunde"} tags={[pick && (pick.has(x.id) ? "☑ gewählt" : "☐"), ...(x.tags || []).map((t) => "#" + t)]}
+            <MItem key={x.id} icon={<MAvatar text={x.customer?.name} color="#ef4444" logo={custLogo(x.customer)} />} title={x.customer?.name || "Ohne Kunde"} tags={[pick && (pick.has(x.id) ? "☑ gewählt" : "☐"), ...(x.tags || []).map((t) => "#" + t)]}
               sub={`${x.number} · ${since} T. überfällig${last ? " · zuletzt " + remindName(last.level) : ""}`} amount={fmtMoney(invTotal(x))} amountCls="neg"
               pill={<span className="mpillrow"><span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? remindName(next) : `in ${(dn.waitDays || 0) - since} T.`}</span>{!pick && <button className="mieye" title="Rechnung ansehen" aria-label="Vorschau" onClick={async (e) => { e.stopPropagation(); openPdf(await buildInvoicePdf({ ...x, reminders: [] }, co), invFileName(x)); }}><IcoEye /></button>}</span>}
               onClick={() => (pick ? togglePick(x.id) : setRemind(x))}
@@ -16588,12 +17105,16 @@ html.fg .switch:checked{background:var(--acc)}
   html.fg nav.bottom .subtab .tabico .tabsvg{width:22px;height:22px}
   html.fg nav.bottom .brand b{font-size:21px}html.fg nav.bottom .brand small{font-size:13px}
   html.fg nav.bottom .brand img{width:44px;height:44px}
-  html.fg nav.bottom .acctree .accitem{font-size:16.5px;min-height:44px}
+  html.fg nav.bottom .acctree .accitem{font-size:17px;min-height:44px}
   html.fg nav.bottom .acctitle{font-size:12.5px}
   html.fg nav.bottom .navhead{font-size:12.5px}
   html.fg nav.bottom .busytab small{font-size:12px}
 }
 @media (min-width:1024px){html.fg{--side:300px}}
+/* v0.99.74: Konten/Dokumente in der Seitenleiste wie die übrigen Reiter (Schrift, Größe, Stärke) */
+@media (min-width:768px){nav.bottom .acctree .accitem{font-size:14px;font-family:inherit}}
+html[class*="sty-"] nav.bottom .acctree .accitem .an{font-weight:inherit}
+html.sty-graphit nav.bottom .acctree .accitem .an,html.sty-sand nav.bottom .acctree .accitem .an,html.sty-nacht nav.bottom .acctree .accitem .an,html.sty-schiefer nav.bottom .acctree .accitem .an,html.sty-salbei nav.bottom .acctree .accitem .an,html.sty-papier nav.bottom .acctree .accitem .an{font-weight:500}
 html.fg .txrow{font-size:16px}html.fg .txrow b{font-size:17px;font-weight:500}html.fg .txrow small{font-size:15px}html.fg .txhead{font-size:12.5px}
 html.fg nav.bottom .acctree .accitem .ab{font-size:13.5px}
 
@@ -18077,6 +18598,16 @@ html.stmtcol.stmtcol .stpill.sc-unklar.sc-unklar{background:color-mix(in srgb,va
 .vehmenu.pickmenu{min-width:calc(200px * var(--mnz,1))!important;max-width:min(calc(320px * var(--mnz,1)),calc(100vw - 24px))!important}
 /* v0.99.70: aktiver Reiter in den neuen Designs in der Markierungsfarbe */
 html.sty-graphit.sty-graphit nav.bottom>button.on,html.sty-sand.sty-sand nav.bottom>button.on,html.sty-nacht.sty-nacht nav.bottom>button.on,html.sty-schiefer.sty-schiefer nav.bottom>button.on,html.sty-salbei.sty-salbei nav.bottom>button.on,html.sty-papier.sty-papier nav.bottom>button.on{color:var(--acc)!important;background:color-mix(in srgb,var(--acc) 13%,transparent)!important}html.sty-graphit.sty-graphit nav.bottom>button.on span,html.sty-sand.sty-sand nav.bottom>button.on span,html.sty-nacht.sty-nacht nav.bottom>button.on span,html.sty-schiefer.sty-schiefer nav.bottom>button.on span,html.sty-salbei.sty-salbei nav.bottom>button.on span,html.sty-papier.sty-papier nav.bottom>button.on span{filter:none!important;opacity:1!important;color:var(--acc)!important}html.sty-graphit.sty-graphit nav.bottom>button.on svg,html.sty-sand.sty-sand nav.bottom>button.on svg,html.sty-nacht.sty-nacht nav.bottom>button.on svg,html.sty-schiefer.sty-schiefer nav.bottom>button.on svg,html.sty-salbei.sty-salbei nav.bottom>button.on svg,html.sty-papier.sty-papier nav.bottom>button.on svg{color:var(--acc)!important}
+/* v0.99.71 Kunden-Logo */
+.ctlogo{display:flex;gap:14px;align-items:center;padding:10px 12px;margin:4px 0 10px;border:1px dashed var(--line);border-radius:14px}
+.ctlogoprev{width:64px;height:64px;border-radius:14px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;background:var(--card2);color:var(--mut);overflow:hidden}
+.ctlogoprev.has{background:repeating-conic-gradient(#8883 0 25%,transparent 0 50%) 50%/12px 12px;padding:0}
+#ctrypick .sblist,.ctrypick .sblist{display:flex;flex-direction:column;gap:2px}.sbrow.ctryrow{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:10px;background:transparent;font-size:15px;text-align:left;color:var(--txt);border:0!important;box-shadow:none}.sbrow.ctryrow:hover{background:color-mix(in srgb,var(--txt) 7%,transparent)}.ctrybar>.seg.ctrymode{flex:none;width:auto;display:inline-flex}.stbku .row{gap:8px;flex-wrap:wrap}
+.ctrybar{gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}.ctrybtn{display:inline-flex;align-items:center;gap:8px;font-weight:600}.ctryflag{font-size:1.25em;line-height:1}.ctryrow.on{background:color-mix(in srgb,var(--acc) 12%,transparent)}.ctryok{color:var(--acc)}.ctrymode button{padding:5px 10px;font-size:13px;white-space:nowrap}.ctryinfo .rlrows b{text-align:right;max-width:62%}.ctryfx{display:block;margin:10px 0 4px}.ctryfx input{max-width:160px}.ctryintro p{margin:6px 0}
+.ctlogotune{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:8px}.ctlogoz{display:flex;align-items:center;gap:8px;margin:0}.ctlogoz input{width:150px}.ctlogov{width:44px;font-variant-numeric:tabular-nums}.ctlogobg button{padding:4px 10px;font-size:12px}.ctlogoprev img{width:100%;height:100%;object-fit:contain}
+.ctlogobtns{gap:6px;flex-wrap:wrap;margin-top:6px}
+.caticon.custlogo img{width:100%;height:100%;object-fit:contain}
+html[class*="ics-"][class*="ics-"] .caticon.caticon.logo.custlogo{padding:0!important;background:transparent!important}.caticon.logo.custlogo{padding:0!important}
 /* v0.99.58 Symbole */
 .glw{display:inline-flex;align-items:center;justify-content:center;line-height:1}.gll{width:1.15em;height:1.15em;flex:none}.gle{line-height:1}
 html.ics-c.ics-c .glw .gll{display:none}html:not(.ics-c) .glw .gle{display:none}

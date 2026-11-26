@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.74 – Konten in der Seitenleiste wie die Reiter
+- Konten (und Dokumenten-Ordner) in der Seitenleiste: gleiche Schrift, Größe und Stärke wie die übrigen Reiter (wie Fristen/Journal)
+- Schriftgröße „Seitenleiste & Leiste unten“ gilt jetzt auch für die Konten samt Beträgen; „Beträge in Listen“ wirkt nicht mehr auf die Seitenleiste
+
 ## v0.99.73 – Steuerberater für alle Länder
 - Steuerberater → Berichte/Rücklage: Länderwahl (alle Länder, Suche, Flaggen)
 - Andere Länder: KI-Länderprofil mit Websuche (Formular und Zeilen, Kleinunternehmergrenze, GWG, Abschreibung, km-Pauschale, Freibetrag, Währung/Wechselkurs) – die App rechnet die Berichte selbst
