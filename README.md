@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.83 – Spalten in den Konten verschiebbar
+- Kontobuchungen (Tabelle am Desktop/iPad quer): Spaltenbreite am rechten Rand der Überschrift ziehen (Doppelklick = Standardbreite)
+- Reihenfolge ändern: Überschrift (Datum, Empfänger, Kategorie, Konto, Betrag) an eine andere Stelle ziehen
+- Gilt für alle Konten, bleibt gespeichert (auch beim „Daten löschen, Design behalten“); „↺ Spalten“ setzt zurück
+
 ## v0.99.82 – Betragsfelder in einer Linie
 - Dokument → Betrag: Brutto, Netto, USt und Zahlbetrag stehen in einer Linie (Beschriftung „Zahlbetrag“ kurz, Erklärung beim Darüberfahren)
 

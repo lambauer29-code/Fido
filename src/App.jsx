@@ -4075,7 +4075,7 @@ async function wipeAllData() {
   try { sessionStorage.clear(); } catch {}
 }
 // v0.99.78: „Daten löschen, Design behalten“ – erhalten bleiben nur Darstellung, Design und Schrift-/Button-Größen
-const WIPE_KEEP = /^(design|theme|iconStyle|iconSize|catIcons|kindIcons|fbIcons|cpIcons|vehIcons|tabbarIcons|stmtColors|stmtZoom|stmtZoomUi|stmtLupe2|stmtLink|chartHover|sortStyle|aboStyle|kbBelegStyle|stbMonView|jDetail|jStripPos|jMode|cmpTest|mobileBeta|homeLayout|homeTiles|bizGrid|sideMini|sideW|settingsOrder|settingsClosed|view|invView|astView|deadlineView|docMode|fbViews|calMode|hideAmounts)$|^(dev:|sort:|views:|win:)/;
+const WIPE_KEEP = /^(design|theme|iconStyle|iconSize|catIcons|kindIcons|fbIcons|cpIcons|vehIcons|tabbarIcons|stmtColors|stmtZoom|stmtZoomUi|stmtLupe2|stmtLink|chartHover|sortStyle|aboStyle|kbBelegStyle|stbMonView|jDetail|jStripPos|jMode|cmpTest|mobileBeta|homeLayout|homeTiles|bizGrid|sideMini|sideW|settingsOrder|settingsClosed|view|invView|astView|deadlineView|docMode|fbViews|calMode|hideAmounts|txCols)$|^(dev:|sort:|views:|win:)/;
 async function wipeDataOnly({ cloud }) {
   if (!cloud && syncOn()) await disconnect();   // nur dieses Gerät: Sync trennen, damit das Löschen nicht an die anderen Geräte geht
   const d = await openDB();
@@ -6707,7 +6707,35 @@ const shortD = (iso) => (iso ? new Date(iso + "T12:00").toLocaleDateString("de-A
 const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json,.xlsx,.xlsm,.xls,.pdf,image/*";
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
+/* v0.99.83: Spalten der Kontobuchungen – Breite am Rand ziehen, Reihenfolge per Überschrift ziehen (gilt für alle Konten) */
+const TX_COL_DEF = { order: ["date", "desc", "cat", "acc", "amt"], w: { date: 92, cat: 190, acc: 150, amt: 130 } };
+const TX_COL_LBL = { date: "Datum", desc: "Empfänger", cat: "Kategorie", acc: "Konto", amt: "Betrag" };
+const txColNorm = (c) => { const o = (c?.order || []).filter((k) => TX_COL_LBL[k]); for (const k of TX_COL_DEF.order) if (!o.includes(k)) o.splice(TX_COL_DEF.order.indexOf(k), 0, k); return { order: [...new Set(o)], w: { ...TX_COL_DEF.w, ...(c?.w || {}) } }; };
+const txColKeys = (c, withAcc) => c.order.filter((k) => k !== "acc" || withAcc);
+const txColTpl = (c, withAcc) => txColKeys(c, withAcc).map((k) => (k === "desc" ? "minmax(160px,1fr)" : Math.round(c.w[k]) + "px")).join(" ") + " 164px";
+function TxHead({ cfg, setCfg, withAcc }) {
+  const keys = txColKeys(cfg, withAcc), ref = useRef(null), [drag, setDrag] = useState(null);
+  const changed = JSON.stringify(cfg) !== JSON.stringify(txColNorm(TX_COL_DEF));
+  const startResize = (e, k) => { e.preventDefault(); e.stopPropagation(); const x0 = e.clientX, w0 = cfg.w[k], dir = k === "amt" ? 1 : 1;
+    const mv = (ev) => setCfg({ ...cfg, w: { ...cfg.w, [k]: Math.max(56, Math.min(520, w0 + (ev.clientX - x0) * dir)) } });
+    const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); document.documentElement.classList.remove("colresizing"); };
+    document.documentElement.classList.add("colresizing"); addEventListener("pointermove", mv); addEventListener("pointerup", up); };
+  const startMove = (e, k) => { if (e.button) return; const x0 = e.clientX; let on = false, over = k;
+    const cells = () => [...(ref.current?.querySelectorAll("[data-col]") || [])].map((el) => ({ k: el.dataset.col, r: el.getBoundingClientRect() }));
+    const mv = (ev) => { if (!on && Math.abs(ev.clientX - x0) < 6) return; on = true; const c = cells().find((x) => ev.clientX >= x.r.left && ev.clientX <= x.r.right); if (c) over = c.k; setDrag({ k, over, side: c && ev.clientX > c.r.left + c.r.width / 2 ? "r" : "l" }); };
+    const up = (ev) => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); setDrag(null); if (!on || over === k) return;
+      const c = cells().find((x) => x.k === over), right = c && ev.clientX > c.r.left + c.r.width / 2;
+      const o = cfg.order.filter((x) => x !== k); let i = o.indexOf(over) + (right ? 1 : 0); o.splice(i, 0, k); setCfg({ ...cfg, order: o }); };
+    addEventListener("pointermove", mv); addEventListener("pointerup", up); };
+  return (<div className="txhead" ref={ref}>
+    {keys.map((k) => <span key={k} data-col={k} className={"txcolh c-" + k + (k === "amt" ? " r" : "") + (drag?.k === k ? " dragging" : "") + (drag && drag.over === k && drag.k !== k ? " over-" + drag.side : "")}
+      onPointerDown={(e) => startMove(e, k)} title="Ziehen zum Verschieben · Rand ziehen für die Breite">{TX_COL_LBL[k]}
+      {k !== "desc" && <i className="colgrip" onPointerDown={(e) => startResize(e, k)} onDoubleClick={(e) => { e.stopPropagation(); setCfg({ ...cfg, w: { ...cfg.w, [k]: TX_COL_DEF.w[k] } }); }} title="Breite ändern (Doppelklick = Standard)" />}</span>)}
+    <span className="txcolreset">{changed && <button type="button" className="link small" onClick={() => setCfg(TX_COL_DEF)} title="Spaltenbreite und Reihenfolge zurücksetzen">↺ Spalten</button>}</span>
+  </div>);
+}
 function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = () => {}, addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc: accProp, setAcc, sel: selProp = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
+  const [txColsRaw, setTxCols] = useLsState("txCols", TX_COL_DEF), txColCfg = useMemo(() => txColNorm(txColsRaw), [txColsRaw]);
   const [accVis, setAccVis] = useState(false);
   const [pick, setPick] = useState(false);
   // Maus auf einer Konto-Karte = Vorschau nur dieses Kontos (alles andere ausgeblendet)
@@ -7042,23 +7070,23 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       {!!txs.length && <div className="row expsearch"><span className="grow"><SearchBox placeholder="Umsätze durchsuchen" value={q} onChange={setQ} /></span>{txSort}</div>}
 
       {wideTx ? (
-        <div className={"txtable" + (!acc && sel.length > 1 ? " withacc" : "")}>
+        <div className={"txtable txcustom" + (!acc && sel.length > 1 ? " withacc" : "")} style={{ "--txcols": txColTpl(txColCfg, !acc && sel.length > 1) }}>
           <div className={"txscroll" + (fitH ? " fit" : "")} ref={scrollRef} style={fitH ? { maxHeight: fitH } : undefined} onScroll={onListScroll}>
-          <div className="txhead"><span>Datum</span><span>Empfänger</span><span>Kategorie</span>{!acc && sel.length > 1 && <span>Konto</span>}<span className="r">Betrag</span><span /></div>
+          <TxHead cfg={txColCfg} setCfg={setTxCols} withAcc={!acc && sel.length > 1} />
           {list.slice(0, limit).map((t) => (
             <React.Fragment key={t.id}>
             <SwipeRow {...txSwipe(t)}><div className={"txrow" + (prevTx === t.id ? " open" : "")} onClick={() => openTx(t)}>
-              <span className="muted">{fmtDate(t.date)}</span>
-              <span className="txdesc">
+              {txColKeys(txColCfg, !acc && sel.length > 1).map((k) => k === "date" ? <span key={k} className="muted c-date">{fmtDate(t.date)}</span>
+              : k === "desc" ? <span key={k} className="txdesc c-desc">
                 <TxIcon t={t} size={30} />
                 <span className="grow"><b className="one">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
                   {t.kind !== "broker" && t.counterparty && t.purpose && <small className="muted one block">{t.purpose}</small>}</span>
                 {t.kind !== "broker" && t.category !== "Umbuchung" && (() => { const sc = txScopeInfo(t, accounts.find((a) => a.id === t.accountId)).scope; return sc === "firma" ? <span className="txsc sc-firma" title="Firma">🏢</span> : sc === "unklar" ? <span className="txsc sc-unklar" title="Privat/Firma unklar">❓</span> : null; })()}
                 {t.docId && <span title="Beleg verknüpft – Klick auf die Zeile zeigt ihn">📎</span>}
               </span>
-              <span className="one muted">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}</span>
-              {!acc && sel.length > 1 && <span className="one muted">{accName(t.accountId)}</span>}
-              <b className={"r amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
+              : k === "cat" ? <span key={k} className="one muted c-cat">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}</span>
+              : k === "acc" ? <span key={k} className="one muted c-acc">{accName(t.accountId)}</span>
+              : <b key={k} className={"r amt c-amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>)}
               <TxActs t={t} />
             </div></SwipeRow>
             {prevTx === t.id && docOf(t) && <div className="txprev"><DocPreview d={docOf(t)} onOpen={() => onOpen(docOf(t).id)} /></div>}
@@ -16509,7 +16537,7 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .heronames{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 @container (max-width:640px){
   .txhead,.txrow,.txtable.withacc .txhead,.txtable.withacc .txrow{grid-template-columns:76px minmax(0,1fr) 110px!important}
-  .txhead>span:nth-child(3),.txrow>span:nth-child(3),.txtable.withacc .txhead>span:nth-child(4),.txtable.withacc .txrow>span:nth-child(4){display:none}
+  .txhead>.c-cat,.txrow>.c-cat,.txtable.withacc .txhead>.c-acc,.txtable.withacc .txrow>.c-acc{display:none}
 }
 .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 @media (max-width:620px){.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -17558,8 +17586,8 @@ html,body{min-height:100%}
 .txtable{container-type:inline-size}
 @container (max-width:820px){
  .txhead,.txrow,.txtable.withacc .txhead,.txtable.withacc .txrow{grid-template-columns:100px minmax(0,1fr) 110px 150px!important}
- .txhead>span:nth-child(3),.txrow>span:nth-child(3){display:none}
- .txtable.withacc .txhead>span:nth-child(4),.txtable.withacc .txrow>span:nth-child(4){display:none}
+ .txhead>.c-cat,.txrow>.c-cat{display:none}
+ .txtable.withacc .txhead>.c-acc,.txtable.withacc .txrow>.c-acc{display:none}
 }
 @container (max-width:560px){
  .txhead,.txrow,.txtable.withacc .txhead,.txtable.withacc .txrow{grid-template-columns:96px minmax(0,1fr) 100px!important}
@@ -18735,6 +18763,11 @@ html.sty-graphit.sty-graphit nav.bottom>button.on,html.sty-sand.sty-sand nav.bot
 .ctlogoprev{width:64px;height:64px;border-radius:14px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;background:var(--card2);color:var(--mut);overflow:hidden}
 .ctlogoprev.has{background:repeating-conic-gradient(#8883 0 25%,transparent 0 50%) 50%/12px 12px;padding:0}
 #ctrypick .sblist,.ctrypick .sblist{display:flex;flex-direction:column;gap:2px}.sbrow.ctryrow{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:10px;background:transparent;font-size:15px;text-align:left;color:var(--txt);border:0!important;box-shadow:none}.sbrow.ctryrow:hover{background:color-mix(in srgb,var(--txt) 7%,transparent)}.ctrybar>.seg.ctrymode{flex:none;width:auto;display:inline-flex}.stbku .row{gap:8px;flex-wrap:wrap}
+.txtable.txcustom .txhead,.txtable.txcustom .txrow,.txtable.txcustom.withacc .txhead,.txtable.txcustom.withacc .txrow{grid-template-columns:var(--txcols)}
+.txcolh{position:relative;cursor:grab;user-select:none;-webkit-user-select:none;align-self:stretch;display:flex;align-items:center}.txcolh.r{justify-content:flex-end}.txcolh.dragging{opacity:.45;cursor:grabbing}
+.txcolh.over-l{box-shadow:inset 3px 0 0 var(--acc)}.txcolh.over-r{box-shadow:inset -3px 0 0 var(--acc)}
+.colgrip{position:absolute;top:8px;bottom:8px;right:-9px;width:10px;cursor:col-resize;z-index:2;display:flex;justify-content:center}.colgrip::after{content:"";width:2px;border-radius:2px;background:var(--line)}.txcolh:hover .colgrip::after,.colgrip:hover::after{background:var(--acc)}
+html.colresizing,html.colresizing *{cursor:col-resize!important;user-select:none!important}.txcolreset{display:flex;justify-content:flex-end;align-items:center}
 .amtgrid{align-items:end}.amtgrid>label{display:flex;flex-direction:column;justify-content:flex-end;min-width:0;white-space:nowrap}.amtgrid>label>input{width:100%}
 .fxrow{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:12px;background:color-mix(in srgb,var(--acc) 5%,transparent)}.fxrow .fxinfo{font-size:13.5px}.fxins{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.fxins label{flex:1 1 140px;margin:0;font-size:12.5px}.fxins .btn{flex:none}
 .expcur{display:flex;gap:8px;align-items:stretch;flex-wrap:nowrap}.expcur>input{flex:1;min-width:0}.expcur>.vehpick,.fxhead>.vehpick{flex:none!important;width:auto!important;display:inline-flex}.expcur .cursel,.fxhead .cursel{width:auto!important;min-width:96px;white-space:nowrap}.fxhead{gap:10px;align-items:center;flex-wrap:wrap}.fxhead .seg{flex:1}
