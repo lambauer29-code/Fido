@@ -7888,7 +7888,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
             <div className="stmtflags">
               {r.t ? <span className="stpill st-paid" title="In den Konten vorhanden">✓ Buchung</span> : <span className="stpill st-draft">keine Buchung</span>}
               {r.beleg ? <button type="button" className="stpill st-paid sbpill" title={"Beleg ansehen: " + r.belegTitle} onClick={(e) => { e.stopPropagation(); onOpenDoc?.(r.t.docId); }}>📎 {r.belegTitle ? r.belegTitle.slice(0, 26) : "Beleg"}</button>
-                : r.t && r.amount < 0 ? <button type="button" className={"stpill sbpill " + (r.scope === "firma" ? "st-over" : "st-draft")} title="Beleg zuordnen oder hochladen" onClick={(e) => { e.stopPropagation(); setBelegRow(r); }}>{r.scope === "firma" ? "Beleg fehlt · zuordnen" : "📎 Beleg zuordnen"}</button> : null}
+                : r.t && r.amount < 0 ? <button type="button" className={"stpill sbpill " + (r.scope === "firma" ? "st-over" : "st-draft")} title="Beleg zuordnen oder hochladen" onClick={(e) => { e.stopPropagation(); setBelegRow({ ...r, _k: Date.now() }); }}>{r.scope === "firma" ? "Beleg fehlt · zuordnen" : "📎 Beleg zuordnen"}</button> : null}
               {r.t?.ask && <span className={"stpill " + (r.t.ask.state === "geklärt" ? "st-paid" : "st-open")}>❓ Frage</span>}
               {r.src && <small className="muted">{r.src}</small>}
               {r.reason && <small className="muted one">· {r.reason}</small>}
@@ -7897,7 +7897,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
           <div className="stmtright">
             <b className={r.amount > 0 ? "pos" : ""}>{fmtMoney(r.amount)}</b>
             <div className="row stmtctl"><ScopePick scope={r.scope} onPick={(k) => setScope(r, k)} onSplit={r.t ? () => openTx(r.t) : null} />
-              <MoreMenu items={[r.t && r.amount < 0 && { icon: "📎", title: r.beleg ? "Beleg ändern" : "Beleg zuordnen", run: () => setBelegRow(r) }, r.t && { icon: "↗", title: "Buchung öffnen", run: () => openTx(r.t) }, r.box && { icon: "📍", title: "Im PDF zeigen", run: () => { setHi(r.i); document.getElementById(`stmtbox-${doc.id}-${r.i}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); } }]} /></div>
+              <MoreMenu items={[r.t && r.amount < 0 && { icon: "📎", title: r.beleg ? "Beleg ändern" : "Beleg zuordnen", run: () => setBelegRow({ ...r, _k: Date.now() }) }, r.t && { icon: "↗", title: "Buchung öffnen", run: () => openTx(r.t) }, r.box && { icon: "📍", title: "Im PDF zeigen", run: () => { setHi(r.i); document.getElementById(`stmtbox-${doc.id}-${r.i}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); } }]} /></div>
           </div>
         </div>
       ))}
@@ -7905,7 +7905,6 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
     </div>
   );
   return createPortal(<>
-    {belegRow && <StmtBelegWin r={belegRow} docs={docs} txs={txs} onClose={() => setBelegRow(null)} onOpenDoc={onOpenDoc} />}
     <Win id="stmt" onClose={onClose} dirty={false} defW={1100} className="stmtwin" stay>
       <div className="stmtsticky">
       <div className="panelhead"><b className="clamp">{doc.title}</b>
@@ -7956,7 +7955,9 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
         {(showList || (mob && view === "beides")) && list}
       </div>
       <small className="muted stmtfoot">Farbe antippen wechselt Firma → Privat → Unklar. Änderungen gelten auch für die Buchung in den Konten.</small>
-    </Win></>, document.querySelector(".app") || document.body);
+    </Win>
+    {belegRow && <StmtBelegWin key={belegRow._k} r={belegRow} docs={docs} txs={txs} onClose={() => setBelegRow(null)} onOpenDoc={onOpenDoc} />}
+    </>, document.querySelector(".app") || document.body);
 }
 /* Kontoauszug hochladen: auslesen → Konto wählen → abgleichen → KI-Zuordnung */
 function StmtImportWin({ file, accounts, txs, getTxs, importTxs, saveDoc, updateTxs, categories, token, notify, onDone, onClose }) {

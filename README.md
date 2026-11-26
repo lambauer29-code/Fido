@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.42 – Fix: Beleg zuordnen ab dem 2. Mal
+
+- Kontoauszug: Das Fenster „Beleg zuordnen“ rutschte hinter den Kontoauszug, sobald man in den Auszug klickte – weitere Klicks auf „zuordnen“ zeigten dann scheinbar nichts. Es öffnet sich jetzt bei jedem Klick neu und immer im Vordergrund.
+- Handy/iPad: Das Zuordnen-Fenster lag hinter dem Vollbild-Auszug – jetzt korrekt darüber.
+
 ## v0.99.41 – Belege im Kontoauszug zuordnen
 
 - Kontoauszug: „Beleg fehlt · zuordnen“ bzw. „📎 Beleg zuordnen“ öffnet eine Auswahl mit passenden Belegen (Betrag, Datum, Absender), mit Suche und Upload.
