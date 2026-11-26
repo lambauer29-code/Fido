@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.43 – Monatsabschluss erweitert
+
+- Steuerberater → Monate: neue Prüfpunkte „Firmenbelege ohne Buchung“ (mit Liste, Ansehen und „Passt so“), „Ausgangsrechnungen“ (überfällig und noch nicht gemahnt) und „Kassabuch“ (Buchungen ohne Beleg, negativer Kassastand).
+- Fortschrittsbalken „x von y erledigt“ in jeder Monatskarte.
+- „📦 An Steuerberater senden“ öffnet das Paket direkt für diesen Monat.
+- Abschluss bleibt ein Häkchen – nichts wird gesperrt.
+
 ## v0.99.42 – Fix: Beleg zuordnen ab dem 2. Mal
 
 - Kontoauszug: Das Fenster „Beleg zuordnen“ rutschte hinter den Kontoauszug, sobald man in den Auszug klickte – weitere Klicks auf „zuordnen“ zeigten dann scheinbar nichts. Es öffnet sich jetzt bei jedem Klick neu und immer im Vordergrund.

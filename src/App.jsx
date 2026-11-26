@@ -8786,7 +8786,7 @@ function stbData(txs, accounts, docs) {
   return { rows, stmts, accMap };
 }
 const stmtNeeded = (a, need) => (need[a.id] != null ? !!need[a.id] : a.use === "firma" || a.use === "gemischt");
-function stbMonth(m, D, need) {
+function stbMonth(m, D, need, X = null) {
   const rows = D.rows.filter((r) => r.t.date.startsWith(m));
   const accs = [...new Set(rows.map((r) => r.t.accountId))].map((id) => D.accMap.get(id)).filter((a) => a && !["cash", "broker"].includes(a.kind));
   const stm = accs.map((a) => ({ a, need: stmtNeeded(a, need), doc: D.stmts.find((d) => d.stmt.accountId === a.id && (d.stmt.months || []).includes(m)) })).filter((x) => x.need || x.doc);
@@ -8795,8 +8795,18 @@ function stbMonth(m, D, need) {
   const asks = rows.filter((r) => r.t.ask && r.t.ask.state !== "geklärt");
   const missStmt = stm.filter((s) => s.need && !s.doc);
   const firma = rows.filter((r) => r.scope === "firma" && !r.transfer);
-  const issues = missStmt.length + noBeleg.length + unklar.length + asks.length;
-  return { m, rows, stm, noBeleg, unklar, asks, missStmt, firma, issues, inc: firma.filter((r) => r.biz > 0).reduce((s, r) => s + r.biz, 0), out: firma.filter((r) => r.biz < 0).reduce((s, r) => s - r.biz, 0) };
+  // v0.99.43: Belege ohne Buchung · Ausgangsrechnungen · Kassabuch
+  const inM = (d) => (d || "").startsWith(m);
+  const docsNoTx = X ? X.docs.filter((d) => !d.deletedAt && d.scope === "firma" && d.direction === "ausgabe" && d.docType !== "Kontoauszug" && !d.stmt && inM(d.documentDate || d.createdAt) && !X.linked.has(d.id) && !X.okDocs[d.id]) : [];
+  const invM = X ? X.inv.filter((x) => x.kind === "rechnung" && inM(x.date) && !["entwurf", "storniert"].includes(invState(x))) : [];
+  const invOpen = invM.filter((x) => ["offen", "überfällig"].includes(invState(x)));
+  const invLate = invOpen.filter((x) => invState(x) === "überfällig" && !(x.reminders || []).length);
+  const kE = X ? X.kassa.entries.filter((e) => inM(e.date)) : [];
+  const kNoBeleg = kE.filter((e) => !e.beleg && !e.eigen && !e.docId && !e.stornoBy && !/^Storno/.test(e.text || ""));
+  const kNeg = X ? X.kassa.kassen.some((k) => { const n = kbRun(X.kassa.entries, k).neg; return n && inM(n.date); }) : false;
+  const checks = [...stm.map((s) => !s.need || !!s.doc), !noBeleg.length, !unklar.length, ...(asks.length ? [false] : []), !docsNoTx.length, ...(invM.length ? [!invLate.length] : []), ...(kE.length ? [!kNoBeleg.length && !kNeg] : [])];
+  const issues = missStmt.length + noBeleg.length + unklar.length + asks.length + docsNoTx.length + invLate.length + kNoBeleg.length + (kNeg ? 1 : 0);
+  return { m, rows, stm, noBeleg, unklar, asks, missStmt, firma, issues, docsNoTx, invM, invOpen, invLate, kE, kNoBeleg, kNeg, nChk: checks.length, nOk: checks.filter(Boolean).length, inc: firma.filter((r) => r.biz > 0).reduce((s, r) => s + r.biz, 0), out: firma.filter((r) => r.biz < 0).reduce((s, r) => s - r.biz, 0) };
 }
 function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs, getTxs, categories, token, notify, setTab, onOpen, openTx, setAccounts, only }) {
   const mob = useMobileBeta();
@@ -8815,7 +8825,13 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
   const D = useMemo(() => stbData(txs, accounts, docs), [txs, accounts, docs]);
   const years = [...new Set([thisYear, ...txs.map((t) => t.date.slice(0, 4))])].sort().reverse().slice(0, 6);
   const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`).filter((m) => m <= todayISO().slice(0, 7)).reverse();
-  const M = useMemo(() => months.map((m) => stbMonth(m, D, need)), [D, year, need]);
+  const [invList] = useLsState("invoices", []);
+  const kassa = useKassa();
+  const [okDocs, setOkDocs] = useLsState("stbNoTxOk", {});
+  const [nbMonth, setNbMonth] = useState(null);
+  const linked = useMemo(() => new Set([...txs.map((t) => t.docId), ...kassa.entries.map((e) => e.docId)].filter(Boolean)), [txs, kassa.entries]);
+  const M = useMemo(() => months.map((m) => stbMonth(m, D, need, { docs, inv: invList, kassa, linked, okDocs })), [D, year, need, docs, invList, kassa.entries, kassa.kassen, linked, okDocs]);
+  const sendMonth = (m) => { lsSetEv("stbPer", m); setSec("paket"); };
   const openAsks = D.rows.filter((r) => r.t.ask && r.t.ask.state !== "geklärt");
   const goCheck = (m, kind) => { setFilt({ m, kind }); setSec("pruefen"); };
   const curStmt = stmtOpen && docs.find((d) => d.id === stmtOpen);
@@ -8836,23 +8852,29 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
   const monate = (
     <div className="stbmonths">
       {M.map((x) => {
-        const st = done[x.m] ? "done" : !x.rows.length ? "empty" : x.missStmt.length ? "bad" : x.issues ? "warn" : "ok";
+        const any = x.rows.length || x.docsNoTx.length || x.invM.length || x.kE.length;
+        const st = done[x.m] ? "done" : !any ? "empty" : x.missStmt.length ? "bad" : x.issues ? "warn" : "ok";
         const label = { done: "abgeschlossen ✓", empty: "keine Buchungen", bad: x.missStmt.length === 1 ? "Auszug fehlt" : `${x.missStmt.length} Auszüge fehlen`, warn: `${x.issues} offen`, ok: "bereit ✓" }[st];
         return (
           <section key={x.m} className={"tile stbmonth st-" + st}>
             <div className="stbmh"><span className={"stbdot " + st} /><b>{monthLabel(x.m)}</b><span className="grow" />
               <small className="muted">{x.firma.length ? `Firma: +${fmtMoney(x.inc)} / −${fmtMoney(x.out)}` : ""}</small>
               <span className={"stpill " + ({ done: "st-paid", ok: "st-paid", bad: "st-over", warn: "st-open", empty: "st-draft" }[st])}>{label}</span></div>
-            {x.rows.length > 0 && <div className="stbchecks">
+            {any > 0 && <div className="stbprog" title={`${x.nOk} von ${x.nChk} Punkten erledigt`}><span className="stbtrack"><i style={{ width: `${x.nChk ? Math.round(x.nOk / x.nChk * 100) : 0}%` }} /></span><small className="muted">{x.nOk} von {x.nChk} erledigt</small></div>}
+            {any > 0 && <div className="stbchecks">
               {x.stm.map(({ a, need, doc }) => (
                 <div key={a.id} className="stbcheck">{doc ? "✅" : need ? "⚠️" : "➖"} Auszug {a.name}
                   {doc ? <button className="link small" onClick={() => setStmtOpen(doc.id)}>ansehen</button> : need ? <button className="link small" onClick={() => fileRef.current.click()}>hochladen</button> : <small className="muted"> nicht nötig</small>}</div>
               ))}
               <div className={"stbcheck" + (x.noBeleg.length ? " click" : "")} onClick={() => x.noBeleg.length && goCheck(x.m, "beleg")}>{x.noBeleg.length ? "⚠️" : "✅"} {x.noBeleg.length ? `${x.noBeleg.length} Firmenausgabe${x.noBeleg.length > 1 ? "n" : ""} ohne Beleg` : "Belege zu Firmenausgaben vollständig"}{x.noBeleg.length > 0 && <span className="muted"> ›</span>}</div>
               <div className={"stbcheck" + (x.unklar.length ? " click" : "")} onClick={() => x.unklar.length && goCheck(x.m, "unklar")}>{x.unklar.length ? "⚠️" : "✅"} {x.unklar.length ? `${x.unklar.length} Buchung${x.unklar.length > 1 ? "en" : ""} Privat/Firma unklar` : "Alle Buchungen zugeordnet"}{x.unklar.length > 0 && <span className="muted"> ›</span>}</div>
+              <div className={"stbcheck" + (x.docsNoTx.length ? " click" : "")} onClick={() => x.docsNoTx.length && setNbMonth(x.m)}>{x.docsNoTx.length ? "⚠️" : "✅"} {x.docsNoTx.length ? `${x.docsNoTx.length} Firmenbeleg${x.docsNoTx.length > 1 ? "e" : ""} ohne Buchung (bar bezahlt?)` : "Alle Firmenbelege einer Buchung zugeordnet"}{x.docsNoTx.length > 0 && <span className="muted"> ›</span>}</div>
+              {x.invM.length > 0 && <div className="stbcheck click" onClick={() => setTab?.(x.invLate.length ? "mahnungen" : "invoices")}>{x.invLate.length ? "⚠️" : "✅"} <span className="grow">{x.invLate.length ? `${x.invLate.length} Ausgangsrechnung${x.invLate.length > 1 ? "en" : ""} überfällig, noch nicht gemahnt` : x.invOpen.length ? `Ausgangsrechnungen: ${x.invOpen.length} offen, noch nicht fällig` : `Ausgangsrechnungen bezahlt (${x.invM.length})`}</span><span className="muted">›</span></div>}
+              {x.kE.length > 0 && <div className="stbcheck click" onClick={() => setTab?.("kassa")}>{x.kNoBeleg.length || x.kNeg ? "⚠️" : "✅"} <span className="grow">{x.kNeg ? "Kassabuch: Kassastand wird negativ" : x.kNoBeleg.length ? `Kassabuch: ${x.kNoBeleg.length} Buchung${x.kNoBeleg.length > 1 ? "en" : ""} ohne Beleg` : `Kassabuch in Ordnung (${x.kE.length} Buchungen)`}</span><span className="muted">›</span></div>}
               {x.asks.length > 0 && <div className="stbcheck click" onClick={() => setSec("fragen")}>❓ {x.asks.length} offene Frage{x.asks.length > 1 ? "n" : ""} an den Steuerberater <span className="muted">›</span></div>}
               <div className="row stbmacts">
                 <button className="link small" onClick={() => goCheck(x.m, "firma")}>Firmenbuchungen ({x.firma.length})</button>
+                <button className="link small" title={x.issues ? "Es sind noch Punkte offen – Paket kann trotzdem erstellt werden" : "Paket für diesen Monat erstellen"} onClick={() => sendMonth(x.m)}>📦 An Steuerberater senden</button>
                 {done[x.m] ? <button className="link small" onClick={() => setDone((d) => { const n = { ...d }; delete n[x.m]; return n; })}>Abschluss aufheben</button>
                   : <button className="link small" onClick={() => (!x.issues || confirm(`Im ${monthLabel(x.m)} sind noch ${x.issues} Punkte offen. Trotzdem als abgeschlossen markieren?`)) && setDone((d) => ({ ...d, [x.m]: todayISO() }))}>Als abgeschlossen markieren</button>}
               </div>
@@ -8861,6 +8883,17 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
         );
       })}
       {!M.length && <MEmpty>Für {year} gibt es noch keine Monate.</MEmpty>}
+      {nbMonth && (() => { const x = M.find((y) => y.m === nbMonth); const l = x?.docsNoTx || [];
+        return createPortal(<Win id="stbnotx" onClose={() => setNbMonth(null)} small defW={560} stay>
+          <div className="panelhead"><b className="clamp">Firmenbelege ohne Buchung · {monthLabel(nbMonth)}</b><XBtn /></div>
+          <small className="muted block" style={{ margin: "0 0 8px" }}>Belege, die keiner Konto- oder Kassabuchung zugeordnet sind. Zuordnen im Kontoauszug oder in der Buchung – oder „Passt so“, wenn z. B. privat bar bezahlt.</small>
+          <div className="sblist">{l.map((d) => (
+            <div key={d.id} className="sbrow"><Thumb d={d} /><span className="grow"><b className="one">{d.title}</b><small className="muted block one">{[d.documentDate && fmtDate(d.documentDate), d.sender].filter(Boolean).join(" · ")}</small></span>
+              <span className="sbr">{d.amount?.total != null && <b>{fmtMoney(-Math.abs(d.amount.total))}</b>}</span>
+              <button className="btn sm" onClick={() => onOpen?.(d.id)}>Ansehen</button>
+              <button className="btn sm" onClick={() => setOkDocs((o) => ({ ...o, [d.id]: todayISO() }))}>Passt so</button></div>))}
+            {!l.length && <p className="muted">Alles erledigt ✓</p>}</div>
+        </Win>, document.querySelector(".app") || document.body); })()}
     </div>
   );
 
@@ -16742,7 +16775,8 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .stbmonth.st-empty{opacity:.6}
 .stbchecks{display:flex;flex-direction:column;gap:4px;margin-top:10px}
 .stbcheck{padding:6px 10px;border-radius:9px;background:var(--card2);font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
+.stbprog{display:flex;align-items:center;gap:10px;margin-top:8px}.stbtrack{flex:1;height:6px;border-radius:3px;background:var(--card2);overflow:hidden}.stbtrack>i{display:block;height:100%;background:var(--green,#22a06b);transition:width .3s}
+.stbcheck>.grow{flex:1;min-width:0}.stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
 .stbmacts{justify-content:space-between;margin-top:4px}
 .stbstmts{display:flex;flex-direction:column;gap:10px}
 .stbstmt{display:flex;align-items:center;gap:12px;padding:12px}
