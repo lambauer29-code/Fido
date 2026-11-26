@@ -1229,7 +1229,7 @@ function DocNavSettings({ part = "groups", nav, setNav, docs, renameCategory, de
                   <button className="ki catki" title="Symbol & Farbe" aria-label="Symbol & Farbe" style={{ background: catMeta(c).color + "22", color: catMeta(c).color }}
                     onClick={() => setStyleCat(styleCat === c ? null : c)}><CatGlyph c={c} /></button>
                   <EditText className="grow" inputClass="catname" value={c} validate={check(c)} onSave={(t) => t !== c && renameCategory(c, t)} />
-                  <button type="button" className={"chip subtog" + (subOpen === c ? " on" : "")} onClick={() => setSubOpen(subOpen === c ? null : c)} title="Unterkategorien">{subs(c).length ? `${subs(c).length} Unterkat.` : "＋ Unterkat."} <span className={"chev" + (subOpen === c ? " open" : "")}>›</span></button>
+                  <button type="button" className={"subtog" + (subOpen === c ? " on" : "") + (subs(c).length ? "" : " empty")} onClick={() => setSubOpen(subOpen === c ? null : c)} title={subs(c).length ? `${subs(c).length} Unterkategorien – auf-/zuklappen` : "Unterkategorie anlegen"} aria-expanded={subOpen === c}>{subs(c).length ? <>{subs(c).length}<span className="subchev" aria-hidden="true">{subOpen === c ? "▴" : "▾"}</span></> : "＋"}</button>
                   <small className="muted cnt" title="Dokumente">{count(c)}</small>
                   {c !== "Sonstiges"
                     ? <button className="iconbtn" aria-label="Kategorie löschen" title="Kategorie löschen"
@@ -6818,7 +6818,7 @@ const TX_COL_DEF = { order: ["date", "desc", "cat", "acc", "amt"], w: { date: 92
 const TX_COL_LBL = { date: "Datum", desc: "Empfänger", cat: "Kategorie", acc: "Konto", amt: "Betrag" };
 const txColNorm = (c) => { const o = (c?.order || []).filter((k) => TX_COL_LBL[k]); for (const k of TX_COL_DEF.order) if (!o.includes(k)) o.splice(TX_COL_DEF.order.indexOf(k), 0, k); return { order: [...new Set(o)], w: { ...TX_COL_DEF.w, ...(c?.w || {}) } }; };
 const txColKeys = (c, withAcc) => c.order.filter((k) => k !== "acc" || withAcc);
-const txColTpl = (c, withAcc) => txColKeys(c, withAcc).map((k) => (k === "desc" ? "minmax(160px,1fr)" : Math.round(c.w[k]) + "px")).join(" ") + " 164px";
+const txColTpl = (c, withAcc) => txColKeys(c, withAcc).map((k) => (k === "desc" ? "minmax(160px,1fr)" : Math.round(c.w[k]) + "px")).join(" ") + " 230px";
 function TxHead({ cfg, setCfg, withAcc }) {
   const keys = txColKeys(cfg, withAcc), ref = useRef(null), [drag, setDrag] = useState(null);
   const changed = JSON.stringify(cfg) !== JSON.stringify(txColNorm(TX_COL_DEF));
@@ -6907,8 +6907,13 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       t.docId ? { icon: "📎", label: "Beleg", bg: "#0ea5e9", run: () => onOpen(t.docId) } : t.kind !== "broker" && { icon: "📷", label: "Beleg", bg: "#0ea5e9", run: () => (scanReceiptFor ? scanReceiptFor(t.id) : attachNew(t.id, "scan")) }
     ]
   });
-  const TxActs = ({ t }) => { const d = docOf(t); const st = (f) => (e) => { e.stopPropagation(); f(); }; return (
+  const txScOf = (t) => (t.kind === "broker" || t.category === "Umbuchung" ? null : txScopeInfo(t, accounts.find((a) => a.id === t.accountId)).scope);
+  const TxActs = ({ t, marks = false }) => { const d = docOf(t); const st = (f) => (e) => { e.stopPropagation(); f(); }; const sc = marks ? txScOf(t) : null; return (
     <div className="dactions txacts" onClick={(e) => e.stopPropagation()}>
+      {marks && <span className="txmarks">
+        <span className={"txmark" + (sc === "firma" ? " m-firma" : sc === "unklar" ? " m-unklar" : "")} title={sc === "firma" ? "Firma" : sc === "unklar" ? "Privat oder Firma unklar" : ""}>{sc === "firma" ? "🏢" : sc === "unklar" ? "❓" : ""}</span>
+        {d ? <button className="txmark m-doc" title={`Beleg: ${d.title || "öffnen"}`} aria-label="Beleg öffnen" onClick={st(() => onOpen(d.id))}>📎</button> : <span className="txmark" />}
+      </span>}
       <button title="Buchung bearbeiten" aria-label="Bearbeiten" onClick={st(() => setTxOpen(t))}><IcoEdit /></button>
       <button title={d ? "Beleg drucken" : "Buchungsbeleg drucken (kein Beleg angehängt)"} aria-label="Drucken" onClick={st(async () => d ? printDoc(d) : printImages(await blobToImages(await txBelegPdf(t, accounts)), txBelegName(t)))}><IcoPrint /></button>
       <button title={d ? "Beleg teilen" : "Buchungsbeleg teilen (kein Beleg angehängt)"} aria-label="Teilen" onClick={st(async () => d ? shareDocs([d]) : sharePdf(await txBelegPdf(t, accounts), txBelegName(t) + ".pdf", txBelegName(t)))}><IcoShare /></button>
@@ -7182,19 +7187,17 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           <TxHead cfg={txColCfg} setCfg={setTxCols} withAcc={!acc && sel.length > 1} />
           {list.slice(0, limit).map((t) => (
             <React.Fragment key={t.id}>
-            <SwipeRow {...txSwipe(t)}><div className={"txrow" + (prevTx === t.id ? " open" : "")} onClick={() => openTx(t)}>
+            <SwipeRow {...txSwipe(t)}><div className={"txrow" + (prevTx === t.id ? " open" : "") + (txScOf(t) === "firma" ? " sc-firma" : txScOf(t) === "unklar" ? " sc-unklar" : "")} onClick={() => openTx(t)}>
               {txColKeys(txColCfg, !acc && sel.length > 1).map((k) => k === "date" ? <span key={k} className="muted c-date">{fmtDate(t.date)}</span>
               : k === "desc" ? <span key={k} className="txdesc c-desc">
                 <TxIcon t={t} size={30} />
                 <span className="grow"><b className="one">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
                   {t.kind !== "broker" && t.counterparty && t.purpose && <small className="muted one block">{t.purpose}</small>}</span>
-                {t.kind !== "broker" && t.category !== "Umbuchung" && (() => { const sc = txScopeInfo(t, accounts.find((a) => a.id === t.accountId)).scope; return sc === "firma" ? <span className="txsc sc-firma" title="Firma">🏢</span> : sc === "unklar" ? <span className="txsc sc-unklar" title="Privat/Firma unklar">❓</span> : null; })()}
-                {t.docId && <span title="Beleg verknüpft – Klick auf die Zeile zeigt ihn">📎</span>}
               </span>
               : k === "cat" ? <span key={k} className="one muted c-cat" title={catLabel(t.category, t.subcategory)}>{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : <>{t.category}{t.subcategory && <small className="block subcl">{t.subcategory}</small>}</>}</span>
               : k === "acc" ? <span key={k} className="one muted c-acc">{accName(t.accountId)}</span>
               : <b key={k} className={"r amt c-amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>)}
-              <TxActs t={t} />
+              <TxActs t={t} marks />
             </div></SwipeRow>
             {prevTx === t.id && docOf(t) && <div className="txprev"><DocPreview d={docOf(t)} onOpen={() => onOpen(docOf(t).id)} /></div>}
             </React.Fragment>
@@ -16360,8 +16363,11 @@ body.dnd-active,body.dnd-active *{cursor:grabbing!important;user-select:none!imp
 .edittext{display:flex;align-items:center;gap:6px;min-width:0}.edittext input{flex:1;min-width:0}
 .edittext.dirty input{border-color:var(--acc);background:var(--card)}
 .editbtns{display:flex;gap:4px;flex:none}
-.okbtn,.nobtn{width:34px;height:34px;border-radius:50%;border:0;color:#fff;font-size:17px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px #0002}
-.okbtn{background:#16a34a}.nobtn{background:#e5484d}.okbtn:hover,.nobtn:hover{filter:brightness(1.08)}
+.editbtns{display:inline-flex;gap:6px;flex:none}
+.okbtn,.nobtn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--mut);font-size:16px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:none;flex:none;padding:0}
+.okbtn{background:color-mix(in srgb,var(--pos,#16a34a) 16%,transparent);border-color:color-mix(in srgb,var(--pos,#16a34a) 55%,transparent);color:var(--pos,#16a34a)}
+.okbtn:hover{background:color-mix(in srgb,var(--pos,#16a34a) 26%,transparent)}.nobtn:hover{color:var(--neg,#e5484d);border-color:color-mix(in srgb,var(--neg,#e5484d) 50%,transparent)}
+.subcatrow .iconbtn,.subcatrow .okbtn,.subcatrow .nobtn{width:34px;height:34px;min-width:34px;min-height:34px;border-radius:9px;font-size:15px}.subcatrow .iconbtn{border:1px solid var(--line);background:transparent}
 .grptitle{font-weight:600}
 .iconbtn-spacer{width:40px;flex:none}
 .navcfg{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;background:var(--card2);border-radius:12px;padding:4px 8px 4px 2px}
@@ -18884,7 +18890,9 @@ html.sty-graphit.sty-graphit nav.bottom>button.on,html.sty-sand.sty-sand nav.bot
 .txcolh.over-l{box-shadow:inset 3px 0 0 var(--acc)}.txcolh.over-r{box-shadow:inset -3px 0 0 var(--acc)}
 .colgrip.lft{right:auto;left:-9px}.colgrip{position:absolute;top:8px;bottom:8px;right:-9px;width:10px;cursor:col-resize;z-index:2;display:flex;justify-content:center}.colgrip::after{content:"";width:2px;border-radius:2px;background:var(--line)}.txcolh:hover .colgrip::after,.colgrip:hover::after{background:var(--acc)}
 html.colresizing,html.colresizing *{cursor:col-resize!important;user-select:none!important}.txcolreset{display:flex;justify-content:flex-end;align-items:center}
-.subtog{flex:none;font-size:12px;padding:3px 9px;white-space:nowrap}.subtog .chev{display:inline-block;transition:transform .15s}.subtog .chev.open{transform:rotate(90deg)}
+.catrow .subtog,button.subtog{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:44px;height:28px;padding:0 10px!important;margin:0;border-radius:999px!important;border:1px solid var(--line)!important;background:transparent!important;color:var(--txt);font:inherit;font-size:13px!important;font-variant-numeric:tabular-nums;line-height:1;cursor:pointer;box-shadow:none!important;white-space:nowrap;zoom:1}
+button.subtog:hover{border-color:var(--acc)!important}button.subtog.on{background:color-mix(in srgb,var(--acc) 14%,transparent)!important;border-color:var(--acc)!important;color:var(--acc)}button.subtog.empty{color:var(--mut)}.subchev{font-size:10px;opacity:.8}
+.catrow>.cnt{flex:none;min-width:22px;text-align:right}
 .subcatbox{margin:2px 0 8px 46px;padding:6px 8px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:4px}.subcatrow{display:flex;align-items:center;gap:8px}.subcatrow .subarrow{color:var(--mut);width:16px;text-align:center}.subcatrow.addsub .subarrow{color:var(--acc)}
 .labsub{opacity:.8;font-weight:400}.subcl{font-size:.85em;opacity:.75}.subsel{display:block}
 .catpick{position:fixed;z-index:4000;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 48px #0006;overflow:hidden;zoom:var(--mnz,1)}
@@ -18895,6 +18903,11 @@ html.colresizing,html.colresizing *{cursor:col-resize!important;user-select:none
 .cprow:hover,.cprow.hl{background:color-mix(in srgb,var(--txt) 7%,transparent)}.cprow.on{color:var(--acc);font-weight:600}.cpok{color:var(--acc)}.cpsub{color:var(--mut)}.cpadd{color:var(--acc)}.cpempty{padding:8px}
 .cpfoot{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);font-size:13px}.cpfoot .check{margin:0}
 .flashsec{animation:flashsec 1.6s ease}@keyframes flashsec{0%,60%{background:color-mix(in srgb,var(--acc) 22%,transparent)}100%{background:transparent}}
+.txmarks{display:inline-flex;gap:4px;margin-right:6px}.txmark{width:28px;height:28px;flex:none;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;font-size:15px;border:0;background:transparent;padding:0}
+.txmark.m-firma{background:color-mix(in srgb,var(--stc-firma) 22%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--stc-firma) 60%,transparent)}.txmark.m-unklar{background:color-mix(in srgb,var(--stc-unklar) 22%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--stc-unklar) 60%,transparent)}
+button.txmark.m-doc{cursor:pointer}button.txmark.m-doc:hover{background:var(--card2)}
+.txrow.sc-firma{box-shadow:inset 4px 0 0 var(--stc-firma);background:color-mix(in srgb,var(--stc-firma) 7%,transparent)}.txrow.sc-unklar{box-shadow:inset 4px 0 0 color-mix(in srgb,var(--stc-unklar) 70%,transparent)}
+.txrow.sc-firma:hover{background:color-mix(in srgb,var(--stc-firma) 12%,transparent)}
 .amtgrid{align-items:end}.amtgrid>label{display:flex;flex-direction:column;justify-content:flex-end;min-width:0;white-space:nowrap}.amtgrid>label>input{width:100%}
 .fxrow{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:12px;background:color-mix(in srgb,var(--acc) 5%,transparent)}.fxrow .fxinfo{font-size:13.5px}.fxins{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.fxins label{flex:1 1 140px;margin:0;font-size:12.5px}.fxins .btn{flex:none}
 .expcur{display:flex;gap:8px;align-items:stretch;flex-wrap:nowrap}.expcur>input{flex:1;min-width:0}.expcur>.vehpick,.fxhead>.vehpick{flex:none!important;width:auto!important;display:inline-flex}.expcur .cursel,.fxhead .cursel{width:auto!important;min-width:96px;white-space:nowrap}.fxhead{gap:10px;align-items:center;flex-wrap:wrap}.fxhead .seg{flex:1}

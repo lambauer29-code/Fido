@@ -2,6 +2,16 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.88 – Firma- & Beleg-Symbole bei den Aktionen
+- Kontobuchungen (Tabelle): 🏢 Firma / ❓ unklar und 📎 Beleg stehen jetzt rechts vor Bearbeiten · Drucken · Teilen · Löschen, in festen Plätzen (Spalten bleiben bündig)
+- Firmenbuchungen farbig: linker Balken + leichte Tönung in der Firma-Farbe aus Einstellungen → Kontoauszug-Farben (wie im Kontoauszug); unklare mit Balken in der Unklar-Farbe
+- 📎 öffnet den Beleg direkt
+
+## v0.99.87 – Unterkategorien-Knopf & Bestätigungsknöpfe
+- Einstellungen → Kategorien: Unterkategorien als schmaler Knopf „7 ▾“ (offen „6 ▴“, ohne Unterkategorien „＋“), Belegzahl als eigene Spalte – nichts überlappt mehr
+- ✓/✕ beim Anlegen und Umbenennen (Kategorien, Unterkategorien, Gruppen, Konten …): gleiche Form und Größe wie die übrigen Knöpfe, ✓ grün getönt statt knallig gefüllt
+- Unterkategorie-Zeilen: Löschen-Knopf passend zu den Hauptzeilen
+
 ## v0.99.86 – Kategorie-Popup bei Buchungen
 - Buchungsdetail: Klick auf die Kategorie öffnet ein Popup statt des Kastens darunter – Suchfeld oben, links Kategorien, rechts Unterkategorien (Hover/Tippen), Klick übernimmt sofort; Enter übernimmt den ersten Treffer
 - „＋ Neue Kategorie“ (mit Suchtext vorbelegt) und „＋ Neue Unterkategorie“ direkt im Popup; „Immer so für …“ unten
