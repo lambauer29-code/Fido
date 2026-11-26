@@ -20,6 +20,7 @@ import { saveBlob, downloadCsv, downloadXlsx, tablePdf, zipBlob, vcardText, csvB
 import { PROVIDERS, PROVIDER_LIST, syncCfg, setSyncCfg, syncOn, syncNow, oauthLogin, oauthConfig, setupKey, cloudState, disconnect, remoteDevices, defaultDeviceName, deviceId, kvGet, changePassword } from "./sync.js";
 import { canUpdate, appVersion, checkUpdate, installUpdate } from "./platform.js";
 import { latestBalance, parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS, counterpartyKey } from "./importers.js";
+import { Glyph } from "./icons.jsx";
 
 /* ============================================================
    Dokumente – PWA für Dokumente, Verträge & Finanzen
@@ -42,16 +43,21 @@ const CAT_META = {
 };
 const PALETTE = ["#3b82f6", "#f97316", "#22c55e", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444", "#6366f1", "#84cc16"];
 let CAT_STYLE = {}; // Symbol/Farbe umbenannter Kategorien (aus den Einstellungen)
-function catMeta(c) {
+// v0.99.58: eigene Symbole je Kategorie / Kontoart (Einstellungen → Design → Symbole)
+let CAT_ICONS = ls0("catIcons"), KIND_ICONS = ls0("kindIcons");
+function ls0(k) { try { return JSON.parse(localStorage.getItem(k) || "{}") || {}; } catch { return {}; } }
+if (typeof window !== "undefined") addEventListener("findocu-icons", () => { CAT_ICONS = ls0("catIcons"); KIND_ICONS = ls0("kindIcons"); });
+function catMeta(c) { const o = CAT_ICONS[c], b = catMeta0(c); return o ? { icon: o.emoji || (o.img ? b.icon : b.icon), color: o.color || b.color, img: o.img || (o.emoji ? null : b.img) } : b; }
+function catMeta0(c) {
   if (CAT_STYLE[c]) return { icon: CAT_STYLE[c][0], color: CAT_STYLE[c][1], img: CAT_STYLE[c][2] };
   if (CAT_META[c]) return { icon: CAT_META[c][0], color: CAT_META[c][1] };
   let h = 0; for (const ch of String(c)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return { icon: "📁", color: PALETTE[h % PALETTE.length] };
 }
-const CatGlyph = ({ c }) => { const m = catMeta(c); return m.img ? <img className="catimg" src={m.img} alt="" /> : <>{m.icon}</>; };
+const CatGlyph = ({ c }) => { const m = catMeta(c); return m.img ? <img className="catimg" src={m.img} alt="" /> : <Glyph e={m.icon} />; };
 const CatIcon = ({ c, size = 40 }) => {
   const m = catMeta(c);
-  return <span className="caticon" style={{ width: size, height: size, background: m.color + "22", fontSize: size * 0.48 }}><CatGlyph c={c} /></span>;
+  return <span className={"caticon" + (m.img ? " own" : "")} style={{ width: size, height: size, "--c": m.color, fontSize: size * 0.48 }}><CatGlyph c={c} /></span>;
 };
 const Label = ({ c }) => { const m = catMeta(c); return <span className="label" style={{ color: m.color, background: m.color + "1f" }}>{c}</span>; };
 
@@ -541,14 +547,17 @@ function cancelLetter(c, me) {
 /* ---------- Navigation, Kontengruppen, Dokument-Bereiche ---------- */
 const TAB_DEFS = { home: ["🏠", "Übersicht"], docs: ["📄", "Dokumente"], deadlines: ["⏰", "Fristen"], journal: ["📓", "Journal"], accounts: ["🏦", "Konten"], cash: ["💶", "Ausgabe"], analyse: ["📊", "Analyse"], vermoegen: ["💎", "Vermögen"], fahrtenbuch: ["🚗", "Fahrtenbuch"], firma: ["📈", "Firmenauswertung"], steuer: ["🧑‍💼", "Steuerberater"], auszuege: ["📃", "Kontoauszüge"], invoices: ["🧾", "Rechnungen"], kunden: ["👥", "Kunden"], mahnungen: ["📮", "Mahnungen"], artikel: ["📦", "Artikel"], inventur: ["📋", "Lager & Inventur"], besitz: ["🛡️", "Besitz & Garantie"], kassa: ["📒", "Kassabuch"], vertraege: ["📑", "Verträge"], contracts: ["🔁", "Fixkosten & Abos"], settings: ["⚙️", "Einstellungen"], backup: ["💾", "Backup"] };
 const KIND_DEFS = { cash: ["💶", "Bargeld"], bank: ["🏦", "Girokonto"], card: ["💳", "Kreditkarte"], wallet: ["🌐", "PayPal / Online"], savings: ["🐷", "Sparkonto"], broker: ["📈", "Depot"] };
-const kindIcon = (k) => (KIND_DEFS[k] || KIND_DEFS.bank)[0];
+const kindIcon = (k) => KIND_ICONS[k]?.emoji || (KIND_DEFS[k] || KIND_DEFS.bank)[0];
+const KIND_COL = { cash: "#16a34a", bank: "#0b63f6", card: "#8b5cf6", wallet: "#0ea5e9", savings: "#ec4899", broker: "#14b8a6" };
+const kindCol = (k) => KIND_ICONS[k]?.color || KIND_COL[k] || "#0b63f6";
 /* Konto-Symbol: eigenes Bild > eigenes Emoji > Standard je Kontoart ("none" = kein Symbol) */
 const accHasIcon = (a) => !!(a.iconImg || (a.icon && a.icon !== "none"));
 function AccIcon({ a, className = "ki", force = false }) {
   if (a.iconImg) return <span className={className + " custom"}><img src={a.iconImg} alt="" /></span>;
   if (a.icon === "none") return force ? <span className={className} /> : null;
-  if (a.icon) return <span className={className + " custom"}>{a.icon}</span>;
-  return <span className={className}>{kindIcon(a.kind)}</span>;
+  if (a.icon) return <span className={className + " custom"}><Glyph e={a.icon} /></span>;
+  if (KIND_ICONS[a.kind]?.img && !KIND_ICONS[a.kind]?.emoji) return <span className={className + " custom"}><img src={KIND_ICONS[a.kind].img} alt="" /></span>;
+  return <span className={className}><Glyph e={kindIcon(a.kind)} /></span>;
 }
 
 function loadImgEl(file) {
@@ -1928,6 +1937,9 @@ function AppMain() {
   const [pdfView, setPdfView] = useState(null);
   pdfUi = setPdfView;
   fileUi = { add: (file, o) => onFiles([file], o || {}) };
+  const [icSt] = useLsState("iconStyle", "a"), [icSz] = useLsState("iconSize", 32), [, icTick] = useState(0);
+  useEffect(() => applyIcons(icSt, icSz), [icSt, icSz]);
+  useEffect(() => { const f = () => icTick((n) => n + 1); addEventListener("findocu-icons", f); return () => removeEventListener("findocu-icons", f); }, []);
   scanUi = { withFile: (file, cb) => { scanCb.current = cb; setScanFile(file); setScanOpen(true); } };
   belegUi = { link: linkTx, upload: (txId, file) => onFiles([file], { stay: true, linkTx: txId }) };
   const impRef = useRef(null), vcfApp = useRef(null);
@@ -2856,7 +2868,7 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
       { label: "📄 Einkäufe CSV", run: () => downloadCsv(`einkaeufe-${isoToday()}.csv`, BH, bons) }]} />; })();
   const cashRows = cash.map((a) => (
     <div key={a.id} className="frow click expcash" onClick={() => openAccount(a.id)}>
-      <span className="caticon" style={{ width: 40, height: 40, background: "#16a34a22", fontSize: 20 }}><AccIcon a={a} className="acci" force /></span>
+      <span className={"caticon" + (a.iconImg ? " own" : "")} style={{ width: 40, height: 40, "--c": kindCol(a.kind), fontSize: 20 }}><AccIcon a={a} className="acci" force /></span>
       <div className="grow"><b style={accStyle(a)}>{a.name}</b><small className="muted block">Bargeld-Bestand</small></div>
       <div className="right"><b className={cashBalance(a, txs) < 0 ? "neg" : "pos"}>{fmtMoney(cashBalance(a, txs))}</b></div>
     </div>
@@ -4373,7 +4385,7 @@ function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () =
         <div className="tilehead"><b>Konten</b><small>{fmtMoney(accs.reduce((s, x) => s + x.now, 0))}</small></div>
         {accs.sort((a, b) => b.now - a.now).map((x) => { const d = x.now - accAt(x, months[0]); return (
           <div key={x.a.id} className="frow click" onClick={() => openAccount(x.a.id)}>
-            <span className="caticon" style={{ width: 38, height: 38, background: "#0b63f622", fontSize: 18 }}><AccIcon a={x.a} className="acci" force /></span>
+            <span className={"caticon" + (x.a.iconImg ? " own" : "")} style={{ width: 38, height: 38, "--c": kindCol(x.a.kind), fontSize: 18 }}><AccIcon a={x.a} className="acci" force /></span>
             <div className="grow"><b style={accStyle(x.a)}>{x.a.name}</b><small className="muted block">{KIND_DEFS[x.a.kind || "bank"]?.[1]}{balEstimated(x.a) ? " · aus Umsätzen berechnet" : ""}</small></div>
             <div className="right"><b className={x.now < 0 ? "neg" : ""}>{fmtMoney(x.now)}</b><small className={"block " + (d >= 0 ? "pos" : "neg")}>{d >= 0 ? "+" : ""}{fmtMoney(d)}</small></div>
           </div>); })}
@@ -4388,7 +4400,7 @@ function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () =
           </div>
           {pf.positions.map((p) => (
             <div key={p.key} className="frow">
-              <span className="caticon" style={{ width: 40, height: 40, background: "#14b8a622", fontSize: 18 }}>📈</span>
+              <span className="caticon" style={{ width: 40, height: 40, "--c": "#14b8a6", fontSize: 18 }}><Glyph e="📈" /></span>
               <div className="grow"><b className="clamp">{p.name || p.isin}</b><small className="muted block">{p.isin} · {p.shares.toLocaleString("de-AT", { maximumFractionDigits: 4 })} Stk.</small></div>
               <div className="right"><b>{fmtMoney(p.cost)}</b><small className="muted block">Einstand</small></div>
             </div>
@@ -4401,7 +4413,7 @@ function Wealth({ txs, accounts, openAccount, editing = false, setEditing = () =
         {!assets.length && !edit && <p className="muted small">Immobilie, Auto, Gold, Depot oder Kredite manuell erfassen – sie fließen ins Nettovermögen ein.</p>}
         {assets.map((x) => (
           <div key={x.id} className="frow click" onClick={() => setEdit({ ...x, value: amtStr(x.value) })}>
-            <span className="caticon" style={{ width: 38, height: 38, fontSize: 18 }}>{ASSET_KINDS[x.kind]?.[0] || "💎"}</span>
+            <span className="caticon" style={{ width: 38, height: 38, fontSize: 18, "--c": "#a855f7" }}><Glyph e={ASSET_KINDS[x.kind]?.[0] || "💎"} /></span>
             <div className="grow"><b>{x.name}</b><small className="muted block">{ASSET_KINDS[x.kind]?.[1]} · seit {fmtDate(x.since)}</small></div>
             <div className="right"><b className={assetVal(x) < 0 ? "neg" : ""}>{fmtMoney(assetVal(x))}</b></div>
           </div>))}
@@ -4493,7 +4505,7 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
           <div className="tilehead"><b>Konten</b><small>{bankTotal != null ? fmtMoney(bankTotal) : ""}</small></div>
           {bankAccs.map((a) => { const bal = accountBalance(a, txs); return (
             <div key={a.id} className="frow click" onClick={() => openAccount(a.id)}>
-              <span className="caticon" style={{ width: 40, height: 40, background: "#0b63f622", fontSize: 20 }}><AccIcon a={a} className="acci" force /></span>
+              <span className={"caticon" + (a.iconImg ? " own" : "")} style={{ width: 40, height: 40, "--c": kindCol(a.kind), fontSize: 20 }}><AccIcon a={a} className="acci" force /></span>
               <div className="grow"><b style={accStyle(a)}>{a.name}</b><small className="muted block">{balEstimated(a) ? "aus Umsätzen berechnet" : a.openingDate ? "Stand " + fmtDate(a.openingDate) + " + neuere Buchungen" : "Kontostand"}</small></div>
               <div className="right"><b className={bal == null ? "" : bal < 0 ? "neg" : "pos"}>{bal != null ? fmtMoney(bal) : "—"}</b></div>
             </div>); })}
@@ -4504,7 +4516,7 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
           <div className="tilehead"><b>Bargeld</b><button className="link" onClick={() => onManual({ accountId: cashAccs[0].id })}>＋ Barausgabe</button></div>
           {cashAccs.map((a) => (
             <div key={a.id} className="frow click" onClick={() => openAccount(a.id)}>
-              <span className="caticon" style={{ width: 40, height: 40, background: "#16a34a22", fontSize: 20 }}>💶</span>
+              <span className="caticon" style={{ width: 40, height: 40, "--c": "#16a34a", fontSize: 20 }}><Glyph e="💶" /></span>
               <div className="grow"><b>{a.name}</b><small className="muted block">{txs.filter((t) => t.accountId === a.id).length} Buchungen{a.atm ? " · inkl. Bankomat-Behebungen" : ""}</small></div>
               <div className="right"><b className={cashBalance(a, txs) < 0 ? "neg" : "pos"}>{fmtMoney(cashBalance(a, txs))}</b><small className="muted block">Bestand</small></div>
             </div>
@@ -7050,7 +7062,7 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
 
         <div className="tile">
           <div className="frow">
-            <span className="caticon" style={{ width: 44, height: 44, background: "#0b63f622", fontSize: 20 }}>📄</span>
+            <span className="caticon" style={{ width: 44, height: 44, "--c": "#0b63f6", fontSize: 20 }}><Glyph e="📄" /></span>
             <div className="grow"><b className="clamp">{imp.file.name}</b><small className="muted block">Erkannt: {res.mapping?.headers?.some((h) => /analyse-hauptkategorie/i.test(h)) ? "Finanzguru-Export" : res.format}{metaIban ? ` · ${metaIban}` : ""}</small></div>
           </div>
           {!!txs.length && (
@@ -7348,7 +7360,7 @@ const MBarOld = ({ q, setQ, placeholder, chips, children, inline }) => { const c
 ); };
 const MHead = ({ children, right }) => <div className="mday mhead"><span>{children}</span>{right != null && <span className="muted">{right}</span>}</div>;
 const MAvatar = ({ text, color = "#64748b" }) => <span className="caticon mavatar" style={{ width: 46, height: 46, color }}>{(text || "?").trim().slice(0, 1).toUpperCase()}</span>;
-const MIco = ({ e }) => <span className="caticon" style={{ width: 46, height: 46, background: "var(--card2)", fontSize: 22 }}>{e}</span>;
+const MIco = ({ e, c }) => <span className="caticon" style={{ width: 46, height: 46, "--c": c || "var(--acc)", fontSize: 22 }}>{typeof e === "string" ? <Glyph e={e} /> : e}</span>;
 function MItem({ icon, title, sub, tags = [], amount, amountCls = "", amountSub, pill, onClick, swipe, after, dim }) {
   return (<>
     <SwipeRow {...(swipe || {})}>
@@ -7515,9 +7527,9 @@ function LogoWin({ txs, onClose }) {
 }
 function TxIcon({ t, size = 40 }) {
   useLogoVer();
-  if (t.kind === "broker") return <span className="caticon" style={{ width: size, height: size, background: "#14b8a622", fontSize: size * 0.45 }}>📈</span>;
+  if (t.kind === "broker") return <span className="caticon" style={{ width: size, height: size, "--c": "#14b8a6", fontSize: size * 0.45 }}><Glyph e="📈" /></span>;
   const ico = CP_ICONS[cpKey(t)];
-  if (ico) return <span className="caticon" style={{ width: size, height: size, background: catMeta(t.category).color + "22", fontSize: size * 0.5 }}>{ico}</span>;
+  if (ico) return <span className="caticon" style={{ width: size, height: size, "--c": catMeta(t.category).color, fontSize: size * 0.5 }}><Glyph e={ico} /></span>;
   const lg = LOGOS[cpKey(t)];
   if (lg) return <span className="caticon logo" style={{ width: size, height: size }}><img src={lg} alt="" /></span>;
   return <CatIcon c={t.category} size={size} />;
@@ -7820,13 +7832,13 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
       <section className="tile txcard">
         <div className="txkv col"><span>Von</span>
           <div className="txlink" onClick={() => { onAccount?.(t.accountId); onClose(); }}>
-            <span className="caticon" style={{ width: 40, height: 40, background: "var(--card2)" }}>{KIND_DEFS[acc?.kind || "bank"]?.[0] || "🏦"}</span>
+            <span className="caticon" style={{ width: 40, height: 40, "--c": kindCol(acc?.kind || "bank") }}><Glyph e={kindIcon(acc?.kind || "bank")} /></span>
             <div className="grow"><b>{income ? (t.counterparty || "Absender") : accName(t.accountId)}</b><small className="muted block">{income ? fmtIban(t.iban) : fmtIban(acc?.iban)}</small></div>{!income && <span className="muted">›</span>}
           </div>
         </div>
         <div className="txkv col"><span>An</span>
           <div className="txlink plain" onClick={income ? () => { onAccount?.(t.accountId); onClose(); } : undefined}>
-            {income ? <span className="caticon" style={{ width: 40, height: 40, background: "var(--card2)" }}>{KIND_DEFS[acc?.kind || "bank"]?.[0] || "🏦"}</span> : <TxIcon t={t} size={40} />}
+            {income ? <span className="caticon" style={{ width: 40, height: 40, "--c": kindCol(acc?.kind || "bank") }}><Glyph e={kindIcon(acc?.kind || "bank")} /></span> : <TxIcon t={t} size={40} />}
             <div className="grow"><b>{income ? accName(t.accountId) : t.counterparty || "–"}</b><small className="muted block">{income ? fmtIban(acc?.iban) : fmtIban(t.iban)}</small></div>
           </div>
         </div>
@@ -10720,6 +10732,7 @@ function DesignSettings({ design, setDesign, theme }) {
         const setFa = (c) => setDesign({ ...design, flatAcc: { ...(design.flatAcc || {}), [design.style]: c || undefined } });
         return (<div className="flatacc"><div className="colorrow"><span><b>Markierungsfarbe für „{st[1]}“</b><small className="muted block">Links, ausgewählte Chips, Fortschrittsbalken und Hinweise – „A“ = Farbe des Stils</small></span><span className="flataccpv" style={{ color: "var(--acc)" }}>● Markierung</span></div>
           <Swatches value={cur} list={FLAT_ACC} custom={design.flatAccList} def={st[4].acc} onPick={setFa} onAdd={(c) => setDesign({ ...design, flatAcc: { ...(design.flatAcc || {}), [design.style]: c }, flatAccList: [...new Set([...(design.flatAccList || []), c])].slice(-8) })} onRemove={(c) => setDesign({ ...design, flatAccList: (design.flatAccList || []).filter((x) => x !== c), flatAcc: cur === c ? { ...design.flatAcc, [design.style]: undefined } : design.flatAcc })} /></div>); })()}
+      <IconSettings />
       <ViewSettings />
       <h4 className="subhead">Schriftart</h4>
       <p className="muted small">Schrift für Text und Überschriften der ganzen App – unabhängig vom Stil wählbar. Die Größen stellst du unter „Schriftgrößen“ ein.</p>
@@ -11076,7 +11089,7 @@ function AutoBackupWin({ onRestore, onClose, notify }) {
       <p className="muted small">Die letzten {AB_MAX} automatischen Sicherungen in diesem Browser. Enthalten sind Dokument-Daten, Umsätze, Konten, Rechnungen, Kunden, Kassabuch, Lager und alle Einstellungen – die Original-Dateien (PDFs, Fotos) nur im externen Backup.</p>
       {!list ? <p className="muted small">Lade …</p> : !list.length ? <MEmpty>Noch keine automatische Sicherung.</MEmpty> : list.map((b) => (
         <div key={b.id} className="frow abrow">
-          <span className="caticon" style={{ width: 40, height: 40, background: "var(--card2)" }}>{b.reason === "manuell" ? "💾" : "🔄"}</span>
+          <span className="caticon" style={{ width: 40, height: 40 }}><Glyph e={b.reason === "manuell" ? "💾" : "🔄"} /></span>
           <div className="grow"><b>{fmtStamp(b.at)}</b><small className="muted block">{b.reason === "manuell" ? "manuell" : "automatisch"} · {fmtSize(b.size)} · {b.docs} Dokumente · {b.txs} Umsätze</small></div>
           <button className="iconbtn" title="Herunterladen" aria-label="Herunterladen" onClick={() => download(new Blob([b.data], { type: "application/json" }), `findocu-autobackup-${b.at.slice(0, 16).replace(/[:T]/g, "-")}.json`)}>⬇︎</button>
           <button className="btn sm" disabled={busy} onClick={async () => { if (!confirm(`Stand vom ${fmtStamp(b.at)} wiederherstellen?\nAktuelle Daten werden mit diesem Stand überschrieben.`)) return; setBusy(true); await createAutoBackup("manuell").catch(() => {}); onRestore(new File([b.data], "auto-backup.json", { type: "application/json" })); }}>Wiederherstellen</button>
@@ -12666,7 +12679,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           {!templates.length && <p className="muted small">Noch keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „Wiederkehrend“ anhaken – FinDocu legt dann zum Termin automatisch einen Entwurf an, den du nur noch prüfst und ausstellst.</p>}
           {templates.map((t) => (
             <div key={t.id} className="frow">
-              <span className="caticon" style={{ width: 40, height: 40, background: "#0b63f622" }}>🔁</span>
+              <span className="caticon" style={{ width: 40, height: 40, "--c": "#0b63f6" }}><Glyph e="🔁" /></span>
               <div className="grow"><b>{t.name}</b><small className="muted block">{t.interval} · {fmtMoney(invTotal(t.inv))} · nächster Entwurf {fmtDate(t.next)}{t.active ? "" : " · pausiert"}</small></div>
               <PSelect className="chip" value={t.interval} onChange={(e) => setTemplates((l) => l.map((x) => (x.id === t.id ? { ...x, interval: e.target.value } : x)))}>{Object.keys(INTERVALS).map((k) => <option key={k}>{k}</option>)}</PSelect>
               <button className="btn sm" onClick={() => setTemplates((l) => l.map((x) => (x.id === t.id ? { ...x, active: !x.active } : x)))}>{t.active ? "Pausieren" : "Fortsetzen"}</button>
@@ -12979,7 +12992,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
           <div className={"frow click ctrow" + (c.cancelledAt ? " ended" : "") + (c.inactive ? " inactive" : "") + (pick?.has(c.id) ? " picked" : "")} onClick={() => (pick ? togglePick(c.id) : setEdit(c))}>
             {pick && <KitPickBox on={pick.has(c.id)} />}
             {cdocs[0] ? <span><Thumb d={cdocs[0]} /></span>
-              : <span className="caticon" style={{ width: 42, height: 42, background: "var(--card2)", fontSize: 20 }}>{ctCats()[c.cat] || "📄"}</span>}
+              : <span className="caticon" style={{ width: 42, height: 42, fontSize: 20 }}><Glyph e={ctCats()[c.cat] || "📄"} /></span>}
             <div className="grow">
               <b>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small> <KitTags tags={c.tags} />
               <small className="muted block ctsub">{[c.provider, c.customerNo && "Nr. " + c.customerNo, c.interval || "monatlich", cdocs.length ? `📎 ${cdocs.length}` : ""].filter(Boolean).join(" · ")}{" · "}{c.cancelledAt ? <span className="muted">Gekündigt{c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}</span>
@@ -13306,6 +13319,10 @@ const UI_STYLES = [
   ["express", "Expressiv", "große Formen, dicke Knöpfe", ["grotesk"], { bg: "#f7f2fa", card: "#e8def8", txt: "#1d1b20", acc: "#6750a4", r: "22px 22px 22px 6px", font: "Space Grotesk" }],
   ["kontrast", "Großer Kontrast", "große Schrift, maximaler Kontrast", [], { bg: "#000", card: "#fff", txt: "#000", acc: "#ffd400", r: 10, font: "system-ui", bd: "2px solid #fff", big: true }],
 ];
+/* v0.99.58: Symbol-Stil (ics-a Linie im Kreis · ics-b volle Farbe · ics-c Emoji · ics-d nur Linie) + Größe */
+const ICON_STYLES = [["a", "Linie im getönten Kreis", "Strich-Icon in Kategorie-Farbe"], ["b", "Volle Farbe", "farbiger Kreis, weißes Icon"], ["c", "Emoji", "bunte Emojis auf getöntem Quadrat"], ["d", "Nur Linie", "farbiges Icon ohne Hintergrund"]];
+function applyIcons(st, sz) { if (typeof document === "undefined") return; const h = document.documentElement; ["a", "b", "c", "d"].forEach((k) => h.classList.toggle("ics-" + k, k === st)); h.style.setProperty("--icsz", (sz || 32) + "px"); }
+applyIcons(ls.get("iconStyle", "a"), ls.get("iconSize", 32));
 function applyUiStyle(id) {
   const c = document.documentElement.classList; UI_STYLES.forEach(([k]) => c.remove("sty-" + k)); if (id && id !== "klassisch") c.add("sty-" + id);
   const st = UI_STYLES.find((x) => x[0] === id); const fam = (st?.[3] || []).map((f) => "family=" + STYLE_FONTS[f]).join("&");
@@ -13398,7 +13415,7 @@ const FB_SLOTS = () => [["fuel", "Tanken", "⛽", FB_COL.fuel], ["elec", "Laden"
   ...FB_EXP.map(([c, e]) => ["x:" + c, c, e, FB_COL.expense])];
 const fbSlot = (k) => FB_SLOTS().find((x) => x[0] === k) || [k, k, "•", FB_COL.expense];
 function FbIco({ k, set }) { const [st] = useIconStore("fbIcons"); const o = st[k] || {}, d = fbSlot(k);
-  return o.img ? <img className="fbicoimg" src={o.img} alt="" /> : <>{o.emoji || d[2]}</>; }
+  return o.img ? <img className="fbicoimg" src={o.img} alt="" /> : <Glyph e={o.emoji || d[2]} />; }
 const fbCol = (st, k) => st[k]?.color || fbSlot(k)[3];
 function IconSlotEditor({ storeKey, slots, round = true, hint }) {
   const [st, setSt] = useIconStore(storeKey);
@@ -13408,7 +13425,7 @@ function IconSlotEditor({ storeKey, slots, round = true, hint }) {
   return (<>{hint && <p className="muted small">{hint}</p>}
     <div className="icslots">{slots.map(([k, label, def, col]) => { const o = st[k] || {}; return (
       <div key={k} className="icslot">
-        <span className={"icprev" + (round ? " round" : "")} style={col ? { background: o.color || col } : undefined}>{o.img ? <img src={o.img} alt="" /> : (o.emoji || def)}</span>
+        <span className={"icprev caticon" + (round ? " round" : "") + (o.img ? " own" : "")} style={col ? { "--c": o.color || col } : undefined}>{o.img ? <img src={o.img} alt="" /> : <Glyph e={o.emoji || def} />}</span>
         <div className="grow"><b className="clamp">{label}</b>
           <div className="icctl">
             {def != null && <input className="icemoji" value={o.emoji ?? ""} placeholder={typeof def === "string" ? def : ""} maxLength={4} aria-label={label + ": Emoji oder Zeichen"} onChange={(e) => set(k, { emoji: e.target.value || null, img: e.target.value ? null : o.img })} />}
@@ -13469,7 +13486,7 @@ function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, previ
         : [x.km && kmFmt(x.km), x.station, x.note].filter(Boolean);
       return (<div key={x.id} className={"fbtlrow" + (prevId === x.id ? " open" : "")}>
         <div className="frow click fbtlitem" onClick={() => onClick(x)}>
-          <span className="fbtldot" style={{ background: col }} aria-hidden="true">{icon}</span>
+          <span className={"fbtldot" + (ics[ik]?.img ? " own" : "")} style={{ background: col, "--c": col }} aria-hidden="true">{icon}</span>
           <div className="grow"><b className="fbtltitle">{title}{docOf(x) && (onPrev ? <button type="button" className="fbclip fbclipbtn" title="Beleg ansehen" aria-label="Beleg ansehen" onClick={(e) => { e.stopPropagation(); onPrev(docOf(x)); }}>📎</button> : <span className="fbclip" title="Beleg angehängt"> 📎</span>)}</b><small className="muted block">{sub.join(" · ")}</small></div>
           <div className="right fbtlright"><b>{x.type === "trip" ? (x.purpose === "business" ? fmtMoney((x.endKm - x.startKm) * kmRate) : kmFmt(x.endKm - x.startKm)) : fmtMoney(+x.total || 0)}</b><small className="muted block">{fbDay(x.date)}</small></div>
           <Acts x={x} />
@@ -14010,7 +14027,7 @@ function assetDlDocs(list) {
   return out;
 }
 const AstIco = ({ a, size = 46 }) => a.photo ? <img className="artphoto" src={a.photo} alt="" style={{ width: size, height: size }} />
-  : <span className="caticon" style={{ width: size, height: size, background: "var(--card2)", fontSize: size * 0.45 }}>{astEmo(a)}</span>;
+  : <span className="caticon" style={{ width: size, height: size, fontSize: size * 0.45 }}><Glyph e={astEmo(a)} /></span>;
 
 function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDelete, onClose, notify }) {
   const [a, setA] = useState(init);
@@ -14364,6 +14381,25 @@ function KassaDetailWin({ e, kasse, saldo, entries, docs, onOpen, onStorno, onCl
   );
 }
 
+/* v0.99.58: Symbole – Stil, Größe, eigene Symbole */
+function IconSettings() {
+  const [st, setSt] = useLsState("iconStyle", "a"), [sz, setSz] = useLsState("iconSize", 32), [open, setOpen] = useState("");
+  const pv = (k) => <span className={"icpvrow icpv-" + k}>{[["🏦", "#0b63f6"], ["⛽", "#f59e0b"], ["📈", "#14b8a6"], ["🛒", "#84cc16"]].map(([e, c]) => <span key={e} className="icpv" style={{ "--c": c }}><Glyph e={e} /></span>)}</span>;
+  const cats = [...new Set([...Object.keys(CAT_META), ...Object.keys(CAT_STYLE)])];
+  const sec = (k, t, el) => <details className="icsec" open={open === k} onToggle={(e) => e.currentTarget.open && setOpen(k)}><summary><b>{t}</b></summary>{open === k && el}</details>;
+  return (<>
+    <h4 className="subhead">Symbole</h4>
+    <p className="muted small">Einheitlicher Stil für alle Symbole in Listen: Kategorien, Konten, Buchungen, Fahrtenbuch, Depot, Besitz, Verträge und Lager. Eigene Bilder bleiben erhalten.</p>
+    <OptPicker opts={ICON_STYLES} value={st} onPick={setSt} pv={pv} />
+    <div className="icsize"><b>Größe</b><input type="range" min="22" max="48" step="2" value={sz} onChange={(e) => setSz(+e.target.value)} aria-label="Symbolgröße" /><span className="icszv">{sz} px</span>
+      <span className="caticon" style={{ "--c": "#0b63f6" }}><Glyph e="🏦" /></span><span className="caticon" style={{ "--c": "#f59e0b" }}><Glyph e="⛽" /></span>
+      {sz !== 32 && <button className="link small" onClick={() => setSz(32)}>↺ 32 px</button>}</div>
+    <p className="muted small" style={{ marginTop: 12 }}>Eigene Symbole: Emoji eintippen, Farbe wählen oder ein eigenes Bild hochladen – wie beim Fahrtenbuch.</p>
+    {sec("cat", "Kategorien", <IconSlotEditor storeKey="catIcons" round slots={cats.map((c) => { const m = catMeta0(c); return [c, c, m.icon, m.color]; })} />)}
+    {sec("kind", "Kontoarten", <IconSlotEditor storeKey="kindIcons" round slots={Object.entries(KIND_DEFS).map(([k, [e, l]]) => [k, l, e, KIND_COL[k]])} hint="Gilt für alle Konten dieser Art ohne eigenes Symbol (eigene Symbole je Konto: beim Konto unter „Bearbeiten“)." />)}
+    {sec("fb", "Fahrtenbuch", <FbIconSettings />)}
+  </>);
+}
 /* v0.99.54: Ansichten (Monate · Sortierung · Abos) in Einstellungen → Design */
 function OptPicker({ opts, value, onPick, pv }) {
   return <div className="optpick">{opts.map(([k, t, sub]) => <button key={k} type="button" className={"optcard" + (value === k ? " on" : "")} aria-pressed={value === k} onClick={() => onPick(k)}>
@@ -14718,7 +14754,7 @@ function stockSales(arts, invoices) {
 const stockAt = (a, moves, upTo) => moves.reduce((s, m) => (m.art === a.id && (!upTo || m.date <= upTo) ? s + (Number(m.qty) || 0) : s), 0);
 const reorderQty = (a, st) => Math.max(0, Math.ceil((Number(a.max) || (Number(a.min) || 0) * 2) - st));
 const resizeImg = (file, max = 240) => new Promise((res, rej) => { const u = URL.createObjectURL(file), img = new Image(); img.onload = () => { const s = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement("canvas"); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res(c.toDataURL("image/jpeg", 0.8)); }; img.onerror = rej; img.src = u; });
-const ArtIco = ({ a, size = 46 }) => a.photo ? <img className="artphoto" src={a.photo} alt="" style={{ width: size, height: size }} /> : <span className="caticon" style={{ width: size, height: size, background: "var(--card2)", fontSize: size * 0.45 }}>📦</span>;
+const ArtIco = ({ a, size = 46 }) => a.photo ? <img className="artphoto" src={a.photo} alt="" style={{ width: size, height: size }} /> : <span className="caticon" style={{ width: size, height: size, fontSize: size * 0.45 }}><Glyph e="📦" /></span>;
 
 function StockMoveWin({ a, type: t0, st, onSave, onClose }) {
   const [m, setM] = useState({ type: t0 || "eingang", qty: "", date: todayISO(), note: "", ek: a.ek ?? "" });
@@ -14937,7 +14973,7 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
       <MItem key={m.id} icon={<MIco e={MV_TYPES[m.type]?.[1] || "•"} />} title={a.text} sub={[MV_TYPES[m.type]?.[0], m.note].filter(Boolean).join(" · ")} amount={(m.qty > 0 ? "+" : "") + fmtQty(m.qty)} amountCls={m.qty < 0 ? "neg" : "pos"} amountSub={a.unit || ""}
         swipe={!m.derived ? { right: [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: () => confirm("Bewegung löschen?") && setMoves((x) => x.filter((y) => y.id !== m.id)) }] } : undefined} />); })}</React.Fragment>)
     : moveList.map((m) => { const a = arts.find((x) => x.id === m.art); return (
-      <div key={m.id} className="frow"><span className="caticon" style={{ width: 36, height: 36, background: "var(--card2)" }}>{MV_TYPES[m.type]?.[1]}</span>
+      <div key={m.id} className="frow"><span className="caticon" style={{ width: 36, height: 36 }}><Glyph e={MV_TYPES[m.type]?.[1]} /></span>
         <div className="grow"><b>{a.text}</b><small className="muted block">{fmtDate(m.date)} · {MV_TYPES[m.type]?.[0]}{m.note ? " · " + m.note : ""}</small></div>
         <b className={m.qty < 0 ? "neg" : "pos"}>{m.qty > 0 ? "+" : ""}{fmtQty(m.qty)} <small>{a.unit || ""}</small></b>
         {!m.derived ? <button className="chip" title="Löschen" onClick={() => confirm("Bewegung löschen?") && setMoves((x) => x.filter((y) => y.id !== m.id))}>✕</button> : <span style={{ width: 34 }} />}</div>); })
@@ -14946,7 +14982,7 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
     {!counts.length && <MEmpty>Noch keine Inventur. Starte eine Zählung – am Handy auch per Strichcode-Scan.</MEmpty>}
     {[...counts].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map((c) => { const closed = c.status === "abgeschlossen", L = c.snapshot || [], tot = kbR2(L.reduce((s, l) => s + l.ist * l.ek, 0)); return (
       <div key={c.id} className={"frow" + (closed ? "" : " click")} onClick={() => !closed && setCnt(c.id)}>
-        <span className="caticon" style={{ width: 40, height: 40, background: "var(--card2)" }}>{closed ? "✅" : "📝"}</span>
+        <span className="caticon" style={{ width: 40, height: 40 }}><Glyph e={closed ? "✅" : "📝"} /></span>
         <div className="grow"><b>{c.name}</b><small className="muted block">Stichtag {fmtDate(c.date)}{c.loc ? " · " + c.loc : ""}{c.group ? " · " + c.group : ""} · {closed ? `${L.length} Pos. · ${L.filter((l) => l.ist !== l.soll).length} Diff. · Wert ${fmtMoney(tot)}` : `${Object.values(c.lines || {}).filter((v) => v !== "").length} gezählt`}</small></div>
         {closed ? <span className="invacts kbacts" onClick={(e) => e.stopPropagation()}><button className="iconbtn" title="Bericht anzeigen" aria-label="Bericht anzeigen" onClick={() => invShow(c)}><IcoEye /></button><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => invPrint(c)}><IcoPrint /></button><button className="iconbtn" title="PDF herunterladen" aria-label="PDF herunterladen" onClick={() => invPdf(c)}><IcoPdf /></button><button className="iconbtn" title="Excel herunterladen" aria-label="Excel herunterladen" onClick={() => invXlsx(c)}><IcoXls /></button></span>
           : <><span className="stpill st-open">offen</span><span className="invacts kbacts" onClick={(e) => e.stopPropagation()}><button className="iconbtn" title="Zählliste drucken" aria-label="Zählliste drucken" onClick={() => listPdf(c)}><IcoPrint /></button></span></>}
@@ -17914,6 +17950,26 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .stbmwrap>.stbmonth,.stbmwrap>.tile{margin-bottom:12px}
 .stbfrest{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;border-radius:14px;border:1px dashed var(--line);background:none;color:var(--mut);font:inherit;cursor:pointer;grid-column:1/-1}
 .stbfocus .stbmlist{grid-column:1/-1}
+/* v0.99.58 Symbole */
+.glw{display:inline-flex;align-items:center;justify-content:center;line-height:1}.gll{width:1.15em;height:1.15em;flex:none}.gle{line-height:1}
+html.ics-c .glw .gll{display:none}html:not(.ics-c) .glw .gle{display:none}
+.caticon{--c:#64748b}
+html[class*="ics-"] .caticon,html[class*="ics-"] .fbtldot{width:var(--icsz,32px)!important;height:var(--icsz,32px)!important;min-width:0!important;font-size:calc(var(--icsz,32px)*.5)!important;flex:none}
+html[class*="ics-"] .caticon .gll,html[class*="ics-"] .fbtldot .gll{width:58%;height:58%}
+html.ics-a .caticon:not(.logo):not(.avatar):not(.own),html.ics-a .fbtldot:not(.own){background:color-mix(in srgb,var(--c) 17%,transparent)!important;color:var(--c)!important;border-radius:50%!important;border:0!important;box-shadow:none!important}
+html.ics-b .caticon:not(.logo):not(.avatar):not(.own),html.ics-b .fbtldot:not(.own){background:var(--c)!important;color:#fff!important;border-radius:50%!important;border:0!important;box-shadow:none!important}
+html.ics-c .caticon:not(.logo):not(.avatar):not(.own),html.ics-c .fbtldot:not(.own){background:color-mix(in srgb,var(--c) 15%,transparent)!important;border-radius:28%!important;border:0!important;box-shadow:none!important}
+html.ics-d .caticon:not(.logo):not(.avatar):not(.own),html.ics-d .fbtldot:not(.own){background:transparent!important;color:var(--c)!important;border:0!important;box-shadow:none!important}
+html.ics-d .caticon .gll,html.ics-d .fbtldot .gll{width:80%;height:80%}
+html[class*="ics-"] .caticon.own,html[class*="ics-"] .fbtldot.own{overflow:hidden;border-radius:50%!important;padding:0!important}html.ics-c .caticon.own{border-radius:28%!important}
+.caticon.own img,.fbtldot.own img{width:100%!important;height:100%!important;object-fit:cover;display:block;border-radius:inherit}
+html[class*="ics-"] .fbtl::before{left:calc(4px + var(--icsz,32px) / 2 - 1px)}
+.accitem .ki .gll,.ki .gll{width:1.05em;height:1.05em}
+.icpvrow{display:flex;gap:6px}.icpv{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;border-radius:50%}.icpv .gll{width:15px;height:15px}
+.icpvrow:not(.icpv-c) .glw .gll{display:block!important}.icpvrow:not(.icpv-c) .glw .gle{display:none!important}.icpv-c .glw .gll{display:none!important}.icpv-c .glw .gle{display:inline!important}
+.icpv-a .icpv{background:color-mix(in srgb,var(--c) 17%,transparent);color:var(--c)}.icpv-b .icpv{background:var(--c);color:#fff}.icpv-c .icpv{background:color-mix(in srgb,var(--c) 15%,transparent);border-radius:28%}.icpv-d .icpv{color:var(--c)}.icpv-d .icpv .gll{width:20px;height:20px}
+.icsize{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 4px}.icsize input{flex:1;min-width:140px;max-width:260px}.icszv{font-variant-numeric:tabular-nums;width:48px}
+.icsec{border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:8px 0}.icsec summary{cursor:pointer}
 .stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
 .stbmacts{justify-content:space-between;margin-top:4px}
 .stbstmts{display:flex;flex-direction:column;gap:10px}

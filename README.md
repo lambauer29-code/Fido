@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.58 – Einheitliche Symbole
+- Einstellungen → Design → „Symbole“: vier Stile – Linie im getönten Kreis, volle Farbe mit weißem Icon, Emoji auf getöntem Quadrat, nur Linie
+- Größe per Regler (22–48 px, Standard 32 px) – gilt für Kategorien, Konten, Buchungen, Fahrtenbuch, Depot/Vermögen, Besitz, Verträge, Lager und Handy-Listen
+- Eigene Symbole bleiben erhalten; neu anpassbar wie beim Fahrtenbuch: Kategorien und Kontoarten (Emoji, Farbe oder eigenes Bild), Fahrtenbuch-Symbole jetzt auch dort
+- Linien-Icons: Tabler Icons (MIT-Lizenz)
+
 ## v0.99.57 – Kontoauszug: PDF und Liste gekoppelt
 - Ansicht „Beides“: Scrollt man links im PDF, läuft die Buchungsliste rechts mit (und umgekehrt) – die gleiche Buchung steht auf beiden Seiten auf gleicher Höhe, am Ende sind beide Seiten ganz unten
 - Maus über bzw. Antippen einer markierten PDF-Zeile holt die Buchung rechts ins Bild
