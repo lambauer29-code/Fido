@@ -2189,6 +2189,13 @@ function AppMain() {
 
   // v0.99.80: Belege in Fremdwährung (z. B. von der KI eingelesen) bekommen automatisch den EZB-Kurs zum Belegdatum
   useEffect(() => { let stop = false; (async () => {
+    // v0.99.81: ältere KI-Einlesungen ohne Währung korrigieren – nur wenn der Betrag im Titel/der Zusammenfassung eindeutig mit $, £ bzw. CHF steht
+    for (const d of docs.filter((x) => !x.deletedAt && x.amount?.total != null && docCur(x) === "EUR" && !x.amount.curChecked && !FX_TRIED.has("c" + x.id)).slice(0, 50)) {
+      FX_TRIED.add("c" + d.id); const t = `${d.title || ""} ${d.summary || ""}`, n = Math.abs(d.amount.total).toFixed(2), n2 = n.replace(".", ",");
+      if (/€|\bEUR\b/.test(t)) continue;
+      const cur = new RegExp(`(\\$|US\\$|\\bUSD)\\s?(${n}|${n2})`).test(t) ? "USD" : new RegExp(`(£|\\bGBP)\\s?(${n}|${n2})`).test(t) ? "GBP" : new RegExp(`\\bCHF\\s?(${n}|${n2})`).test(t) ? "CHF" : null;
+      if (cur) { const c = docsRef.current.find((x) => x.id === d.id); if (c) await saveDoc({ ...c, amount: { ...c.amount, currency: cur, fx: null, curChecked: true } }); }
+    }
     for (const d of docs.filter((x) => !x.deletedAt && x.amount?.total != null && docCur(x) !== "EUR" && !x.amount.fx && !x.amount.eur && !FX_TRIED.has(x.id)).slice(0, 20)) {
       if (stop) return; FX_TRIED.add(d.id);
       try { const r = await fetchFx(docCur(d), d.documentDate || (d.createdAt || "").slice(0, 10)); const cur = docsRef.current.find((x) => x.id === d.id); if (cur && !cur.amount?.fx && !cur.amount?.eur) await saveDoc({ ...cur, amount: { ...cur.amount, fx: r.rate, fxDate: r.date, fxSrc: r.source } }); } catch {}
@@ -5526,6 +5533,10 @@ const jDate = (d) => (d.documentDate || d.createdAt || "").slice(0, 10);
 const jMonth = (d) => jDate(d).slice(0, 7);
 const jSigned = (d) => { const t = d.amount?.total; if (t == null || isNaN(t)) return null; return d.direction === "einnahme" ? Math.abs(t) : d.direction === "ausgabe" ? -Math.abs(t) : 0; };
 const jUnconf = (d) => d.confirmed === false;
+// v0.99.81: Summen in Euro (Fremdwährung umgerechnet), Einzelbeträge in der Originalwährung
+const jEur = (d) => { const v = jSigned(d); if (v == null || docCur(d) === "EUR") return v; const e = toEur(Math.abs(v), docCur(d), docFx(d)); return e == null ? 0 : Math.sign(v) * e; };
+const jFmt = (d, v = jSigned(d), sign = false) => (v == null ? "" : (sign && v > 0 ? "+" : "") + fmtMoney(v, docCur(d)));
+const jEurHint = (d) => (docCur(d) !== "EUR" && canEur(d) && jSigned(d) ? <small className="fxeur">≈ {fmtMoney(jEur(d))}</small> : null);
 const J_FILTERS = [["alle", "▤", "Alle"], ["unbest", "○", "Unbestätigt"], ["unbez", "€", "Unbezahlt"], ["ohnebu", "⬚", "Ohne Buchung"], ["neu", "⇣", "Neu (7 Tage)"]];
 // Werte der KI im PDF suchen → farbige Markierungen (nur PDFs mit Textebene)
 async function docMarks(blob, d) {
@@ -5602,7 +5613,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   const years = useMemo(() => [...new Set(base.map((d) => jDate(d).slice(0, 4)).filter(Boolean))].sort().reverse(), [base]);
   const effFilt = mode === "pruefen" ? "unbest" : filt;
   const [jS, setJS, jDir] = useSortState("journal", "datum");
-  const J_SORTS = { datum: ["Datum", "neueste zuerst", (a, b) => jDate(b).localeCompare(jDate(a)) || (b.createdAt || "").localeCompare(a.createdAt || "")], neu: SORT_NEW, betrag: ["Betrag", "höchster zuerst", (a, b) => Math.abs(jSigned(b) || 0) - Math.abs(jSigned(a) || 0)], name: ["Absender", "A–Z", (a, b) => (a.sender || "~").localeCompare(b.sender || "~", "de")] };
+  const J_SORTS = { datum: ["Datum", "neueste zuerst", (a, b) => jDate(b).localeCompare(jDate(a)) || (b.createdAt || "").localeCompare(a.createdAt || "")], neu: SORT_NEW, betrag: ["Betrag", "höchster zuerst", (a, b) => Math.abs(jEur(b) || 0) - Math.abs(jEur(a) || 0)], name: ["Absender", "A–Z", (a, b) => (a.sender || "~").localeCompare(b.sender || "~", "de")] };
   const jSort = <SortCtl sorts={J_SORTS} sortBy={jS} setSortBy={setJS} dir={jDir} />;
   const list = useMemo(() => {
     const qn = norm(q);
@@ -5634,7 +5645,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   const boxRef = useRef(null), [boxH, setBoxH] = useState(null);
   useEffect(() => { if (mob) return; const f = () => { const r = boxRef.current?.getBoundingClientRect(); if (r) { setBoxH(Math.max(420, Math.round(innerHeight - r.top - 14))); setBoxW(Math.round(r.width)); } }; f(); addEventListener("resize", f); const t = setTimeout(f, 300);
     const ro = boxRef.current ? new ResizeObserver(f) : null; ro?.observe(boxRef.current); return () => { removeEventListener("resize", f); clearTimeout(t); ro?.disconnect(); }; }, [mob, mode]);
-  const sum = list.reduce((s, d) => s + (jSigned(d) || 0), 0);
+  const sum = list.reduce((s, d) => s + (jEur(d) || 0), 0);
   const senders = useMemo(() => { const m = {}; base.forEach((d) => { if (d.sender) m[d.sender] = (m[d.sender] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([s]) => s); }, [base]);
   const catCnt = useMemo(() => { const m = {}; base.forEach((d) => { m[d.category] = (m[d.category] || 0) + 1; }); return m; }, [base]);
   const tagCnt = useMemo(() => { const m = {}; base.forEach((d) => (d.tags || []).forEach((t) => { m[t] = (m[t] || 0) + 1; })); return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 20); }, [base]);
@@ -5673,8 +5684,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
     <button key={d.id} data-id={d.id} className={"jrow" + (curDoc?.id === d.id ? " on" : "")} onClick={() => { setCur(d.id); if (mob) setPhoneOpen(true); }}>
       <span className={"jdot" + (jUnconf(d) ? " un" : "")} title={jUnconf(d) ? "unbestätigt" : "bestätigt"} />
       <span className="grow"><span className="jrd">{jDate(d) ? fmtDate(jDate(d)).slice(0, 6) + fmtDate(jDate(d)).slice(8) : "–"}</span><small className="one">{d.sender || d.title}</small></span>
-      <span className="jra"><b className={v > 0 ? "pos" : v < 0 ? "neg" : ""}>{v != null && v !== 0 ? (v > 0 ? "+" : "") + fmtMoney(v) : d.amount?.total ? fmtMoney(d.amount.total) : ""}</b>
-        {d.amount?.currency && d.amount.currency !== "EUR" && <small className="muted block">{d.amount.currency}</small>}</span>
+      <span className="jra"><b className={v > 0 ? "pos" : v < 0 ? "neg" : ""}>{v != null && v !== 0 ? jFmt(d, v, true) : d.amount?.total ? fmtMoney(d.amount.total, docCur(d)) : ""}</b>
+        {jEurHint(d)}</span>
     </button>); };
   const onOriginal = async () => { const b = await db.getFile(curDoc.id); if (b) openPdf(b, curDoc.fileName || "Beleg.pdf", curDoc.title); };
   const pos = curDoc && (mode === "pruefen" ? `${idx + 1} von ${list.length} unbestätigt` : `${idx + 1} von ${list.length}`);
@@ -5688,8 +5699,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
     return (
       <div className="jpage-wrap">{modeBar}
         <div className="chips jyears">{["", ...years].map((y) => <button key={y || "alle"} className={"chip" + (sel.y === y ? " on" : "")} onClick={() => setSel({ y, m: "" })}>{y || "Alle"}</button>)}</div>
-        <div className="jmonths">{keys.map((k) => { const l = ms[k], out = l.filter((d) => (jSigned(d) || 0) < 0).reduce((s, d) => s - jSigned(d), 0), inc = l.filter((d) => (jSigned(d) || 0) > 0).reduce((s, d) => s + jSigned(d), 0), un = l.filter(jUnconf).length;
-          const cats = {}; l.forEach((d) => { if ((jSigned(d) || 0) < 0) cats[d.category] = (cats[d.category] || 0) - jSigned(d); }); const top = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+        <div className="jmonths">{keys.map((k) => { const l = ms[k], out = l.filter((d) => (jEur(d) || 0) < 0).reduce((s, d) => s - jEur(d), 0), inc = l.filter((d) => (jEur(d) || 0) > 0).reduce((s, d) => s + jEur(d), 0), un = l.filter(jUnconf).length;
+          const cats = {}; l.forEach((d) => { if ((jEur(d) || 0) < 0) cats[d.category] = (cats[d.category] || 0) - jEur(d); }); const top = Object.entries(cats).sort((a, b) => b[1] - a[1]);
           return (<button key={k} className="tile jmonth" onClick={() => { if (k === "ohne") pickYM("ohne"); else { setSel({ y: k.slice(0, 4), m: k.slice(5, 7) }); setOpenY({ ...openY, [k.slice(0, 4)]: true }); setMode("journal"); } }}>
             <div className="jmh"><b>{k === "ohne" ? "Ohne Datum" : MONTHS_DE[+k.slice(5, 7) - 1] + " " + k.slice(0, 4)}</b><span className={"stpill " + (un ? "st-open" : "st-paid")}>{un ? `${un} unbestätigt` : "alle bestätigt"}</span></div>
             <div className="jmk"><span>{l.length} Belege</span>{out > 0 && <b className="neg">−{fmtMoney(out)}</b>}{inc > 0 && <b className="pos">+{fmtMoney(inc)}</b>}</div>
@@ -5712,7 +5723,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
         </div>
         <MScroll extra="jmscroll">{groups.map(([m, l]) => { const shut = m !== null && mClosed.includes(m || "ohne"); return (<React.Fragment key={m ?? "flat"}>
           {m !== null && <button type="button" className={"jmhead" + (shut ? " shut" : "")} onClick={() => setMClosed(shut ? mClosed.filter((x) => x !== (m || "ohne")) : [...mClosed, m || "ohne"])} aria-expanded={!shut}>
-            <span className="jmhl"><span className="jchev">▾</span>{m ? MONTHS_DE[+m.slice(5, 7) - 1] + " " + m.slice(0, 4) : "Ohne Datum"}<small className="jmn">{l.length}</small></span><span className="muted">{fmtMoney(l.reduce((s, d) => s + (jSigned(d) || 0), 0))}</span></button>}
+            <span className="jmhl"><span className="jchev">▾</span>{m ? MONTHS_DE[+m.slice(5, 7) - 1] + " " + m.slice(0, 4) : "Ohne Datum"}<small className="jmn">{l.length}</small></span><span className="muted">{fmtMoney(l.reduce((s, d) => s + (jEur(d) || 0), 0))}</span></button>}
           {!shut && l.map(row)}</React.Fragment>); })}
           {!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege für diese Auswahl."}</MEmpty>}
           {groups.length > 1 && <div className="jmall"><button className="link" onClick={() => setMClosed([])}>Alle aufklappen</button><button className="link" onClick={() => setMClosed(groups.map(([m]) => m || "ohne"))}>Alle zuklappen</button></div>}
@@ -5739,7 +5750,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
         <div className={"jcenter" + (curDoc && !detOn && !sheetOn ? " js-" + jsPos : "") + (sheetOn ? " jsheet-on" : "")}>
           {curDoc && !detOn && !sheetOn && <div className={"jstrip jstop js" + jsPos} title={curDoc.title || curDoc.fileName}>
             <div className="grow jstxt"><b className="one">{curDoc.title || curDoc.fileName}</b><small className="muted one">{[jDate(curDoc) && fmtDate(jDate(curDoc)), curDoc.sender, curDoc.category].filter(Boolean).join(" · ")}</small></div>
-            {jSigned(curDoc) != null && <b className={"jsamt " + (jSigned(curDoc) >= 0 ? "pos" : "neg")}>{fmtMoney(jSigned(curDoc))}</b>}
+            {jSigned(curDoc) != null && <b className={"jsamt " + (jSigned(curDoc) >= 0 ? "pos" : "neg")}>{jFmt(curDoc)}{jEurHint(curDoc)}</b>}
             <span className="jsicons">
               {jUnconf(curDoc) && <button className="jsib ok" onClick={() => confirm()} title="Bestätigen" aria-label="Bestätigen">✓</button>}
               <button className="jsib" disabled={idx <= 0} onClick={() => go(-1)} aria-label="Vorheriger Beleg" title="Vorheriger Beleg">‹</button>
@@ -5768,7 +5779,7 @@ function JournalCard({ d, tx, onConfirm, onEdit, pos, onPrev, onNext }) {
       {jUnconf(d) && <button className="btn jconfok" onClick={() => onConfirm()}>✓ Bestätigen &amp; weiter</button>}
     </div>
     <b className="jctitle">{d.title || d.fileName}</b>
-    {v != null && <div className={"jcamt " + (v >= 0 ? "pos" : "neg")}>{v > 0 ? "+ " : ""}{fmtMoney(v)}</div>}
+    {v != null && <div className={"jcamt " + (v >= 0 ? "pos" : "neg")}>{v > 0 ? "+ " : ""}{fmtMoney(v, docCur(d))}{jEurHint(d)}</div>}
     <div className="jcmeta">
       {jDate(d) && <span>📅 {fmtDate(jDate(d))}</span>}
       {d.sender && <span>👤 {d.sender}</span>}

@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.81 – Journal in Originalwährung
+- Journal (Liste, Kopfzeile, Karte am Handy): Beträge in der Originalwährung des Belegs (z. B. −$ 24,00), darunter ≈ Euro-Betrag
+- Monats- und Jahressummen im Journal rechnen Fremdwährungen in Euro um
+- Ältere KI-Einlesungen ohne Währung: steht der Betrag im Titel eindeutig mit $, £ oder CHF, wird die Währung automatisch korrigiert und der EZB-Kurs ergänzt
+
 ## v0.99.80 – Fremdwährungen
 - Währung wählbar (29 gängige + beliebiger ISO-Code) bei: Dokumenten/Belegen, eigenen Rechnungen & Angeboten, Ausgabe erfassen, Verträgen & Fixkosten, Besitz & Garantie, Kassabuch; Kunden mit Standard-Währung
 - EZB-Referenzkurs zum Belegdatum wird automatisch geholt (neue Server-Funktion api/fx.js, Daten über frankfurter/EZB); eigener Kurs oder Euro-Betrag (z. B. laut Kontoauszug) überschreibbar
