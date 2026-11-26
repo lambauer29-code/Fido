@@ -1,6 +1,7 @@
 // Steuerberater-Berichte: KI mit Websuche nach aktuellem österreichischem Steuerrecht
 //  mode "activity": Tätigkeit einordnen (Einkunftsart, Sozialversicherung, Pauschalierungen, Grenzen)
 //  mode "check":    Jahreswerte vor dem Export prüfen (Hinweise mit Quellen)
+//  mode "reserve":  Rücklage ESt/SVS + Kleinunternehmergrenze (Einordnung, Gehalt schätzen, Rechenwerte)
 // Umgebungsvariablen: ANTHROPIC_API_KEY (Pflicht), APP_TOKEN (optional), CLAUDE_MODEL (optional)
 export const config = { maxDuration: 60 };
 
@@ -66,6 +67,29 @@ Antworte NUR mit einem JSON-Objekt ohne weiteren Text:
 Maximal 12 findings, die wichtigsten zuerst. Erfinde nichts – wenn du etwas nicht prüfen kannst, schreibe es als info.`;
 }
 
+function promptReserve({ year, data }) {
+  return `Du bist Steuerberater in Österreich. Heute ist ${today()}. Steuerjahr: ${year}.
+Ein Angestellter hat zusätzlich eine eigene Firma (Nebentätigkeit). Er will wissen, wie viel er für Einkommensteuer und SVS-Nachzahlung zurücklegen soll, und wie nahe er an der Kleinunternehmergrenze ist.
+Recherchiere im Web die für ${year} AKTUELL gültigen Werte (bevorzugt bmf.gv.at, usp.gv.at, findok.bmf.gv.at, wko.at, svs.at, ris.bka.gv.at).
+Daten aus der App (JSON, Beträge in Euro):
+${JSON.stringify(data)}
+
+Aufgaben:
+1. Entscheide anhand von Tätigkeit, Kategorien und Wertpapieren, wie der Firmengewinn steuerlich zu behandeln ist: "betrieb" (Tarif, Einkünfte aus Gewerbebetrieb/selbständiger Arbeit), "kapital" (Einkünfte aus Kapitalvermögen, 27,5 % Sondersteuersatz, keine SVS) oder "gemischt" (dann Anteil kapitalShare 0–1).
+2. Entscheide die Sozialversicherung: "gewerbe" (GSVG mit Gewerbeschein, Mindestbeitragsgrundlage), "neu" (Neue Selbständige, Versicherungsgrenze), "ausnahme" (Kleinstunternehmer-Ausnahme, nur Unfallversicherung) oder "keine".
+3. Schätze aus den Gehaltseingängen (netto je Monat, inkl. 13./14. falls erkennbar) bzw. dem Bruttogehalt das steuerpflichtige Jahreseinkommen aus der Anstellung (Lohnzettel Kennzahl 245, ohne Sonderzahlungen). Falls schon ein Wert angegeben ist, übernimm ihn.
+4. Liefere die Rechenwerte für ${year}.
+Antworte NUR mit einem JSON-Objekt ohne weiteren Text:
+{"trade":"betrieb|kapital|gemischt","kapitalShare":Zahl oder null,"tradeWhy":"max. 20 Wörter",
+ "svs":"gewerbe|neu|ausnahme|keine","svsWhy":"max. 20 Wörter",
+ "salaryKz245":Zahl oder null,"salaryWhy":"max. 20 Wörter",
+ "rules":{"brackets":[[Obergrenze,Grenzsteuersatz als Anteil],… letzte Stufe mit Obergrenze null],
+   "gfbRate":Anteil,"gfbCap":Euro,"kv":Anteil,"pv":Anteil,"sv":Anteil,"uvMonth":Euro,"vg":Euro (Versicherungsgrenze Neue Selbständige jährlich),"mbg":Euro (Mindestbeitragsgrundlage jährlich),"hbg":Euro (Höchstbeitragsgrundlage jährlich),"kuLimit":Euro,"kuTol":Euro,"vfb":Euro (Veranlagungsfreibetrag),"kest":Anteil},
+ "notes":["max. 6 kurze, konkrete Hinweise für genau diesen Fall, z. B. Mehrfachversicherung, Nachbemessung, Vorauszahlungen"],
+ "sources":[{"title":"","url":""}]}
+Wenn ein Wert unsicher ist, setze null und erkläre es in notes. Erfinde nichts.`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Nur POST" });
   const token = process.env.APP_TOKEN;
@@ -73,14 +97,15 @@ export default async function handler(req, res) {
   if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY fehlt in Vercel" });
   const b = req.body || {};
   const year = String(b.year || new Date().getFullYear()).slice(0, 4);
-  const prompt = b.mode === "activity"
+  const prompt = b.mode === "reserve" ? promptReserve({ year, data: b.data || {} })
+    : b.mode === "activity"
     ? promptActivity({ activity: String(b.activity || "").slice(0, 600), kind: String(b.kind || "").slice(0, 120), year, details: String(b.details || "").slice(0, 400), ctx: b.ctx })
     : promptCheck({ year, data: b.data || {}, detail: !!b.detail });
   try {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: process.env.CLAUDE_MODEL || "claude-sonnet-5-5", max_tokens: b.mode === "activity" ? 7000 : 4000,
+      body: JSON.stringify({ model: process.env.CLAUDE_MODEL || "claude-sonnet-5-5", max_tokens: b.mode === "activity" ? 7000 : b.mode === "reserve" ? 3000 : 4000,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: b.mode === "activity" ? 4 : 5 }],
         messages: [{ role: "user", content: prompt }] }),
       signal: AbortSignal.timeout(55000)

@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.45 – Rücklage für Einkommensteuer & SVS, Kleinunternehmergrenze
+
+- Steuerberater → 💰 Rücklage: wie viel für Einkommensteuer und SVS zurückzulegen ist (Gewinn hochgerechnet, Gewinnfreibetrag, Veranlagungsfreibetrag, Grenzsteuersatz zusätzlich zum Gehalt, bereits bezahlte Vorauszahlungen/SVS aus den Buchungen erkannt), Empfehlung pro Monat.
+- Balken zur Kleinunternehmergrenze (55.000 € / Toleranz 60.500 €) mit Hochrechnung, Vorjahr und Warnstufen.
+- KI-Auswertung (Websuche, österreichisches Steuerrecht): entscheidet Betrieb/Kapital und SVS-Art, schätzt das Gehalt (KZ 245) aus den Gehaltseingängen und liefert die aktuellen Rechenwerte. Alles auch manuell wählbar (Lohnzettel, Brutto-Monatsgehalt, Gewerbeschein, Neue Selbständige, Ausnahme …).
+- Anzeige in der Firmenauswertung und als Kachel in der Übersicht – ein-/ausschaltbar unter Steuerberater → Einstellungen bzw. in der Rücklage.
+- Server: /api/tax mit neuem Modus „reserve“.
+
 ## v0.99.44 – Kontoverwendung als Dropdown
 
 - Steuerberater → Einstellungen: Privat / Firma / Beides je Konto jetzt als Dropdown im gewohnten App-Format statt Umschaltleiste.

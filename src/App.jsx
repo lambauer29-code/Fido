@@ -2345,7 +2345,7 @@ function AppMain() {
           categories={categories} token={token} notify={notify} setTab={setTab} onOpen={setOpenId} openTx={(t) => setStbTx(t)} />}
         {tab === "steuer" && <StbPage txs={txs} accounts={accounts} setAccounts={setAccounts} docs={active} saveDoc={saveDoc} updateTx={updateTx} updateTxs={updateTxs} importTxs={importTxs} getTxs={() => txsRef.current}
           categories={categories} token={token} notify={notify} setTab={setTab} onOpen={setOpenId} openTx={(t) => setStbTx(t)} />}
-        {tab === "firma" && <BizReport docs={active} setTab={setTab} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
+        {tab === "firma" && <BizReport docs={active} txs={txs} accounts={accounts} notify={notify} setTab={setTab} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
         {tab === "vermoegen" && <Wealth txs={txs} accounts={visAccounts} openAccount={openAccountTab} editing={boardEdit === tab} setEditing={(v) => setBoardEdit(v ? tab : null)} />}
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
         {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
@@ -2543,6 +2543,7 @@ function Donut({ parts, total }) {
   );
 }
 const HOME_WIDGETS = {
+  ruecklage: ["Rücklage", 4, "💰", "Einkommensteuer, SVS und Kleinunternehmergrenze"],
   hero: ["Monatssaldo", 12, "💰", "Einnahmen, Ausgaben, Fixkosten"],
   alerts: ["Offene Rechnungen", 12, "🧾", "Hinweis auf unbezahlte Rechnungen"],
   konten: ["Konten", 4, "🏦", "Kontostände aller Konten"],
@@ -2560,6 +2561,7 @@ const HOME_WIDGETS = {
   ablage: ["Universal-Ablage", 4, "📥", "Alle Dateien & Ordner – wird automatisch einsortiert"],
 };
 const HOME_DEFAULT = { order: ["hero", "alerts", "konten", "bargeld", "kategorien", "verlauf", "budgets", "fristen"], hidden: ["docs", "contracts", "tx", "tax", "quick"], w: {}, h: {}, gap: 16 };
+const HOME_WIDGETS_NORL = Object.fromEntries(Object.entries(HOME_WIDGETS).filter(([k]) => k !== "ruecklage"));
 function migrateLayout(l) {
   if (!l) return JSON.parse(JSON.stringify({ ...HOME_DEFAULT, order: ["ablage", ...HOME_DEFAULT.order], seenAblage: true }));
   if (!l.seenAblage) l = { ...l, seenAblage: true, order: l.order.includes("ablage") ? l.order : ["ablage", ...l.order], hidden: (l.hidden || []).filter((x) => x !== "ablage") };
@@ -2837,7 +2839,8 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
 }
 
 /* ======================= Firmen-Auswertung ======================= */
-function BizReport({ docs, setTab, editing = false, setEditing = () => {} }) {
+function BizReport({ docs, txs = [], accounts = [], notify, setTab, editing = false, setEditing = () => {} }) {
+  const [rlCfg] = useLsState("rlCfg", RL_DEF);
   const [list] = useLsState("invoices", []);
   const [fb] = useLsState("fbook", FB_EMPTY);
   const thisYear = todayISO().slice(0, 4);
@@ -2899,6 +2902,7 @@ function BizReport({ docs, setTab, editing = false, setEditing = () => {} }) {
             { label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) }]} /></div>
       </div>
       <WidgetBoard storeKey="bizGrid" title="Firmenauswertung" editing={editing} setEditing={setEditing}>
+      {(rlCfg.showFirma ?? true) && <W k="ruecklage" label="Rücklage & Kleinunternehmergrenze" w="half" icon="💰" desc="Einkommensteuer, SVS, Umsatzgrenze"><RlPanel compact txs={txs} accounts={accounts} docs={docs} setTab={setTab} notify={notify} /></W>}
       <W k="kennzahlen" label="Kennzahlen"><div className="anakpis">
         <div className="tile kpi"><small className="muted">Fakturiert</small><div className="kpiv">{fmtMoney(billed)}</div><small className="muted">{yInv.length} Rechnungen</small></div>
         <div className="tile kpi"><small className="muted">Eingegangen</small><div className="kpiv pos">{fmtMoney(received)}</div><small className="muted">{paidL.length} bezahlt</small></div>
@@ -4520,6 +4524,7 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
       ))}
       {!taxDocs.length && <p className="muted small">Noch keine steuerrelevanten Belege in diesem Jahr.</p>}
     </section>);
+  const [rlCfgH] = useLsState("rlCfg", RL_DEF); const rlOn = rlCfgH.showHome ?? true;
   const w_quick = actions ? (
     <section className="tile">
       <div className="tilehead"><b>Schnellzugriff</b></div>
@@ -4538,11 +4543,11 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
     </section>) : null;
   const w_ablage = uniDrop ? <section className="tile uniwidget"><div className="tilehead"><b>Universal-Ablage</b><small>wird automatisch einsortiert</small></div>{uniDrop}</section> : null;
   const els = { ablage: w_ablage, barerfassung: w_barerfassung, hero: w_hero, alerts: w_alerts, konten: w_konten, bargeld: w_bargeld, kategorien: w_kategorien, verlauf: w_verlauf,
-    budgets: w_budgets, fristen: w_fristen, docs: w_docs, contracts: w_contracts, tx: w_tx, tax: w_tax, quick: w_quick };
+    budgets: w_budgets, fristen: w_fristen, docs: w_docs, contracts: w_contracts, tx: w_tx, tax: w_tax, quick: w_quick, ruecklage: rlOn ? <RlPanel compact txs={txs} accounts={accounts} docs={docs} setTab={setTab} /> : null };
   if (touchHome) return <HomeTiles {...{ docs, dlDocs, txs, budgets, onOpen, setTab, accounts, editing, setEditing, flows, thisMonth, monthName, bankAccs, bankTotal, fix, openInv, spentByCat, budgetRows, verlauf: w_verlauf, kategorien: w_kategorien }} />;
   return (
     <>
-      <DashGrid storeKey="homeLayout" widgets={HOME_WIDGETS} migrate={migrateLayout} els={els} editing={editing} setEditing={setEditing} title="Übersicht" />
+      <DashGrid storeKey="homeLayout" widgets={rlOn ? HOME_WIDGETS : HOME_WIDGETS_NORL} migrate={migrateLayout} els={els} editing={editing} setEditing={setEditing} title="Übersicht" />
       {!docs.length && <div className="empty"><div style={{ fontSize: 48 }}>📥</div><p>Tippe auf <b>＋</b> und füge dein erstes Dokument hinzu.</p></div>}
     </>
   );
@@ -4855,7 +4860,7 @@ function HubPage({ hub, nav, setNav, setTab, docs, dlDocs, accounts, notify }) {
 const APP_SCOPES = [["alle", "Alle"], ["privat", "Privat"], ["firma", "Firma"]];
 const HOME_TILE_DEFAULT = {
   alle: ["mahn", "invOpen", "saldo", "konten", "fristen", "zahlen", "fix", "kassa"],
-  firma: ["invOpen", "mahn", "umsatz", "gewinn", "ausgFirma", "kassa", "fristen", "ku"],
+  firma: ["invOpen", "mahn", "umsatz", "gewinn", "ruecklage", "ausgFirma", "kassa", "fristen", "ku"],
   privat: ["saldo", "konten", "ausgaben", "fix", "fristen", "zahlen", "budget"]
 };
 function useAppScope() {
@@ -4863,9 +4868,10 @@ function useAppScope() {
   const set = (v) => { setSc(v); ls.set("docScope", v); ls.set("ctScope", v); ls.set("astScope", v); };
   return [sc, set];
 }
-function HomeTiles({ docs, dlDocs, txs, onOpen, setTab, editing, setEditing, flows, thisMonth, monthName, bankAccs, bankTotal, fix, openInv, budgetRows, verlauf, kategorien }) {
+function HomeTiles({ docs, dlDocs, txs, accounts = [], onOpen, setTab, editing, setEditing, flows, thisMonth, monthName, bankAccs, bankTotal, fix, openInv, budgetRows, verlauf, kategorien }) {
   const [scope, setScope] = useAppScope();
   const [order, setOrder] = useLsState("homeTiles", HOME_TILE_DEFAULT);
+  const rl = useRl(txs, accounts, docs, todayISO().slice(0, 4));
   const [list] = useLsState("invoices", []);
   const [fb] = useLsState("fbook", FB_EMPTY);
   const { kassen, entries } = useKassa();
@@ -4905,6 +4911,7 @@ function HomeTiles({ docs, dlDocs, txs, onOpen, setTab, editing, setEditing, flo
     ausgaben: { l: "Ausgaben " + monthName, v: fmtMoney(scope === "privat" ? privOut : f.out), s: scope === "privat" ? "private Belege" : "alle Konten", tab: "analyse" },
     budget: { l: "Budgets", v: overBudget.length ? String(overBudget.length) : "✓", s: overBudget.length ? "überschritten" : budgetRows.some((b) => b.budget) ? "alle im Rahmen" : "noch keine", tone: overBudget.length ? "bad" : "", tab: "analyse" }
   };
+  if (rl.r && rl.cfg.showHome && scope !== "privat") T.ruecklage = { l: "Rücklage " + rl.r.y, v: fmtMoney(rl.r.total), s: `≈ ${fmtMoney(rl.r.monthly)}/Monat · ESt ${fmtMoney(rl.r.estOwed)} · SVS ${fmtMoney(rl.r.svsOwed)}`, tone: rl.r.kuLevel === "over" || rl.r.kuLevel === "prev" ? "bad" : "", go: () => rlGo(setTab) };
   const keys = (order?.[scope] || HOME_TILE_DEFAULT[scope]).filter((k) => T[k]);
   const hidden = Object.keys(T).filter((k) => !keys.includes(k));
   const setKeys = (l) => setOrder({ ...HOME_TILE_DEFAULT, ...order, [scope]: l });
@@ -4938,7 +4945,7 @@ function HomeTiles({ docs, dlDocs, txs, onOpen, setTab, editing, setEditing, flo
   </section>) : null;
   const tilesEl = (<div className={"httiles" + (editing ? " editing" : "")}>
     {keys.map((k, i) => { const t = T[k]; return (
-      <div key={k} className={"httile " + (t.tone || "")} role="button" tabIndex={0} onClick={() => !editing && setTab(t.tab)} onKeyDown={(e) => e.key === "Enter" && !editing && setTab(t.tab)}>
+      <div key={k} className={"httile " + (t.tone || "")} role="button" tabIndex={0} onClick={() => !editing && (t.go ? t.go() : setTab(t.tab))} onKeyDown={(e) => e.key === "Enter" && !editing && (t.go ? t.go() : setTab(t.tab))}>
         <small>{t.l}</small><b>{t.v}</b><span>{t.s}</span>
         {editing && <div className="htedit" onClick={(e) => e.stopPropagation()}>
           <button aria-label="nach vorne" disabled={!i} onClick={() => move(k, -1)}>◀</button>
@@ -8143,6 +8150,187 @@ function stbYearData(year, D, opt, map) {
   const noDoc = used.filter((l) => l.amount < 0 && !l.hasDoc), unklar = D.rows.filter((r) => inY(r.t.date) && r.scope === "unklar" && !r.transfer);
   return { yr, lines, used, byKz, inc, out, profit, gfb, invs, umsatz, umsatzM, kuLimit, variants, best, anl, afaSum, trips, km, kmEur, rate, veh, waren9100, priv, noDoc, unklar, ku: opt.ku };
 }
+/* ======================= v0.99.45: Rücklage Einkommensteuer + SVS · Kleinunternehmergrenze ======================= */
+// Rechenwerte je Jahr (bmf.gv.at / usp.gv.at / wko.at, Stand 11/2026). Die KI-Abfrage („reserve“) kann sie für das gewählte Jahr überschreiben.
+const RL_RULES = {
+  2025: { br: [[13308, 0], [21617, 0.2], [35836, 0.3], [69166, 0.4], [103072, 0.48], [1e6, 0.5], [null, 0.55]], gfbRate: 0.15, gfbCap: 33000, kv: 0.068, pv: 0.185, sv: 0.0153, uvMonth: 11.35, vg: 6613.2, mbg: 6613.2, hbg: 90300, kuLimit: 55000, kuTol: 60500, vfb: 730, kest: 0.275 },
+  2026: { br: [[13539, 0], [21992, 0.2], [36458, 0.3], [70365, 0.4], [104859, 0.48], [1e6, 0.5], [null, 0.55]], gfbRate: 0.15, gfbCap: 33000, kv: 0.068, pv: 0.185, sv: 0.0153, uvMonth: 12.95, vg: 6613.2, mbg: 6613.2, hbg: 97020, kuLimit: 55000, kuTol: 60500, vfb: 730, kest: 0.275 }
+};
+const RL_DEF = { salary: "ki", lz: {}, gross: "", svs: "ki", trade: "ki", paidEst: {}, paidSvs: {}, proj: true, showFirma: true, showHome: true };
+const RL_SAL = [["ki", "🤖 KI schätzt aus den Gehaltseingängen"], ["lz", "📄 Lohnzettel (Kennzahl 245) eintragen"], ["brutto", "💶 Brutto-Monatsgehalt eintragen"], ["keine", "Kein Gehalt / keine Anstellung"]];
+const RL_SVS = [["ki", "🤖 KI entscheidet"], ["gewerbe", "Gewerbeschein (GSVG, Mindestbeitrag)"], ["neu", "Neue Selbständige (Versicherungsgrenze)"], ["ausnahme", "Kleinstunternehmer-Ausnahme (nur Unfallvers.)"], ["keine", "Keine SVS"]];
+const RL_TRADE = [["ki", "🤖 KI entscheidet"], ["betrieb", "Betriebseinnahmen (Tarif)"], ["kapital", "Kapitalerträge (27,5 %)"], ["gemischt", "Gemischt"]];
+const RL_SVS_TXT = { gewerbe: "Gewerbeschein (GSVG)", neu: "Neue Selbständige", ausnahme: "Kleinstunternehmer-Ausnahme", keine: "keine SVS" };
+const RL_TRADE_TXT = { betrieb: "Betriebseinnahmen (Tarif)", kapital: "Kapitalerträge (27,5 %)", gemischt: "gemischt" };
+const rlCfgGet = () => ({ ...RL_DEF, ...ls.get("rlCfg", {}) });
+function rlRules(y, ai) {
+  const keys = Object.keys(RL_RULES).map(Number), base = RL_RULES[y] || RL_RULES[Math.max(...keys.filter((k) => k <= y), Math.min(...keys))];
+  const r = { ...base, src: RL_RULES[y] ? "app" : "app-alt" };
+  const a = ai?.rules; if (!a) return r;
+  const num = (k, lo, hi) => { const v = aiNum(a[k], lo, hi); if (v != null) { r[k] = v; r.src = "ki"; } };
+  num("gfbRate", 0, 0.3); num("gfbCap", 1000, 200000); num("kv", 0, 0.2); num("pv", 0, 0.3); num("sv", 0, 0.05); num("uvMonth", 0, 100);
+  num("vg", 1000, 50000); num("mbg", 1000, 50000); num("hbg", 20000, 300000); num("kuLimit", 10000, 200000); num("kuTol", 10000, 250000); num("vfb", 0, 5000); num("kest", 0.1, 0.5);
+  const b = Array.isArray(a.brackets) ? a.brackets : null;
+  if (b && b.length >= 4 && b.length <= 9 && b.every((x, i) => Array.isArray(x) && aiNum(x[1], 0, 0.6) != null && (x[0] == null ? i === b.length - 1 : aiNum(x[0], 1000, 1e7) != null && (!i || x[0] > b[i - 1][0])))) { r.br = b.map(([h, t]) => [h ?? null, t]); r.src = "ki"; }
+  return r;
+}
+function rlTax(x, br) { let t = 0, lo = 0; for (const [hi, r] of br) { const top = hi == null ? Infinity : hi; if (x > lo) t += (Math.min(x, top) - lo) * r; lo = top; } return t; }
+const rlMarg = (x, br) => (br.find(([hi]) => hi == null || x <= hi) || br[br.length - 1])[1];
+function rlSalaryData(D, y) {
+  const from = addMon(todayISO().slice(0, 7), -12), by = {};
+  for (const r of D.rows) {
+    const t = r.t; if (t.amount <= 0 || r.transfer || r.scope === "firma" || (t.date || "").slice(0, 7) < from) continue;
+    const k = (t.counterparty || t.purpose || "?").slice(0, 40), m = t.date.slice(0, 7), o = by[k] || (by[k] = { name: k, cat: t.category || "", months: {} });
+    o.months[m] = r2e((o.months[m] || 0) + t.amount);
+  }
+  return Object.values(by).filter((o) => Object.keys(o.months).length >= 3 || /gehalt|lohn|bezug|pension/i.test(o.cat + " " + o.name))
+    .map((o) => ({ ...o, total: r2e(Object.values(o.months).reduce((s, v) => s + v, 0)) })).sort((a, b) => b.total - a.total).slice(0, 6);
+}
+function rlCompute(year, D, txs, cfg, aiMap) {
+  const y = String(year), O = stbOpt(), map = ls.get("stbKzMap", {}), ai = aiMap?.[y] || null;
+  const Y = stbYearData(y, D, O, map), Yp = stbYearData(String(+y - 1), D, O, map), R = rlRules(+y, ai);
+  const now = todayISO(), cur = now.slice(0, 4) === y;
+  const doy = cur ? Math.round((new Date(now) - new Date(y + "-01-01")) / 864e5) + 1 : 365;
+  const f = cur && cfg.proj && doy >= 30 ? 365 / doy : 1;
+  const inY = (d) => (d || "").startsWith(y), txt = (t) => `${t.counterparty || ""} ${t.purpose || ""}`;
+  const sv9225 = Y.byKz["9225"]?.sum || 0;
+  const svPaidAuto = r2e(Math.max(sv9225, sumBy(txs.filter((t) => inY(t.date) && t.amount < 0 && /\bSVS\b|sozialversicherung der selbst/i.test(txt(t))), (t) => -t.amount)));
+  const estPaidAuto = r2e(sumBy(txs.filter((t) => inY(t.date) && t.amount < 0 && /finanzamt|\bBMF\b/i.test(t.counterparty || "") && /einkommensteuer|\bESt\b|vorauszahlung|\bE-?VZ\b/i.test(t.purpose || "") && !/umsatzsteuer|\bUVA\b|\bUSt\b|lohnsteuer|motorbezogen|normverbrauch|kfz/i.test(t.purpose || "")), (t) => -t.amount));
+  const ov = (o) => (o?.[y] === "" || o?.[y] == null ? null : +o[y]);
+  const svPaid = ov(cfg.paidSvs) ?? svPaidAuto, estPaid = ov(cfg.paidEst) ?? estPaidAuto;
+  const P = r2e((Y.profit + sv9225) * f);   // Gewinn vor SVS, hochgerechnet
+  const act = O.ai || {};
+  const trade = cfg.trade !== "ki" ? cfg.trade : ai?.trade || (act.profile?.capital ? "kapital" : "betrieb");
+  const kShare = trade === "kapital" ? 1 : trade === "gemischt" ? aiNum(ai?.kapitalShare, 0, 1) ?? 0.5 : 0;
+  const svsT = cfg.svs !== "ki" ? cfg.svs : ai?.svs || (kShare === 1 ? "keine" : act.kind === "neue_selbst" || /neue selb/i.test(act.socialInsurance || "") ? "neu" : /gsvg|gewerb/i.test(act.socialInsurance || "") || ["gewerbe", "handel"].includes(act.kind) ? "gewerbe" : "neu");
+  const Pb = Math.max(0, P * (1 - kShare)), Pk = P * kShare, rate = R.kv + R.pv + R.sv, uv = R.uvMonth * 12;
+  const svsBG = svsT === "gewerbe" ? Math.min(Math.max(Pb, R.mbg), R.hbg) : svsT === "neu" && Pb > R.vg ? Math.min(Pb, R.hbg) : 0;
+  const svsTotal = r2e(svsBG * rate + (svsT === "keine" || (svsT === "neu" && !svsBG) ? 0 : uv)), svsOwed = r2e(Math.max(0, svsTotal - svPaid));
+  const sal = cfg.salary === "lz" ? +(cfg.lz?.[y] || 0) : cfg.salary === "brutto" ? Math.max(0, (+cfg.gross || 0) * 12 * 0.8193 - 132) : cfg.salary === "ki" ? aiNum(ai?.salaryKz245, 0, 5e6) ?? null : 0;
+  const S = sal ?? 0, base = Math.max(0, Pb - svsTotal), gfb = r2e(Math.min(base, R.gfbCap) * R.gfbRate);
+  let T = Math.max(0, base - gfb); if (S > 0) T = T <= R.vfb ? 0 : T < 2 * R.vfb ? T - (2 * R.vfb - T) : T;
+  const estB = r2e(rlTax(S + T, R.br) - rlTax(S, R.br)), kestInl = kShare > 0 && O.depots === "inland", estK = kestInl ? 0 : r2e(Math.max(0, Pk) * R.kest);
+  const estTotal = r2e(estB + estK), estOwed = r2e(Math.max(0, estTotal - estPaid)), total = r2e(estOwed + svsOwed);
+  const umsY = Y.umsatz, umsP = r2e(umsY * f), umsPrev = Yp.umsatz, kuL = R.kuLimit, kuT = R.kuTol;
+  const kuLevel = umsPrev > kuL ? "prev" : umsY > kuT ? "over" : umsY > kuL ? "tol" : umsY > kuL * 0.8 || umsP > kuL ? "warn" : "ok";
+  return { y, R, f, cur, doy, profitY: Y.profit, P, Pb, Pk, sv9225, trade, kShare, svsT, svsBG, svsTotal, svPaid, svPaidAuto, svsOwed, salNeedAi: sal == null, S, base, gfb, T, estB, estK, kestInl, estTotal, estPaid, estPaidAuto, estOwed, total,
+    marg: rlMarg(S + T, R.br), monthly: r2e(total / 12), umsY, umsP, umsPrev, kuL, kuT, kuLevel, ai, Y, ku: O.ku !== false };
+}
+function useRl(txs, accounts, docs, year) {
+  const [cfg] = useLsState("rlCfg", RL_DEF), [aiMap] = useLsState("rlAi", {});
+  const D = useMemo(() => stbData(txs, accounts, docs), [txs, accounts, docs]);
+  const c = { ...RL_DEF, ...cfg };
+  const r = useMemo(() => { try { return rlCompute(year, D, txs, c, aiMap); } catch (e) { return null; } }, [D, year, JSON.stringify(c), aiMap]);
+  return { r, D, cfg: c, aiMap };
+}
+const rlGo = (setTab) => { lsSetEv("stbSec", "ruecklage"); setTab?.("steuer"); };
+const rlPct = (v, max) => Math.max(0, Math.min(100, (v / max) * 100));
+function RlKuBar({ r, small }) {
+  const max = r.kuT * 1.1, lv = r.kuLevel;
+  const tone = { ok: "st-paid", warn: "st-open", tol: "st-open", over: "st-over", prev: "st-over" }[lv];
+  const msg = { ok: `${Math.round((r.umsY / r.kuL) * 100)} % genutzt`, warn: "bald an der Grenze", tol: "in der Toleranz – bis Jahresende noch ohne USt", over: "überschritten – ab jetzt USt verrechnen", prev: "Vorjahr über der Grenze – Regelung gilt heuer nicht" }[lv];
+  return (<div className={"rlku" + (small ? " sm" : "")}>
+    <div className="rlkuh"><b>Kleinunternehmergrenze {r.y}</b><span className="grow" /><span className={"stpill " + tone}>{msg}</span></div>
+    <div className="rlbar"><i className={"rlfill " + lv} style={{ width: rlPct(r.umsY, max) + "%" }} />{r.cur && r.umsP > r.umsY && <i className="rlproj" style={{ left: rlPct(r.umsY, max) + "%", width: rlPct(r.umsP - r.umsY, max) + "%" }} />}
+      <span className="rlmark" style={{ left: rlPct(r.kuL * 0.8, max) + "%" }} /><span className="rlmark lim" style={{ left: rlPct(r.kuL, max) + "%" }} /><span className="rlmark tol" style={{ left: rlPct(r.kuT, max) + "%" }} /></div>
+    {small ? <small className="muted block" style={{ marginTop: 4 }}>{fmtMoney(r.umsY)} von {fmtMoney(r.kuL)} (Toleranz bis {fmtMoney(r.kuT)})</small> : <div className="rlscale"><span>0</span><span style={{ left: rlPct(r.kuL, max) + "%" }}>{fmtMoney(r.kuL)}</span><span style={{ left: rlPct(r.kuT, max) + "%" }}>{fmtMoney(r.kuT)}</span></div>}
+    {!small && <div className="rlrows">
+      <div><span>Umsatz bisher (brutto)</span><b>{fmtMoney(r.umsY)}</b></div>
+      {r.cur && <div><span>Hochrechnung Jahresende</span><b>{fmtMoney(r.umsP)}</b></div>}
+      <div><span>Vorjahr {+r.y - 1}</span><b>{fmtMoney(r.umsPrev)} {r.umsPrev > r.kuL ? "· über der Grenze" : "· ok"}</b></div>
+    </div>}
+  </div>);
+}
+async function rlRunAi(year, D, txs, cfg, notify) {
+  const y = String(year), O = stbOpt(), r = rlCompute(y, D, txs, cfg, {});
+  const cats = {}; for (const l of r.Y.used) { const k = (l.amount > 0 ? "+" : "-") + (l.cat || "Sonstiges"); cats[k] = r2e((cats[k] || 0) + l.amount); }
+  const data = { jahr: y, stand: todayISO(), gewinnBisher: r.profitY, gewinnVorSvsHochgerechnet: r.P, svsGebuchtAlsAusgabe: r.sv9225, svsGezahlt: r.svPaid, estGezahlt: r.estPaid,
+    umsatzBisher: r.umsY, umsatzHochrechnung: r.umsP, umsatzVorjahr: r.umsPrev, kleinunternehmer: r.ku,
+    taetigkeit: ls.get("stbActivity", {}), beschreibung: ls.get("stbBizDesc", ""), kiEinordnung: O.ai ? { activity: O.ai.activity, incomeType: O.ai.incomeType, socialInsurance: O.ai.socialInsurance, kind: O.ai.kind, capital: O.ai.profile?.capital } : null,
+    depots: O.depots || null, kategorien: Object.entries(cats).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 25),
+    gehalt: { modus: cfg.salary, lohnzettelKz245: cfg.lz?.[y] || null, bruttoMonat: cfg.gross || null, eingaenge: rlSalaryData(D, y) } };
+  const res = await stbAiCall({ mode: "reserve", year: y, data });
+  const m = { ...ls.get("rlAi", {}), [y]: { ...res, year: y } }; lsSetEv("rlAi", m);
+  notify?.("KI-Auswertung übernommen");
+  return res;
+}
+function RlPanel({ txs, accounts, docs, year: year0, compact = false, setTab, notify }) {
+  const [year, setYear] = useState(year0 || todayISO().slice(0, 4));
+  const { r, D, cfg, aiMap } = useRl(txs, accounts, docs, year);
+  const [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const setCfg = (p) => lsSetEv("rlCfg", { ...rlCfgGet(), ...p });
+  if (!r) return <section className="tile"><p className="muted">Rücklage konnte nicht berechnet werden.</p></section>;
+  const runAi = async () => { setBusy(true); setErr(""); try { await rlRunAi(year, D, txs, cfg, notify); } catch (e) { setErr(e.message); } finally { setBusy(false); } };
+  const ai = aiMap?.[r.y];
+  if (compact) return (<section className="tile rlcard click" onClick={() => rlGo(setTab)}>
+    <div className="tilehead"><b>💰 Rücklage {r.y}</b><small>{r.cur && r.f > 1 ? "hochgerechnet" : ""}</small></div>
+    <div className="rlkpis sm"><div><small>Zurücklegen</small><b>{fmtMoney(r.total)}</b></div><div><small>Einkommensteuer</small><b>{fmtMoney(r.estOwed)}</b></div><div><small>SVS</small><b>{fmtMoney(r.svsOwed)}</b></div></div>
+    <small className="muted block">≈ {fmtMoney(r.monthly)} pro Monat{r.salNeedAi ? " · Gehalt fehlt noch (KI-Auswertung starten)" : ""}</small>
+    {r.ku && <RlKuBar r={r} small />}
+  </section>);
+  const years = [...new Set([todayISO().slice(0, 4), String(+todayISO().slice(0, 4) - 1), ...txs.map((t) => (t.date || "").slice(0, 4))])].filter(Boolean).sort().reverse().slice(0, 4);
+  const row = (l, v, sub) => <div><span>{l}{sub && <small className="muted block">{sub}</small>}</span><b>{v}</b></div>;
+  const pctTxt = (v) => String(+(v * 100).toFixed(2)).replace(".", ",") + " %";
+  return (<div className="rlpage">
+    <div className="row stbtoolbar"><div className="chips">{years.map((y) => <button key={y} className={"chip" + (year === y ? " on" : "")} onClick={() => setYear(y)}>{y}</button>)}</div><span className="grow" />
+      <button className="btn" disabled={busy} onClick={runAi}>{busy ? "⏳ KI prüft …" : ai ? "🤖 KI neu auswerten" : "🤖 Mit KI auswerten"}</button></div>
+    {err && <p className="red small">✕ {err}</p>}
+    {r.salNeedAi && <div className="rlnote">Für die Einkommensteuer fehlt noch dein Einkommen aus der Anstellung. <button className="link" disabled={busy} onClick={runAi}>KI aus den Gehaltseingängen schätzen lassen</button> oder unten selbst eintragen.</div>}
+    <section className="tile">
+      <div className="tilehead"><b>💰 Rücklage {r.y}</b><small>{r.cur && r.f > 1 ? `Stand ${fmtDate(todayISO())} · aufs Jahr hochgerechnet` : "Gesamtjahr"}</small></div>
+      <div className="rlkpis"><div><small>Zurücklegen gesamt</small><b>{fmtMoney(r.total)}</b></div><div><small>Einkommensteuer</small><b>{fmtMoney(r.estOwed)}</b></div><div><small>SVS</small><b>{fmtMoney(r.svsOwed)}</b></div></div>
+      <div className="rlrows">
+        {row("Gewinn Firma bisher", fmtMoney(r.profitY), "Einnahmen − Ausgaben laut Steuerberater-Auswertung")}
+        {r.f > 1 && row("Gewinn vor SVS, hochgerechnet", fmtMoney(r.P))}
+        {row("Einordnung", RL_TRADE_TXT[r.trade] || r.trade, cfg.trade === "ki" ? (ai?.tradeWhy || "aus der KI-Einordnung der Tätigkeit") : "selbst gewählt")}
+        {r.Pb > 0 && row("SVS-Beiträge Jahr", fmtMoney(r.svsTotal), `${RL_SVS_TXT[r.svsT] || r.svsT}${r.svsBG ? ` · Beitragsgrundlage ${fmtMoney(r.svsBG)} × ${pctTxt(r.R.kv + r.R.pv + r.R.sv)}` : r.svsT === "neu" ? ` · unter der Versicherungsgrenze ${fmtMoney(r.R.vg)}` : ""}${cfg.svs === "ki" && ai?.svsWhy ? " · " + ai.svsWhy : ""}`)}
+        {r.Pb > 0 && row("Gewinnfreibetrag", "− " + fmtMoney(r.gfb), `${pctTxt(r.R.gfbRate)} bis ${fmtMoney(r.R.gfbCap)} Gewinn`)}
+        {r.Pb > 0 && row("Einkommen aus Anstellung", r.salNeedAi ? "fehlt" : fmtMoney(r.S), cfg.salary === "ki" ? ai?.salaryWhy || "KI-Schätzung" : (RL_SAL.find(([k]) => k === cfg.salary) || [])[1])}
+        {r.Pb > 0 && row("Dein Grenzsteuersatz", pctTxt(r.marg), r.S > 0 && r.base - r.gfb <= r.R.vfb * 2 ? `Veranlagungsfreibetrag ${fmtMoney(r.R.vfb)} berücksichtigt` : "")}
+        {r.Pb > 0 && row("Einkommensteuer auf den Firmengewinn", fmtMoney(r.estB), `Steuerbasis ${fmtMoney(r.T)} zusätzlich zum Gehalt`)}
+        {r.Pk > 0 && row("Kapitalertragsteuer", r.kestInl ? "vom Broker abgezogen" : fmtMoney(r.estK), r.kestInl ? "inländisches Depot – KESt wird automatisch einbehalten" : `${pctTxt(r.R.kest)} auf ${fmtMoney(r.Pk)}`)}
+        {row("Schon bezahlt", fmtMoney(r.estPaid + r.svPaid), `Finanzamt ${fmtMoney(r.estPaid)} · SVS ${fmtMoney(r.svPaid)} (aus den Buchungen erkannt, unten änderbar)${r.svPaid > r.svsTotal + 1 ? ` · SVS voraussichtlich Gutschrift ≈ ${fmtMoney(r.svPaid - r.svsTotal)}` : ""}${r.estPaid > r.estTotal + 1 ? ` · Finanzamt voraussichtlich Gutschrift ≈ ${fmtMoney(r.estPaid - r.estTotal)}` : ""}`)}
+      </div>
+      {r.total > 0 && <div className="rlhint">➜ Empfehlung: <b>{fmtMoney(r.monthly)} pro Monat</b> auf ein eigenes Sparkonto (Dauerauftrag)</div>}
+      {r.svsOwed > 0 && <small className="muted block">SVS: Vorgeschrieben wird zunächst vorläufig, die Nachzahlung kommt meist erst 2–3 Jahre später (Nachbemessung) – das Geld bis dahin reserviert lassen.</small>}
+      <small className="muted block">Schätzung für die Rücklage – keine Steuerberechnung. Maßgeblich sind Bescheid bzw. Steuerberater.</small>
+    </section>
+    {r.ku && <section className="tile"><RlKuBar r={r} /></section>}
+    {ai && <section className="tile">
+      <div className="tilehead"><b>🤖 KI-Auswertung</b><small>{fmtStamp(ai.at)}{r.R.src === "ki" ? " · Rechenwerte aus der Websuche" : ""}</small></div>
+      {(ai.notes || []).length > 0 && <ul className="rlnotes">{ai.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+      {(ai.sources || []).length > 0 && <div className="small muted">Quellen: {ai.sources.slice(0, 6).map((s, i) => <a key={i} href={s.url} target="_blank" rel="noreferrer">{s.title || s.url}{i < Math.min(5, ai.sources.length - 1) ? " · " : ""}</a>)}</div>}
+    </section>}
+    <section className="tile rlset">
+      <div className="tilehead"><b>⚙︎ Einstellungen Rücklage</b></div>
+      <label>Einkommen aus der Anstellung<PSelect value={cfg.salary} onChange={(e) => setCfg({ salary: e.target.value })}>{RL_SAL.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</PSelect></label>
+      {cfg.salary === "lz" && <label>Lohnzettel {r.y}, Kennzahl 245 (steuerpflichtige Bezüge)<input inputMode="decimal" value={cfg.lz?.[r.y] ?? ""} placeholder="z. B. 42000" onChange={(e) => setCfg({ lz: { ...cfg.lz, [r.y]: e.target.value.replace(",", ".") } })} /></label>}
+      {cfg.salary === "brutto" && <label>Brutto-Monatsgehalt (14× im Jahr)<input inputMode="decimal" value={cfg.gross} placeholder="z. B. 3800" onChange={(e) => setCfg({ gross: e.target.value.replace(",", ".") })} /></label>}
+      {cfg.salary === "ki" && <small className="muted block">{ai?.salaryKz245 != null ? `KI-Schätzung: ${fmtMoney(ai.salaryKz245)} steuerpflichtig` : "Noch keine Schätzung – „Mit KI auswerten“ tippen."}</small>}
+      <label>Sozialversicherung<PSelect value={cfg.svs} onChange={(e) => setCfg({ svs: e.target.value })}>{RL_SVS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</PSelect></label>
+      <label>Firmengewinn ist steuerlich<PSelect value={cfg.trade} onChange={(e) => setCfg({ trade: e.target.value })}>{RL_TRADE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</PSelect></label>
+      <div className="rlgrid2">
+        <label>Schon an Finanzamt bezahlt {r.y}<input inputMode="decimal" value={cfg.paidEst?.[r.y] ?? ""} placeholder={`erkannt: ${fmtMoney(r.estPaidAuto)}`} onChange={(e) => setCfg({ paidEst: { ...cfg.paidEst, [r.y]: e.target.value.replace(",", ".") } })} /></label>
+        <label>Schon an SVS bezahlt {r.y}<input inputMode="decimal" value={cfg.paidSvs?.[r.y] ?? ""} placeholder={`erkannt: ${fmtMoney(r.svPaidAuto)}`} onChange={(e) => setCfg({ paidSvs: { ...cfg.paidSvs, [r.y]: e.target.value.replace(",", ".") } })} /></label>
+      </div>
+      <label className="check"><input type="checkbox" checked={cfg.proj} onChange={(e) => setCfg({ proj: e.target.checked })} /> Laufendes Jahr aufs Gesamtjahr hochrechnen</label>
+      <RlShowToggles />
+    </section>
+  </div>);
+}
+function rlSetShow(cfg, p) {
+  lsSetEv("rlCfg", { ...rlCfgGet(), ...p });
+  if (p.showHome) { const o = { ...HOME_TILE_DEFAULT, ...ls.get("homeTiles", {}) }; for (const k of ["firma", "alle"]) if (!o[k].includes("ruecklage")) o[k] = [...o[k], "ruecklage"]; lsSetEv("homeTiles", o);
+    const hl = ls.get("homeLayout", null); if (hl?.hidden?.includes("ruecklage")) lsSetEv("homeLayout", { ...hl, hidden: hl.hidden.filter((x) => x !== "ruecklage") }); }
+  if (p.showFirma) { const bl = ls.get("bizGrid", null); if (bl?.hidden?.includes("ruecklage")) lsSetEv("bizGrid", { ...bl, hidden: bl.hidden.filter((x) => x !== "ruecklage") }); }
+}
+function RlShowToggles() {
+  const [c0] = useLsState("rlCfg", RL_DEF), cfg = { ...RL_DEF, ...c0 };
+  return (<>
+    <label className="check"><input type="checkbox" checked={cfg.showFirma} onChange={(e) => rlSetShow(cfg, { showFirma: e.target.checked })} /> In der Firmenauswertung anzeigen</label>
+    <label className="check"><input type="checkbox" checked={cfg.showHome} onChange={(e) => rlSetShow(cfg, { showHome: e.target.checked })} /> Als Kachel in der Übersicht anzeigen</label>
+  </>);
+}
 const STB_REPORTS = [
   ["gesamt", "📘", "Jahresbericht für den Steuerberater", "Alles auf einen Blick: Ergebnis, E1a-Kennzahlen, Gewinnfreibetrag, Pauschalierungsvergleich, Umsatzgrenze, Hinweise", ["pdf", "xlsx", "csv"]],
   ["e1a", "🧮", "E 1a – Kennzahlen", "Einnahmen und Ausgaben je Kennzahl der Beilage E 1a, mit Einzelposten", ["pdf", "xlsx", "csv"]],
@@ -8776,7 +8964,7 @@ function StbE1kv({ txs, accounts, year }) {
     <small className="muted">Gleitender Durchschnittspreis, Spesen nicht abzugsfähig, Quellensteuer max. 15 % anrechenbar. Ausschüttungsgleiche Erträge (KZ 937) thesaurierender Fonds sind nicht berechnet.</small>
   </>);
 }
-const STB_TABS = [["monate", "🚦", "Monate"], ["auszuege", "📄", "Kontoauszüge"], ["pruefen", "🔎", "Prüfen"], ["fragen", "❓", "Klärungsliste"], ["berichte", "📑", "Berichte"], ["paket", "📦", "Paket"], ["setup", "⚙︎", "Einstellungen"]];
+const STB_TABS = [["monate", "🚦", "Monate"], ["ruecklage", "💰", "Rücklage"], ["auszuege", "📄", "Kontoauszüge"], ["pruefen", "🔎", "Prüfen"], ["fragen", "❓", "Klärungsliste"], ["berichte", "📑", "Berichte"], ["paket", "📦", "Paket"], ["setup", "⚙︎", "Einstellungen"]];
 function stbData(txs, accounts, docs) {
   const accMap = new Map(accounts.map((a) => [a.id, a])), docMap = new Map(docs.map((d) => [d.id, d]));
   const rel = txs.filter((t) => t.kind !== "broker" && accMap.get(t.accountId)?.kind !== "broker");
@@ -9069,6 +9257,12 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
         ))}
       </section>
       <section className="tile">
+        <div className="tilehead"><b>💰 Rücklage & Kleinunternehmergrenze</b></div>
+        <small className="muted block">Zeigt, wie viel du für Einkommensteuer und SVS zurücklegen solltest – im Bereich „Rücklage“.</small>
+        <RlShowToggles />
+        <button className="link small" onClick={() => setSec("ruecklage")}>Zur Rücklage ›</button>
+      </section>
+      <section className="tile">
         <div className="tilehead"><b>Für die KI</b></div>
         <label>Was macht deine Firma?<textarea rows={3} value={bizDesc} onChange={(e) => setBizDesc(e.target.value)} placeholder="z. B. Elektro-Kleinbetrieb, Kunden in OÖ, Material vom Großhandel, Firmenauto" /></label>
         <small className="muted">Hilft der KI, Firmenausgaben richtig zu erkennen. Wird nur beim Einschätzen mitgeschickt.</small>
@@ -9090,6 +9284,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
       {sec === "fragen" && fragen}
       {sec === "berichte" && <StbReports D={D} notify={notify} setTab={setTab} accounts={accounts} txs={txs} />}
       <StbAiGateHost />
+      {sec === "ruecklage" && <RlPanel txs={txs} accounts={accounts} docs={docs} setTab={setTab} notify={notify} />}
       {sec === "paket" && paket}
       {sec === "setup" && setup}
       {impFiles[0] && <StmtImportWin key={impFiles[0].name + impFiles.length} file={impFiles[0]} accounts={accounts} txs={txs} getTxs={getTxs} importTxs={importTxs} saveDoc={saveDoc} updateTxs={updateTxs} categories={categories} token={token} notify={notify}
@@ -16776,7 +16971,21 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .stbchecks{display:flex;flex-direction:column;gap:4px;margin-top:10px}
 .stbcheck{padding:6px 10px;border-radius:9px;background:var(--card2);font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .stbprog{display:flex;align-items:center;gap:10px;margin-top:8px}.stbtrack{flex:1;height:6px;border-radius:3px;background:var(--card2);overflow:hidden}.stbtrack>i{display:block;height:100%;background:var(--green,#22a06b);transition:width .3s}
-.stbcheck>.grow{flex:1;min-width:0}.stbusesel{width:220px;flex:0 0 auto}@media(max-width:600px){.stbusesel{width:100%}}.stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
+.stbcheck>.grow{flex:1;min-width:0}.stbusesel{width:220px;flex:0 0 auto}@media(max-width:600px){.stbusesel{width:100%}}.rlpage{display:flex;flex-direction:column;gap:14px}
+.rlkpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:6px 0 10px}.rlkpis>div{background:var(--card2);border-radius:12px;padding:10px 12px;min-width:0}.rlkpis small{display:block;color:var(--muted);font-size:12px}.rlkpis b{font-size:22px;white-space:nowrap}.rlkpis.sm b{font-size:17px}
+@media(max-width:560px){.rlkpis{grid-template-columns:1fr 1fr}.rlkpis>div:first-child{grid-column:1/-1}}
+.rlrows>div{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line);font-size:14px}.rlrows>div>b{white-space:nowrap;text-align:right}.rlrows small{font-size:12px}
+.rlhint{margin:10px 0 6px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc);font-size:14px}
+.rlnote{padding:10px 12px;border-radius:10px;background:color-mix(in srgb,#f5a524 14%,transparent);font-size:14px}
+.rlku .rlkuh{display:flex;align-items:center;gap:8px;margin-bottom:8px}.rlku.sm{margin-top:10px}.rlku.sm .rlkuh b{font-size:13px}
+.rlbar{position:relative;height:12px;border-radius:6px;background:var(--card2);overflow:hidden}.rlfill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--green,#22a06b)}.rlfill.warn,.rlfill.tol{background:#f5a524}.rlfill.over,.rlfill.prev{background:#e5484d}
+.rlproj{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--muted) 45%,transparent) 0 4px,transparent 4px 8px)}
+.rlmark{position:absolute;top:0;bottom:0;width:2px;background:color-mix(in srgb,#f5a524 70%,transparent)}.rlmark.lim{background:var(--text,#fff)}.rlmark.tol{background:#e5484d}
+.rlscale{position:relative;height:16px;font-size:11px;color:var(--muted);margin-top:3px}.rlscale span{position:absolute;transform:translateX(-50%);white-space:nowrap}.rlscale span:first-child{transform:none;left:0}
+.rlnotes{margin:4px 0 8px 18px;font-size:14px}.rlnotes li{margin:3px 0}
+.rlset{display:flex;flex-direction:column;gap:10px}.rlgrid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:560px){.rlgrid2{grid-template-columns:1fr}}
+.rlcard.click{cursor:pointer}
+.stbcheck.click{cursor:pointer}.stbcheck.click:hover{background:color-mix(in srgb,var(--acc) 10%,var(--card2))}
 .stbmacts{justify-content:space-between;margin-top:4px}
 .stbstmts{display:flex;flex-direction:column;gap:10px}
 .stbstmt{display:flex;align-items:center;gap:12px;padding:12px}
