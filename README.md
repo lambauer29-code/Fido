@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.59 – Symbole auch in Buchungszeilen
+- Buchungszeilen in Konten: Symbole und Firmenlogos (z. B. Raiffeisen, BILLA, Netflix) folgen jetzt der eingestellten Symbolgröße und -form – ein älterer Stil-Regelsatz hatte dort 47 px erzwungen
+- Logos: gleiche Größe und Form wie die anderen Symbole (Kreis bzw. abgerundetes Quadrat bei „Emoji“)
+- Umbuchungs-Pfeile (⇄) haben ein Linien-Icon
+
 ## v0.99.58 – Einheitliche Symbole
 - Einstellungen → Design → „Symbole“: vier Stile – Linie im getönten Kreis, volle Farbe mit weißem Icon, Emoji auf getöntem Quadrat, nur Linie
 - Größe per Regler (22–48 px, Standard 32 px) – gilt für Kategorien, Konten, Buchungen, Fahrtenbuch, Depot/Vermögen, Besitz, Verträge, Lager und Handy-Listen

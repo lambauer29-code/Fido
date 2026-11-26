@@ -21,7 +21,7 @@ const E = {
   "💧": IconDroplet, "🔥": IconFlame, "📚": IconBook, "📖": IconBook, "🎵": IconMusic, "🎧": IconMusic, "📺": IconDeviceTv, "🍷": IconGlass, "🍺": IconGlass, "☕": IconCoffee, "🍕": IconPizza, "👕": IconShirt,
   "✂": IconScissors, "⭐": IconStar, "🔒": IconLock, "🔑": IconKey, "🏆": IconTrophy, "💡": IconBulb, "🚚": IconTruck, "📍": IconMapPin, "🗒": IconChecklist, "％": IconPercentage, "⚖": IconScale,
   "🏪": IconBuildingStore, "🏬": IconBuildingStore, "🔨": IconHammer, "🧮": IconFileInvoice, "📜": IconCertificate, "🎫": IconTag, "🏢": IconBuilding, "🔎": IconSearch, "🔍": IconSearch, "🖼": IconPhoto,
-  "📷": IconCamera, "📸": IconCamera, "📎": IconPaperclip, "🔔": IconBell, "💸": IconCashBanknote };
+  "📷": IconCamera, "📸": IconCamera, "📎": IconPaperclip, "🔔": IconBell, "💸": IconCashBanknote, "⇄": IconArrowsExchange, "↔": IconArrowsExchange, "⇆": IconArrowsExchange, "↹": IconArrowsExchange };
 const norm = (e) => String(e).replace(/[️‍]/g, "").trim();
 export const glyphFor = (e) => (typeof e === "string" ? E[norm(e)] || null : null);
 // Glyph: Linien-Icon + Emoji – welches sichtbar ist, entscheidet die Klasse am <html> (ics-a/b/c/d)
