@@ -7786,7 +7786,8 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
   }
   async function exportPdf(share) {
     setBusy(true);
-    try { const b = await stmtMarkedPdf(doc, blobRef.current, txs, accounts, docs); const name = (doc.title || "Kontoauszug").replace(/[\\/:*?"<>|]/g, "-") + " markiert.pdf"; share ? sharePdf(b, name, doc.title) : saveBlob(b, name); }
+    try { const b = await stmtMarkedPdf(doc, blobRef.current, txs, accounts, docs); const name = (doc.title || "Kontoauszug").replace(/[\\/:*?"<>|]/g, "-") + " markiert.pdf";
+      if (share === "print") { notify?.("Druck wird vorbereitet …"); await printImages(await blobToImages(b, 1700, 200), doc.title); } else share ? sharePdf(b, name, doc.title) : saveBlob(b, name); }
     catch (e) { notify?.("Export fehlgeschlagen: " + e.message); } finally { setBusy(false); }
   }
   const showPdf = view !== "liste", showList = view !== "pdf";
@@ -7820,18 +7821,23 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
     <Win id="stmt" onClose={onClose} dirty={false} defW={1100} className="stmtwin" stay>
       <div className="stmtsticky">
       <div className="panelhead"><b className="clamp">{doc.title}</b>
-        <ExportMenu label="⬇︎" className="btn" items={[{ head: "Markiertes PDF" }, { label: "⬇︎ Speichern", sub: "Original mit Farben + Zusammenfassung", run: () => exportPdf(false) }, { label: "↗︎ Teilen / Mail", run: () => exportPdf(true) }]} />
+        <div className="dactions stmtheadacts">
+          <button type="button" title="Markierten Auszug drucken" aria-label="Drucken" disabled={busy} onClick={() => exportPdf("print")}><IcoPrint /></button>
+          <button type="button" title="Markierten Auszug teilen" aria-label="Teilen" disabled={busy} onClick={() => exportPdf(true)}><IcoShare /></button>
+          <button type="button" title="Markierten Auszug speichern (PDF)" aria-label="Speichern" disabled={busy} onClick={() => exportPdf(false)}><Ico d={<><path d="M12 3v12" /><path d="M7 10l5 5 5-5" /><path d="M5 21h14" /></>} /></button>
+        </div>
         <XBtn /></div>
       <div className="stmtbar">
         <span className="stpill sc-firma">🏢 {cnt("firma")} Firma</span><span className="stpill sc-privat">👤 {cnt("privat")} Privat</span><span className="stpill sc-unklar">❓ {cnt("unklar")} unklar</span>
         {noBeleg > 0 && <span className="stpill st-over">{noBeleg} Beleg fehlt</span>}
         {noTx > 0 && <span className="stpill st-draft">{noTx} ohne Buchung</span>}
         <span className="grow" />
-        <div className="seg">{[["pdf", "PDF"], ["beides", "Beides"], ["liste", "Liste"]].filter(([k]) => !mob || k !== "beides").map(([k, l]) => <button key={k} className={(mob && view === "beides" ? k === "liste" : view === k) ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div>
-        <button className="btn sm" disabled={busy} onClick={reAi}>{busy ? "…" : "✨ KI neu prüfen"}</button>
+        <div className="stmtpills">{[["pdf", "PDF"], ["beides", "Beides"], ["liste", "Liste"]].filter(([k]) => !mob || k !== "beides").map(([k, l]) => <button key={k} type="button" className={"chip" + ((mob && view === "beides" ? k === "liste" : view === k) ? " on" : "")} onClick={() => setView(k)}>{l}</button>)}</div>
+        <span className="stmtgap" />
+        <button className="chip" disabled={busy} onClick={reAi}>{busy ? "…" : "✨ KI neu prüfen"}</button>
         {zui !== "schwebend" && showPdf && !(mob && view === "beides") && zctl("inbar")}
-        {showPdf && canHover && <button type="button" className={"btn sm lupetog" + (lupeOn ? " on" : "")} aria-pressed={lupeOn} title={lupeOn ? "Lupe ausschalten" : "Lupe einschalten"} onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍 Lupe {lupeOn ? "ein" : "aus"}</button>}
-        <button className="btn sm" disabled={busy} onClick={reMatch} title="Zeilen erneut mit den Buchungen abgleichen">⇄ Abgleichen</button>
+        {showPdf && canHover && <button type="button" className={"chip lupetog" + (lupeOn ? " on" : "")} aria-pressed={lupeOn} title={lupeOn ? "Lupe ausschalten" : "Lupe einschalten"} onClick={() => { setLupeOn(!lupeOn); setLens(null); }}>🔍 Lupe {lupeOn ? "ein" : "aus"}</button>}
+        <button className="chip" disabled={busy} onClick={reMatch} title="Zeilen erneut mit den Buchungen abgleichen">⇄ Abgleichen</button>
       </div>
       </div>
       <div className={"stmtbody" + (showPdf && showList && !mob ? " two" : "")}>
@@ -17252,4 +17258,15 @@ html.stmtcol .stmtbox.sc-privat:hover{outline:1px dashed var(--stc-privat)}
 .stcrow input[type=color]{width:42px!important;height:30px;padding:0;border:0;background:none;cursor:pointer;flex:none}
 .stcprev{display:flex;flex-direction:column;gap:3px;padding:10px;border-radius:10px;background:#fff;color:#222;font:12px ui-monospace,Menlo,monospace}
 .stcprev>div{padding:3px 6px;white-space:pre}
+
+/* v0.99.39: Kontoauszug – Drucken/Teilen/Speichern oben, Leiste als kleine Pills */
+.stmtheadacts{display:flex;gap:2px;margin-left:auto}
+.stmtheadacts button{width:34px;height:34px}
+.stmtheadacts svg{width:19px;height:19px}
+html body .stmtbar .chip{height:28px;min-height:0!important;padding:0 12px!important;font-size:12.5px!important;font-weight:600;border-radius:999px!important;box-shadow:none!important;border:1px solid var(--line)!important;background:transparent!important;color:var(--txt);display:inline-flex;align-items:center;gap:4px}
+html body .stmtbar .chip:hover:not(:disabled){background:var(--card2)!important}
+html body .stmtbar .chip.on{background:color-mix(in srgb,var(--acc) 18%,transparent)!important;color:var(--acc)!important;border-color:color-mix(in srgb,var(--acc) 45%,transparent)!important}
+.stmtpills{display:inline-flex;gap:4px}.stmtgap{width:8px}
+html body .stmtbar .stmtzoom{box-shadow:none!important;height:28px;padding:0 2px;border-radius:999px}
+html body .stmtbar .stmtzoom button{height:24px;min-width:24px;font-size:13px}
 `;

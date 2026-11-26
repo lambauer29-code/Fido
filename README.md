@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.39 – Kontoauszug-Fenster: Drucken & Teilen
+- Oben rechts Drucken, Teilen und Speichern (markierter Auszug) als schlanke Icons wie in Dokumente
+- Leiste (PDF/Beides/Liste, KI neu prüfen, Zoom, Lupe, Abgleichen) als kleine flache Pills im App-Design
+
 ## v0.99.38 – Kontoauszug-Farben einstellbar
 - Einstellungen › Darstellung › „Kontoauszug: Farben der Markierung“: Farben für Firma, Unklar und (optional) Privat, mit Vorlagen und Vorschau
 - „Gleiche Farben in der App-Ansicht“ (Standard: an) – Markieren in der App und Ausdruck sehen jetzt gleich aus
