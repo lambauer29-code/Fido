@@ -7981,14 +7981,16 @@ function StmtColorSetting() {
   const [v, set] = useLsState("stmtColors", {});
   const c = { ...STMT_COL_DEF, ...v };
   const up = (patch) => set({ ...c, ...patch });
-  const row = (k, label) => <label key={k} className="stcrow"><input type="color" value={c[k]} onChange={(e) => up({ [k]: e.target.value })} /><span className="grow">{label}</span><code className="muted">{c[k]}</code></label>;
+  // v0.99.67: Farbkreise statt (leer dargestellter) Farbfelder – gilt für Druck, PDF-Markierung, Streifen links und Knopf rechts
+  const STC_SW = ["#e5484d", "#f97316", "#f59e0b", "#ef9f27", "#ffd400", "#1d9e75", "#16a34a", "#14b8a6", "#3b82f6", "#64b5f6", "#2563eb", "#8b5cf6", "#ec4899", "#9e9e9e"];
+  const row = (k, label) => <div key={k} className="stcrow2"><div className="stcrowh"><span className="stcdot" style={{ background: c[k] }} /><b>{label}</b><code className="muted">{c[k]}</code></div>
+    <Swatches value={c[k]} list={STC_SW} custom={c.custom || []} def={STMT_COL_DEF[k]} onPick={(x) => up({ [k]: x || STMT_COL_DEF[k] })} onAdd={(x) => up({ [k]: x, custom: [...new Set([...(c.custom || []), x])].slice(-8) })} onRemove={(x) => up({ custom: (c.custom || []).filter((y) => y !== x) })} /></div>;
   return (<div className="stcset">
     <div className="switchrow"><span><b>Kontoauszug: Farben der Markierung</b><small className="muted block">Für den Druck/PDF der markierten Kontoauszüge – auf Wunsch gleich in der App.</small></span>
       <PickMenu label="Vorlage" title="Farbvorlage" items={STMT_COL_PRESETS.map(([k, t, x]) => ({ k, title: t, on: x.firma === c.firma && x.unklar === c.unklar && x.privatMark === c.privatMark, run: () => up(x) }))} /></div>
-    {row("firma", "Firma")}{row("unklar", "Unklar")}
+    {row("firma", "Firma")}{row("unklar", "Unklar")}{row("privat", "Privat")}
     <label className="switchrow"><span><b>Privat auch markieren</b><small className="muted block">Aus: Privatzeilen bleiben im Druck unmarkiert</small></span><input type="checkbox" className="switch" checked={c.privatMark} onChange={(e) => up({ privatMark: e.target.checked })} /></label>
-    {c.privatMark && row("privat", "Privat")}
-    <label className="switchrow"><span><b>Gleiche Farben in der App-Ansicht</b><small className="muted block">Damit Markieren und Ausdruck gleich aussehen</small></span><input type="checkbox" className="switch" checked={c.app} onChange={(e) => up({ app: e.target.checked })} /></label>
+    <label className="switchrow"><span><b>Gleiche Farben in der App-Ansicht</b><small className="muted block">Markierung im Auszug, Streifen links an der Zeile und Knopf „Firma / Privat / Unklar“ – damit Markieren und Ausdruck gleich aussehen</small></span><input type="checkbox" className="switch" checked={c.app} onChange={(e) => up({ app: e.target.checked })} /></label>
     <div className="stcprev">{[["firma", "03.03  Rexel Austria GmbH   −212,50"], ["privat", "03.03  BILLA AG   −34,10"], ["unklar", "03.03  Amazon EU   −59,90"]].map(([k, t]) => { const on = k !== "privat" || c.privatMark; return <div key={k} style={on ? { background: c[k] + "38", borderLeft: `3px solid ${c[k]}` } : { borderLeft: "3px solid transparent" }}>{t}</div>; })}</div>
   </div>);
 }
@@ -10694,6 +10696,26 @@ function Swatches({ value, list, custom = [], def, onPick, onAdd, onRemove }) {
     </div>
   );
 }
+/* v0.99.67: Größe von Buttons und Dropdown-Menüs – Stufen + Regler (pro Gerät) */
+const UI_SCALE_PRESETS = [["Klein", 80], ["Mittel", 90], ["Standard", 100]];
+function applyUiScale(v) { const r = document.documentElement.style; r.setProperty("--btnz", String((v?.btn || 100) / 100)); r.setProperty("--mnz", String((v?.menu || 100) / 100)); }
+if (typeof window !== "undefined") try { applyUiScale(JSON.parse(localStorage.getItem("dev:uiScale") || "{}")); } catch {}
+function UiScaleSettings() {
+  const [v, setV] = useLsState("dev:uiScale", {}), [mo, setMo] = useState(false);
+  useEffect(() => applyUiScale(v), [v.btn, v.menu]);
+  const val = (k) => v[k] || 100, set = (k, n) => setV({ ...v, [k]: Math.max(70, Math.min(120, n)) });
+  const ctl = (k, label, sub) => (<div className="uisrow"><div className="uish"><b>{label}</b><small className="muted block">{sub}</small></div>
+    <div className="uisctl"><div className="seg">{UI_SCALE_PRESETS.map(([l, n]) => <button key={n} type="button" className={val(k) === n ? "on" : ""} onClick={() => set(k, n)}>{l}</button>)}</div>
+      <input type="range" min="70" max="120" step="5" value={val(k)} onChange={(e) => set(k, +e.target.value)} aria-label={label + " in Prozent"} /><span className="uisv">{val(k)} %</span></div></div>);
+  return (<>
+    <h4 className="subhead">Buttons & Menüs</h4>
+    <p className="muted small">Größe aller Buttons, Filter-Chips, Umschalter und Auswahlfelder sowie der aufklappenden Dropdown-Menüs – gilt nur für dieses Gerät.</p>
+    {ctl("btn", "Buttons", "z. B. „＋ Einnahme“, „Vorlage ▾“, Filter, Reiter")}
+    {ctl("menu", "Dropdown-Menüs", "Einträge in aufklappenden Auswahl-Menüs")}
+    <div className="uisprev"><button type="button" className="btn">＋ Einnahme</button><button type="button" className="chip on">Alle</button><button type="button" className="chip">Offen</button>
+      <PickMenu label="Vorschau-Menü" title="Vorschau" items={[{ k: "a", title: "Datum – neueste zuerst", on: true, run: () => {} }, { k: "b", title: "Zuletzt hinzugefügt", run: () => {} }, { k: "c", title: "Betrag", sub: "höchster zuerst", run: () => {} }]} /></div>
+  </>);
+}
 /* ---------- Schriftgrößen (v0.91) – pro Gerät, relativ zur Standardgröße ---------- */
 const FS_CATS = [
   ["title", "Seitentitel", "header.top h1", "Dokumente", "fsx-title"],
@@ -10712,7 +10734,8 @@ const FS_PRESETS = [["Kompakt", 90], ["Standard", 100], ["Groß", 115], ["Sehr g
 function applyFontSizes(fs) {
   let el = document.getElementById("fs-style");
   if (!el) { el = document.createElement("style"); el.id = "fs-style"; document.head.appendChild(el); }
-  el.textContent = FS_CATS.filter(([k]) => fs?.[k] && fs[k] !== 100).map(([k, , sel]) => `${sel}{zoom:${fs[k] / 100}}`).join("\n");
+  el.textContent = FS_CATS.filter(([k]) => k !== "btn" && fs?.[k] && fs[k] !== 100).map(([k, , sel]) => `${sel}{zoom:${fs[k] / 100}}`).join("\n");
+  document.documentElement.style.setProperty("--fsbtn", String((fs?.btn || 100) / 100));   // Buttons: mit der Button-Größe (Einstellungen) multipliziert
 }
 // v0.99.61: eigene Schrift- & Zahlengrößen je Design (Stil); ohne eigene gelten die allgemeinen
 const fsFor = (sty) => { try { const by = JSON.parse(localStorage.getItem("dev:fontSizesSty") || "{}"); return by[sty || "klassisch"] || JSON.parse(localStorage.getItem("dev:fontSizes") || "{}"); } catch { return {}; } };
@@ -10801,6 +10824,7 @@ function DesignSettings({ design, setDesign, theme }) {
         <span><b>Ausgaben in Schulden-Farbe</b><small className="muted block">Auch einzelne Abbuchungen in Listen einfärben (sonst neutral)</small></span>
         <input type="checkbox" className="switch" checked={!!design.outNeg} onChange={(e) => pick("outNeg", e.target.checked)} />
       </label>
+      <UiScaleSettings />
       <FontSizeSettings sty={design.style || "klassisch"} />
     </>
   );
@@ -14234,8 +14258,8 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
                 <AstIco a={a} size={42} />
                 <div className="grow"><b>{a.name}</b>{(a.scope || "privat") === "firma" && <span className="stpill st-draft" style={{ marginLeft: 8 }}>🏢 Firma</span>}{pill(a) && <span style={{ marginLeft: 8 }}>{pill(a)}</span>}
                   <small className="muted block">{[sub(a), a.serial && "Nr. " + a.serial, a.dealer].filter(Boolean).join(" · ")}</small></div>
-                <div className="right"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"}</b><small className="muted block">{a.date ? fmtDate(a.date) : ""}</small></div>
-                {a.docId && <button className="chip" title="Kaufbeleg öffnen" onClick={(e) => { e.stopPropagation(); onOpen(a.docId); }}>📎</button>}
+                <div className="right astamt"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"}</b><small className="muted block">{a.date ? fmtDate(a.date) : ""}</small></div>
+                <span className="astclip">{a.docId && <button type="button" className="astclipbtn" title="Kaufbeleg öffnen" aria-label="Kaufbeleg öffnen" onClick={(e) => { e.stopPropagation(); onOpen(a.docId); }}><IcoClip /></button>}</span>
               </div>
             ))}
           </section>
@@ -17962,7 +17986,8 @@ html.dark .stpill.sc-firma,:root[data-theme=dark] .stpill.sc-firma{color:#fcd34d
 .kbcamv{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3}.kbcamv video{width:100%;height:100%;object-fit:contain;display:block}.kbcamframe{position:absolute;inset:7%;border:2px dashed rgba(255,255,255,.5);border-radius:10px;pointer-events:none}
 .kbcamerr{padding:20px;text-align:center}.kbpaste{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 12px;border:2px dashed var(--line);border-radius:14px;font-size:30px;text-align:center;outline:0}.kbpaste p{font-size:15px;margin:0}
 .kbacts .kbbtn{width:auto;height:26px}.kbacts .rowmorebtn .caret{display:none}.kbpaste small{font-size:12px}.kbpaste p{font-size:15px}
-.kbsugg{margin-bottom:8px}.pvic2{font-size:11px;letter-spacing:2px}
+.kbsugg{margin-bottom:8px}
+.astamt{min-width:110px;text-align:right;font-variant-numeric:tabular-nums}.astclip{flex:0 0 26px;width:26px;display:inline-flex;justify-content:center}.astclipbtn{border:0;background:none;color:var(--mut);padding:2px;cursor:pointer;display:inline-flex;border-radius:6px}.astclipbtn:hover{color:var(--acc);background:var(--card2)}.astclipbtn svg{width:17px;height:17px}.pvic2{font-size:11px;letter-spacing:2px}
 .kbacts button{width:30px;height:30px}.kbacth{text-align:right}
 @container (max-width:860px){.kbacts .kbx{display:none}.kbbtn{max-width:96px;padding:4px 7px}}
 .stbmh.click{cursor:pointer;user-select:none}.stbchev{width:14px;color:var(--mut);font-size:12px}.stbmonth.shut{padding-bottom:12px}.seg.sm{margin:0}.seg.sm button{padding:4px 8px;font-size:12px}
@@ -18009,7 +18034,25 @@ html.dark .stpill.sc-firma,:root[data-theme=dark] .stpill.sc-firma{color:#fcd34d
 .stbfrest{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;border-radius:14px;border:1px dashed var(--line);background:none;color:var(--mut);font:inherit;cursor:pointer;grid-column:1/-1}
 .stbfocus .stbmlist{grid-column:1/-1}
 /* v0.99.66 Journal: Belegdaten wie am Handy */
-.jdsheet{position:absolute;left:8px;right:8px;bottom:0;z-index:4;display:flex;flex-direction:column;flex:none;pointer-events:none}.jdsheet>.jpsheet{pointer-events:auto;flex:none}.jdsheet .jpsheet{margin-top:0;border-radius:18px 18px 0 0;box-shadow:0 -10px 30px #0004}.jdsheet .jpsbody{overflow:auto}.jgrid .jcenter.jsheet-on{position:relative!important;overflow:hidden!important}.jcenter.jsheet-on>.jprev,.jcenter.jsheet-on>div:first-child{max-height:100%;overflow:auto}}
+.jdsheet{position:absolute;left:8px;right:8px;bottom:0;z-index:4;display:flex;flex-direction:column;flex:none;pointer-events:none}.jdsheet>.jpsheet{pointer-events:auto;flex:none}.jdsheet .jpsheet{margin-top:0;border-radius:18px 18px 0 0;box-shadow:0 -10px 30px #0004}.jdsheet .jpsbody{overflow:auto}.jgrid .jcenter.jsheet-on{position:relative!important;overflow:hidden!important}.jcenter.jsheet-on>.jprev,.jcenter.jsheet-on>div:first-child{max-height:100%;overflow:auto}
+/* v0.99.67 Kontoauszug-Farben überall */
+html.stmtcol.stmtcol .stmtbox.sc-firma{background:color-mix(in srgb,var(--stc-firma) 32%,transparent);border-color:var(--stc-firma)}html.stmtcol.stmtcol .stmtbox.sc-unklar{background:color-mix(in srgb,var(--stc-unklar) 34%,transparent);border-color:var(--stc-unklar)}
+html.stmtcol.stmtcol .stmtbox.sc-privat{background:color-mix(in srgb,var(--stc-privat) 28%,transparent);border-color:var(--stc-privat)}html.stmtcol-nopriv.stmtcol-nopriv .stmtbox.sc-privat{background:transparent;border-color:transparent;outline:1px dashed #9993;outline-offset:-1px}
+.stcrow2{padding:8px 0;border-bottom:1px solid var(--line)}.stcrowh{display:flex;align-items:center;gap:8px;margin-bottom:6px}.stcrowh b{flex:1}.stcdot{width:14px;height:14px;border-radius:50%;flex:none}
+html.stmtcol.stmtcol .stmtrow.sc-firma{border-left-color:var(--stc-firma)!important}html.stmtcol.stmtcol .stmtrow.sc-privat{border-left-color:var(--stc-privat)!important}html.stmtcol.stmtcol .stmtrow.sc-unklar{border-left-color:var(--stc-unklar)!important}
+html.stmtcol.stmtcol .scpick.sc-firma.sc-firma .scpickbtn{background:color-mix(in srgb,var(--stc-firma) 20%,transparent)!important;color:color-mix(in srgb,var(--stc-firma) 72%,var(--txt))!important;border-color:color-mix(in srgb,var(--stc-firma) 55%,transparent)!important}
+html.stmtcol.stmtcol .scpick.sc-privat.sc-privat .scpickbtn{background:color-mix(in srgb,var(--stc-privat) 20%,transparent)!important;color:color-mix(in srgb,var(--stc-privat) 72%,var(--txt))!important;border-color:color-mix(in srgb,var(--stc-privat) 55%,transparent)!important}
+html.stmtcol.stmtcol .scpick.sc-unklar.sc-unklar .scpickbtn{background:color-mix(in srgb,var(--stc-unklar) 20%,transparent)!important;color:color-mix(in srgb,var(--stc-unklar) 72%,var(--txt))!important;border-color:color-mix(in srgb,var(--stc-unklar) 55%,transparent)!important}
+html.stmtcol.stmtcol .stpill.sc-firma.sc-firma{background:color-mix(in srgb,var(--stc-firma) 20%,transparent);color:color-mix(in srgb,var(--stc-firma) 72%,var(--txt))}
+html.stmtcol.stmtcol .stpill.sc-privat.sc-privat{background:color-mix(in srgb,var(--stc-privat) 20%,transparent);color:color-mix(in srgb,var(--stc-privat) 72%,var(--txt))}
+html.stmtcol.stmtcol .stpill.sc-unklar.sc-unklar{background:color-mix(in srgb,var(--stc-unklar) 20%,transparent);color:color-mix(in srgb,var(--stc-unklar) 72%,var(--txt))}
+/* v0.99.67 Größe Buttons & Menüs */
+.app .btn,.app .chip,.app .seg>button,.app .iconbtn,.app .selbtn,.app .vehpickbtn,.app .lbfilter,.app .lbmore,.app .scpickbtn,.app .kbbtn,.navback,.win .btn,.win .chip,.win .seg>button,.win .iconbtn,.win .selbtn{zoom:calc(var(--fsbtn,1) * var(--btnz,1))}
+.app .btn .chip,.app .chip .iconbtn,.app .seg .chip,.app .selbtn .chip,.app .chip .chip{zoom:1}
+.pickmenu>*,.moremenu>*{zoom:var(--mnz,1)}
+.uisrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 0;border-bottom:1px solid var(--line)}.uish{flex:1 1 200px;min-width:0}
+.uisctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.uisctl input[type=range]{width:160px}.uisv{width:46px;font-variant-numeric:tabular-nums;text-align:right}
+.uisprev{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px;margin:10px 0 4px;border-radius:12px;background:var(--card2)}
 /* v0.99.58 Symbole */
 .glw{display:inline-flex;align-items:center;justify-content:center;line-height:1}.gll{width:1.15em;height:1.15em;flex:none}.gle{line-height:1}
 html.ics-c.ics-c .glw .gll{display:none}html:not(.ics-c) .glw .gle{display:none}

@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.67 – Besitz-Beträge bündig, Kontoauszug-Farben überall, Größe von Buttons & Menüs
+- Besitz & Garantie (Liste): Beträge stehen genau untereinander, die Beleg-Klammer hat einen festen schmalen Platz dahinter (ohne Rahmen)
+- Kontoauszug-Farben: Farbkreise statt leerer Farbfelder (auch für Privat), eigene Farben möglich; die Farbe gilt für PDF/Druck, die Markierung im Auszug, den Streifen links an der Zeile und den Knopf „Firma / Privat / Unklar“ sowie Etiketten
+- Einstellungen → Design → „Buttons & Menüs“: Größe von Buttons und Dropdown-Menüs getrennt – Schnellwahl Klein / Mittel / Standard plus Regler 70–120 %, mit Vorschau (pro Gerät)
+- Fix: eine überzählige Klammer im CSS (seit v0.99.66) blockierte eine Regel
+
 ## v0.99.66 – Lesbarkeit Firma/Unklar, Minus im Journal, Belegdaten schwebend
 - Kontoauszüge & Buchungen: „Firma“, „Privat“, „Unklar“ im dunklen Modus gut lesbar (helle Schrift) – die Dunkel-Farben hingen an einer Klasse, die die App nicht setzt
 - Journal-Liste: Ausgaben mit Minus (−€ 48,30), Einnahmen mit Plus, farbig wie überall
