@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.89 – Seitenleiste: Kategorien ohne Farbtext
+- Dokument-Kategorien in der Seitenleiste immer in normaler Schriftfarbe (vorher erschienen Kategorien mit eigener Farbe, z. B. nach dem Umbenennen, farbig – etwa „Software“ in Rot); die Farbe bleibt bei Symbol und Etikett
+
 ## v0.99.88 – Firma- & Beleg-Symbole bei den Aktionen
 - Kontobuchungen (Tabelle): 🏢 Firma / ❓ unklar und 📎 Beleg stehen jetzt rechts vor Bearbeiten · Drucken · Teilen · Löschen, in festen Plätzen (Spalten bleiben bündig)
 - Firmenbuchungen farbig: linker Balken + leichte Tönung in der Firma-Farbe aus Einstellungen → Kontoauszug-Farben (wie im Kontoauszug); unklare mit Balken in der Unklar-Farbe

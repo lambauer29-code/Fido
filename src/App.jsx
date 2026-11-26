@@ -972,7 +972,7 @@ function DocTree({ docGroups, docs, selected, onSelect, onToggleGroup, variant =
       {!g.collapsed && <>
         {g.cats.filter((c) => showEmpty || count(c)).map((c) => (
           <button key={c} className={"accitem" + (selected === c ? " on" : "")} onClick={() => onSelect(selected === c ? "" : c)}>
-            <span className="ki"><CatGlyph c={c} /></span><span className="an" style={CAT_STYLE[c] ? { color: CAT_STYLE[c][1] } : undefined}>{c}</span><span className="ab muted">{count(c)}</span>
+            <span className="ki"><CatGlyph c={c} /></span><span className="an" style={CAT_STYLE[c] && variant !== "nav" && !String(variant).includes("side") ? { color: CAT_STYLE[c][1] } : undefined}>{c}</span><span className="ab muted">{count(c)}</span>
           </button>
         ))}
         {!sub && kids(g).filter(visible).map((k) => renderGroup(k, true))}
@@ -18908,6 +18908,7 @@ button.subtog:hover{border-color:var(--acc)!important}button.subtog.on{backgroun
 button.txmark.m-doc{cursor:pointer}button.txmark.m-doc:hover{background:var(--card2)}
 .txrow.sc-firma{box-shadow:inset 4px 0 0 var(--stc-firma);background:color-mix(in srgb,var(--stc-firma) 7%,transparent)}.txrow.sc-unklar{box-shadow:inset 4px 0 0 color-mix(in srgb,var(--stc-unklar) 70%,transparent)}
 .txrow.sc-firma:hover{background:color-mix(in srgb,var(--stc-firma) 12%,transparent)}
+nav .doctree .accitem .an{color:inherit!important}
 .amtgrid{align-items:end}.amtgrid>label{display:flex;flex-direction:column;justify-content:flex-end;min-width:0;white-space:nowrap}.amtgrid>label>input{width:100%}
 .fxrow{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:12px;background:color-mix(in srgb,var(--acc) 5%,transparent)}.fxrow .fxinfo{font-size:13.5px}.fxins{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.fxins label{flex:1 1 140px;margin:0;font-size:12.5px}.fxins .btn{flex:none}
 .expcur{display:flex;gap:8px;align-items:stretch;flex-wrap:nowrap}.expcur>input{flex:1;min-width:0}.expcur>.vehpick,.fxhead>.vehpick{flex:none!important;width:auto!important;display:inline-flex}.expcur .cursel,.fxhead .cursel{width:auto!important;min-width:96px;white-space:nowrap}.fxhead{gap:10px;align-items:center;flex-wrap:wrap}.fxhead .seg{flex:1}
