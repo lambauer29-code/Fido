@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.60 – Fix: riesige weiße Logo-Kästen
+- Firmenlogos in Buchungszeilen waren nach v0.99.59 riesig und leer: der Innenabstand war in Prozent angegeben und bezog sich auf die Breite der Tabellenzeile – jetzt fester Anteil der Symbolgröße, Logo wieder sichtbar und gleich groß wie die anderen Symbole
+
 ## v0.99.59 – Symbole auch in Buchungszeilen
 - Buchungszeilen in Konten: Symbole und Firmenlogos (z. B. Raiffeisen, BILLA, Netflix) folgen jetzt der eingestellten Symbolgröße und -form – ein älterer Stil-Regelsatz hatte dort 47 px erzwungen
 - Logos: gleiche Größe und Form wie die anderen Symbole (Kreis bzw. abgerundetes Quadrat bei „Emoji“)

@@ -17954,7 +17954,7 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .glw{display:inline-flex;align-items:center;justify-content:center;line-height:1}.gll{width:1.15em;height:1.15em;flex:none}.gle{line-height:1}
 html.ics-c.ics-c .glw .gll{display:none}html:not(.ics-c) .glw .gle{display:none}
 .caticon{--c:#64748b}
-html[class*="ics-"][class*="ics-"] .caticon.caticon.caticon,html[class*="ics-"][class*="ics-"] .fbtldot.fbtldot.fbtldot{width:var(--icsz,32px)!important;height:var(--icsz,32px)!important;min-width:0!important;font-size:calc(var(--icsz,32px)*.5)!important;flex:none}
+html[class*="ics-"][class*="ics-"] .caticon.caticon.caticon,html[class*="ics-"][class*="ics-"] .fbtldot.fbtldot.fbtldot{box-sizing:border-box!important;width:var(--icsz,32px)!important;height:var(--icsz,32px)!important;min-width:0!important;font-size:calc(var(--icsz,32px)*.5)!important;flex:none}
 html[class*="ics-"][class*="ics-"] .caticon.caticon.caticon .gll,html[class*="ics-"][class*="ics-"] .fbtldot.fbtldot.fbtldot .gll{width:58%;height:58%}
 html.ics-a.ics-a .caticon.caticon.caticon:not(.logo):not(.avatar):not(.own),html.ics-a.ics-a .fbtldot.fbtldot.fbtldot:not(.own){background:color-mix(in srgb,var(--c) 17%,transparent)!important;color:var(--c)!important;border-radius:50%!important;border:0!important;box-shadow:none!important}
 html.ics-b.ics-b .caticon.caticon.caticon:not(.logo):not(.avatar):not(.own),html.ics-b.ics-b .fbtldot.fbtldot.fbtldot:not(.own){background:var(--c)!important;color:#fff!important;border-radius:50%!important;border:0!important;box-shadow:none!important}
@@ -17965,7 +17965,7 @@ html[class*="ics-"][class*="ics-"] .caticon.caticon.caticon.own,html[class*="ics
 .caticon.own img,.fbtldot.own img{width:100%!important;height:100%!important;object-fit:cover;display:block;border-radius:inherit}
 html[class*="ics-"][class*="ics-"] .fbtl::before{left:calc(4px + var(--icsz,32px) / 2 - 1px)}
 .accitem .ki .gll,.ki .gll{width:1.05em;height:1.05em}
-html[class*="ics-"][class*="ics-"] .caticon.caticon.logo{border-radius:50%!important;padding:10%!important;background:#fff!important}html.ics-c.ics-c .caticon.caticon.logo{border-radius:28%!important}
+html[class*="ics-"][class*="ics-"] .caticon.caticon.logo{border-radius:50%!important;padding:calc(var(--icsz,32px) * .14)!important;box-sizing:border-box!important;background:#fff!important;overflow:hidden}html.ics-c.ics-c .caticon.caticon.logo{border-radius:28%!important}
 html[class*="ics-"][class*="ics-"] .caticon.caticon.logo img{width:100%!important;height:100%!important;object-fit:contain}
 .icpvrow{display:flex;gap:6px}.icpv{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;border-radius:50%}.icpv .gll{width:15px;height:15px}
 .icpvrow:not(.icpv-c) .glw .gll{display:block!important}.icpvrow:not(.icpv-c) .glw .gle{display:none!important}.icpv-c .glw .gll{display:none!important}.icpv-c .glw .gle{display:inline!important}
