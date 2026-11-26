@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.79 – Ausgeblendete Konten aus der Seitenleiste
+- Ausgeblendete Konten verschwinden komplett aus der Seitenleiste, inkl. Bereich „Ausgeblendet (n)“
+- Einstellungen → Konten & Gruppen: Liste „Ausgeblendete Konten“ mit Einblenden / Alle einblenden, dazu 👁/🙈 bei jedem Konto
+
 ## v0.99.78 – Daten löschen, Design behalten
 - Backup → Gefahrenzone: „Daten löschen, Design behalten …“ löscht jetzt ALLES (auch Fahrzeuge, Firmendaten, Einstellungen, Regeln, Budgets, App-Token/Passwort, automatische Sicherungen)
 - Erhalten bleiben nur Darstellung und Design (Stil, hell/dunkel, Farben, Icons, Ansichten, Startseiten-Kacheln) sowie Schrift- und Button-Größen

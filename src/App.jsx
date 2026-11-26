@@ -1293,6 +1293,12 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
           <span><b>Auswahl-Kästchen in der Seitenleiste</b><small className="muted block">An = mehrere Konten ankreuzen und zusammenfassen. Aus = Konto antippen zeigt nur dieses Konto (nochmal antippen = alle).</small></span>
           <input type="checkbox" className="switch" checked={nav.showChecks !== false} onChange={(e) => setNav((n) => ({ ...n, showChecks: e.target.checked }))} />
         </label>
+        {(() => { const hid = accounts.filter((a) => a.hidden); const setHid = (id, h) => setAccounts((l) => l.map((x) => (x.id === id ? { ...x, hidden: h } : x)));
+          return <div className="hidaccs"><b className="block">Ausgeblendete Konten ({hid.length})</b>
+            <small className="muted block">Ausgeblendete Konten erscheinen nicht in der Seitenleiste. Hier wieder einblenden – oder bei jedem Konto unten mit 👁.</small>
+            {hid.length ? hid.map((a) => <div key={a.id} className="acccfg accrow hid"><AccIcon a={a} force /><span className="grow">{a.name}</span><button className="btn sm" onClick={() => setHid(a.id, false)}>Einblenden</button></div>)
+              : <small className="muted block">Keine – alle Konten sind sichtbar.</small>}
+            {hid.length > 1 && <button className="link" onClick={() => setAccounts((l) => l.map((x) => ({ ...x, hidden: false })))}>Alle einblenden</button>}</div>; })()}
         <p className="muted small">Gruppen erscheinen unter „{tabLabel(nav, "accounts")}“ mit Überschrift und Trennlinie und lassen sich dort ein- und ausklappen. Konten und Gruppen am Griff <b>⠿</b> verschieben. Leere Überschrift = nur Trennlinie.</p>
         {resolved.map((g, gi) => (
           <React.Fragment key={g.id}>
@@ -1314,7 +1320,8 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
                     <div className={"acccfg accrow" + (dnd.isDragging("acc", g.id, ai) ? " dragging" : "")} {...(g.auto ? {} : { "data-acc-item": `${g.id}|${ai}` })}>
                       <Handle onDown={(e) => dnd.start(e, { kind: "acc", list: g.id, index: ai, label: `${kindIcon(a.kind)} ${a.name}` })} />
                       <button className="iconbtn acciconbtn" onClick={() => setStyleFor(styleFor === a.id ? null : a.id)} title="Symbol & Farbe"><AccIcon a={a} force /></button>
-                      <button className="link grow left" onClick={() => setEdit(a)}><span style={accStyle(a)}>{a.name}</span>{bal != null && <small className="muted"> · {fmtMoney(bal)}</small>}</button>
+                      <button className="link grow left" onClick={() => setEdit(a)}><span style={accStyle(a)} className={a.hidden ? "strike" : ""}>{a.name}</span>{a.hidden && <small className="muted"> · ausgeblendet</small>}{bal != null && <small className="muted"> · {fmtMoney(bal)}</small>}</button>
+                      <button className={"iconbtn" + (a.hidden ? "" : " on")} onClick={() => setAccounts((l) => l.map((x) => (x.id === a.id ? { ...x, hidden: !x.hidden } : x)))} aria-label={a.hidden ? `${a.name} einblenden` : `${a.name} ausblenden`} title={a.hidden ? "Einblenden" : "Ausblenden"}>{a.hidden ? "🙈" : "👁"}</button>
                       <button className={"iconbtn" + (styleFor === a.id ? " on" : "")} onClick={() => setStyleFor(styleFor === a.id ? null : a.id)} aria-label="Symbol und Farbe" title="Symbol & Farbe">🎨</button>
                       <button className="iconbtn" onClick={() => setEdit(a)} aria-label="Konto bearbeiten" title="Bearbeiten">✎</button>
                     </div>
@@ -2580,7 +2587,7 @@ function AppMain() {
               ))}
               {t.key === "accounts" && t.side && nav.accOpen && accounts.length > 0 && (
                 <div className="subnav side-only">
-                  <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={hiddenAccs} showChecks={nav.showChecks !== false} {...accActions} active={tab === "accounts"} />
+                  <AccountTree groups={groups} txs={txs} sel={effSel} onToggleGroup={toggleGroup} hidden={[]} showChecks={nav.showChecks !== false} {...accActions} active={tab === "accounts"} />
                 </div>
               )}
               {t.key === "docs" && t.side && nav.docsOpen && active.length > 0 && (
@@ -18630,6 +18637,7 @@ html.sty-graphit.sty-graphit nav.bottom>button.on,html.sty-sand.sty-sand nav.bot
 .ctlogoprev{width:64px;height:64px;border-radius:14px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;background:var(--card2);color:var(--mut);overflow:hidden}
 .ctlogoprev.has{background:repeating-conic-gradient(#8883 0 25%,transparent 0 50%) 50%/12px 12px;padding:0}
 #ctrypick .sblist,.ctrypick .sblist{display:flex;flex-direction:column;gap:2px}.sbrow.ctryrow{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:10px;background:transparent;font-size:15px;text-align:left;color:var(--txt);border:0!important;box-shadow:none}.sbrow.ctryrow:hover{background:color-mix(in srgb,var(--txt) 7%,transparent)}.ctrybar>.seg.ctrymode{flex:none;width:auto;display:inline-flex}.stbku .row{gap:8px;flex-wrap:wrap}
+.hidaccs{margin:6px 0 14px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.hidaccs .accrow{margin-top:6px}.hidaccs .accrow.hid .grow{text-decoration:line-through;color:var(--mut)}.strike{text-decoration:line-through;opacity:.6}
 .ctrybar{gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}.ctrybtn{display:inline-flex;align-items:center;gap:8px;font-weight:600}.ctryflag{font-size:1.25em;line-height:1}.ctryrow.on{background:color-mix(in srgb,var(--acc) 12%,transparent)}.ctryok{color:var(--acc)}.ctrymode button{padding:5px 10px;font-size:13px;white-space:nowrap}.ctryinfo .rlrows b{text-align:right;max-width:62%}.ctryfx{display:block;margin:10px 0 4px}.ctryfx input{max-width:160px}.ctryintro p{margin:6px 0}
 .ctlogotune{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:8px}.ctlogoz{display:flex;align-items:center;gap:8px;margin:0}.ctlogoz input{width:150px}.ctlogov{width:44px;font-variant-numeric:tabular-nums}.ctlogobg button{padding:4px 10px;font-size:12px}.ctlogoprev img{width:100%;height:100%;object-fit:contain}
 .ctlogobtns{gap:6px;flex-wrap:wrap;margin-top:6px}
