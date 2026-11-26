@@ -31,7 +31,7 @@ const tool = (categories) => ({
           vat: { type: ["number", "null"], description: "USt-Betrag" },
           vat_lines: { type: "array", description: "USt-Aufschlüsselung je Steuersatz laut Beleg (z. B. 20 % und 10 % auf einem Kassenbon). Leer, wenn nicht ausgewiesen.", items: { type: "object", properties: { rate: { type: "number", description: "Steuersatz in Prozent, z. B. 20, 13, 10, 0" }, net: { type: ["number", "null"] }, vat: { type: ["number", "null"] }, gross: { type: ["number", "null"], description: "Brutto-Anteil dieses Steuersatzes" } }, required: ["rate"] } },
           payout: { type: ["number", "null"], description: "Tatsächlich überwiesener/ausbezahlter Betrag, falls abweichend von total – bei Lohnzettel/Gehaltsabrechnung der Netto-Auszahlungsbetrag (Überweisung aufs Konto)" },
-          currency: { type: "string", description: "ISO-Code, meist EUR" }
+          currency: { type: "string", description: "ISO-4217-Code genau wie auf dem Beleg (z. B. EUR, USD bei $, GBP bei £, CHF, CZK bei Kč); alle Beträge in dieser Währung" }
         }
       },
       merchant: { type: ["string", "null"], description: "Bei Kassenbons/Belegen: Name des Geschäfts/Händlers, kurz und ohne Rechtsform (z. B. \"Penny\", \"BILLA\", \"OMV\")" },

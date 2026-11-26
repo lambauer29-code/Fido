@@ -374,11 +374,40 @@ const ML_CACHE = {}, ML_FMT = typeof Intl !== "undefined" ? new Intl.DateTimeFor
 const monthLabel = (k) => ML_CACHE[k] || (ML_CACHE[k] = ML_FMT.format(new Date(k + "-15")));
 const norm = (s) => String(s || "").toLowerCase();
 const isEUR = (d) => (d.amount?.currency || "EUR") === "EUR";
+const FX_TRIED = new Set();
+/* ---------- v0.99.80: Fremdwährungen – EZB-Kurs zum Belegdatum, Umrechnung in Euro für Summen ---------- */
+const CURRENCIES = ["EUR", "USD", "CHF", "GBP", "CZK", "HUF", "PLN", "SEK", "NOK", "DKK", "RON", "BGN", "TRY", "JPY", "CNY", "CAD", "AUD", "NZD", "HKD", "SGD", "INR", "ZAR", "MXN", "BRL", "ILS", "KRW", "THB", "AED", "ISK"];
+let CUR_DN = null;
+const curName = (c) => { try { CUR_DN = CUR_DN || new Intl.DisplayNames(["de"], { type: "currency" }); return CUR_DN.of(c) || c; } catch { return c; } };
+const fxNum = (v) => (v == null || v === "" ? null : +String(v).replace(",", ".") > 0 ? +String(v).replace(",", ".") : null);
+async function fetchFx(cur, date) {
+  cur = String(cur || "EUR").toUpperCase(); const d = String(date || new Date().toLocaleDateString("sv-SE")).slice(0, 10);
+  if (cur === "EUR") return { rate: 1, date: d, source: "EUR" };
+  const k = cur + ":" + d, c = ls.get("fxCache", {}); if (c[k]) return c[k];
+  const future = d > new Date().toLocaleDateString("sv-SE");
+  const r = await fetch(`/api/fx?cur=${cur}&date=${future ? "latest" : d}`, { headers: { "x-app-token": ls.get("appToken", "") } }).catch(() => null);
+  if (!r) throw new Error("Keine Verbindung"); const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(r.status === 404 && !j.error ? "Kurs-Abruf auf dem Server nicht gefunden – neue Version in Vercel veröffentlichen" : j.error || "Kurs nicht abrufbar");
+  const v = { rate: j.rate, date: j.date || d, source: j.source || "EZB" };
+  if (!future) { const n = { ...ls.get("fxCache", {}), [k]: v }, ks = Object.keys(n); for (const x of ks.slice(0, Math.max(0, ks.length - 500))) delete n[x]; ls.set("fxCache", n); }
+  return v;
+}
+// Betrag → Euro (fx = Einheiten Fremdwährung je 1 EUR)
+const toEur = (v, cur, fx) => (v == null || isNaN(v) ? null : (cur || "EUR") === "EUR" ? v : fx > 0 ? Math.round((v / fx) * 100) / 100 : null);
+const docCur = (d) => d.amount?.currency || "EUR";
+const docFx = (d) => (docCur(d) === "EUR" ? 1 : d.amount?.eur > 0 && d.amount?.total ? Math.abs(d.amount.total) / d.amount.eur : d.amount?.fx || null);
+const canEur = (d) => docCur(d) === "EUR" || docFx(d) > 0;
+const totEur = (d) => (d.amount?.total == null ? null : docCur(d) === "EUR" ? d.amount.total : toEur(d.amount.total, docCur(d), docFx(d)));
+const payEur = (d) => toEur(payAmt(d), docCur(d), docFx(d));
+const r2e4 = (v) => Math.round(v * 10000) / 10000;
+const fmtFx = (r) => (r ? r.toLocaleString("de-AT", { maximumFractionDigits: r < 10 ? 4 : 2 }) : "–");
 // tatsächlich überwiesener Betrag: bei Lohn/Gehalt die Netto-Auszahlung, sonst die Endsumme
 const isSalary = (d) => /lohn|gehalt|bezug/i.test(`${d.docType || ""} ${d.category || ""} ${d.title || ""}`);
 const payAmt = (d) => !d.amount ? null : d.amount.payout ?? (d.direction === "einnahme" && isSalary(d) && d.amount.net ? d.amount.net : d.amount.total);
 const docScope = (d) => d.scope || "privat";
-const monthlyCost = (c) => (c?.amount && INTERVAL_FACTOR[c.interval] ? c.amount * INTERVAL_FACTOR[c.interval] : 0);
+const astEur = (a) => { const v = Number(String(a?.price ?? "").replace(",", ".")) || 0; return (a?.currency || "EUR") === "EUR" ? v : a.eurAmt > 0 ? a.eurAmt : toEur(v, a.currency, a.fx) ?? v; };   // v0.99.80: Kaufpreis in Euro
+const ctEur = (c) => { const v = Number(String(c?.amount ?? "").replace(",", ".")) || 0; return (c?.currency || "EUR") === "EUR" ? v : c.eurAmt > 0 ? c.eurAmt : toEur(v, c.currency, c.fx) ?? v; };   // v0.99.80
+const monthlyCost = (c) => (c?.amount && INTERVAL_FACTOR[c.interval] ? ctEur(c) * INTERVAL_FACTOR[c.interval] : 0);
 const Ico = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>);
 const IcoEye = () => <Ico d={<><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>} />;
@@ -2036,7 +2065,7 @@ function AppMain() {
       const doc = { ...(old || {}), id, createdAt: old?.createdAt || new Date().toISOString(), fileName: invFileName(inv), mimeType: "application/pdf", size: blob.size,
         title: `${inv.kind === "angebot" ? "Angebot" : "Rechnung"} ${inv.number} – ${inv.customer?.name || ""}`.trim(), category: categories.includes("Ausgangsrechnung") ? "Ausgangsrechnung" : categories.includes("Einnahmen") ? "Einnahmen" : old?.category || "Sonstiges",
         docType: "Ausgangsrechnung", tags: ["rechnung", "firma"], deadlines: [], sender: co.name, documentDate: inv.date, scope: "firma", scopeManual: true,
-        amount: { total: invTotal(inv), currency: "EUR" }, direction: "einnahme", paid: true, paidDate: inv.paidAt, status: "done", invoiceId: invId,
+        amount: { total: invTotal(inv), currency: invCur(inv), fx: invCur(inv) === "EUR" ? null : inv.fx || null }, direction: "einnahme", paid: true, paidDate: inv.paidAt, status: "done", invoiceId: invId,
         summary: `${inv.kind === "angebot" ? "Angebot" : "Rechnung"} an ${inv.customer?.name || ""}${(inv.reminders || []).length ? ` inkl. ${inv.reminders.length} Mahnung(en)` : ""}`, notes: old?.notes || "" };
       try { doc.thumb = await makeThumb(blob); } catch {}
       await db.putFile(id, blob); await saveDoc(doc); await linkTx(txId, id);
@@ -2142,10 +2171,11 @@ function AppMain() {
     if (!doc.amount?.total) return;
     const acc = ensureCashAccount();
     const generic = ["Rechnungen", "Sonstiges", "Garantie & Kaufbelege", "Verträge"].includes(doc.category);
-    const base = { date: doc.documentDate || todayISO(), amount: -Math.abs(doc.amount.total), currency: doc.amount.currency || "EUR", counterparty: doc.sender || doc.title, purpose: doc.title };
+    const fx = docCur(doc) !== "EUR" && canEur(doc);   // v0.99.80: Fremdwährung → in Euro buchen
+    const base = { date: doc.documentDate || todayISO(), amount: -Math.abs(fx ? payEur(doc) : doc.amount.total), currency: fx ? "EUR" : doc.amount.currency || "EUR", counterparty: doc.sender || doc.title, purpose: doc.title + (fx ? ` (${fmtMoney(payAmt(doc), docCur(doc))})` : "") };
     await addManualTx({ ...base, accountId: acc.id, docId: doc.id, category: generic ? categorize({ ...base, kind: "bank" }, rules, []) : doc.category });
     await saveDoc({ ...doc, paid: true, paidCash: true, paidDate: base.date, deadlines: (doc.deadlines || []).map((x) => (/zahl|fällig/i.test(x.label) ? { ...x, done: true } : x)) });
-    notify(`💶 ${fmtMoney(doc.amount.total)} als Barausgabe gebucht (${acc.name})`);
+    notify(`💶 ${fmtMoney(-base.amount)} als Barausgabe gebucht (${acc.name})`);
   }
 
   async function deleteAccount(id) {
@@ -2157,6 +2187,12 @@ function AppMain() {
     await db.delTxs(ids); setTxs((p) => p.filter((t) => t.accountId !== id)); setAccounts((a) => a.filter((x) => x.id !== id));
   }
 
+  // v0.99.80: Belege in Fremdwährung (z. B. von der KI eingelesen) bekommen automatisch den EZB-Kurs zum Belegdatum
+  useEffect(() => { let stop = false; (async () => {
+    for (const d of docs.filter((x) => !x.deletedAt && x.amount?.total != null && docCur(x) !== "EUR" && !x.amount.fx && !x.amount.eur && !FX_TRIED.has(x.id)).slice(0, 20)) {
+      if (stop) return; FX_TRIED.add(d.id);
+      try { const r = await fetchFx(docCur(d), d.documentDate || (d.createdAt || "").slice(0, 10)); const cur = docsRef.current.find((x) => x.id === d.id); if (cur && !cur.amount?.fx && !cur.amount?.eur) await saveDoc({ ...cur, amount: { ...cur.amount, fx: r.rate, fxDate: r.date, fxSrc: r.source } }); } catch {}
+    } })(); return () => { stop = true; }; }, [docs]);
   async function saveDoc(d) {
     setDocs((prev) => { const i = prev.findIndex((x) => x.id === d.id); if (i < 0) return [d, ...prev]; const n = [...prev]; n[i] = d; return n; });
     await db.putDoc(d);
@@ -2708,7 +2744,7 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
   const cashAcc = accounts.find((a) => a.kind === "cash");
   const lastAcc = ls.get("expAcc", "");
   const defAcc = initAccount && accounts.some((a) => a.id === initAccount) ? initAccount : accounts.some((a) => a.id === lastAcc) ? lastAcc : cashAcc?.id || accounts[0]?.id || "new-cash";
-  const blank = () => ({ dir: "out", merchant: "", amount: "", date: today, accountId: defAcc, category: "", note: "", items: [], taxes: [], docId: null, file: null, url: null, qr: null, touched: {} });
+  const blank = () => ({ dir: "out", merchant: "", amount: "", cur: "EUR", fx: null, fxDate: null, fxSrc: null, eur: null, date: today, accountId: defAcc, category: "", note: "", items: [], taxes: [], docId: null, file: null, url: null, qr: null, touched: {} });
   const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false), [qrOpen, setQrOpen] = useState(false), [extraCats, setExtraCats] = useState([]);
   const [icats, setIcats] = useState(itemCats);
@@ -2727,6 +2763,7 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
       const docCat = categories.includes(doc.category) && !GENERIC_DOC_CATS.includes(doc.category) ? doc.category : "";
       return { ...x, merchant,
         amount: t.amount && x.amount ? x.amount : doc.amount?.total != null ? amtStr(doc.amount.total) : x.amount,
+        ...(!t.cur && doc.amount?.currency && doc.amount.currency !== x.cur ? { cur: doc.amount.currency, fx: doc.amount.fx || null, fxDate: doc.amount.fxDate || null, fxSrc: doc.amount.fxSrc || null, eur: null } : {}),
         date: t.date ? x.date : pastOrToday(doc.purchaseDate || doc.documentDate, today),
         category: t.category && x.category ? x.category : docCat || suggestCat(merchant) || x.category,
         dir: doc.direction === "einnahme" ? "in" : x.dir, items: [], taxes: x.taxes.length ? x.taxes : docTaxRows(doc.amount) };
@@ -2760,7 +2797,8 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
   const total = val > 0 ? val : items.length ? itemSum : NaN;
   const diff = items.length && val > 0 ? Math.round((val - itemSum) * 100) / 100 : 0;
   const cat = f.category || suggestCat(f.merchant) || "Lebensmittel & Haushalt";
-  const ok = total > 0 && f.date && f.merchant.trim() && !busy;
+  const foreign = (f.cur || "EUR") !== "EUR", eurTotal = foreign ? (f.eur > 0 ? f.eur : toEur(total, f.cur, f.fx)) : total, fxK = foreign && eurTotal ? eurTotal / total : 1;
+  const ok = total > 0 && f.date && f.merchant.trim() && !busy && (!foreign || eurTotal > 0);
   // Steuern: je Steuersatz der Brutto-Anteil; eine einzelne Zeile ohne Betrag gilt für den ganzen Betrag
   const taxRows = f.taxes.map((x) => { const g = parseAmt(x.gross) > 0 ? parseAmt(x.gross) : f.taxes.length === 1 && total > 0 ? total : 0; return { ...x, g, v: g * x.rate / (100 + x.rate) }; });
   const vatSum = taxRows.reduce((a, x) => a + x.v, 0), taxGross = taxRows.reduce((a, x) => a + x.g, 0);
@@ -2777,10 +2815,12 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
     if (!ok) return; setBusy(true);
     try {
       const it = [];
-      const vat = taxRows.filter((x) => x.g > 0).map((x) => ({ rate: x.rate, gross: r2e(x.g), vat: r2e(x.v) }));
+      const vat = taxRows.filter((x) => x.g > 0).map((x) => ({ rate: x.rate, gross: r2e(x.g * fxK), vat: r2e(x.v * fxK) }));
       const date = pastOrToday(f.date, today);
       ls.set("expAcc", f.accountId);
-      await onSave({ accountId: f.accountId, date, amount: f.dir === "out" ? -total : total, counterparty: f.merchant.trim(), purpose: f.note.trim(),
+      const amt = foreign ? r2e(eurTotal) : total;   // v0.99.80: Fremdwährung → in Euro aufs Konto, Originalbetrag bleibt gespeichert
+      await onSave({ accountId: f.accountId, date, amount: f.dir === "out" ? -amt : amt, counterparty: f.merchant.trim(), purpose: f.note.trim(),
+        ...(foreign ? { fxAmount: f.dir === "out" ? -total : total, fxCur: f.cur, fxRate: r2e4(total / amt) } : {}),
         category: f.dir === "in" && !f.category ? "Einnahmen" : cat, ...(it.length ? { items: it } : {}),
         ...(vat.length ? { vat } : {}),
         ...(f.qr ? { receiptQr: { kind: f.qr.kind, register: f.qr.register, receiptNo: f.qr.receiptNo } } : {}) },
@@ -2824,7 +2864,8 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
       <label>Firma<input list="expmerchants" value={f.merchant} placeholder="z. B. Penny, BILLA, OMV" onChange={(e) => set({ merchant: e.target.value }, true)} /></label>
       <datalist id="expmerchants">{merchants.map((m) => <option key={m} value={m} />)}</datalist>
       <label>Datum<input type="date" max={today} value={f.date} onChange={(e) => set({ date: e.target.value > today ? today : e.target.value }, true)} /></label>
-      <label>Betrag (brutto)<input className="bigamount" inputMode="decimal" placeholder="0,00 €" value={f.amount} onChange={(e) => set({ amount: e.target.value }, true)} /></label>
+      <label>Betrag (brutto)<span className="row expcur"><input className="bigamount" inputMode="decimal" placeholder={"0,00 " + (foreign ? f.cur : "€")} value={f.amount} onChange={(e) => set({ amount: e.target.value }, true)} /><CurSelect value={f.cur} onChange={(c) => set({ cur: c, fx: null, fxDate: null, fxSrc: null, eur: null }, true)} /></span></label>
+      {foreign && <FxRow cur={f.cur} date={f.date} amount={total > 0 ? total : null} fx={f.fx} fxDate={f.fxDate} fxSrc={f.fxSrc} eur={f.eur} onPatch={(x) => set(x)} />}
       <div className="exptax">
         <div className="expitemshead"><b>Steuern</b><small className="muted">{taxRows.length ? `USt gesamt ${fmtMoney(vatSum)}` : "optional"}</small></div>
         {taxRows.map((t) => (
@@ -2846,7 +2887,7 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
             ...cats.map((c) => ({ k: c, icon: <CatGlyph c={c} />, title: c, on: c === cat, run: () => set({ category: c }, true) }))]} /></label>
       </div>
       <label>Notizen<textarea rows={2} value={f.note} onChange={(e) => set({ note: e.target.value })} placeholder="optional, z. B. Wocheneinkauf, Projekt …" /></label>
-      <button className="btn primary cashsave" disabled={!ok} onClick={save}>{busy ? "Speichert …" : reading ? "Speichern (Beleg wird noch gelesen)" : `Speichern${total > 0 ? " · " + fmtMoney(f.dir === "out" ? -total : total) : ""}`}</button>
+      <button className="btn primary cashsave" disabled={!ok} onClick={save}>{busy ? "Speichert …" : reading ? "Speichern (Beleg wird noch gelesen)" : `Speichern${total > 0 ? " · " + fmtMoney(f.dir === "out" ? -total : total, foreign ? f.cur : "EUR") + (foreign && eurTotal > 0 ? " (≈ " + fmtMoney(f.dir === "out" ? -eurTotal : eurTotal) + ")" : "") : ""}`}</button>
       {qrOpen && createPortal(<CodeScanWin title="Kassenbon-QR scannen" onClose={() => setQrOpen(false)} onResult={(code) => onQr(code)} />, document.querySelector(".app") || document.body)}
     </div>
   );
@@ -2970,7 +3011,7 @@ function BizReport({ docs, txs = [], accounts = [], notify, setTab, editing = fa
   const inY = (d) => year === "alle" || (d || "").startsWith(year);
   const inv = list.filter((x) => x.kind === "rechnung" && !["entwurf", "storniert"].includes(invState(x)));
   const yInv = inv.filter((x) => inY(x.date));
-  const net = (x) => invTotal({ ...x, fee: 0 }), sum = (l, f = invTotal) => l.reduce((s, x) => s + f(x), 0);
+  const net = (x) => invEur({ ...x, fee: 0 }), sum = (l, f = invEur) => l.reduce((s, x) => s + f(x), 0);
   const billed = sum(yInv, net);
   const paidL = inv.filter((x) => invState(x) === "bezahlt" && inY(x.paidAt || x.date));
   const received = sum(paidL);
@@ -2982,7 +3023,7 @@ function BizReport({ docs, txs = [], accounts = [], notify, setTab, editing = fa
   const onTime = paidWithDates.filter((x) => x.paidAt <= invDue(x)).length;
   // Betriebsausgaben: Dokumente „Firma“ mit Ausgabe + Kilometergeld aus dem Fahrtenbuch
   const bizDocs = docs.filter((d) => d.scope === "firma" && d.direction === "ausgabe" && d.amount?.total && inY(d.documentDate || d.createdAt));
-  const expDocs = bizDocs.reduce((s, d) => s + Math.abs(d.amount.total), 0);
+  const expDocs = bizDocs.reduce((s, d) => s + Math.abs(totEur(d) ?? d.amount.total), 0);
   const bizTrips = (fb.entries || []).filter((e) => e.type === "trip" && e.purpose === "business" && inY(e.date));
   const bizKm = bizTrips.reduce((s, e) => s + Math.max(0, (+e.endKm || 0) - (+e.startKm || 0)), 0);
   const kmRate = +(fb.settings?.kmRate ?? 0.5);
@@ -3077,7 +3118,7 @@ function BizReport({ docs, txs = [], accounts = [], notify, setTab, editing = fa
           </div>
           {overL.slice(0, 4).map((x) => (
             <div key={x.id} className="frow"><div className="grow"><b>{x.number}</b><small className="muted block">{x.customer?.name} · seit {fmtDate(invDueEff(x))} fällig · {(x.reminders || []).length ? remindName((x.reminders || []).length - 1) : "noch nicht gemahnt"}</small></div>
-              <div className="right"><b className="neg">{fmtMoney(invTotal(x))}</b></div></div>))}
+              <div className="right"><b className="neg">{fmtInv(x)}</b></div></div>))}
         </section></W>
       </WidgetBoard>
     </div>
@@ -3438,6 +3479,32 @@ function optList(children) {
   });
   walk(children);
   return out;
+}
+// v0.99.80: Währungsauswahl & Kurszeile (EZB-Kurs, eigener Kurs oder Euro-Betrag laut Kontoauszug)
+function CurSelect({ value, onChange, className = "" }) {
+  const v = String(value || "EUR").toUpperCase(), list = CURRENCIES.includes(v) ? CURRENCIES : [v, ...CURRENCIES];
+  const other = () => { const c = (prompt("Währung als ISO-Code (z. B. MAD, VND):", "") || "").trim().toUpperCase(); if (/^[A-Z]{3}$/.test(c)) onChange(c); };
+  return <PickMenu click btnClass={("selbtn cursel " + className).trim()} title="Währung" label={v}
+    items={[...list.map((c) => ({ k: c, title: c, sub: curName(c), on: c === v, run: () => c !== v && onChange(c) })), { k: "__other", title: "Andere Währung …", run: other }]} />;
+}
+function LazyNum({ value, onCommit, placeholder, ...p }) {
+  const [t, setT] = useState(value == null ? "" : String(value).replace(".", ",")), [foc, setFoc] = useState(false);
+  useEffect(() => { if (!foc) setT(value == null ? "" : String(value).replace(".", ",")); }, [value, foc]);
+  return <input {...p} inputMode="decimal" value={t} placeholder={placeholder} onFocus={() => setFoc(true)} onBlur={() => { setFoc(false); onCommit(fxNum(t)); }} onChange={(e) => { setT(e.target.value); const n = fxNum(e.target.value); if (n != null || e.target.value === "") onCommit(n); }} />;
+}
+function FxRow({ cur, date, amount, fx, fxDate, fxSrc, eur, onPatch, auto = true }) {
+  const [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const get = async () => { setBusy(true); setErr(""); try { const r = await fetchFx(cur, date); onPatch({ fx: r.rate, fxDate: r.date, fxSrc: r.source, eur: null }); } catch (e) { setErr(e.message); } finally { setBusy(false); } };
+  useEffect(() => { if (auto && cur && cur !== "EUR" && !fx && !eur) get(); }, [cur, date]);
+  if (!cur || cur === "EUR") return null;
+  const rate = eur > 0 && amount ? Math.abs(amount) / eur : fx, e = eur > 0 ? eur : toEur(amount, cur, fx);
+  return (<div className="fxrow">
+    <span className="fxinfo">{rate ? <>1 EUR = <b>{fmtFx(rate)} {cur}</b><small className="muted">{eur > 0 ? " · aus Euro-Betrag" : fxDate ? ` · ${fxSrc || "EZB"} vom ${fmtDate(fxDate)}` : fxSrc ? " · " + fxSrc : ""}</small></> : busy ? "EZB-Kurs wird geholt …" : "Noch kein Kurs"}{amount != null && e != null && <> · ≈ <b>{fmtMoney(e)}</b></>}</span>
+    <div className="fxins"><label>Kurs (1 EUR = … {cur})<LazyNum value={eur > 0 ? null : fx} placeholder={rate ? fmtFx(rate) : "z. B. 1,05"} onCommit={(n) => onPatch({ fx: n, fxDate: null, fxSrc: n ? "eigener Kurs" : null, eur: null })} /></label>
+      <label>Euro-Betrag<LazyNum value={eur} placeholder={e != null ? e.toFixed(2).replace(".", ",") : "laut Kontoauszug"} onCommit={(n) => onPatch({ eur: n })} /></label>
+      <button type="button" className="btn sm" disabled={busy} onClick={get} title="EZB-Referenzkurs zum Datum holen">{busy ? "…" : "↻ EZB-Kurs"}</button></div>
+    {err && <small className="red block">{err}</small>}
+  </div>);
 }
 function PSelect({ value, onChange, children, className = "", disabled, title, "aria-label": al, style }) {
   const opts = optList(children), v = String(value ?? "");
@@ -3917,17 +3984,17 @@ async function docsZip(list, extra = []) {
 /* ---------- Firmen-Exporte ---------- */
 const r2e = (v) => Math.round((Number(v) || 0) * 100) / 100;
 const INV_HEAD = ["Nummer", "Art", "Datum", "Kunde", "Kundennr.", "Betrag netto €", "Mahngebühren €", "Gesamt €", "Status", "Fällig am", "Bezahlt am", "Mahnstufe"];
-const invRow = (x) => [x.number || "Entwurf", x.kind === "angebot" ? "Angebot" : "Rechnung", x.date || "", x.customer?.name || "", x.customer?.number || "", r2e(invTotal({ ...x, fee: 0 })), r2e(x.fee), r2e(invTotal(x)),
+const invRow = (x) => [x.number || "Entwurf", x.kind === "angebot" ? "Angebot" : "Rechnung", x.date || "", x.customer?.name || "", x.customer?.number || "", r2e(invEur({ ...x, fee: 0 })), r2e(x.fee), r2e(invEur(x)),
   STATE_UI[invState(x)]?.[0] || invState(x), x.kind === "angebot" ? "" : invDueEff(x), x.paidAt || "", (x.reminders || []).length ? remindName(x.reminders.length - 1) : ""];
 const openList = (list) => list.filter((x) => x.kind === "rechnung" && ["offen", "überfällig"].includes(invState(x))).sort((a, b) => (invDueEff(a) || "").localeCompare(invDueEff(b) || ""));
 const OP_HEAD = ["Nummer", "Datum", "Kunde", "Fällig am", "Tage überfällig", "Mahnstufe", "Offen €"];
-const opRow = (x) => { const d = -daysUntil(invDueEff(x)); return [x.number, x.date, x.customer?.name || "", invDueEff(x), d > 0 ? d : 0, (x.reminders || []).length ? remindName(x.reminders.length - 1) : "–", r2e(invTotal(x))]; };
+const opRow = (x) => { const d = -daysUntil(invDueEff(x)); return [x.number, x.date, x.customer?.name || "", invDueEff(x), d > 0 ? d : 0, (x.reminders || []).length ? remindName(x.reminders.length - 1) : "–", r2e(invEur(x))]; };
 async function openItemsPdf(list) {
   const l = openList(list), over = l.filter((x) => invState(x) === "überfällig");
   return tablePdf({ title: "Offene Posten", subtitle: `Stand ${fmtDate(isoToday())}`, landscape: true,
-    kpis: [["Offen gesamt", fmtMoney(sumBy(l, invTotal))], ["davon überfällig", fmtMoney(sumBy(over, invTotal))], ["Rechnungen", String(l.length)], ["gemahnt", String(l.filter((x) => (x.reminders || []).length).length)]],
+    kpis: [["Offen gesamt", fmtMoney(sumBy(l, invEur))], ["davon überfällig", fmtMoney(sumBy(over, invEur))], ["Rechnungen", String(l.length)], ["gemahnt", String(l.filter((x) => (x.reminders || []).length).length)]],
     columns: [{ label: "Nummer", w: 1.4 }, { label: "Datum", w: 1 }, { label: "Kunde", w: 3.2 }, { label: "Fällig am", w: 1 }, { label: "Tage überf.", w: 0.9, align: "right" }, { label: "Mahnstufe", w: 1.7 }, { label: "Offen €", w: 1.2, align: "right" }],
-    rows: l.map(opRow), totals: ["Summe", "", `${l.length} Rechnungen`, "", "", "", r2e(sumBy(l, invTotal))] });
+    rows: l.map(opRow), totals: ["Summe", "", `${l.length} Rechnungen`, "", "", "", r2e(sumBy(l, invEur))] });
 }
 function earData(year, list, docs, fb) {
   const inY = (d) => year === "alle" || (d || "").startsWith(year);
@@ -3937,12 +4004,12 @@ function earData(year, list, docs, fb) {
   const trips = (fb.entries || []).filter((e) => e.type === "trip" && e.purpose === "business" && inY(e.date)).sort((a, b) => a.date.localeCompare(b.date));
   const rate = +(fb.settings?.kmRate ?? 0.5);
   const km = sumBy(trips, (e) => Math.max(0, e.endKm - e.startKm)), kmEur = r2e(Math.min(km, 30000) * rate);
-  const tInc = r2e(sumBy(inc, invTotal)), tExp = r2e(sumBy(exp, (d) => Math.abs(d.amount.total)));
+  const tInc = r2e(sumBy(inc, invEur)), tExp = r2e(sumBy(exp, (d) => Math.abs(totEur(d) ?? d.amount.total)));
   return { inc, exp, trips, veh, rate, km, kmEur, tInc, tExp, profit: r2e(tInc - tExp - kmEur) };
 }
 function earSheets(year, E) {
   return [{ name: "Zusammenfassung", head: ["Position", "Betrag €"], rows: [[`Betriebseinnahmen ${year}`, E.tInc], ["Betriebsausgaben (Belege)", -E.tExp], [`Kilometergeld (${E.km} km × ${String(E.rate).replace(".", ",")} €)`, -E.kmEur], ["Gewinn (vor Steuern & SV)", E.profit]] },
-    { name: "Einnahmen", head: ["Bezahlt am", "Rechnungsnr.", "Rechnungsdatum", "Kunde", "Betrag €"], rows: E.inc.map((x) => [x.paidAt || x.date, x.number, x.date, x.customer?.name || "", r2e(invTotal(x))]) },
+    { name: "Einnahmen", head: ["Bezahlt am", "Rechnungsnr.", "Rechnungsdatum", "Kunde", "Betrag €"], rows: E.inc.map((x) => [x.paidAt || x.date, x.number, x.date, x.customer?.name || "", r2e(invEur(x))]) },
     { name: "Ausgaben", head: ["Datum", "Lieferant", "Bezeichnung", "Kategorie", "Betrag €", "Beleg-Datei"], rows: E.exp.map((d) => [d.documentDate || "", d.merchant || d.sender || "", d.title || "", d.category || "", r2e(Math.abs(d.amount.total)), "Belege/" + docFileName(d)]) },
     { name: "Kilometergeld", head: ["Datum", "Fahrzeug", "Kennzeichen", "Von", "Nach", "Zweck", "km", "€"], rows: E.trips.map((e) => [e.date, E.veh[e.vid]?.name || "", E.veh[e.vid]?.plate || "", e.from || "", e.to || "", e.note || "", e.endKm - e.startKm, r2e((e.endKm - e.startKm) * E.rate)]) }];
 }
@@ -3950,7 +4017,7 @@ async function earPdf(year, E, coName) {
   return tablePdf({ title: `Einnahmen-Ausgaben-Rechnung ${year === "alle" ? "gesamt" : year}`, subtitle: `${coName || "Firma"} · vereinfachte Aufstellung aus FinDocu`,
     kpis: [["Einnahmen", fmtMoney(E.tInc)], ["Ausgaben", fmtMoney(E.tExp)], ["Kilometergeld", fmtMoney(E.kmEur)], ["Gewinn", fmtMoney(E.profit)]],
     columns: [{ label: "Datum", w: 1 }, { label: "Beleg / Nummer", w: 1.6 }, { label: "Partner", w: 2.6 }, { label: "Bezeichnung", w: 3.2 }, { label: "Betrag €", w: 1.2, align: "right" }],
-    sections: [{ heading: "Betriebseinnahmen", rows: E.inc.map((x) => [x.paidAt || x.date, x.number, x.customer?.name || "", "Rechnung vom " + fmtDate(x.date), r2e(invTotal(x))]), totals: ["", "", "", "Summe Einnahmen", E.tInc], empty: "keine" },
+    sections: [{ heading: "Betriebseinnahmen", rows: E.inc.map((x) => [x.paidAt || x.date, x.number, x.customer?.name || "", "Rechnung vom " + fmtDate(x.date), r2e(invEur(x))]), totals: ["", "", "", "Summe Einnahmen", E.tInc], empty: "keine" },
       { heading: "Betriebsausgaben", rows: E.exp.map((d) => [d.documentDate || "", d.docType || "Beleg", d.merchant || d.sender || "", d.title || "", r2e(Math.abs(d.amount.total))]), totals: ["", "", "", "Summe Ausgaben", E.tExp], empty: "keine Dokumente mit Markierung „Firma“" },
       { heading: "Kilometergeld", rows: [[ "", `${E.trips.length} Fahrten`, `${E.km.toLocaleString("de-AT")} km`, `× ${String(E.rate).replace(".", ",")} €/km (max. 30.000 km)`, E.kmEur]] },
       { heading: "Ergebnis", rows: [], totals: ["", "", "", "Gewinn (vor Steuern & SV)", E.profit] }],
@@ -4485,7 +4552,7 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
   const bankTotal = bankBals.length ? bankBals.reduce((x, y) => x + y, 0) : null;
   const cashAccs = accounts.filter((a) => a.kind === "cash");
   const thisMonth = todayISO().slice(0, 7);
-  const money = docs.filter((d) => d.amount?.total && isEUR(d) && inAnalysis(d));
+  const money = docs.filter((d) => d.amount?.total && canEur(d) && inAnalysis(d));
   // Monate mit importierten Kontoumsätzen werden aus den Umsätzen berechnet, sonst aus den Dokumenten
   const bankTx = txs.filter((t) => t.kind !== "broker" && t.category !== "Umbuchung" && !(hasCash && t.category === "Bargeld") && (t.currency || "EUR") === "EUR");
   const txMonths = new Set(bankTx.map((t) => t.date.slice(0, 7)));
@@ -4496,8 +4563,8 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
       return { out: l.filter((t) => t.amount < 0).reduce((s, t) => s - t.amount, 0), inc: l.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0), byCat };
     }
     const l = money.filter((d) => monthKey(d) === month), byCat = {};
-    l.filter((d) => d.direction === "ausgabe").forEach((d) => { byCat[d.category] = (byCat[d.category] || 0) + payAmt(d); });
-    return { out: l.filter((d) => d.direction === "ausgabe").reduce((s, d) => s + payAmt(d), 0), inc: l.filter((d) => d.direction === "einnahme").reduce((s, d) => s + payAmt(d), 0), byCat };
+    l.filter((d) => d.direction === "ausgabe").forEach((d) => { byCat[d.category] = (byCat[d.category] || 0) + payEur(d); });
+    return { out: l.filter((d) => d.direction === "ausgabe").reduce((s, d) => s + payEur(d), 0), inc: l.filter((d) => d.direction === "einnahme").reduce((s, d) => s + payEur(d), 0), byCat };
   };
   const sumBy = (month, dir) => flows(month)[dir === "ausgabe" ? "out" : "inc"];
 
@@ -4538,7 +4605,7 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
         <div className="tile alert" onClick={() => setTab("deadlines")}>
           <CatIcon c="Rechnungen" size={36} />
           <div className="grow"><b>{openInv.length} offene Rechnung{openInv.length > 1 ? "en" : ""}</b><small>Jetzt prüfen und per QR bezahlen</small></div>
-          <b>{fmtMoney(openInv.reduce((s, d) => s + d.amount.total, 0))}</b>
+          <b>{fmtMoney(openInv.reduce((s, d) => s + (totEur(d) ?? d.amount.total), 0))}</b>
         </div>
       ) : null;
   const w_konten = !!bankAccs.length ? (
@@ -4671,7 +4738,7 @@ function Home({ docs, dlDocs, txs, budgets, onOpen, setTab, fixExtra, hasCash, a
   const w_tax = (
     <section className="tile">
       <div className="tilehead"><b>Steuer {year}</b><small>{taxDocs.length} Beleg{taxDocs.length === 1 ? "" : "e"}</small></div>
-      <div className="hero-v sm">{fmtMoney(taxDocs.reduce((s, d) => s + (isEUR(d) ? d.amount?.total || 0 : 0), 0))}</div>
+      <div className="hero-v sm">{fmtMoney(taxDocs.reduce((s, d) => s + (canEur(d) ? totEur(d) || 0 : 0), 0))}</div>
       {taxDocs.slice(0, 3).map((d) => (
         <div key={d.id} className="frow click" onClick={() => onOpen(d.id)}>
           <CatIcon c={d.category} /><div className="grow"><b className="clamp">{d.title}</b></div>
@@ -4818,8 +4885,8 @@ function akteStats(a, docs) {
   const monthly = ct.reduce((s, d) => s + monthlyCost(d.contract), 0);
   const dl = l.flatMap((d) => (d.deadlines || []).filter((x) => !x.done && x.date && daysUntil(x.date) >= -60)).sort((x, y) => x.date.localeCompare(y.date))[0];
   const unpaid = l.filter((d) => d.direction === "ausgabe" && d.amount?.total && !d.paid);
-  const tax = l.filter((d) => d.taxRelevant && isEUR(d)).reduce((s, d) => s + Math.abs(d.amount?.total || 0), 0);
-  return { n: l.length, ct: ct.length, monthly, dl, unpaidN: unpaid.length, unpaid: unpaid.reduce((s, d) => s + (d.amount.total || 0), 0), tax };
+  const tax = l.filter((d) => d.taxRelevant && canEur(d)).reduce((s, d) => s + Math.abs(totEur(d) || 0), 0);
+  return { n: l.length, ct: ct.length, monthly, dl, unpaidN: unpaid.length, unpaid: unpaid.reduce((s, d) => s + (totEur(d) ?? d.amount.total ?? 0), 0), tax };
 }
 function FolderGrid({ docGroups, docs, onOpen }) {
   const groups = normGroups(docGroups);
@@ -5043,24 +5110,24 @@ function HomeTiles({ docs, dlDocs, txs, accounts = [], onOpen, setTab, editing, 
   const dn = dunning();
   const over = inv.filter((x) => invState(x) === "überfällig").map((x) => { const last = lastReminder(x), since = last ? -daysUntil(last.due) : -daysUntil(invDue(x)); return { x, since, ready: !last || since >= (dn.waitDays || 0) }; }).sort((a, b) => b.since - a.since);
   const ready = over.filter((o) => o.ready);
-  const paidIn = (pre) => inv.filter((x) => invState(x) === "bezahlt" && (x.paidAt || x.date || "").startsWith(pre)).reduce((s, x) => s + invTotal(x), 0);
-  const bizExp = (pre) => docs.filter((d) => d.scope === "firma" && d.direction === "ausgabe" && d.amount?.total && (d.documentDate || d.createdAt || "").startsWith(pre)).reduce((s, d) => s + Math.abs(d.amount.total), 0);
-  const kuRev = inv.filter((x) => (x.date || "").startsWith(year)).reduce((s, x) => s + invTotal({ ...x, fee: 0 }), 0);
+  const paidIn = (pre) => inv.filter((x) => invState(x) === "bezahlt" && (x.paidAt || x.date || "").startsWith(pre)).reduce((s, x) => s + invEur(x), 0);
+  const bizExp = (pre) => docs.filter((d) => d.scope === "firma" && d.direction === "ausgabe" && d.amount?.total && (d.documentDate || d.createdAt || "").startsWith(pre)).reduce((s, d) => s + Math.abs(totEur(d) ?? d.amount.total), 0);
+  const kuRev = inv.filter((x) => (x.date || "").startsWith(year)).reduce((s, x) => s + invEur({ ...x, fee: 0 }), 0);
   const kassaSum = kassen.reduce((s, k) => s + kbBalAt(entries, k, todayISO()), 0);
   // Fristen, Zahlungen
   const dl = (dlDocs || docs).filter(inSc).flatMap((doc) => (doc.deadlines || []).filter((x) => !x.done).map((x) => [x, doc])).sort((a, b) => a[0].date.localeCompare(b[0].date));
   const dlSoon = dl.filter(([x]) => daysUntil(x.date) <= 7);
   const pay = openInv.filter(inSc);
-  const privOut = docs.filter((d) => docScope(d) === "privat" && d.direction === "ausgabe" && d.amount?.total && isEUR(d) && monthKey(d) === thisMonth).reduce((s, d) => s + payAmt(d), 0);
+  const privOut = docs.filter((d) => docScope(d) === "privat" && d.direction === "ausgabe" && d.amount?.total && canEur(d) && monthKey(d) === thisMonth).reduce((s, d) => s + payEur(d), 0);
   const f = flows(thisMonth), saldo = f.inc - f.out;
   const overBudget = budgetRows.filter((b) => b.budget && b.spent > b.budget);
   const T = {
     mahn: { l: "Mahnungen", v: String(ready.length), s: ready.length ? "jetzt fällig" : over.length ? `${over.length} überfällig, Wartezeit` : "nichts fällig", tone: ready.length ? "bad" : "", tab: "mahnungen" },
-    invOpen: { l: "Offene Rechnungen", v: fmtMoney(openL.reduce((s, x) => s + invTotal(x), 0)), s: `${openL.length} Stück${over.length ? ` · ${over.length} überfällig` : ""}`, tab: "invoices" },
+    invOpen: { l: "Offene Rechnungen", v: fmtMoney(openL.reduce((s, x) => s + invEur(x), 0)), s: `${openL.length} Stück${over.length ? ` · ${over.length} überfällig` : ""}`, tab: "invoices" },
     saldo: { l: "Saldo " + monthName, v: (saldo >= 0 ? "+" : "") + fmtMoney(saldo), s: `↑ ${fmtMoney(f.inc)} · ↓ ${fmtMoney(f.out)}`, tone: saldo < 0 ? "neg" : "pos", tab: "analyse" },
     konten: { l: "Konten", v: bankTotal != null ? fmtMoney(bankTotal) : "—", s: bankAccs.length === 1 ? "1 Konto" : `${bankAccs.length} Konten`, tab: "accounts" },
     fristen: { l: "Fristen", v: String(dlSoon.length), s: dlSoon.length ? (dlSoon.some(([x]) => daysUntil(x.date) < 0) ? "überfällig oder in 7 Tagen" : "in 7 Tagen") : dl[0] ? "nächste " + fmtDate(dl[0][0].date) : "keine offen", tone: dlSoon.length ? "warn" : "", tab: "deadlines" },
-    zahlen: { l: "Zu bezahlen", v: fmtMoney(pay.reduce((s, d) => s + (d.amount?.total || 0), 0)), s: `${pay.length} Beleg${pay.length === 1 ? "" : "e"}`, tone: pay.length ? "warn" : "", tab: "deadlines" },
+    zahlen: { l: "Zu bezahlen", v: fmtMoney(pay.reduce((s, d) => s + (totEur(d) ?? d.amount?.total ?? 0), 0)), s: `${pay.length} Beleg${pay.length === 1 ? "" : "e"}`, tone: pay.length ? "warn" : "", tab: "deadlines" },
     fix: { l: "Fixkosten", v: fmtMoney(fix), s: "pro Monat", tab: "contracts" },
     kassa: { l: "Kassabuch", v: fmtMoney(kassaSum), s: `${kassen.length} Kassa${kassen.length === 1 ? "" : "en"}`, tab: "kassa" },
     umsatz: { l: "Umsatz " + monthName, v: fmtMoney(paidIn(thisMonth)), s: "bezahlte Rechnungen", tone: "pos", tab: "firma" },
@@ -5078,8 +5145,8 @@ function HomeTiles({ docs, dlDocs, txs, accounts = [], onOpen, setTab, editing, 
   // Zu erledigen
   const todo = [];
   if (scope !== "privat") {
-    ready.slice(0, 3).forEach(({ x, since }) => todo.push({ k: "m" + x.id, ico: "📮", t: `${x.customer?.name || "Ohne Kunde"} · ${x.number}`, s: `${since} Tage überfällig – Mahnung fällig`, v: fmtMoney(invTotal(x)), tone: "bad", run: () => setTab("mahnungen") }));
-    openL.filter((x) => invState(x) === "offen" && daysUntil(invDueEff(x)) <= 7).slice(0, 3).forEach((x) => todo.push({ k: "i" + x.id, ico: "🧾", t: `${x.customer?.name || "Ohne Kunde"} · ${x.number}`, s: "fällig " + fmtDate(invDueEff(x)), v: fmtMoney(invTotal(x)), run: () => setTab("invoices") }));
+    ready.slice(0, 3).forEach(({ x, since }) => todo.push({ k: "m" + x.id, ico: "📮", t: `${x.customer?.name || "Ohne Kunde"} · ${x.number}`, s: `${since} Tage überfällig – Mahnung fällig`, v: fmtInv(x), tone: "bad", run: () => setTab("mahnungen") }));
+    openL.filter((x) => invState(x) === "offen" && daysUntil(invDueEff(x)) <= 7).slice(0, 3).forEach((x) => todo.push({ k: "i" + x.id, ico: "🧾", t: `${x.customer?.name || "Ohne Kunde"} · ${x.number}`, s: "fällig " + fmtDate(invDueEff(x)), v: fmtInv(x), run: () => setTab("invoices") }));
   }
   pay.slice(0, 3).forEach((d) => todo.push({ k: "p" + d.id, ico: "💳", t: d.sender || d.title, s: "bezahlen" + (docScope(d) === "firma" ? " · Firma" : ""), v: fmtMoney(d.amount.total), tone: "warn", run: () => onOpen(d.id) }));
   dl.filter(([x]) => daysUntil(x.date) <= 14).slice(0, 4).forEach(([x, d]) => { const n = daysUntil(x.date); todo.push({ k: "d" + x.id, ico: "⏰", t: x.label, s: `${d.title}${scope === "alle" && docScope(d) === "firma" ? " · Firma" : ""}`, v: n < 0 ? `${-n} T. über` : n === 0 ? "heute" : `in ${n} T.`, tone: n <= 3 ? "bad" : "warn", run: () => onOpen(d.id) }); });
@@ -5863,7 +5930,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
   const [visList, docSent] = useProgressive(list);
   const counts = useMemo(() => Object.fromEntries(categories.map((c) => [c, docs.filter((d) => d.category === c).length])), [docs, categories]);
   const amt = (d) => d.amount?.total != null && (
-    <span className={"amt" + (d.direction === "einnahme" ? " pos" : d.paid ? " paid" : "")} title={payAmt(d) !== d.amount.total ? `Brutto ${fmtMoney(d.amount.total)} · ausbezahlt ${fmtMoney(payAmt(d))}` : undefined}>{d.direction === "einnahme" ? "+" : ""}{fmtMoney(payAmt(d), d.amount.currency)}</span>);
+    <span className={"amt" + (d.direction === "einnahme" ? " pos" : d.paid ? " paid" : "")} title={[payAmt(d) !== d.amount.total ? `Brutto ${fmtMoney(d.amount.total, docCur(d))} · ausbezahlt ${fmtMoney(payAmt(d), docCur(d))}` : "", docCur(d) !== "EUR" && canEur(d) ? `≈ ${fmtMoney(payEur(d))} (1 EUR = ${fmtFx(docFx(d))} ${docCur(d)})` : ""].filter(Boolean).join(" · ") || undefined}>{d.direction === "einnahme" ? "+" : ""}{fmtMoney(payAmt(d), d.amount.currency)}{docCur(d) !== "EUR" && canEur(d) && <small className="fxeur">≈ {fmtMoney(payEur(d))}</small>}</span>);
   // gespeicherte Ansichten: alle Filter dieses Reiters
   const fState = JSON.stringify({ cat: cat || "", taxOnly, unpaid, month, area, scope });
   const setFState = (j) => { try { const o = JSON.parse(j); setCat?.(o.cat || ""); setTaxOnly(!!o.taxOnly); setUnpaid(!!o.unpaid); setMonth(o.month || ""); setArea?.(o.area || "alle"); setScope(o.scope || "alle"); } catch {} };
@@ -7729,11 +7796,12 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
         </div>
       )}
       {linkedInv && <div className="lookbox ok txinv">
-        <span className="grow click" onClick={() => { ls.set("invOpenReq", linkedInv.id); goTab?.("invoices"); onClose(); }}>🧾 Zahlungseingang zu Rechnung <b>{linkedInv.number}</b> · {linkedInv.customer?.name} · {fmtMoney(invTotal(linkedInv))} <span className="muted">›</span></span>
+        <span className="grow click" onClick={() => { ls.set("invOpenReq", linkedInv.id); goTab?.("invoices"); onClose(); }}>🧾 Zahlungseingang zu Rechnung <b>{linkedInv.number}</b> · {linkedInv.customer?.name} · {fmtInv(linkedInv)} <span className="muted">›</span></span>
         <button className="link red small" onClick={unlinkInv}>Lösen</button></div>}
 
       <section className="tile txcard">
         <div className="txkv"><span>Betrag</span><b className={income ? "pos" : ""}>{income ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b></div>
+        {t.fxCur && t.fxAmount != null && <div className="txkv"><span>Originalbetrag</span><b>{fmtMoney(t.fxAmount, t.fxCur)}<small className="muted"> · 1 EUR = {fmtFx(t.fxRate)} {t.fxCur}</small></b></div>}
         {t.kind !== "broker" && si.scope === "firma" && !isTransfer && (
           <div className="txkv col"><span>✂️ Aufteilen Firma / Privat</span>
             <div className="txlink plain" onClick={() => { setSplit(pctBiz); setSplitOpen(!splitOpen); }}>
@@ -7763,7 +7831,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
             <div className="txlink" onClick={() => { if (ct) setCtPrev(true); else { goTab?.("contracts"); onClose(); } }}>
               <TxIcon t={t} size={44} />
               <div className="grow"><b>{ct ? ct.name || ct.provider : rec.name}</b><small className="muted block">{ct ? (ct.interval || "monatlich").replace(/^./, (c) => c.toUpperCase()) : rec.interval}{!ct && !(subs?.confirmed || []).includes(rec.key) ? " · erkannt" : ""}</small></div>
-              <b>{ct ? fmtMoney(-(Number(ct.amount) || 0)) : fmtMoney(-rec.amount)}</b><span className="muted">›</span>
+              <b>{ct ? fmtMoney(-(Number(ct.amount) || 0), ct.currency || "EUR") : fmtMoney(-rec.amount)}</b><span className="muted">›</span>
             </div>
           </div>
         )}
@@ -7861,7 +7929,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
           <div className="panelhead"><b className="clamp">📑 {ct.name || ct.provider}</b>
             <button className="iconbtn" title="Vertrag bearbeiten" aria-label="Vertrag bearbeiten" onClick={() => { ls.set("ctOpenReq", ct.id); goTab?.("vertraege"); setCtPrev(false); onClose(); }}><IcoEdit /></button><XBtn /></div>
           <section className="tile txcard">
-            {[["Anbieter", ct.provider], ["Betrag", ct.amount ? `${fmtMoney(Number(ct.amount))} · ${ct.interval || "monatlich"}` : ""], ["Kategorie", ct.cat], ["Kundennummer", ct.customerNo], ["Vertragsnummer", ct.contractNo],
+            {[["Anbieter", ct.provider], ["Betrag", ct.amount ? `${fmtMoney(Number(ct.amount), ct.currency || "EUR")} · ${ct.interval || "monatlich"}` : ""], ["Kategorie", ct.cat], ["Kundennummer", ct.customerNo], ["Vertragsnummer", ct.contractNo],
               ["Beginn", ct.start && fmtDate(ct.start)], ["Läuft bis", cd.end && (cd.open ? "unbefristet" : fmtDate(cd.end))], ["Kündigen bis", cd.cancelBy && fmtDate(cd.cancelBy)], ["Bereich", ct.scope === "firma" ? "🏢 Firma" : "👤 Privat"], ["Status", ct.cancelledAt ? "gekündigt" : ct.inactive ? "inaktiv" : "aktiv"]]
               .filter(([, v]) => v).map(([k, v]) => <div key={k} className="txkv"><span>{k}</span><b>{v}</b></div>)}
             {ct.note && <div className="txkv col"><span>Notiz</span><p>{ct.note}</p></div>}
@@ -8500,7 +8568,7 @@ const KB_KZ = { "Barverkauf / Erlös": "9040", "Sonstige Einnahme": "9090", "Pri
 const STB_REP_DEF = { ku: true, kuType: "gewerbe", apl: "0", km: true, basis6: false };
 // AfA eines Anlageguts für ein Jahr (linear, Halbjahres-AfA, GWG bis 1.000 € sofort)
 function afaOf(a, year) {
-  const p = Number(a.price) || 0, d = a.date || "", y0 = +d.slice(0, 4), m0 = +d.slice(5, 7) || 1, nd = Math.max(1, Number(a.afaYears) || 0);
+  const p = astEur(a), d = a.date || "", y0 = +d.slice(0, 4), m0 = +d.slice(5, 7) || 1, nd = Math.max(1, Number(a.afaYears) || 0);
   if (!p || !y0 || +year < y0) return { afa: 0, book: p, gwg: p <= 1000, nd };
   if (p <= 1000) return { afa: +year === y0 ? p : 0, book: +year === y0 ? 0 : 0, gwg: true, nd: 1 };
   if (!a.afaYears) return { afa: 0, book: p, gwg: false, nd: 0, missing: true };
@@ -8543,7 +8611,7 @@ function stbYearData(year, D, opt, map) {
   // Umsatz für Kleinunternehmergrenze: Ausgangsrechnungen nach Rechnungsdatum (sonst Firmen-Erlöse)
   const invs = ls.get("invoices", []).filter((x) => x.kind === "rechnung" && x.number && !["entwurf", "storniert"].includes(invState(x)) && inY(x.date));
   const umsatzM = Array.from({ length: 12 }, (_, i) => { const m = `${yr}-${String(i + 1).padStart(2, "0")}`; return { m, inv: r2e(sumBy(invs.filter((x) => x.date.startsWith(m)), invTotal)), erl: r2e(sumBy(byKz["9040"].lines.filter((l) => l.date.startsWith(m)), (l) => l.amount)) }; });
-  const umsatzInv = r2e(sumBy(invs, invTotal)), umsatz = invs.length ? umsatzInv : byKz["9040"].sum;
+  const umsatzInv = r2e(sumBy(invs, invEur)), umsatz = invs.length ? umsatzInv : byKz["9040"].sum;
   const AI = opt.ai && opt.ai.year === yr ? opt.ai : {};
   const kuLimit = AI.kuLimit || (+yr >= 2025 ? 55000 : +yr >= 2023 ? 40000 : 35000);
   // Pauschalierungsvergleich
@@ -8771,7 +8839,7 @@ async function stbReport(k, fmt, Y, co) {
   const JH = ["Datum", "Konto/Quelle", "Partner", "Text", "Kategorie", "KZ", "Betrag €", "Beleg"];
   const vRows = Y.variants.map((v) => [v.name + (v.ok ? "" : " (nicht möglich)"), Y.inc, v.ba, v.gewinn, v.gfb, v.steuerbasis]);
   const VH = ["Variante", "Einnahmen €", "Betriebsausgaben €", "Gewinn €", "Grundfreibetrag €", "Bemessung €"];
-  const anlRows = Y.anl.map((x) => [x.a.name + (x.a.brand ? " · " + x.a.brand : ""), x.a.date || "", Number(x.a.price) || 0, x.a.dealer || "", x.gwg ? "GWG" : x.missing ? "fehlt" : x.nd + " J.", x.afa, x.gwg ? 0 : x.book]);
+  const anlRows = Y.anl.map((x) => [x.a.name + (x.a.brand ? " · " + x.a.brand : ""), x.a.date || "", astEur(x.a), x.a.dealer || "", x.gwg ? "GWG" : x.missing ? "fehlt" : x.nd + " J.", x.afa, x.gwg ? 0 : x.book]);
   const AH = ["Anlagegut", "Anschaffung", "Kosten €", "Lieferant", "Nutzungsdauer", `AfA ${yr} €`, "Restbuchwert €"];
   let cum = 0; const uRows = Y.umsatzM.map((x) => { cum = r2e(cum + (Y.invs.length ? x.inv : x.erl)); return [monthLabel(x.m), Y.invs.length ? x.inv : x.erl, cum, r2e(Y.kuLimit - cum)]; });
   const UH = ["Monat", "Umsatz €", "kumuliert €", "bis Grenze €"];
@@ -8816,7 +8884,7 @@ async function stbReport(k, fmt, Y, co) {
       columns: [{ label: "Monat", w: 2 }, { label: "Umsatz €", w: 1.4, align: "right" }, { label: "kumuliert €", w: 1.4, align: "right" }, { label: "bis Grenze €", w: 1.4, align: "right" }], rows: uRows }); }
   if (k === "anlagen") { if (fmt !== "pdf") return X([{ name: "Anlagen", head: AH, rows: anlRows }]);
     return P({ title: `Anlagenverzeichnis ${yr}`, landscape: true, columns: [{ label: "Anlagegut", w: 3.4 }, { label: "Anschaffung", w: 1.1 }, { label: "Kosten €", w: 1.1, align: "right" }, { label: "Lieferant", w: 2.2 }, { label: "Nutzungsdauer", w: 1.2 }, { label: `AfA ${yr} €`, w: 1.1, align: "right" }, { label: "Restbuchwert €", w: 1.2, align: "right" }],
-      rows: anlRows, totals: ["Summe", "", sumBy(Y.anl, (x) => Number(x.a.price) || 0), "", "", Y.afaSum, sumBy(Y.anl, (x) => (x.gwg ? 0 : x.book))], empty: "Keine Anlagegüter mit Zuordnung „Firma“ in Besitz & Garantie." }); }
+      rows: anlRows, totals: ["Summe", "", sumBy(Y.anl, (x) => astEur(x.a)), "", "", Y.afaSum, sumBy(Y.anl, (x) => (x.gwg ? 0 : x.book))], empty: "Keine Anlagegüter mit Zuordnung „Firma“ in Besitz & Garantie." }); }
   if (k === "waren") { if (fmt !== "pdf") return X([{ name: "Wareneingang", head: WH, rows: wRows }]);
     return P({ title: `Wareneingangsbuch ${yr}`, landscape: true, columns: [{ label: "Nr.", w: 0.6 }, { label: "Datum", w: 1 }, { label: "Lieferant", w: 2.6 }, { label: "Bezeichnung", w: 4 }, { label: "Betrag €", w: 1.2, align: "right" }, { label: "Beleg", w: 2 }], rows: wRows, totals: ["", "", "", "Summe", byKzSum(Y, "9100"), ""] }); }
   if (k === "km") { if (fmt !== "pdf") return X([{ name: "Kilometergeld", head: KH, rows: kmRows }]);
@@ -8825,7 +8893,7 @@ async function stbReport(k, fmt, Y, co) {
   if (k === "privat") { if (fmt !== "pdf") return X([{ name: "Privat", head: PH, rows: pRows }]);
     return P({ title: `Privatentnahmen & -einlagen ${yr}`, columns: [{ label: "Datum", w: 1 }, { label: "Art", w: 2 }, { label: "Konto", w: 1.6 }, { label: "Text", w: 3.4 }, { label: "Betrag €", w: 1.2, align: "right" }], rows: pRows, totals: ["", "", "", "Saldo", sumBy(Y.priv, (x) => x.amount)], empty: "Keine Einträge." }); }
   if (k === "offen" && fmt !== "pdf") { const l = ls.get("invoices", []).filter((x) => x.kind === "rechnung" && x.number && !["bezahlt", "entwurf", "storniert"].includes(invState(x)));
-    return X([{ name: "Offene Posten", head: ["Rechnung", "Datum", "Kunde", "fällig", "Betrag €", "Status"], rows: l.map((x) => [x.number, x.date, x.customer?.name || "", x.due || "", invTotal(x), invState(x)]) }]); }
+    return X([{ name: "Offene Posten", head: ["Rechnung", "Datum", "Kunde", "fällig", "Betrag €", "Status"], rows: l.map((x) => [x.number, x.date, x.customer?.name || "", x.due || "", invEur(x), invState(x)]) }]); }
   if (k === "offen") return openItemsPdf(ls.get("invoices", []));
   if (k === "fehlt" && fmt !== "pdf") return X([{ name: "Ohne Beleg", head: ["Datum", "Konto", "Partner", "Text", "Betrag €"], rows: Y.noDoc.map((l) => [l.date, l.src, l.partner, l.text, l.amount]) },
     { name: "Unklar", head: ["Datum", "Konto", "Partner", "Text", "Betrag €"], rows: Y.unklar.map((r) => [r.t.date, r.acc?.name || "", r.t.counterparty || "", (r.t.purpose || "").slice(0, 120), r.t.amount]) }]);
@@ -8909,7 +8977,7 @@ async function ctryRunAi(cc, year, D) {
   return p;
 }
 function afaIntl(a, year, gwgEur, mode) {
-  const p = Number(a.price) || 0, d = a.date || "", y0 = +d.slice(0, 4), m0 = +d.slice(5, 7) || 1, nd = Math.max(1, Number(a.afaYears) || 0);
+  const p = astEur(a), d = a.date || "", y0 = +d.slice(0, 4), m0 = +d.slice(5, 7) || 1, nd = Math.max(1, Number(a.afaYears) || 0);
   const isG = gwgEur != null && p <= gwgEur;
   if (!p || !y0 || +year < y0) return { afa: 0, book: p, gwg: isG, nd };
   if (isG) return { afa: +year === y0 ? p : 0, book: 0, gwg: true, nd: 1 };
@@ -8948,7 +9016,7 @@ function stbYearDataIntl(year, D, opt, map, C) {
   const invs = ls.get("invoices", []).filter((x) => x.kind === "rechnung" && x.number && !["entwurf", "storniert"].includes(invState(x)) && inY(x.date));
   const rev = byKz[C.special.revenue] || { sum: 0, lines: [] };
   const umsatzM = Array.from({ length: 12 }, (_, i) => { const m = `${yr}-${String(i + 1).padStart(2, "0")}`; return { m, inv: r2e(sumBy(invs.filter((x) => x.date.startsWith(m)), invTotal)), erl: r2e(sumBy(rev.lines.filter((l) => l.date.startsWith(m)), (l) => l.amount)) }; });
-  const umsatz = invs.length ? r2e(sumBy(invs, invTotal)) : rev.sum;
+  const umsatz = invs.length ? r2e(sumBy(invs, invEur)) : rev.sum;
   const kuLimit = R.smallLimit != null ? toEur(R.smallLimit) : null, kuTol = R.smallTol != null ? toEur(R.smallTol) : null;
   const goods = C.special.goods ? byKz[C.special.goods].lines : [];
   const priv = [];
@@ -8985,7 +9053,7 @@ async function stbReportIntl(k, fmt, Y, co) {
   const kzRows = Y.kzList.map(([id, l, d]) => [id, l, d === "in" ? "Einnahme" : "Ausgabe", Y.byKz[id].n, Y.byKz[id].sum]).filter((r) => r[3] || r[0] === C.special.revenue);
   const jRow = (l) => [l.date, l.src, l.partner, l.text, l.cat, l.kz === E1A_SKIP ? "–" : l.kz, l.amount, l.beleg || (l.hasDoc ? "ja" : "FEHLT")];
   const JH = ["Datum", "Konto/Quelle", "Partner", "Text", "Kategorie", LW, "Betrag €", "Beleg"];
-  const anlRows = Y.anl.map((x) => [x.a.name + (x.a.brand ? " · " + x.a.brand : ""), x.a.date || "", Number(x.a.price) || 0, x.a.dealer || "", x.gwg ? "GWG" : x.missing ? "fehlt" : x.nd + " J.", x.afa, x.gwg ? 0 : x.book]);
+  const anlRows = Y.anl.map((x) => [x.a.name + (x.a.brand ? " · " + x.a.brand : ""), x.a.date || "", astEur(x.a), x.a.dealer || "", x.gwg ? "GWG" : x.missing ? "fehlt" : x.nd + " J.", x.afa, x.gwg ? 0 : x.book]);
   const AH = ["Anlagegut", "Anschaffung", "Kosten €", "Lieferant", "Nutzungsdauer", `Abschreibung ${yr} €`, "Restbuchwert €"];
   let cum = 0; const uRows = Y.umsatzM.map((x) => { cum = r2e(cum + (Y.invs.length ? x.inv : x.erl)); return [monthLabel(x.m), Y.invs.length ? x.inv : x.erl, cum, Y.kuLimit != null ? r2e(Y.kuLimit - cum) : ""]; });
   const UH = ["Monat", "Umsatz €", "kumuliert €", "bis Grenze €"];
@@ -9025,7 +9093,7 @@ async function stbReportIntl(k, fmt, Y, co) {
       columns: [{ label: "Monat", w: 2 }, { label: "Umsatz €", w: 1.4, align: "right" }, { label: "kumuliert €", w: 1.4, align: "right" }, { label: "bis Grenze €", w: 1.4, align: "right" }], rows: uRows }); }
   if (k === "anlagen") { if (fmt !== "pdf") return X([{ name: "Anlagen", head: AH, rows: anlRows }]);
     return P({ title: `Anlagenverzeichnis ${yr}`, landscape: true, columns: [{ label: "Anlagegut", w: 3.4 }, { label: "Anschaffung", w: 1.1 }, { label: "Kosten €", w: 1.1, align: "right" }, { label: "Lieferant", w: 2.2 }, { label: "Nutzungsdauer", w: 1.2 }, { label: `Abschreibung ${yr} €`, w: 1.3, align: "right" }, { label: "Restbuchwert €", w: 1.2, align: "right" }],
-      rows: anlRows, totals: ["Summe", "", sumBy(Y.anl, (x) => Number(x.a.price) || 0), "", "", Y.afaSum, sumBy(Y.anl, (x) => (x.gwg ? 0 : x.book))], empty: "Keine Anlagegüter mit Zuordnung „Firma“ in Besitz & Garantie.",
+      rows: anlRows, totals: ["Summe", "", sumBy(Y.anl, (x) => astEur(x.a)), "", "", Y.afaSum, sumBy(Y.anl, (x) => (x.gwg ? 0 : x.book))], empty: "Keine Anlagegüter mit Zuordnung „Firma“ in Besitz & Garantie.",
       note: `${R.gwg != null ? `Sofortabschreibung bis ${num(R.gwg)}${R.gwgLabel ? " (" + R.gwgLabel + ")" : ""}. ` : ""}Anschaffungsjahr: ${{ half: "Halbjahresregel", month: "monatsgenau anteilig", full: "volles Jahr", none: "Abschreibung ab Folgejahr" }[R.afaFirstYear]}.\n` + note }); }
   if (k === "waren") { if (fmt !== "pdf") return X([{ name: "Wareneingang", head: WH, rows: wRows }]);
     return P({ title: `Wareneingangsbuch ${yr}`, landscape: true, columns: [{ label: "Nr.", w: 0.6 }, { label: "Datum", w: 1 }, { label: "Lieferant", w: 2.6 }, { label: "Bezeichnung", w: 4 }, { label: "Betrag €", w: 1.2, align: "right" }, { label: "Beleg", w: 2 }], rows: wRows, totals: ["", "", "", "Summe", C.special.goods ? Y.byKz[C.special.goods].sum : 0, ""] }); }
@@ -9035,7 +9103,7 @@ async function stbReportIntl(k, fmt, Y, co) {
   if (k === "privat") { if (fmt !== "pdf") return X([{ name: "Privat", head: PH, rows: pRows }]);
     return P({ title: `Privatentnahmen & -einlagen ${yr}`, columns: [{ label: "Datum", w: 1 }, { label: "Art", w: 2 }, { label: "Konto", w: 1.6 }, { label: "Text", w: 3.4 }, { label: "Betrag €", w: 1.2, align: "right" }], rows: pRows, totals: ["", "", "", "Saldo", sumBy(Y.priv, (x) => x.amount)], empty: "Keine Einträge." }); }
   if (k === "offen" && fmt !== "pdf") { const l = ls.get("invoices", []).filter((x) => x.kind === "rechnung" && x.number && !["bezahlt", "entwurf", "storniert"].includes(invState(x)));
-    return X([{ name: "Offene Posten", head: ["Rechnung", "Datum", "Kunde", "fällig", "Betrag €", "Status"], rows: l.map((x) => [x.number, x.date, x.customer?.name || "", x.due || "", invTotal(x), invState(x)]) }]); }
+    return X([{ name: "Offene Posten", head: ["Rechnung", "Datum", "Kunde", "fällig", "Betrag €", "Status"], rows: l.map((x) => [x.number, x.date, x.customer?.name || "", x.due || "", invEur(x), invState(x)]) }]); }
   if (k === "offen") return openItemsPdf(ls.get("invoices", []));
   const fRows = Y.noDoc.map((l) => [l.date, l.src, l.partner, l.text, l.amount]), uRows2 = Y.unklar.map((r) => [r.t.date, r.acc?.name || "", r.t.counterparty || "", (r.t.purpose || "").slice(0, 120), r.t.amount]);
   if (fmt !== "pdf") return X([{ name: "Ohne Beleg", head: ["Datum", "Konto", "Partner", "Text", "Betrag €"], rows: fRows }, { name: "Unklar", head: ["Datum", "Konto", "Partner", "Text", "Betrag €"], rows: uRows2 }]);
@@ -9135,7 +9203,7 @@ function StbReportsIntl({ D, notify, setTab, accounts, txs = [], cc }) {
   const aiData = () => ({ land: ctryName(cc), waehrung: C.currency, kurs1Eur: Y.fx, formular: C.form, jahr: year, einnahmen: Y.inc, ausgaben: Y.out, gewinn: Y.profit, freibetrag: Y.gfb, umsatz: Y.umsatz, grenzeEur: Y.kuLimit,
     zeilen: Object.fromEntries(Y.kzList.filter(([id]) => Y.byKz[id].n).map(([id, l]) => [id, { bezeichnung: l, summe: Y.byKz[id].sum, posten: Y.byKz[id].n }])),
     kategorien: cats.slice(0, 40).map((c) => ({ kategorie: c.cat, art: c.inc ? "Einnahme" : "Ausgabe", zeile: c.kz, summe: c.sum })),
-    anlagen: Y.anl.map((x) => ({ kategorie: x.a.cat || "Anlagegut", kaufdatum: x.a.date || null, kosten: Number(x.a.price) || 0, nutzungsdauer: x.gwg ? "GWG" : x.nd || null, abschreibung: x.afa })),
+    anlagen: Y.anl.map((x) => ({ kategorie: x.a.cat || "Anlagegut", kaufdatum: x.a.date || null, kosten: astEur(x.a), nutzungsdauer: x.gwg ? "GWG" : x.nd || null, abschreibung: x.afa })),
     kilometer: { fahrten: Y.trips.length, km: Y.km, betrag: Y.kmEur }, ohneBeleg: { anzahl: Y.noDoc.length, summe: r2e(-sumBy(Y.noDoc, (l) => l.amount)) }, unklar: Y.unklar.length });
   const runCheck = async () => { setBusy("ai"); setAiErr(""); try { const r = await stbAiCall({ mode: "check", intl: true, year, country: { code: cc, name: ctryName(cc) }, data: aiData() }); ls.set(aiKey, { at: r.at || new Date().toISOString(), res: r }); setAiV((v) => v + 1); } catch (e) { setAiErr(e.message); } finally { setBusy(""); } };
   const pct = Y.kuLimit ? Math.min(100, Math.round((Y.umsatz / Y.kuLimit) * 100)) : 0;
@@ -9184,7 +9252,7 @@ function StbReportsIntl({ D, notify, setTab, accounts, txs = [], cc }) {
 
     <StbRSec open={open} onTog={tog} id="anl" title="🏷️ Anlagenverzeichnis & Abschreibung" sub={`${Y.anl.length} Anlagegüter · ${fmtMoney(Y.afaSum)}`}>
       {!Y.anl.length ? <p className="muted small">Keine Geräte mit Zuordnung „Firma“. In <button className="link" onClick={() => setTab?.("besitz")}>Besitz &amp; Garantie</button> ein Gerät auf „Firma“ stellen, dann erscheint es hier.</p>
-        : <div className="stbanl">{Y.anl.map((x) => <div key={x.a.id} className="stbanli"><div className="grow"><b className="one">{x.a.name}</b><small className="muted block">{x.a.date ? fmtDate(x.a.date) : "kein Kaufdatum"} · {fmtMoney(Number(x.a.price) || 0)}{x.a.dealer ? " · " + x.a.dealer : ""}</small></div>
+        : <div className="stbanl">{Y.anl.map((x) => <div key={x.a.id} className="stbanli"><div className="grow"><b className="one">{x.a.name}</b><small className="muted block">{x.a.date ? fmtDate(x.a.date) : "kein Kaufdatum"} · {fmtMoney(astEur(x.a))}{x.a.dealer ? " · " + x.a.dealer : ""}</small></div>
           {x.gwg ? <span className="stpill st-paid">GWG – sofort</span> : <label className="stbnd">Nutzungsdauer<input inputMode="numeric" value={x.a.afaYears || ""} placeholder="Jahre" onChange={(e) => setAsset(x.a.id, { afaYears: e.target.value.replace(/\D/g, "").slice(0, 2) })} /></label>}
           <div className="stbanlv"><small className="muted">{year}</small><b>{x.missing ? "–" : fmtMoney(x.afa)}</b></div></div>)}</div>}
       <small className="muted">{R.gwg != null ? `Sofort absetzbar bis ${fmtMoney(R.gwg, C.currency)}${two && Y.fx ? ` (≈ ${fmtMoney(R.gwg / Y.fx)})` : ""}. ` : ""}Im Anschaffungsjahr: {{ half: "Halbjahresregel", month: "monatsgenau anteilig", full: "volles Jahr", none: "Abschreibung ab Folgejahr" }[R.afaFirstYear]}. Kaufbuchung unten bei „Zuordnung“ auf „nicht absetzen“ stellen, damit sie nicht doppelt zählt.</small>
@@ -9416,7 +9484,7 @@ function StbReportsAT({ D, notify, setTab, accounts, txs = [] }) {
 
     <StbRSec open={open} onTog={tog} id="anl" title="🏷️ Anlagenverzeichnis & AfA" sub={`${Y.anl.length} Anlagegüter · AfA ${fmtMoney(Y.afaSum)}`}>
       {!Y.anl.length ? <p className="muted small">Keine Geräte mit Zuordnung „Firma“. In <button className="link" onClick={() => setTab?.("besitz")}>Besitz &amp; Garantie</button> ein Gerät auf „Firma“ stellen, dann erscheint es hier.</p>
-        : <div className="stbanl">{Y.anl.map((x) => <div key={x.a.id} className="stbanli"><div className="grow"><b className="one">{x.a.name}</b><small className="muted block">{x.a.date ? fmtDate(x.a.date) : "kein Kaufdatum"} · {fmtMoney(Number(x.a.price) || 0)}{x.a.dealer ? " · " + x.a.dealer : ""}</small></div>
+        : <div className="stbanl">{Y.anl.map((x) => <div key={x.a.id} className="stbanli"><div className="grow"><b className="one">{x.a.name}</b><small className="muted block">{x.a.date ? fmtDate(x.a.date) : "kein Kaufdatum"} · {fmtMoney(astEur(x.a))}{x.a.dealer ? " · " + x.a.dealer : ""}</small></div>
           {x.gwg ? <span className="stpill st-paid">GWG – sofort</span> : <label className="stbnd">Nutzungsdauer<input inputMode="numeric" value={x.a.afaYears || ""} placeholder="Jahre" onChange={(e) => setAsset(x.a.id, { afaYears: e.target.value.replace(/\D/g, "").slice(0, 2) })} /></label>}
           <div className="stbanlv"><small className="muted">AfA {year}</small><b>{x.missing ? "–" : fmtMoney(x.afa)}</b></div></div>)}</div>}
       <small className="muted">Geringwertige Wirtschaftsgüter bis 1.000 € werden sofort abgesetzt; sonst linear über die Nutzungsdauer, Halbjahres-AfA bei Anschaffung im 2. Halbjahr. Wird ein Anlagegut über AfA abgesetzt, die Kaufbuchung unten bei „Zuordnung“ auf „nicht absetzen“ stellen, damit es nicht doppelt zählt.</small>
@@ -9475,7 +9543,7 @@ function stbAiPayload(Y, O, detail) {
     umsatz: Y.umsatz, umsatzQuelle: Y.invs.length ? "Ausgangsrechnungen" : "Erlöse laut Bank", kleinunternehmergrenzeVerwendet: Y.kuLimit,
     pauschalierungsvergleich: Y.variants.map((v) => ({ variante: v.name, moeglich: v.ok, ausgaben: v.ba, gewinn: v.gewinn, nachGrundfreibetrag: v.steuerbasis })),
     kategorien: Object.values(cats).sort((a, b) => b.summe - a.summe).slice(0, 40),
-    anlagen: Y.anl.map((x) => ({ bezeichnung: detail ? x.a.name : x.a.cat || "Anlagegut", kaufdatum: x.a.date || null, kosten: Number(x.a.price) || 0, nutzungsdauer: x.gwg ? "GWG" : x.nd || null, afa: x.afa })),
+    anlagen: Y.anl.map((x) => ({ bezeichnung: detail ? x.a.name : x.a.cat || "Anlagegut", kaufdatum: x.a.date || null, kosten: astEur(x.a), nutzungsdauer: x.gwg ? "GWG" : x.nd || null, afa: x.afa })),
     kilometergeld: { fahrten: Y.trips.length, km: Y.km, satz: Y.rate, betrag: Y.kmEur },
     privat: { anzahl: Y.priv.length, saldo: r2e(sumBy(Y.priv, (x) => x.amount)) },
     ohneBeleg: { anzahl: Y.noDoc.length, summe: r2e(-sumBy(Y.noDoc, (l) => l.amount)) }, unklarePrivatFirma: Y.unklar.length,
@@ -9914,7 +9982,7 @@ function StbItemsWin({ req, x, docs, txs, updateTx, openTx, onOpenDoc, onClose, 
       {kind === "asks" && x.asks.map((r) => txRow(r, <small className="muted">{r.t.ask?.q || ""}</small>))}
       {kind === "inv" && invL.map((i) => (<div key={i.id} className="sbrow click" onClick={async () => openPdf(await buildInvoicePdf(i, co), invFileName(i), "", i.customer?.email)}>
         <span className="grow"><b className="one">{i.number} · {i.customer?.name || "Kunde"}</b><small className="muted block one">{fmtDate(i.date)} · fällig {fmtDate(invDueEff(i))}{(i.reminders || []).length ? ` · ${remindName(i.reminders.length - 1)} versendet` : ""}</small></span>
-        <b>{fmtMoney(invTotal(i))}</b>{(x.invLate || []).includes(i) ? <span className="stpill st-over">überfällig</span> : <span className="stpill st-open">offen</span>}</div>))}
+        <b>{fmtInv(i)}</b>{(x.invLate || []).includes(i) ? <span className="stpill st-over">überfällig</span> : <span className="stpill st-open">offen</span>}</div>))}
       {kind === "kassa" && x.kE.filter((e) => !e.stornoBy && !e.stornoOf).map((e) => { const d = e.docId && docs.find((y) => y.id === e.docId);
         return (<div key={e.id} className="sbrow"><span className="grow"><b className="one">{e.text}</b><small className="muted block one">{kbNo(e)} · {fmtDate(e.date)} · {e.cat}{!d && !e.beleg && !e.eigen ? " · Beleg fehlt" : ""}</small></span>
           <b className={e.kind === "ein" ? "pos" : "neg"}>{(e.kind === "ein" ? "+" : "−") + fmtMoney(e.amount)}</b>
@@ -10781,11 +10849,11 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
 
         <fieldset>
           <legend>Betrag</legend>
-          <div className="seg">
+          <div className="row fxhead"><div className="seg">
             {[["ausgabe", "Ausgabe"], ["einnahme", "Einnahme"], ["keine", "Nur Info"]].map(([k, l]) => (
               <button key={k} className={(d.direction || "keine") === k ? "on" : ""} onClick={() => set({ direction: k })}>{l}</button>
             ))}
-          </div>
+          </div><CurSelect value={d.amount?.currency} onChange={(c) => set({ amount: { ...(d.amount || {}), currency: c, fx: null, fxDate: null, fxSrc: null, eur: null } })} /></div>
           <div className="grid4">
             {[["total", "Brutto"], ["net", "Netto"], ["vat", "USt"], ["payout", "Ausbezahlt / Zahlbetrag"]].map(([k, l]) => (
               <label key={k}>{l}
@@ -10794,7 +10862,8 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
               </label>
             ))}
           </div>
-          {d.amount && payAmt(d) !== d.amount.total && <p className="muted small">Gerechnet wird mit dem ausbezahlten Betrag {fmtMoney(payAmt(d))} (z. B. Netto-Auszahlung beim Lohnzettel).</p>}
+          {d.amount && docCur(d) !== "EUR" && <FxRow cur={docCur(d)} date={d.documentDate} amount={d.amount.total} fx={d.amount.fx} fxDate={d.amount.fxDate} fxSrc={d.amount.fxSrc} eur={d.amount.eur} onPatch={(x) => set({ amount: { ...d.amount, ...x } })} />}
+          {d.amount && payAmt(d) !== d.amount.total && <p className="muted small">Gerechnet wird mit dem ausbezahlten Betrag {fmtMoney(payAmt(d), docCur(d))} (z. B. Netto-Auszahlung beim Lohnzettel).</p>}
           {d.amount?.total != null && d.direction === "ausgabe" && (
             <div className="row1" style={{ alignItems: "center" }}>
               <label className="check"><input type="checkbox" checked={!!d.paid} onChange={(e) => set({ paid: e.target.checked })} /> Bezahlt{doc.paidCash ? " (bar)" : ""}</label>
@@ -10807,7 +10876,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         {(() => {
           const linked = txs.find((t) => t.docId === doc.id);
           const accN = (id) => accounts.find((a) => a.id === id)?.name || "";
-          const target = payAmt(d), dd = d.documentDate || doc.createdAt?.slice(0, 10) || todayISO();
+          const target = docCur(d) !== "EUR" && canEur(d) ? payEur(d) : payAmt(d), dd = d.documentDate || doc.createdAt?.slice(0, 10) || todayISO();
           const days = (x) => Math.abs((new Date(x) - new Date(dd)) / 864e5);
           const qn = norm(lq);
           const cands = !linkOpen ? [] : txs.filter((t) => t.id !== linked?.id && t.kind !== "broker")
@@ -12003,6 +12072,11 @@ const addMonths = (iso, n) => {
   d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
   return d.toLocaleDateString("sv-SE");
 };
+// v0.99.80: Währung je Rechnung (Standard EUR); invEur = Betrag in Euro (Kurs x.fx = Fremdwährung je 1 EUR) für Summen
+const invCur = (x) => String(x?.currency || "EUR").toUpperCase();
+const invEur = (x) => { const v = invTotal(x); return invCur(x) === "EUR" ? v : x.fx > 0 ? r2(v / x.fx) : v; };
+const fmtInv = (x, v) => fmtMoney(v ?? invTotal(x), invCur(x));
+const curPfx = (c) => ((c || "EUR") === "EUR" ? "€ " : c + " ");
 const invTotal = (inv) => r2((inv.items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0) + (Number(inv.fee) || 0));
 const invDue = (inv) => (inv.date ? addDays(inv.date, inv.dueDays ?? 14) : "");
 const lastReminder = (inv) => (inv.reminders || [])[(inv.reminders || []).length - 1];
@@ -12202,7 +12276,7 @@ const DUN_DEFAULT = {
 };
 const dunning = () => { const d = ls.get("dunning", {}); return { ...DUN_DEFAULT, ...d, levels: d.levels?.length ? d.levels : DUN_DEFAULT.levels }; };
 const remindName = (l) => { const lv = dunning().levels; return lv[Math.min(l, lv.length - 1)]?.title || "Mahnung"; };
-const fillDun = (t, inv, r) => String(t || "").replace(/\{nummer\}/g, inv.number || "").replace(/\{datum\}/g, fmtDate(inv.date)).replace(/\{betrag\}/g, "€ " + money(invTotal({ ...inv, fee: 0 })))
+const fillDun = (t, inv, r) => String(t || "").replace(/\{nummer\}/g, inv.number || "").replace(/\{datum\}/g, fmtDate(inv.date)).replace(/\{betrag\}/g, curPfx(invCur(inv)) + money(invTotal({ ...inv, fee: 0 })))
   .replace(/\{frist\}/g, fmtDate(r.due)).replace(/\{faellig\}/g, fmtDate(invDue(inv))).replace(/\{kunde\}/g, inv.customer?.name || "");
 const hexRgb = (h, rgb) => { const m = String(h || "#0b63f6").replace("#", ""); const n = parseInt(m.length === 3 ? m.split("").map((x) => x + x).join("") : m, 16) || 0x0b63f6; return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
 
@@ -12396,9 +12470,9 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   const tl = remind ? "Offener Betrag" : "Gesamtbetrag";
   if (D.totalBox) {
     page.drawRectangle({ x: W - M - 230, y: y - 9, width: 230, height: 28, color: acc });
-    txt(tl, W - M - 220, y, { bold: true, size: 11, color: white }); right("€ " + money(total), W - M - 10, y, { bold: true, size: 12, color: white });
+    txt(tl, W - M - 220, y, { bold: true, size: 11, color: white }); right(curPfx(invCur(inv)) + money(total), W - M - 10, y, { bold: true, size: 12, color: white });
     y -= 10;
-  } else { txt(tl, W - M - 210, y, { bold: true, size: 11 }); right("€ " + money(total), W - M - 4, y, { bold: true, size: 11 }); }
+  } else { txt(tl, W - M - 210, y, { bold: true, size: 11 }); right(curPfx(invCur(inv)) + money(total), W - M - 4, y, { bold: true, size: 11 }); }
   y -= 16;
   if (D.showKU) txt(KU_NOTE, M, y, { size: 8.5, color: grey });
   y -= 26;
@@ -12413,7 +12487,7 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
   } else if (inv.kind !== "angebot" && co.iban) {
     newPageIfNeeded(110);
     const ref = inv.number || "";
-    if (D.showQR) try {
+    if (D.showQR && invCur(inv) === "EUR") try {   // EPC-QR-Code gibt es nur für Euro
       const payload = ["BCD", "002", "1", "SCT", (co.bic || "").replace(/\s/g, ""), (co.name || "").slice(0, 70), co.iban.replace(/\s/g, "").toUpperCase(),
         "EUR" + total.toFixed(2), "", "", ref.slice(0, 140)].join("\n");
       const png = await QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width: 300 });
@@ -12743,13 +12817,13 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
   const warn = [];
   if (!co.name || !co.street || !co.city) warn.push("Firmendaten unvollständig (Name/Anschrift)");
   if (!inv.customer?.name) warn.push("Kunde fehlt");
-  if (total > 400 && !(inv.customer?.address || "").trim()) warn.push("Über € 400: Anschrift des Kunden ist Pflicht");
-  if (total > 10000 && !inv.customer?.uid) warn.push("Über € 10.000: UID des Kunden ist Pflicht (falls Unternehmer)");
+  if (invEur(inv) > 400 && !(inv.customer?.address || "").trim()) warn.push("Über € 400: Anschrift des Kunden ist Pflicht");
+  if (invEur(inv) > 10000 && !inv.customer?.uid) warn.push("Über € 10.000: UID des Kunden ist Pflicht (falls Unternehmer)");
   if (!(inv.items || []).some((it) => it.text && Number(it.price))) warn.push("Mindestens eine Position mit Preis");
   if (inv.kind !== "angebot" && !co.iban) warn.push("IBAN fehlt in den Firmendaten (kein Zahlen-QR-Code)");
   const blocking = warn.filter((w) => !/IBAN|UID/.test(w));
   const isA = inv.kind === "angebot";
-  const pick = (name) => { const c = customers.find((x) => x.name === name); if (c) { setC({ id: c.id, name: c.name, address: c.address, uid: c.uid, email: c.email, number: c.number }); setSaveCust(false); } else setC({ name, id: undefined }); };
+  const pick = (name) => { const c = customers.find((x) => x.name === name); if (c) { setC({ id: c.id, name: c.name, address: c.address, uid: c.uid, email: c.email, number: c.number }); if (c.currency && c.currency !== invCur(inv)) set({ currency: c.currency, fx: null, fxDate: null, fxSrc: null }); setSaveCust(false); } else setC({ name, id: undefined }); };
   const pickArt = (i, text) => { const a = articles.find((x) => x.text === text); setIt(i, a ? { text, unit: a.unit, price: a.price, artNo: a.number || "", ...(a.extra ? { extra: { ...a.extra } } : {}) } : { text, artNo: "" }); };
   const doSave = (final) => {
     const out = { ...inv, items: inv.items.filter((it) => it.text || it.price), updatedAt: new Date().toISOString() };
@@ -12763,7 +12837,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
         <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(inv, co), invFileName(inv), "", inv.customer?.email)}>Vorschau</button>
         {!locked && <button className="btn primary" onClick={() => doSave(false)}>Speichern</button>}
         <XBtn /></div>
-      {(inv.customer?.name || (inv.items || []).length > 0) && <MHero icon={isA ? "📝" : "🧾"} sub={`${isA ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"}${inv.date ? " · " + fmtDate(inv.date) : ""}`} title={inv.customer?.name || "Ohne Kunde"} value={fmtMoney(invTotal(inv))}
+      {(inv.customer?.name || (inv.items || []).length > 0) && <MHero icon={isA ? "📝" : "🧾"} sub={`${isA ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"}${inv.date ? " · " + fmtDate(inv.date) : ""}`} title={inv.customer?.name || "Ohne Kunde"} value={fmtInv(inv)}
         pills={[{ label: invState(inv), cls: { bezahlt: "st-paid", "überfällig": "st-over", offen: "st-open" }[invState(inv)] || "st-draft" }]} />}
       {locked && <p className="warn small">Diese {isA ? "Angebot" : "Rechnung"} ist ausgestellt und kann nicht mehr geändert werden (Rechnungen dürfen nachträglich nicht verändert werden – bei Fehlern stornieren und neu ausstellen).</p>}
       <fieldset disabled={locked}>
@@ -12784,6 +12858,9 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
           {isA ? <label>Gültig (Tage)<input type="number" inputMode="numeric" value={inv.validDays ?? co.validDays} onChange={(e) => set({ validDays: Number(e.target.value) })} /></label>
             : <label>Zahlungsziel (Tage)<input type="number" inputMode="numeric" value={inv.dueDays ?? co.dueDays} onChange={(e) => set({ dueDays: Number(e.target.value) })} /></label>}
         </div>
+        <div className="grid2"><label>Währung<CurSelect value={invCur(inv)} onChange={(c) => set({ currency: c, fx: null, fxDate: null, fxSrc: null })} /></label>
+          {invCur(inv) !== "EUR" && <small className="muted fxnote">Rechnung, E-Rechnung und Mahnungen in {invCur(inv)}. Kein Zahlen-QR-Code (nur für Euro). Für Summen und Steuer wird in Euro umgerechnet.</small>}</div>
+        {invCur(inv) !== "EUR" && <FxRow cur={invCur(inv)} date={inv.date} amount={total} fx={inv.fx} fxDate={inv.fxDate} fxSrc={inv.fxSrc} eur={null} onPatch={(x) => set({ fx: x.eur && total ? total / x.eur : x.fx ?? inv.fx, fxDate: x.eur ? null : x.fxDate ?? inv.fxDate, fxSrc: x.eur ? "aus Euro-Betrag" : x.fxSrc ?? inv.fxSrc })} />}
         {!isA && <div className="grid2">
           <label>Leistung am / ab<input type="date" value={inv.serviceFrom || ""} onChange={(e) => set({ serviceFrom: e.target.value })} /></label>
           <label>Leistung bis (optional)<input type="date" value={inv.serviceTo || ""} onChange={(e) => set({ serviceTo: e.target.value })} /></label>
@@ -12799,8 +12876,8 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
             <input className="itxt" list="artlist" value={it.text} placeholder="Leistung / Artikel" onChange={(e) => pickArt(i, e.target.value)} />
             <input className="iqty" inputMode="decimal" value={it.qty} onChange={(e) => setIt(i, { qty: e.target.value.replace(",", ".") })} aria-label="Menge" />
             <UnitSelect className="iunit" value={it.unit || "Stk"} onChange={(u) => setIt(i, { unit: u })} />
-            <input className="iprice" inputMode="decimal" value={it.price} placeholder="Preis €" onChange={(e) => setIt(i, { price: e.target.value.replace(",", ".") })} aria-label="Einzelpreis" />
-            <b className="isum">{fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
+            <input className="iprice" inputMode="decimal" value={it.price} placeholder={"Preis " + (invCur(inv) === "EUR" ? "€" : invCur(inv))} onChange={(e) => setIt(i, { price: e.target.value.replace(",", ".") })} aria-label="Einzelpreis" />
+            <b className="isum">{fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0), invCur(inv))}</b>
             <span className="iact">
               {it.text && !articles.some((a) => a.text === it.text) && <button type="button" className="iconbtn" title="Als Artikel merken" onClick={() => { const C = artCfg(); const no = C.autoNo ? C.prefix + String(articles.reduce((m, a) => Math.max(m, String(a.number || "").startsWith(C.prefix) ? parseInt(a.number.slice(C.prefix.length), 10) || 0 : 0), 0) + 1).padStart(3, "0") : ""; setArticles((l) => [...l, { id: uid(), text: it.text, unit: it.unit, price: it.price, extra: it.extra, number: no, ean: it.ean || "" }]); setIt(i, { artNo: no }); }}>☆</button>}
               <button type="button" className="iconbtn" title="Position löschen" onClick={() => set({ items: inv.items.filter((_, k) => k !== i) })}>✕</button>
@@ -12814,7 +12891,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
           <button type="button" className="btn sm" onClick={() => setScanPos(true)}>📷 Artikel scannen</button>
         </div>
         {scanMsg && <small className="muted block" style={{ marginTop: 6 }}>{scanMsg}</small>}
-        <div className="invtotal"><span>Gesamt</span><b>{fmtMoney(total)}</b></div>
+        <div className="invtotal"><span>Gesamt</span><b>{fmtMoney(total, invCur(inv))}{invCur(inv) !== "EUR" && inv.fx > 0 && <small className="muted block">≈ {fmtMoney(invEur(inv))}</small>}</b></div>
         <small className="muted">{KU_NOTE}</small>
       </fieldset>
       <fieldset disabled={locked}>
@@ -12857,7 +12934,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
                   <button className={!inv.prePaidTx ? "on" : ""} onClick={() => set({ prePaidTx: null })}>＋ Neue Buchung</button>
                   <button className={inv.prePaidTx ? "on" : ""} onClick={() => set({ prePaidTx: inv.prePaidTx || "pick" })}>🔗 Vorhandene Buchung</button>
                 </div>
-                {inv.prePaidTx && <TxPicker txs={txs} accountId={accId} amount={invTotal(inv)} number={inv.number} customer={inv.customer?.name} fromDate=""
+                {inv.prePaidTx && <TxPicker txs={txs} accountId={accId} amount={invEur(inv)} number={inv.number} customer={inv.customer?.name} fromDate=""
                   value={inv.prePaidTx === "pick" ? "" : inv.prePaidTx} onChange={(id) => { const t = txs.find((x) => x.id === id); set({ prePaidTx: id, paidAt: t?.date || inv.paidAt }); }} />}
               </>);
             })()}
@@ -12896,7 +12973,7 @@ function RemindWin({ inv, co, onDone, onClose }) {
   return (
     <Win id="remind" onClose={onClose} small center dirty={false}>
       <div className="panelhead"><b>{remindName(level)}</b><XBtn /></div>
-      <p className="small">Rechnung <b>{inv.number}</b> an {inv.customer?.name} über <b>{fmtMoney(invTotal({ ...inv, fee: 0 }))}</b>, fällig seit {fmtDate(invDueEff(inv))} ({-daysUntil(invDueEff(inv))} Tage).</p>
+      <p className="small">Rechnung <b>{inv.number}</b> an {inv.customer?.name} über <b>{fmtMoney(invTotal({ ...inv, fee: 0 }), invCur(inv))}</b>, fällig seit {fmtDate(invDueEff(inv))} ({-daysUntil(invDueEff(inv))} Tage).</p>
       <div className="grid2">
         <label>Neue Frist (Tage)<input type="number" inputMode="numeric" value={days} onChange={(e) => setDays(Number(e.target.value))} /></label>
         <label>Mahnspesen € (optional)<input inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="0" /></label>
@@ -12980,7 +13057,7 @@ function PayWin({ inv, book, onDone, onClose }) {
   return (
     <Win id="paywin" onClose={onClose} small center dirty={false}>
       <div className="panelhead"><b>Zahlungseingang {inv.number}</b><button className="btn primary" disabled={mode === "link" && accountId ? !txId : false} onClick={() => done()}>{inv.status === "bezahlt" ? "Zuordnen" : "Als bezahlt buchen"}</button><XBtn /></div>
-      <p className="small muted">{inv.customer?.name} · Rechnungsbetrag <b>{fmtMoney(total)}</b></p>
+      <p className="small muted">{inv.customer?.name} · Rechnungsbetrag <b>{fmtMoney(total, invCur(inv))}</b></p>
       {!accs.length ? <p className="small warn">Noch kein Konto angelegt – die Rechnung wird nur als bezahlt markiert. Konten legst du im Reiter „Konten“ an.</p> : <>
         <label>Konto<PSelect value={accountId} onChange={(e) => setAcc(e.target.value)}>
           {accs.map((a) => <option key={a.id} value={a.id}>{a.icon && a.icon !== "none" ? a.icon : kindIcon(a.kind)} {a.name}</option>)}
@@ -13073,7 +13150,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
     newDoc(pc.kind || "rechnung", pc.customer);
   }, [req]);
   const newDoc = (kind, cust) => setEdit({ id: uid(), kind, status: "entwurf", number: "", date: todayISO(), serviceFrom: todayISO(), dueDays: co.dueDays, validDays: co.validDays,
-    customer: cust ? { id: cust.id, name: cust.name, address: cust.address || "", uid: cust.uid || "", email: cust.email || "", number: cust.number || "", contact: cust.contact || "" } : { name: "", address: "" }, items: [{ text: "", qty: 1, unit: kind === "angebot" ? "Pausch." : "Std", price: "" }], reminders: [], createdAt: new Date().toISOString() });
+    customer: cust ? { id: cust.id, name: cust.name, address: cust.address || "", uid: cust.uid || "", email: cust.email || "", number: cust.number || "", contact: cust.contact || "" } : { name: "", address: "" }, items: [{ text: "", qty: 1, unit: kind === "angebot" ? "Pausch." : "Std", price: "" }], reminders: [], createdAt: new Date().toISOString(), ...(cust?.currency && cust.currency !== "EUR" ? { currency: cust.currency } : {}) });
   const save = (inv0, saveCust) => {
     // Kunde fest verknüpfen (Kunden-ID in der Rechnung) – neu angelegte Kunden bekommen sofort eine ID
     let inv = inv0;
@@ -13099,8 +13176,8 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           const t = book.txs.find((x) => x.id === cur.prePaidTx); await book.link(cur.prePaidTx, cur);
           patch(inv.id, { paidTx: cur.prePaidTx, paidTxCreated: false, paidAccount: t?.accountId || accId, paidAmount: t?.amount, paidAt: t?.date || cur.paidAt });
         } else {
-          const txId = await book.create({ inv: cur, accountId: accId, date: cur.paidAt || cur.date, amount: invTotal(cur), method: cur.payMethod });
-          patch(inv.id, { paidTx: txId, paidTxCreated: true, paidAccount: accId, paidAmount: invTotal(cur) });
+          const txId = await book.create({ inv: cur, accountId: accId, date: cur.paidAt || cur.date, amount: invEur(cur), method: cur.payMethod });
+          patch(inv.id, { paidTx: txId, paidTxCreated: true, paidAccount: accId, paidAmount: invEur(cur) });
         }
       }, 50);
     }
@@ -13117,14 +13194,14 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
   // Zahlungseingang in Kontobuchungen erkennen (Betrag gleich + Nummer im Verwendungszweck)
   const payFor = (inv) => {
     if (inv.kind !== "rechnung" || !inv.number || invState(inv) === "bezahlt" || invState(inv) === "entwurf") return null;
-    const tot = invTotal({ ...inv, fee: 0 }), num = inv.number.toLowerCase().replace(/\s/g, "");
-    return txs.find((t) => t.amount > 0 && t.date >= inv.date && (Math.abs(t.amount - tot) < 0.01 || Math.abs(t.amount - invTotal(inv)) < 0.01) && `${t.purpose} ${t.counterparty}`.toLowerCase().replace(/\s/g, "").includes(num));
+    const tot = invEur({ ...inv, fee: 0 }), num = inv.number.toLowerCase().replace(/\s/g, "");
+    return txs.find((t) => t.amount > 0 && t.date >= inv.date && (Math.abs(t.amount - tot) < (invCur(inv) === "EUR" ? 0.01 : Math.max(1, tot * 0.03)) || Math.abs(t.amount - invEur(inv)) < (invCur(inv) === "EUR" ? 0.01 : Math.max(1, tot * 0.03))) && `${t.purpose} ${t.counterparty}`.toLowerCase().replace(/\s/g, "").includes(num));
   };
 
   const year = todayISO().slice(0, 4);
   const inv = list.filter((x) => x.kind === "rechnung");
   const st = (x) => invState(x);
-  const sumOf = (l) => l.reduce((s, x) => s + invTotal(x), 0);
+  const sumOf = (l) => l.reduce((s, x) => s + invEur(x), 0);
   const openL = inv.filter((x) => ["offen", "überfällig"].includes(st(x))), overL = inv.filter((x) => st(x) === "überfällig");
   const yearRev = sumOf(inv.filter((x) => !["entwurf", "storniert"].includes(st(x)) && (x.date || "").startsWith(year)));
   const paidYear = sumOf(inv.filter((x) => st(x) === "bezahlt" && (x.paidAt || x.date || "").startsWith(year)));
@@ -13132,7 +13209,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
   const cnt = (k) => (k === "alle" ? list.length : k === "angebote" ? list.filter((x) => x.kind === "angebot").length : k === "wiederkehrend" ? templates.length : inv.filter((x) => st(x) === k).length);
   const allTags = [...new Set(list.flatMap((x) => x.tags || []))].sort((a, b) => a.localeCompare(b, "de"));
   const years = [...new Set(list.map((x) => (x.date || "").slice(0, 4)).filter(Boolean))].sort().reverse();
-  const INV_SORTS = { datum: ["Datum", "neueste zuerst", (a, b) => (b.date || "").localeCompare(a.date || "") || (b.number || "").localeCompare(a.number || "")], neu: SORT_NEW, betrag: ["Betrag", "höchste zuerst", (a, b) => invTotal(b) - invTotal(a)], kunde: ["Kunde", "A–Z", (a, b) => (a.customer?.name || "").localeCompare(b.customer?.name || "", "de")], faellig: ["Fälligkeit", "früheste zuerst", (a, b) => (invDueEff(a) || "9").localeCompare(invDueEff(b) || "9")] };
+  const INV_SORTS = { datum: ["Datum", "neueste zuerst", (a, b) => (b.date || "").localeCompare(a.date || "") || (b.number || "").localeCompare(a.number || "")], neu: SORT_NEW, betrag: ["Betrag", "höchste zuerst", (a, b) => invEur(b) - invEur(a)], kunde: ["Kunde", "A–Z", (a, b) => (a.customer?.name || "").localeCompare(b.customer?.name || "", "de")], faellig: ["Fälligkeit", "früheste zuerst", (a, b) => (invDueEff(a) || "9").localeCompare(invDueEff(b) || "9")] };
   const SORTS = Object.fromEntries(Object.entries(INV_SORTS).map(([k, v]) => [k, (a, b) => sortDir * v[2](a, b)]));
   const shown = list.filter((x) => (filter === "alle" ? true : filter === "angebote" ? x.kind === "angebot" : x.kind === "rechnung" && st(x) === filter))
     .filter((x) => !q || norm(`${x.number} ${x.customer?.name} ${(x.items || []).map((i) => i.text).join(" ")} ${(x.tags || []).join(" ")}`).includes(norm(q)))
@@ -13194,7 +13271,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
         <MScroll>
           {filter === "wiederkehrend" ? (<>
             {!templates.length && <MEmpty>Keine wiederkehrenden Rechnungen. Beim Erstellen einer Rechnung „wiederkehrend“ wählen.</MEmpty>}
-            {templates.map((t) => <MItem key={t.id} icon={<MIco e="🔁" />} title={t.name} sub={`${t.interval} · nächster Entwurf ${fmtDate(t.next)}`} amount={fmtMoney(invTotal(t.inv || {}))} dim={!t.active}
+            {templates.map((t) => <MItem key={t.id} icon={<MIco e="🔁" />} title={t.name} sub={`${t.interval} · nächster Entwurf ${fmtDate(t.next)}`} amount={fmtInv(t.inv || {})} dim={!t.active}
               pill={<button className={"stpill " + (t.active ? "st-paid" : "st-draft")} onClick={(e) => { e.stopPropagation(); setTemplates((l) => l.map((y) => (y.id === t.id ? { ...y, active: !y.active } : y))); }}>{t.active ? "aktiv" : "pausiert"}</button>} />)}
           </>) : (<>
             {!shown.length && <MEmpty>{list.length ? "Keine Treffer." : "Noch keine Rechnungen – mit „＋ Rechnung“ starten."}</MEmpty>}
@@ -13204,7 +13281,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                 {l.map((x) => { const sx = x.kind === "angebot" ? (x.status || "offen") : st(x), ui = STATE_UI[sx] || [sx, ""]; const payable = x.kind === "rechnung" && ["offen", "überfällig"].includes(sx); return (
                   <MItem key={x.id} icon={x.kind === "angebot" ? <MIco e="📝" /> : <MAvatar text={x.customer?.name} logo={custLogo(x.customer)} />} title={x.customer?.name || "Ohne Kunde"}
                     tags={[pick && (pick.has(x.id) ? "☑ gewählt" : "☐"), x.kind === "angebot" && "Angebot", ...(lt ? (x.tags || []).map((t) => "#" + t) : [])]} sub={`${x.number || "Entwurf"} · ${fmtDate(x.date)}${payable ? " · fällig " + fmtDate(invDueEff(x)) : ""}`}
-                    amount={fmtMoney(invTotal(x))} amountCls={sx === "bezahlt" ? "in" : sx === "überfällig" ? "neg" : ""} pill={<span className="mpillrow"><span className={"stpill " + ui[1]}>{ui[0]}</span>{!pick && x.number && <button className="mieye" title="Vorschau" aria-label="Vorschau" onClick={async (e) => { e.stopPropagation(); openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email); }}><IcoEye /></button>}</span>}
+                    amount={fmtInv(x)} amountCls={sx === "bezahlt" ? "in" : sx === "überfällig" ? "neg" : ""} pill={<span className="mpillrow"><span className={"stpill " + ui[1]}>{ui[0]}</span>{!pick && x.number && <button className="mieye" title="Vorschau" aria-label="Vorschau" onClick={async (e) => { e.stopPropagation(); openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email); }}><IcoEye /></button>}</span>}
                     onClick={() => (pick ? togglePick(x.id) : setEdit(x))}
                     swipe={pick ? null : { left: [x.number && { icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => (async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email))() }, lt && x.number && { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInv([x]) }, { icon: "⧉", label: "Kopie", bg: "#8b5cf6", run: () => copyAsNew(x) }],
                       right: [payable && { icon: "✓", label: "Bezahlt", bg: "#16a34a", run: () => setPayFor2(x) }, sx === "überfällig" && { icon: "📮", label: "Mahnen", bg: "#ef4444", run: () => setRemind(x) }] }} />); })}
@@ -13248,7 +13325,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           {templates.map((t) => (
             <div key={t.id} className="frow">
               <span className="caticon" style={{ width: 40, height: 40, "--c": "#0b63f6" }}><Glyph e="🔁" /></span>
-              <div className="grow"><b>{t.name}</b><small className="muted block">{t.interval} · {fmtMoney(invTotal(t.inv))} · nächster Entwurf {fmtDate(t.next)}{t.active ? "" : " · pausiert"}</small></div>
+              <div className="grow"><b>{t.name}</b><small className="muted block">{t.interval} · {fmtInv(t.inv)} · nächster Entwurf {fmtDate(t.next)}{t.active ? "" : " · pausiert"}</small></div>
               <PSelect className="chip" value={t.interval} onChange={(e) => setTemplates((l) => l.map((x) => (x.id === t.id ? { ...x, interval: e.target.value } : x)))}>{Object.keys(INTERVALS).map((k) => <option key={k}>{k}</option>)}</PSelect>
               <button className="btn sm" onClick={() => setTemplates((l) => l.map((x) => (x.id === t.id ? { ...x, active: !x.active } : x)))}>{t.active ? "Pausieren" : "Fortsetzen"}</button>
               <button className="iconbtn" title="Löschen" onClick={() => confirm("Wiederkehrende Rechnung löschen? Bereits erstellte Rechnungen bleiben.") && setTemplates((l) => l.filter((x) => x.id !== t.id))}>🗑</button>
@@ -13275,7 +13352,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                   </small>
                   {pay && <button className="link pos small" onClick={async (e) => { e.stopPropagation(); if (book) await book.link(pay.id, x); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id, paidAccount: pay.accountId, payMethod: "Überweisung" }); }}>💡 Zahlungseingang vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}
                 </div>
-                <b className="invamt">{fmtMoney(invTotal(x))}</b>
+                <b className="invamt">{fmtInv(x)}</b>
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
                   {s === "überfällig" && (lt ? <button className="iconbtn ltremind" title={remindName((x.reminders || []).length)} aria-label={remindName((x.reminders || []).length)} onClick={() => setRemind(x)}>📮</button> : <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>)}
                   {x.kind === "angebot" && s === "offen" && <button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button>}
@@ -13364,7 +13441,7 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
           <div className="panelhead"><b className="clamp">{c.name}{linked.length > 1 ? ` · ${linked.length} Dokumente` : ""}</b><XBtn /></div>
           <div className="ctprevdocs">{linked.map((x) => <DocPreview key={x.id} d={x} onOpen={() => setPrevOpen(false)} />)}</div>
         </Win>, document.querySelector(".app") || document.body)}
-      {init.name && (() => { const cd = ctDates(c); return <MHero icon="📑" sub={c.provider || "Vertrag"} title={c.name || "Vertrag"} value={c.amount ? fmtMoney(Number(String(c.amount).replace(",", ".")) || 0) : null}
+      {init.name && (() => { const cd = ctDates(c); return <MHero icon="📑" sub={c.provider || "Vertrag"} title={c.name || "Vertrag"} value={c.amount ? fmtMoney(Number(String(c.amount).replace(",", ".")) || 0, c.currency || "EUR") : null}
         pills={[c.interval || "monatlich", cd.cancelBy && { label: "kündbar bis " + fmtDate(cd.cancelBy), cls: "st-open" }, c.cancelledAt && { label: "gekündigt", cls: "st-over" }]} />; })()}
       <div className="seg">{SCOPES.map(([k, i, l]) => <button key={k} className={(c.scope || "privat") === k ? "on" : ""} onClick={() => set({ scope: k })}>{i} {l}</button>)}</div>
       <fieldset><legend>Vertrag</legend>
@@ -13379,9 +13456,10 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
           ls.set("ctCats", { ...ls.get("ctCats", {}), [n]: em }); set({ cat: n });
         }}>{Object.entries(ctCats()).map(([k, i]) => <option key={k} value={k}>{i} {k}</option>)}<option value="__new">＋ Neue Art …</option></PSelect></label>
         <div className="grid2">
-          <label>Betrag €<input inputMode="decimal" value={c.amount ?? ""} onChange={(e) => set({ amount: e.target.value.replace(",", ".") })} /></label>
+          <label>Betrag<span className="row expcur"><input inputMode="decimal" value={c.amount ?? ""} onChange={(e) => set({ amount: e.target.value.replace(",", ".") })} /><CurSelect value={c.currency || "EUR"} onChange={(v) => set({ currency: v === "EUR" ? undefined : v, fx: null, fxDate: null, fxSrc: null })} /></span></label>
           <label>Intervall<PSelect value={c.interval || "monatlich"} onChange={(e) => set({ interval: e.target.value })}>{Object.keys(CT_FACTOR).map((k) => <option key={k}>{k}</option>)}</PSelect></label>
         </div>
+        {c.currency && c.currency !== "EUR" && <FxRow cur={c.currency} date={todayISO()} amount={Number(c.amount) || null} fx={c.fx} fxDate={c.fxDate} fxSrc={c.fxSrc} eur={c.eurAmt} onPatch={(x) => set({ ...x, eurAmt: x.eur !== undefined ? x.eur : c.eurAmt, eur: undefined })} />}
         <div className="grid2">
           <label>Kundennummer<input value={c.customerNo || ""} onChange={(e) => set({ customerNo: e.target.value })} /></label>
           <label>Vertragsnummer<input value={c.contractNo || ""} onChange={(e) => set({ contractNo: e.target.value })} /></label>
@@ -13440,7 +13518,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
   const [edit, setEdit] = useState(null), [showOld, setShowOld] = useState(false), [imp, setImp] = useState(false);
   const save = (c) => setList((l) => (l.some((x) => x.id === c.id) ? l.map((x) => (x.id === c.id ? c : x)) : [...l, c]));
   useEffect(() => { const id = ls.get("ctOpenReq", null); if (!id) return; ls.set("ctOpenReq", null); const c = list.find((x) => x.id === id); if (c) setEdit(c); }, []);
-  const monthly = (c) => (Number(c.amount) || 0) * (CT_FACTOR[c.interval || "monatlich"] || 1);
+  const monthly = (c) => ctEur(c) * (CT_FACTOR[c.interval || "monatlich"] || 1);
   const active = list.filter((c) => !c.cancelledAt || (c.cancelledEnd && c.cancelledEnd >= todayISO()));
   const counting = active.filter((c) => !c.inactive);
   const inScope = (c) => scope === "alle" || (c.scope || "privat") === scope;
@@ -13526,7 +13604,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
                 <MItem key={c.id} icon={<MIco e={ctCats()[c.cat] || "📄"} />} title={c.name || "Vertrag"} dim={c.cancelledAt || c.inactive}
                   tags={[pick && (pick.has(c.id) ? "☑ gewählt" : "☐"), c.scope === "firma" && "Firma", c.inactive && "inaktiv", cdocs.length && "📎", ...(c.tags || []).map((t) => "#" + t)]}
                   sub={c.cancelledAt ? `gekündigt${c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}` : d.open ? `${c.provider || ""} · jederzeit kündbar` : d.cancelBy ? `${c.provider ? c.provider + " · " : ""}kündigen bis ${fmtDate(d.cancelBy)}` : c.provider || "Laufzeit nicht eingetragen"}
-                  amount={c.amount ? fmtMoney(Number(c.amount)) : "—"} amountSub={c.interval || "monatlich"}
+                  amount={c.amount ? fmtMoney(Number(c.amount), c.currency || "EUR") : "—"} amountSub={(c.interval || "monatlich") + (c.currency && c.currency !== "EUR" ? " · ≈ " + fmtMoney(ctEur(c)) : "")}
                   pill={<span className="mpillrow">{!c.cancelledAt && left != null && left >= 0 && left <= 60 && <span className={"stpill " + (left <= 30 ? "st-over" : "st-draft")}>{left === 0 ? "heute" : `in ${left} T.`}</span>}{!pick && cdocs.length > 0 && <button className="mieye" title="Vorschau" aria-label="Vorschau" onClick={(e) => { e.stopPropagation(); setPrevCt(c.id); }}><IcoEye /></button>}</span>}
                   onClick={() => (pick ? togglePick(c.id) : setEdit(c))}
                   swipe={pick ? null : { left: [cdocs[0] && { icon: <IcoEye />, label: "Dokument", bg: "#0ea5e9", run: () => onOpen(cdocs[0].id) }],
@@ -13568,7 +13646,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
                 : d.cancelBy ? <span className={daysUntil(d.cancelBy) <= 30 ? "neg" : daysUntil(d.cancelBy) <= 60 ? "warnc" : "muted"}>kündigen bis {fmtDate(d.cancelBy)} · Ende {fmtDate(d.end)}</span>
                 : d.end ? <span className="muted">Ende {fmtDate(d.end)}</span> : <span className="muted">Laufzeit nicht eingetragen</span>}</small>
             </div>
-            <b className="invamt ctamt">{c.amount ? fmtMoney(Number(c.amount)) : "—"}</b>
+            <b className="invamt ctamt">{c.amount ? fmtMoney(Number(c.amount), c.currency || "EUR") : "—"}{c.currency && c.currency !== "EUR" && c.amount ? <small className="fxeur">≈ {fmtMoney(ctEur(c))}</small> : null}</b>
             <div className="ctacts" onClick={(e) => e.stopPropagation()}>
               {c.cancelledAt ? <span className="stpill ctstate st-void">Gekündigt</span> : <span className={"ctstatepick " + (c.inactive ? "off" : "on")}><PickMenu btnClass={"stpill ctstate " + (c.inactive ? "st-draft" : "st-paid")} label={c.inactive ? "Inaktiv" : "Aktiv"} title="Status ändern"
                 items={[{ head: "Status" }, { k: "a", icon: "●", title: "Aktiv", sub: "zählt zu den laufenden Kosten", on: !c.inactive, run: () => save({ ...c, inactive: false }) }, { k: "i", icon: "⏸", title: "Inaktiv", sub: "pausiert – zählt nicht zu den Kosten", on: !!c.inactive, run: () => save({ ...c, inactive: true }) }]} /></span>}
@@ -13692,6 +13770,7 @@ function ContactEditor({ c: init, onSave, onDelete, onClose }) {
       </fieldset>
       <fieldset><legend>Geschäftlich</legend>
         <div className="grid2">{f("number", "Kundennummer")}{f("uid", "UID-Nr.", "ATU…")}</div>
+        <label>Standard-Währung für Rechnungen<CurSelect value={c.currency || "EUR"} onChange={(v) => set({ currency: v === "EUR" ? undefined : v })} /></label>
         <div className="grid2">{f("iban", "IBAN")}{f("birthday", "Geburtstag", "", "date")}</div>
       </fieldset>
       <label>Notiz<textarea rows={3} value={c.note || ""} onChange={(e) => set({ note: e.target.value })} /></label>
@@ -13834,7 +13913,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
               {l.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"), tp = typeOf(c), tel = (c.mobile || c.phone || "").replace(/\s/g, ""); return (
                 <MItem key={c.id} icon={<MAvatar text={c.name} color={tp.color} logo={c.logo} />} title={c.name || "Ohne Name"} tags={[{ label: <><TypeGlyph t={tp} /> {tp.name}</>, color: tp.color }]}
                   sub={[c.contact, cityOf(c.address), c.number].filter(Boolean).join(" · ")}
-                  amount={inv.length ? fmtMoney(inv.reduce((s, i) => s + invTotal(i), 0)) : null} amountSub={inv.length ? `${inv.length} Rechn.${open.length ? " · " + open.length + " offen" : ""}` : null}
+                  amount={inv.length ? fmtMoney(inv.reduce((s, i) => s + invEur(i), 0)) : null} amountSub={inv.length ? `${inv.length} Rechn.${open.length ? " · " + open.length + " offen" : ""}` : null}
                   onClick={() => setSelId(c.id)}
                   swipe={{ left: [setTab && { icon: "🧾", label: "Rechnung", bg: "#0ea5e9", run: () => { ls.set("pendingInvoice", { kind: "rechnung", customer: c }); setTab("invoices"); } }, { icon: "📇", label: "vCard", bg: "#8b5cf6", run: () => vcard(c) }],
                     right: [tel && { icon: "📞", label: "Anrufen", bg: "#16a34a", run: () => (location.href = "tel:" + tel) }, c.email && { icon: "✉️", label: "Mail", bg: "#3b82f6", run: () => (location.href = "mailto:" + c.email) }] }} />); })}
@@ -13884,7 +13963,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
                 <button className="chip" onClick={() => vcard(c)}>📇 vCard</button>
               </div>
             </div>
-            {!!inv.length && <div className="right"><b>{fmtMoney(inv.reduce((s, i) => s + invTotal(i), 0))}</b><small className={"block " + (open.length ? "warnc" : "muted")}>{inv.length} Rechnung{inv.length === 1 ? "" : "en"}{open.length ? ` · ${open.length} offen` : ""}</small></div>}
+            {!!inv.length && <div className="right"><b>{fmtMoney(inv.reduce((s, i) => s + invEur(i), 0))}</b><small className={"block " + (open.length ? "warnc" : "muted")}>{inv.length} Rechnung{inv.length === 1 ? "" : "en"}{open.length ? ` · ${open.length} offen` : ""}</small></div>}
           </div>); })}
       </section>
       </FitScroll>
@@ -14120,9 +14199,9 @@ const custMatch = (c, inv) => { const k = inv?.customer; if (!k || !c) return fa
 function custLedger(invs) {
   const ev = [];
   for (const x of invs.filter((i) => i.kind === "rechnung" && i.number && !["entwurf", "storniert"].includes(i.status))) {
-    ev.push({ d: x.date, t: "Rechnung " + x.number, amt: invTotal(x), x });
+    ev.push({ d: x.date, t: "Rechnung " + x.number, amt: invEur(x), x });
     (x.reminders || []).forEach((r, i) => { if (Number(r.fee)) ev.push({ d: r.date, t: `${remindName(r.level)} ${x.number}`, amt: Number(r.fee), x, ri: i }); });
-    if (x.status === "bezahlt") ev.push({ d: x.paidAt || x.date, t: "Zahlung " + x.number, amt: -(invTotal(x) + (x.reminders || []).reduce((s, r) => s + (Number(r.fee) || 0), 0)), x, pay: true });
+    if (x.status === "bezahlt") ev.push({ d: x.paidAt || x.date, t: "Zahlung " + x.number, amt: -(invEur(x) + (x.reminders || []).reduce((s, r) => s + (Number(r.fee) || 0), 0)), x, pay: true });
   }
   ev.sort((a, b) => (a.d || "").localeCompare(b.d || "") || (a.pay ? 1 : 0) - (b.pay ? 1 : 0));
   let bal = 0; for (const e of ev) { bal = r2(bal + e.amt); e.bal = bal; }
@@ -14136,7 +14215,7 @@ function CustomerDetail({ c, customers = [], invoices, typeOf, back, onBack, onE
   const rech = mine.filter((i) => i.kind === "rechnung"), ang = mine.filter((i) => i.kind === "angebot");
   const valid = rech.filter((i) => !["entwurf", "storniert"].includes(i.status));
   const open = valid.filter((i) => ["offen", "überfällig"].includes(invState(i))), over = open.filter((i) => invState(i) === "überfällig");
-  const yr = todayISO().slice(0, 4), revYear = valid.filter((i) => (i.date || "").startsWith(yr)).reduce((s, i) => s + invTotal(i), 0);
+  const yr = todayISO().slice(0, 4), revYear = valid.filter((i) => (i.date || "").startsWith(yr)).reduce((s, i) => s + invEur(i), 0);
   const paid = valid.filter((i) => i.status === "bezahlt" && i.paidAt && i.date);
   const avgDays = paid.length ? Math.round(paid.reduce((s, i) => s + Math.max(0, (new Date(i.paidAt) - new Date(i.date)) / 864e5), 0) / paid.length) : null;
   const rems = rech.flatMap((x) => (x.reminders || []).map((r, i) => ({ x, r, i }))).sort((a, b) => (b.r.date || "").localeCompare(a.r.date || ""));
@@ -14147,13 +14226,13 @@ function CustomerDetail({ c, customers = [], invoices, typeOf, back, onBack, onE
   const topArt = (() => { const m = {}; valid.forEach((i) => (i.items || []).forEach((it) => { if (it.text) m[it.text] = (m[it.text] || 0) + 1; })); return Object.entries(m).sort((a, b) => b[1] - a[1])[0]?.[0]; })();
   const nextDue = open.map((i) => invDueEff(i)).filter(Boolean).sort()[0];
   const ledPdf = async () => saveBlob(await tablePdf({ title: `Kundenkonto ${c.name}`, subtitle: `${c.number ? "Kundennr. " + c.number + " · " : ""}Stand ${fmtDate(isoToday())}`,
-    kpis: [["Saldo", fmtMoney(saldo)], ["Offen", fmtMoney(open.reduce((s, i) => s + invTotal(i), 0))], ["Rechnungen", String(valid.length)]],
+    kpis: [["Saldo", fmtMoney(saldo)], ["Offen", fmtMoney(open.reduce((s, i) => s + invEur(i), 0))], ["Rechnungen", String(valid.length)]],
     columns: [{ label: "Datum", w: 1.2 }, { label: "Buchung", w: 4 }, { label: "Soll €", w: 1.3, align: "right" }, { label: "Haben €", w: 1.3, align: "right" }, { label: "Saldo €", w: 1.3, align: "right" }],
     rows: led.map((e) => [fmtDate(e.d), e.t, e.amt > 0 ? r2e(e.amt) : "", e.amt < 0 ? r2e(-e.amt) : "", r2e(e.bal)]) }), `Kundenkonto-${safeName(c.name)}-${isoToday()}.pdf`);
   const invRow = (x) => { const s = invState(x), ui = STATE_UI[s] || [s, ""]; return (
     <div key={x.id} className="frow click cdrow" onClick={() => pdf(x)}>
       <div className="grow"><b>{x.number || (x.kind === "angebot" ? "Angebot (Entwurf)" : "Entwurf")}</b><small className="muted block">{fmtDate(x.date)}{x.kind === "rechnung" && ["offen", "überfällig"].includes(s) ? " · fällig " + fmtDate(invDueEff(x)) : x.paidAt ? " · bezahlt " + fmtDate(x.paidAt) : ""}{(x.items || [])[0]?.text ? " · " + x.items[0].text : ""}</small></div>
-      <div className="right"><b>{fmtMoney(invTotal(x))}</b><span className={"stpill " + ui[1]}>{ui[0]}</span></div>
+      <div className="right"><b>{fmtInv(x)}</b><span className={"stpill " + ui[1]}>{ui[0]}</span></div>
     </div>); };
   const tabs = [["uebersicht", "Übersicht"], ["rechnungen", "Rechnungen", rech.length], ["angebote", "Angebote", ang.length], ["mahnungen", "Mahnungen", rems.length], ["konto", "Konto"]];
   return (<div className="custdet">
@@ -14170,15 +14249,15 @@ function CustomerDetail({ c, customers = [], invoices, typeOf, back, onBack, onE
       </div>
     </div>
     <div className="cdkpis">
-      <div><small>Umsatz {yr}</small><b>{fmtMoney(revYear)}</b><small>gesamt {fmtMoney(valid.reduce((s, i) => s + invTotal(i), 0))}</small></div>
-      <div className={open.length ? "warn" : ""}><small>Offen</small><b className={over.length ? "neg" : ""}>{fmtMoney(open.reduce((s, i) => s + invTotal(i), 0))}</b><small>{open.length ? `${open.length} Rechn.${over.length ? " · " + over.length + " überfällig" : ""}` : "alles bezahlt"}</small></div>
+      <div><small>Umsatz {yr}</small><b>{fmtMoney(revYear)}</b><small>gesamt {fmtMoney(valid.reduce((s, i) => s + invEur(i), 0))}</small></div>
+      <div className={open.length ? "warn" : ""}><small>Offen</small><b className={over.length ? "neg" : ""}>{fmtMoney(open.reduce((s, i) => s + invEur(i), 0))}</b><small>{open.length ? `${open.length} Rechn.${over.length ? " · " + over.length + " überfällig" : ""}` : "alles bezahlt"}</small></div>
       <div><small>Rechnungen</small><b>{valid.length}</b><small>{ang.length ? ang.length + (ang.length === 1 ? " Angebot" : " Angebote") : " "}</small></div>
       <div><small>Ø Zahlungsdauer</small><b>{avgDays != null ? avgDays + " Tage" : "–"}</b></div>
     </div>
     <div className="lbtabs cdtabs" role="tablist">{tabs.map(([k, l, n]) => <button key={k} role="tab" aria-selected={sub === k} className={"lbtab" + (sub === k ? " on" : "")} onClick={() => setSub(k)}>{l}{n != null && <small>{n}</small>}</button>)}</div>
     <div className="cdbody">
       {sub === "uebersicht" && <section className="tile cdlist">
-        {over.length > 0 ? <div className="frow"><span className="grow">Überfällig</span><b className="neg">{over.length} Rechnung{over.length === 1 ? "" : "en"} · {fmtMoney(over.reduce((s, i) => s + invTotal(i), 0))}</b></div>
+        {over.length > 0 ? <div className="frow"><span className="grow">Überfällig</span><b className="neg">{over.length} Rechnung{over.length === 1 ? "" : "en"} · {fmtMoney(over.reduce((s, i) => s + invEur(i), 0))}</b></div>
           : nextDue ? <div className="frow"><span className="grow">Nächste Fälligkeit</span><b>{fmtDate(nextDue)}</b></div> : null}
         {rech[0] && <div className="frow click" onClick={() => pdf(rech[0])}><span className="grow">Letzte Rechnung</span><b>{rech[0].number || "Entwurf"} · {fmtDate(rech[0].date)}</b></div>}
         {paid[0] && <div className="frow"><span className="grow">Letzte Zahlung</span><b>{fmtDate([...paid].sort((a, b) => b.paidAt.localeCompare(a.paidAt))[0].paidAt)}</b></div>}
@@ -14199,7 +14278,7 @@ function CustomerDetail({ c, customers = [], invoices, typeOf, back, onBack, onE
       {sub === "mahnungen" && <section className="tile cdlist">{rems.length ? rems.map(({ x, r, i }) => (
         <div key={x.id + ":" + i} className="frow click cdrow" onClick={() => pdf(x, i)}>
           <div className="grow"><b>{remindName(r.level)}</b><small className="muted block">{x.number} · {fmtDate(r.date)}{r.due ? " · Frist " + fmtDate(r.due) : ""}</small></div>
-          <div className="right"><b>{fmtMoney(invTotal(x))}</b>{Number(r.fee) ? <small className="muted block">+ {fmtMoney(Number(r.fee))} Spesen</small> : null}</div>
+          <div className="right"><b>{fmtInv(x)}</b>{Number(r.fee) ? <small className="muted block">+ {fmtMoney(Number(r.fee))} Spesen</small> : null}</div>
         </div>)) : <p className="muted small">Keine Mahnungen – dieser Kunde zahlt pünktlich.</p>}</section>}
       {sub === "konto" && <section className="tile cdlist cdledger">
         <div className="frow cdsaldo"><span className="grow">Saldo{saldo > 0 ? " (Kunde schuldet)" : ""}</span><b className={saldo > 0 ? "neg" : "pos"}>{fmtMoney(saldo)}</b></div>
@@ -14220,7 +14299,7 @@ function AssignWin({ items, customers, onAssign, onNew, onClose }) {
     <div className="panelhead"><b>Rechnungen zuordnen</b><XBtn /></div>
     <p className="muted small" style={{ margin: "0 16px 8px" }}>Diese Rechnungen passen zu keinem Kontakt (Name oder Kundennummer weichen ab). Kunden wählen oder als neuen Kunden anlegen – der Name auf der Rechnung bleibt unverändert.</p>
     <div className="assignlist">{!items.length && <p className="muted" style={{ margin: 16 }}>Alles zugeordnet ✓</p>}
-      {items.map((i) => <div key={i.id} className="frow"><div className="grow"><b>{i.customer.name}</b><small className="muted block">{i.number || (i.kind === "angebot" ? "Angebot" : "Entwurf")} · {fmtDate(i.date)} · {fmtMoney(invTotal(i))}</small></div>
+      {items.map((i) => <div key={i.id} className="frow"><div className="grow"><b>{i.customer.name}</b><small className="muted block">{i.number || (i.kind === "angebot" ? "Angebot" : "Entwurf")} · {fmtDate(i.date)} · {fmtInv(i)}</small></div>
         <PSelect value="" onChange={(e) => { const c = customers.find((x) => x.id === e.target.value); if (c) onAssign(i.id, c); }}><option value="">Kunde wählen …</option>{sorted.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</PSelect>
         <button className="btn sm" onClick={() => onNew(i)}>＋ Neu</button></div>)}
     </div>
@@ -14531,7 +14610,7 @@ function ArticlesPage({ setTab }) {
   const C = artCfg();
   const [edit, setEdit] = useState(null), [q, setQ] = useState(""), [grp, setGrp] = useState("alle");
   const [sort, setSort, sortDir] = useSortState("artikel", "name");
-  const ART_SORTS = { name: ["Name", "A–Z", (x, y) => (x.a.text || "").localeCompare(y.a.text || "", "de")], neu: [SORT_NEW[0], SORT_NEW[1], (x, y) => addedOf(y.a) - addedOf(x.a)], preis: ["Preis", "höchster zuerst", (x, y) => (Number(y.a.price) || 0) - (Number(x.a.price) || 0)], umsatz: ["Umsatz", "meist verrechnet zuerst", (x, y) => y.u.sum - x.u.sum] };
+  const ART_SORTS = { name: ["Name", "A–Z", (x, y) => (x.a.text || "").localeCompare(y.a.text || "", "de")], neu: [SORT_NEW[0], SORT_NEW[1], (x, y) => addedOf(y.a) - addedOf(x.a)], preis: ["Preis", "höchster zuerst", (x, y) => (Number(y.a.price) || 0) - (astEur(x.a))], umsatz: ["Umsatz", "meist verrechnet zuerst", (x, y) => y.u.sum - x.u.sum] };
   const [scan, setScan] = useState(false);
   const nextNo = () => C.prefix + String(list.reduce((m, a) => Math.max(m, String(a.number || "").startsWith(C.prefix) ? parseInt(a.number.slice(C.prefix.length), 10) || 0 : 0), 0) + 1).padStart(3, "0");
   const usage = (a) => { let n = 0, sum = 0; for (const i of invoices) if (i.kind === "rechnung" && !["entwurf", "storniert"].includes(i.status)) for (const it of i.items || []) if (it.text === a.text) { n++; sum += (Number(it.qty) || 0) * (Number(it.price) || 0); } return { n, sum }; };
@@ -14628,7 +14707,7 @@ function assetDlDocs(list) {
     const done = a.dlDone || [];
     out.push({ id: "as:" + a.id, isAsset: true, astId: a.id, title: [astEmo(a), a.name, a.brand].filter(Boolean).join(" ").trim(),
       sender: a.dealer || "", category: "Garantie & Kaufbelege", docType: "Gerät", direction: "keine", amount: null,
-      summary: [a.serial && "Seriennr. " + a.serial, a.date && "gekauft am " + fmtDate(a.date), a.price && "um " + fmtMoney(Number(a.price))].filter(Boolean).join(" · "),
+      summary: [a.serial && "Seriennr. " + a.serial, a.date && "gekauft am " + fmtDate(a.date), a.price && "um " + fmtMoney(Number(a.price), a.currency || "EUR")].filter(Boolean).join(" · "),
       deadlines: [
         ...(pre && pre > a.date ? [{ id: "asdl-pre-" + a.id + "-" + pre, date: pre, label: `Garantie läuft in ${warn} Tagen ab`, done: done.includes(pre) }] : []),
         { id: "asdl-" + a.id + "-" + end, date: end, label: astLabel(a), done: done.includes(end) }
@@ -14655,6 +14734,7 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
       name: touched.name && x.name ? x.name : x.name || li?.name || doc.title || "",
       date: touched.date ? x.date : pastOrToday(doc.purchaseDate || doc.documentDate, todayISO()),
       price: touched.price && x.price ? x.price : x.price !== "" && x.price != null ? x.price : doc.amount?.total ?? "",
+      ...(!(touched.price && x.price) && (x.price === "" || x.price == null) && doc.amount?.currency && doc.amount.currency !== "EUR" ? { currency: doc.amount.currency, fx: doc.amount.fx || null, fxDate: doc.amount.fxDate || null, fxSrc: doc.amount.fxSrc || null } : {}),
       dealer: touched.dealer && x.dealer ? x.dealer : x.dealer || doc.merchant || doc.sender || "" }));
     notify?.("Beleg ausgelesen" + (doc.amount?.total != null ? ": " + fmtMoney(doc.amount.total) : ""));
   }, [doc?.status, doc?.id]);
@@ -14663,7 +14743,7 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
   return (
     <Win id="astedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name || "Neues Gerät"}</b><button className="btn primary" disabled={!a.name?.trim()} onClick={() => { onSave({ ...a, price: a.price === "" || a.price == null ? "" : Number(String(a.price).replace(",", ".")) || 0 }); onClose(); }}>Speichern</button><XBtn /></div>
-      {init.name && <MHero icon="🛡️" sub={[a.brand, a.cat].filter(Boolean).join(" · ") || "Gerät"} title={a.name || init.name} value={a.price !== "" && a.price != null ? fmtMoney(Number(String(a.price).replace(",", ".")) || 0) : null}
+      {init.name && <MHero icon="🛡️" sub={[a.brand, a.cat].filter(Boolean).join(" · ") || "Gerät"} title={a.name || init.name} value={a.price !== "" && a.price != null ? fmtMoney(Number(String(a.price).replace(",", ".")) || 0, a.currency || "EUR") : null}
         pills={[a.date && "gekauft " + fmtDate(a.date), astEndAll(a) && { label: (astEndAll(a) < todayISO() ? "Garantie abgelaufen " : "Garantie bis ") + fmtDate(astEndAll(a)), cls: astEndAll(a) < todayISO() ? "st-draft" : "st-paid" }]} />}
       <div className="seg scopeseg">{SCOPES.map(([k, i, l]) => <button key={k} className={a.scope === k ? "on" : ""} onClick={() => set({ scope: k })}>{i} {l}</button>)}</div>
       {a.docId || busy ? (
@@ -14694,10 +14774,11 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
       </div>
       <div className="grid2">
         <label>Kaufdatum<input type="date" value={a.date || ""} max={todayISO()} onChange={(ev) => tset({ date: ev.target.value })} /></label>
-        <label>Kaufpreis €<input inputMode="decimal" value={a.price ?? ""} onChange={(ev) => tset({ price: ev.target.value })} /></label>
+        <label>Kaufpreis<span className="row expcur"><input inputMode="decimal" value={a.price ?? ""} onChange={(ev) => tset({ price: ev.target.value })} /><CurSelect value={a.currency || "EUR"} onChange={(v) => set({ currency: v === "EUR" ? undefined : v, fx: null, fxDate: null, fxSrc: null, eurAmt: null })} /></span></label>
         <label>Händler<input value={a.dealer || ""} placeholder="z. B. MediaMarkt" onChange={(ev) => tset({ dealer: ev.target.value })} /></label>
         <label>Seriennummer<input value={a.serial || ""} onChange={(ev) => set({ serial: ev.target.value })} /></label>
       </div>
+      {a.currency && a.currency !== "EUR" && <FxRow cur={a.currency} date={a.date || todayISO()} amount={Number(String(a.price ?? "").replace(",", ".")) || null} fx={a.fx} fxDate={a.fxDate} fxSrc={a.fxSrc} eur={a.eurAmt} onPatch={(x) => set({ ...x, eurAmt: x.eur !== undefined ? x.eur : a.eurAmt, eur: undefined })} />}
       <div className="astwarr">
         <small className="muted">Garantie</small>
         <div className="grid2">
@@ -14738,7 +14819,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
     .filter((a) => !q || norm(`${a.name} ${a.brand} ${a.serial} ${a.dealer} ${a.cat} ${a.note}`).includes(norm(q)))
     .sort((x, y) => astDir * (AST_SORTS[astSort] || AST_SORTS.ablauf)[2](x, y));
   const shownV = useProgressiveAuto(shown);
-  const value = inScope.filter((a) => !astOut(a)).reduce((s, a) => s + (Number(a.price) || 0), 0);
+  const value = inScope.filter((a) => !astOut(a)).reduce((s, a) => s + astEur(a), 0);
   const dlDocsA = useMemo(() => assetDlDocs(inScope), [inScope]);
   const calItems = dlDocsA.flatMap((d) => d.deadlines.map((dl) => [dl, d]));
   const newAsset = () => setEdit({ id: uid(), name: "", scope: scope === "firma" ? "firma" : "privat", cat: "Elektronik", date: todayISO(), price: "", warrMonths: ASSET_DEF_WARR, remindDays: 30 });
@@ -14749,7 +14830,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
     { label: "🖨 Inventarliste PDF", sub: "mit Kaufwert und Garantieende", run: async () => { const by = {};
       shown.forEach((a) => (by[a.cat || "Sonstiges"] = by[a.cat || "Sonstiges"] || []).push(a));
       saveBlob(await tablePdf({ title: "Inventarliste", subtitle: `${scope === "alle" ? "Privat & Firma" : scope === "firma" ? "Firma" : "Privat"} · Stand ${fmtDate(todayISO())}`, landscape: true,
-        kpis: [["Geräte", String(shown.length)], ["Kaufwert", fmtMoney(shown.reduce((s, a) => s + (Number(a.price) || 0), 0))], ["In Garantie", String(shown.filter((a) => ["aktiv", "bald"].includes(astState(a))).length)]],
+        kpis: [["Geräte", String(shown.length)], ["Kaufwert", fmtMoney(shown.reduce((s, a) => s + astEur(a), 0))], ["In Garantie", String(shown.filter((a) => ["aktiv", "bald"].includes(astState(a))).length)]],
         columns: [{ label: "Bezeichnung", w: 3 }, { label: "Marke / Modell", w: 2 }, { label: "Seriennr.", w: 1.6 }, { label: "Gekauft", w: 1.1 }, { label: "Händler", w: 1.6 }, { label: "Preis €", w: 1.1, align: "right" }, { label: "Garantie bis", w: 1.2 }],
         sections: Object.entries(by).map(([g, l]) => ({ heading: (ASSET_CATS[g] ? "" : "") + g, rows: l.map((a) => [a.name, a.brand || "", a.serial || "", a.date ? fmtDate(a.date) : "", a.dealer || "", Number(a.price) || "", astEndAll(a) ? fmtDate(astEndAll(a)) : "—"]) })),
         note: "Gewährleistung in Österreich: 2 Jahre ab Übergabe. Eine Herstellergarantie kann länger laufen – es gilt das jeweils spätere Datum.\nFür Versicherungs- oder Steuerzwecke bitte zusätzlich die Original-Kaufbelege aufbewahren." }), `inventarliste-${scopeName}-${todayISO()}.pdf`); } },
@@ -14814,7 +14895,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
                 <AstIco a={a} size={42} />
                 <div className="astmain"><b className="one">{a.name}</b>
                   <small className="muted block one">{[sub(a), a.serial && "Nr. " + a.serial, a.dealer].filter(Boolean).join(" · ")}</small></div>
-                <div className="r astamt"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"}</b><small className="muted block">{a.date ? fmtDate(a.date) : ""}</small></div>
+                <div className="r astamt"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price), a.currency || "EUR") : "—"}</b><small className="muted block">{a.date ? fmtDate(a.date) : ""}</small></div>
                 <div className="aststat" onClick={(e) => e.stopPropagation()}>
                   <span className="astslot astslot1">{stp}</span><span className="astslot astslot2">{(a.scope || "privat") === "firma" && <span className="stpill st-draft astfirma" title="Firma">🏢 Firma</span>}</span>
                   <span className="astacts dactions">
@@ -14877,6 +14958,7 @@ function KassaEntryWin({ init, kasse, entries, lastCount, docs, onUpload, onScan
     if (!sdoc || sdoc.status !== "done" || filled.current === sdoc.id) return;
     filled.current = sdoc.id;
     setE((x) => ({ ...x, amount: touched.amount && x.amount ? x.amount : sdoc.amount?.total != null ? amtStr(sdoc.amount.total) : x.amount,
+      ...(!touched.fxCur && sdoc.amount?.currency && sdoc.amount.currency !== (x.fxCur || "EUR") ? { fxCur: sdoc.amount.currency, fx: sdoc.amount.fx || null, fxDate: sdoc.amount.fxDate || null, fxSrc: sdoc.amount.fxSrc || null, eurAmt: null } : {}),
       date: touched.date ? x.date : clampDate(sdoc.purchaseDate || sdoc.documentDate),
       text: touched.text && x.text ? x.text : sdoc.merchant || sdoc.sender || sdoc.title || x.text,
       ...(sdoc.direction === "einnahme" && !touched.kind ? { kind: "ein", cat: KB_CATS.ein[0] } : {}) }));
@@ -14888,14 +14970,16 @@ function KassaEntryWin({ init, kasse, entries, lastCount, docs, onUpload, onScan
     notify?.(`QR-Code gelesen: ${fmtMoney(q.total)}${q.date ? " · " + fmtDate(q.date) : ""}`); };
   const receipts = (docs || []).filter((d) => !d.trashed).sort((a, b) => (b.documentDate || b.created || "").localeCompare(a.documentDate || a.created || "")).slice(0, 80);
   const linked = docs?.find((d) => d.id === e.docId);
+  const fxOn = (e.fxCur || "EUR") !== "EUR", amt0 = kbR2(String(e.amount).replace(",", ".")), eurV = fxOn ? (e.eurAmt > 0 ? kbR2(e.eurAmt) : toEur(amt0, e.fxCur, e.fx)) : amt0;
   const save = () => {
-    const amount = kbR2(String(e.amount).replace(",", "."));
-    if (!(amount > 0)) return setErr("Bitte einen Betrag größer 0 eingeben.");
+    const amount = eurV;   // v0.99.80: Fremdwährung → in Euro in die Kassa, Originalbetrag bleibt gespeichert
+    if (!(amt0 > 0)) return setErr("Bitte einen Betrag größer 0 eingeben.");
+    if (fxOn && !(amount > 0)) return setErr("Für die Fremdwährung fehlt noch der Kurs bzw. der Euro-Betrag.");
     if (!e.text?.trim()) return setErr("Bitte einen Buchungstext eingeben (Einzelaufzeichnung).");
     if (!e.date || e.date > todayISO()) return setErr("Das Datum darf nicht in der Zukunft liegen.");
     if (minDate && e.date < minDate) return setErr(`Vor dem ${fmtDate(minDate)} kann nicht mehr gebucht werden (${lastCount ? "letzter Kassensturz" : "Anfangsbestand"}).`);
     if (!e.docId && !e.beleg?.trim() && !e.eigen) return setErr("Keine Buchung ohne Beleg: Beleg verknüpfen, Belegnummer eintragen oder „Eigenbeleg“ ankreuzen.");
-    const n = { ...e, amount, text: e.text.trim(), kasse: kasse.id, no: kbNextNo(entries, kasse, e.date), created: new Date().toISOString() };
+    const n = { ...e, amount, ...(fxOn ? { fxAmt: amt0, fxCur: e.fxCur, fxRate: Math.round((amt0 / amount) * 10000) / 10000 } : { fxCur: undefined, fx: undefined, fxDate: undefined, fxSrc: undefined, eurAmt: undefined }), text: e.text.trim(), kasse: kasse.id, no: kbNextNo(entries, kasse, e.date), created: new Date().toISOString() };
     const { neg } = kbRun([...entries, n], kasse);
     if (neg) return setErr(`Der Kassenstand würde am ${fmtDate(neg.date)} negativ werden – ein Kassenminus ist nicht zulässig. Fehlt eine Einnahme?`);
     onSave(n); onClose();
@@ -14926,9 +15010,11 @@ function KassaEntryWin({ init, kasse, entries, lastCount, docs, onUpload, onScan
         </div>
       ))}
       <div className="grid2">
-        <label>Betrag €<input autoFocus inputMode="decimal" value={e.amount} placeholder="0,00" onChange={(ev) => tset({ amount: ev.target.value })} /></label>
+        <label>Betrag<span className="row expcur"><input autoFocus inputMode="decimal" value={e.amount} placeholder="0,00" onChange={(ev) => tset({ amount: ev.target.value })} /><CurSelect value={e.fxCur || "EUR"} onChange={(v) => tset({ fxCur: v === "EUR" ? undefined : v, fx: null, fxDate: null, fxSrc: null, eurAmt: null })} /></span></label>
         <label>Datum<input type="date" value={e.date} min={minDate || undefined} max={todayISO()} onChange={(ev) => tset({ date: ev.target.value })} /></label>
       </div>
+      {fxOn && <FxRow cur={e.fxCur} date={e.date} amount={amt0 > 0 ? amt0 : null} fx={e.fx} fxDate={e.fxDate} fxSrc={e.fxSrc} eur={e.eurAmt} onPatch={(x) => set({ ...x, eurAmt: x.eur !== undefined ? x.eur : e.eurAmt, eur: undefined })} />}
+      {fxOn && <small className="muted block">In die Kassa (Euro) wird {eurV > 0 ? fmtMoney(eurV) : "der umgerechnete Betrag"} gebucht.</small>}
       <label>Buchungstext<input value={e.text} placeholder={e.kind === "ein" ? "z. B. Barverkauf Tagesumsatz" : "z. B. Briefmarken Post"} onChange={(ev) => tset({ text: ev.target.value })} /></label>
       <div className="grid2">
         <label>Kategorie<PSelect value={e.cat} onChange={(ev) => set({ cat: ev.target.value })}>{KB_CATS[e.kind].map((c) => <option key={c}>{c}</option>)}</PSelect></label>
@@ -14988,6 +15074,7 @@ function KassaDetailWin({ e, kasse, saldo, entries, docs, onOpen, onStorno, onCl
       <div className="kbhero"><span className={e.kind === "ein" ? "pos" : "neg"}>{e.kind === "ein" ? "+" : "−"}{fmtMoney(e.amount)}</span><small className="muted">{e.text}</small>
         {e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}</div>
       <Row l="Kasse" v={kasse.name} /><Row l="Datum" v={fmtDate(e.date)} /><Row l="Kategorie" v={e.cat} />
+      <Row l="Originalbetrag" v={e.fxCur && e.fxAmt ? `${fmtMoney(e.fxAmt, e.fxCur)} · 1 EUR = ${fmtFx(e.fxRate)} ${e.fxCur}` : ""} />
       <Row l="USt" v={e.vat != null ? `${e.vat} % · netto ${fmtMoney(kbNet(e))} · USt ${fmtMoney(kbR2(e.amount - kbNet(e)))}` : ""} />
       <Row l="Saldo danach" v={fmtMoney(saldo)} /><Row l="Belegnummer" v={e.beleg} /><Row l="Eigenbeleg" v={e.eigen ? "ja" : ""} />
       <Row l="Erfasst am" v={new Date(e.created).toLocaleString("de-AT")} />
@@ -15053,7 +15140,7 @@ const IcoClip = () => <Ico d={<path d="M21.4 11.6 12.5 20.5a5 5 0 0 1-7-7l9-9a3.
 const IcoCam = () => <Ico d={<><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13" r="3.5" /></>} />;
 /* v0.99.56: Kassabuch-Beleg – Darstellung wählbar (Icons · Knopf · Status) + Kamera live, Vorschläge, Zwischenablage, Eigenbeleg, Drag & Drop */
 const KB_BELEG_STYLES = [["icons", "Icons", "Ansehen · Drucken · Teilen bzw. 📎 📷 und ⋯"], ["knopf", "Ein Knopf „Beleg ▾“", "schlank, alle Optionen im Menü"], ["status", "Status + Auge", "✓ bzw. roter Hinweis „fehlt ▾“"]];
-const kbDocAmt = (d) => Math.abs(payAmt(d) ?? d.amount?.total ?? NaN);
+const kbDocAmt = (d) => Math.abs((docCur(d) !== "EUR" && canEur(d) ? payEur(d) : payAmt(d)) ?? d.amount?.total ?? NaN);
 const kbMatches = (e, docs) => { const t = Date.parse(e.date);
   return docs.filter((d) => !d.deletedAt && Math.abs(kbDocAmt(d) - e.amount) < 0.015 && Math.abs((Date.parse(d.documentDate || d.createdAt || "") - t) / 864e5) <= 7)
     .sort((a, b) => Math.abs(Date.parse(a.documentDate || a.createdAt) - t) - Math.abs(Date.parse(b.documentDate || b.createdAt) - t)); };
@@ -15268,7 +15355,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
               <MHead right={"Saldo " + fmtMoney(saldo[l[0].id])}>{fmtDate(d)}</MHead>
               {l.map((e) => <MItem key={e.id} dim={!!(e.stornoBy || e.stornoOf)} icon={<MIco e={e.kind === "ein" ? "💶" : "🧾"} />} title={e.text}
                 tags={[e.stornoBy && "storniert", e.stornoOf && "Storno", !e.docId && !e.beleg && e.eigen && "Eigenbeleg"]}
-                sub={`${kbNo(e)} · ${e.cat}${e.docId ? " · 📎" : ""}`} amount={(e.kind === "ein" ? "+" : "−") + fmtMoney(e.amount)} amountCls={e.kind === "ein" ? "pos" : "neg"}
+                sub={`${kbNo(e)} · ${e.cat}${e.fxCur && e.fxAmt ? " · " + fmtMoney(e.fxAmt, e.fxCur) : ""}${e.docId ? " · 📎" : ""}`} amount={(e.kind === "ein" ? "+" : "−") + fmtMoney(e.amount)} amountCls={e.kind === "ein" ? "pos" : "neg"}
                 onClick={() => setDet(e.id)} swipe={{ left: e.stornoOf ? [] : e.docId ? [{ icon: <IcoEye />, label: "Beleg", bg: "#3b82f6", run: () => onOpen?.(e.docId) }] : [{ icon: "📎", label: "Beleg", bg: "#3b82f6", run: () => { setKbFor(e); kbFile.current?.click(); } }, { icon: "📷", label: "Kamera", bg: "#8b5cf6", run: () => kbScanOld(e) }, { icon: "⋯", label: "Mehr", bg: "#64748b", run: () => setKbPick({ e, sug: kbMatches(e, docs) }) }], right: !e.stornoBy && !e.stornoOf ? [{ icon: "↩︎", label: "Storno", bg: "#ef4444", run: () => doStorno(e) }] : [] }} />)}
             </React.Fragment>
           ))}
@@ -15297,7 +15384,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
         {shown.map((e) => (
           <div key={e.id} className={"kbr click" + rowCls(e) + (kbDrop === e.id ? " kbdrop" : "")} onClick={() => setDet(e.id)} {...kbDnD(e)}>
             <span className="muted kbcno">{kbNo(e)}</span><span className="kbcdate">{fmtDate(e.date)}<small className="muted kbsub">{kbNo(e)}</small></span>
-            <span className="one kbctext"><b>{e.text}</b>{e.docId && " 📎"}{e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}<small className="muted kbsub one">{e.cat}</small></span>
+            <span className="one kbctext"><b>{e.text}</b>{e.fxCur && e.fxAmt ? <small className="muted"> ({fmtMoney(e.fxAmt, e.fxCur)})</small> : null}{e.docId && " 📎"}{e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}<small className="muted kbsub one">{e.cat}</small></span>
             <span className="muted one kbccat">{e.cat}</span>
             <span className="r pos">{e.kind === "ein" ? fmtMoney(e.amount) : ""}</span><span className="r neg">{e.kind === "aus" ? fmtMoney(e.amount) : ""}</span><span className="r"><b>{fmtMoney(saldo[e.id])}</b></span>
             {kbActs(e)}
@@ -15685,7 +15772,7 @@ function DunningPage({ setTab, book }) {
   // Listen-Aufbau wie Rechnungen
   const kit = useListKit("mahnungen", { def: "tage", dateOf: (o) => (o.r ? o.r.date : o.x.date), tagsOf: (o) => o.x.tags || [], sorts: {
     tage: ["Überfällig", "am längsten zuerst", (a, b) => (b.since ?? 0) - (a.since ?? 0) || (b.r?.date || "").localeCompare(a.r?.date || "")],
-    betrag: ["Betrag", "höchster zuerst", (a, b) => invTotal(b.x) - invTotal(a.x)],
+    betrag: ["Betrag", "höchster zuerst", (a, b) => invEur(b.x) - invEur(a.x)],
     kunde: ["Kunde", "A–Z", (a, b) => (a.x.customer?.name || "").localeCompare(b.x.customer?.name || "", "de")] } });
   const { pick, setPick, togglePick } = kit;
   const [mf, setMf] = useState("alle");
@@ -15696,10 +15783,10 @@ function DunningPage({ setTab, book }) {
   const tagInv = (xs) => { const f = kitTagPrompt(xs); if (!f) return; const ids = new Set(xs.map((x) => x.id)); setList((l) => l.map((y) => (ids.has(y.id) ? { ...y, tags: f(y) } : y))); };
   const printInvs = async (items) => { const imgs = []; for (const [x, i] of items) imgs.push(...(await blobToImages(await (i == null ? buildInvoicePdf(x, co) : pdfOf(x, i))))); if (imgs.length) await printImages(imgs, items.length === 1 ? invFileName(items[0][0], items[0][1] == null ? undefined : items[0][0].reminders[items[0][1]]) : `${items.length} Belege`); };
   const mnHead = ["Kunde", "Rechnung", "Fällig", "Tage überfällig", "Letzte Stufe", "Betrag €", "Tags"];
-  const mnRow = ({ x, last, since }) => [x.customer?.name || "", x.number, invDueEff(x), since, last ? remindName(last.level) : "", r2e(invTotal(x)), (x.tags || []).join(", ")];
+  const mnRow = ({ x, last, since }) => [x.customer?.name || "", x.number, invDueEff(x), since, last ? remindName(last.level) : "", r2e(invEur(x)), (x.tags || []).join(", ")];
   const mnExp = [{ label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) },
     { label: "📄 Offene Posten CSV", run: () => downloadCsv(`Offene-Posten-${isoToday()}.csv`, OP_HEAD, openList(list).map(opRow)) },
-    { label: "📒 Mahnverlauf CSV", run: () => downloadCsv(`Mahnverlauf-${isoToday()}.csv`, ["Datum", "Stufe", "Rechnung", "Kunde", "Frist", "Gebühr €", "Rechnungsbetrag €"], history.map(({ x, r }) => [r.date, remindName(r.level), x.number, x.customer?.name || "", r.due, r2e(r.fee), r2e(invTotal({ ...x, fee: 0 }))])) }];
+    { label: "📒 Mahnverlauf CSV", run: () => downloadCsv(`Mahnverlauf-${isoToday()}.csv`, ["Datum", "Stufe", "Rechnung", "Kunde", "Frist", "Gebühr €", "Rechnungsbetrag €"], history.map(({ x, r }) => [r.date, remindName(r.level), x.number, x.customer?.name || "", r.due, r2e(r.fee), r2e(invEur({ ...x, fee: 0 }))])) }];
   const mnMore = [setTab && { k: "inv", icon: "🧾", title: "Rechnungen", run: () => setTab("invoices") }, setTab && { k: "set", icon: "⚙︎", title: "Mahnwesen einstellen", run: () => { ls.set("openSettingsSec", "mahnwesen"); setTab("settings"); } }, { head: "Export" }, ...exp2pick(mnExp)].filter(Boolean);
   const mnBar = <KitBar kit={kit} all={[...over, ...history]} filters={MF} filter={mf} setFilter={setMf} q={mq} setQ={setMq} placeholder="Kunde, Rechnungsnummer, Mahnstufe suchen"
     actions={[{ k: "newdun", icon: "📮", title: "Mahnung erstellen", run: () => setPickOpen(true) }, ...mnMore.filter(Boolean)]} />;
@@ -15711,7 +15798,7 @@ function DunningPage({ setTab, book }) {
     <div className="invpage">
       {mob ? (
       <div className="mpage">
-        <MStats items={[{ label: "Überfällig", value: fmtMoney(over.reduce((s, o) => s + invTotal(o.x), 0)), vcls: over.length ? "neg" : "", alert: !!over.length, sub: `${over.length} Rechnung${over.length === 1 ? "" : "en"}` },
+        <MStats items={[{ label: "Überfällig", value: fmtMoney(over.reduce((s, o) => s + invEur(o.x), 0)), vcls: over.length ? "neg" : "", alert: !!over.length, sub: `${over.length} Rechnung${over.length === 1 ? "" : "en"}` },
           { label: "Jetzt mahnen", value: over.filter((o) => o.ready).length, sub: `Wartezeit ${dn.waitDays} Tage` },
           { label: `Mahnungen ${year}`, value: history.filter((h) => (h.r.date || "").startsWith(year)).length, sub: "versendet" }]} />
         {mnBar}
@@ -15720,7 +15807,7 @@ function DunningPage({ setTab, book }) {
           {mf !== "verlauf" && !overS.length && <MEmpty>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</MEmpty>}
           {overV.map(({ x, last, since, ready, next }) => (
             <MItem key={x.id} icon={<MAvatar text={x.customer?.name} color="#ef4444" logo={custLogo(x.customer)} />} title={x.customer?.name || "Ohne Kunde"} tags={[pick && (pick.has(x.id) ? "☑ gewählt" : "☐"), ...(x.tags || []).map((t) => "#" + t)]}
-              sub={`${x.number} · ${since} T. überfällig${last ? " · zuletzt " + remindName(last.level) : ""}`} amount={fmtMoney(invTotal(x))} amountCls="neg"
+              sub={`${x.number} · ${since} T. überfällig${last ? " · zuletzt " + remindName(last.level) : ""}`} amount={fmtInv(x)} amountCls="neg"
               pill={<span className="mpillrow"><span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? remindName(next) : `in ${(dn.waitDays || 0) - since} T.`}</span>{!pick && <button className="mieye" title="Rechnung ansehen" aria-label="Vorschau" onClick={async (e) => { e.stopPropagation(); openPdf(await buildInvoicePdf({ ...x, reminders: [] }, co), invFileName(x)); }}><IcoEye /></button>}</span>}
               onClick={() => (pick ? togglePick(x.id) : setRemind(x))}
               swipe={pick ? null : { left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => (async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email))() }, { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInvs([[x, null]]) }],
@@ -15730,7 +15817,7 @@ function DunningPage({ setTab, book }) {
           {(mf === "alle" || mf === "verlauf") && !histS.length && <MEmpty>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</MEmpty>}
           {histV.map(({ x, r, i }) => { const s = invState(x); return (
             <MItem key={x.id + i} icon={<MIco e="📮" />} title={`${remindName(r.level)} · ${x.customer?.name || ""}`} sub={`${fmtDate(r.date)} · ${x.number} · Frist ${fmtDate(r.due)}`}
-              amount={fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))} amountCls={s === "bezahlt" ? "in" : ""}
+              amount={fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }), invCur(x))} amountCls={s === "bezahlt" ? "in" : ""}
               pill={<span className="mpillrow">{i === x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}<button className="mieye" title="Vorschau" aria-label="Vorschau" onClick={async (e) => { e.stopPropagation(); openPdf(await pdfOf(x, i), invFileName(x, r)); }}><IcoEye /></button></span>}
               swipe={{ left: [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => (async () => openPdf(await pdfOf(x, i), invFileName(x, r)))() }, { icon: <IcoPrint />, label: "Drucken", bg: "#0f766e", run: () => printInvs([[x, i]]) }],
                 right: [{ icon: "📤", label: "Teilen", bg: "#8b5cf6", run: async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email) }] }} />); })}
@@ -15739,13 +15826,13 @@ function DunningPage({ setTab, book }) {
           <Win id="dunpick" onClose={() => setPickOpen(false)} dirty={false} small>
             <div className="panelhead"><b>Mahnung für …</b><XBtn /></div>
             {(() => { const cand = [...over.map((o) => o.x), ...openNotOver]; return !cand.length ? <p className="muted">Keine offenen Rechnungen – alles bezahlt 🎉</p>
-              : cand.map((x) => <div key={x.id} className="frow click" onClick={() => { setPickOpen(false); setRemind(x); }}><MAvatar text={x.customer?.name} /><div className="grow"><b>{x.customer?.name || "Ohne Kunde"}</b><small className="muted block">{x.number} · {fmtMoney(invTotal(x))}{invState(x) === "überfällig" ? " · überfällig" : ""}</small></div><span className="muted">›</span></div>); })()}
+              : cand.map((x) => <div key={x.id} className="frow click" onClick={() => { setPickOpen(false); setRemind(x); }}><MAvatar text={x.customer?.name} /><div className="grow"><b>{x.customer?.name || "Ohne Kunde"}</b><small className="muted block">{x.number} · {fmtInv(x)}{invState(x) === "überfällig" ? " · überfällig" : ""}</small></div><span className="muted">›</span></div>); })()}
           </Win>
         )}
       </div>
       ) : (<>
       <div className="invstats">
-        <div className={"tile" + (over.length ? " alert" : "")}><small className="muted">Überfällig</small><b className={over.length ? "neg" : ""}>{fmtMoney(over.reduce((s, o) => s + invTotal(o.x), 0))}</b><small className="muted">{over.length} Rechnung{over.length === 1 ? "" : "en"}</small></div>
+        <div className={"tile" + (over.length ? " alert" : "")}><small className="muted">Überfällig</small><b className={over.length ? "neg" : ""}>{fmtMoney(over.reduce((s, o) => s + invEur(o.x), 0))}</b><small className="muted">{over.length} Rechnung{over.length === 1 ? "" : "en"}</small></div>
         <div className="tile"><small className="muted">Jetzt mahnen</small><b>{over.filter((o) => o.ready).length}</b><small className="muted">Wartezeit {dn.waitDays} Tage je Stufe</small></div>
         <div className="tile"><small className="muted">Mahnungen {year}</small><b>{history.filter((h) => (h.r.date || "").startsWith(year)).length}</b><small className="muted">versendet</small></div>
         <div className="tile"><small className="muted">Mahnspesen {year}</small><b>{fmtMoney(history.filter((h) => (h.r.date || "").startsWith(year)).reduce((s, h) => s + (Number(h.r.fee) || 0), 0))}</b><small className="muted">verrechnet</small></div>
@@ -15755,7 +15842,7 @@ function DunningPage({ setTab, book }) {
           <Win id="dunpick" onClose={() => setPickOpen(false)} dirty={false} small>
             <div className="panelhead"><b>Mahnung für …</b><XBtn /></div>
             {(() => { const cand = [...over.map((o) => o.x), ...openNotOver]; return !cand.length ? <p className="muted">Keine offenen Rechnungen – alles bezahlt 🎉</p>
-              : cand.map((x) => <div key={x.id} className="frow click" onClick={() => { setPickOpen(false); setRemind(x); }}><MAvatar text={x.customer?.name} /><div className="grow"><b>{x.customer?.name || "Ohne Kunde"}</b><small className="muted block">{x.number} · {fmtMoney(invTotal(x))}{invState(x) === "überfällig" ? " · überfällig" : ""}</small></div><span className="muted">›</span></div>); })()}
+              : cand.map((x) => <div key={x.id} className="frow click" onClick={() => { setPickOpen(false); setRemind(x); }}><MAvatar text={x.customer?.name} /><div className="grow"><b>{x.customer?.name || "Ohne Kunde"}</b><small className="muted block">{x.number} · {fmtInv(x)}{invState(x) === "überfällig" ? " · überfällig" : ""}</small></div><span className="muted">›</span></div>); })()}
           </Win>
         )}
 
@@ -15770,7 +15857,7 @@ function DunningPage({ setTab, book }) {
               <div className="row1"><b className="invname">{x.customer?.name || "Ohne Kunde"}</b><KitTags tags={x.tags} /></div>
               <small className="muted block">{x.number} · fällig {fmtDate(invDueEff(x))} · {since} Tage überfällig{last ? ` · zuletzt ${remindName(last.level)} am ${fmtDate(last.date)}` : " · noch nicht gemahnt"}</small>
             </div>
-            <b className="invamt neg">{fmtMoney(invTotal(x))}</b>
+            <b className="invamt neg">{fmtInv(x)}</b>
             <span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? "fällig" : `in ${(dn.waitDays || 0) - since} T.`}</span>
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
               <button className={"btn sm" + (ready ? " danger" : "")} onClick={() => setRemind(x)}>{remindName(next)} erstellen</button>
@@ -15792,7 +15879,7 @@ function DunningPage({ setTab, book }) {
               <div className="row1"><b className="invname">{remindName(r.level)} · {x.customer?.name}</b></div>
               <small className="muted block">{fmtDate(r.date)} · {x.number} · Frist {fmtDate(r.due)}{Number(r.fee) ? ` · Spesen ${fmtMoney(Number(r.fee))}` : ""}</small>
             </div>
-            <b className="invamt">{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }))}</b>
+            <b className="invamt">{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }), invCur(x))}</b>
             {i !== x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
             <div className="invacts" onClick={(e) => e.stopPropagation()}>
               <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}><IcoEye /></button>
@@ -18637,6 +18724,9 @@ html.sty-graphit.sty-graphit nav.bottom>button.on,html.sty-sand.sty-sand nav.bot
 .ctlogoprev{width:64px;height:64px;border-radius:14px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;background:var(--card2);color:var(--mut);overflow:hidden}
 .ctlogoprev.has{background:repeating-conic-gradient(#8883 0 25%,transparent 0 50%) 50%/12px 12px;padding:0}
 #ctrypick .sblist,.ctrypick .sblist{display:flex;flex-direction:column;gap:2px}.sbrow.ctryrow{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:10px;background:transparent;font-size:15px;text-align:left;color:var(--txt);border:0!important;box-shadow:none}.sbrow.ctryrow:hover{background:color-mix(in srgb,var(--txt) 7%,transparent)}.ctrybar>.seg.ctrymode{flex:none;width:auto;display:inline-flex}.stbku .row{gap:8px;flex-wrap:wrap}
+.fxrow{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:12px;background:color-mix(in srgb,var(--acc) 5%,transparent)}.fxrow .fxinfo{font-size:13.5px}.fxins{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.fxins label{flex:1 1 140px;margin:0;font-size:12.5px}.fxins .btn{flex:none}
+.expcur{display:flex;gap:8px;align-items:stretch;flex-wrap:nowrap}.expcur>input{flex:1;min-width:0}.expcur>.vehpick,.fxhead>.vehpick{flex:none!important;width:auto!important;display:inline-flex}.expcur .cursel,.fxhead .cursel{width:auto!important;min-width:96px;white-space:nowrap}.fxhead{gap:10px;align-items:center;flex-wrap:wrap}.fxhead .seg{flex:1}
+.fxeur{display:block;font-size:11px;font-weight:400;color:var(--mut)}.fxnote{align-self:end}
 .hidaccs{margin:6px 0 14px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.hidaccs .accrow{margin-top:6px}.hidaccs .accrow.hid .grow{text-decoration:line-through;color:var(--mut)}.strike{text-decoration:line-through;opacity:.6}
 .ctrybar{gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}.ctrybtn{display:inline-flex;align-items:center;gap:8px;font-weight:600}.ctryflag{font-size:1.25em;line-height:1}.ctryrow.on{background:color-mix(in srgb,var(--acc) 12%,transparent)}.ctryok{color:var(--acc)}.ctrymode button{padding:5px 10px;font-size:13px;white-space:nowrap}.ctryinfo .rlrows b{text-align:right;max-width:62%}.ctryfx{display:block;margin:10px 0 4px}.ctryfx input{max-width:160px}.ctryintro p{margin:6px 0}
 .ctlogotune{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:8px}.ctlogoz{display:flex;align-items:center;gap:8px;margin:0}.ctlogoz input{width:150px}.ctlogov{width:44px;font-variant-numeric:tabular-nums}.ctlogobg button{padding:4px 10px;font-size:12px}.ctlogoprev img{width:100%;height:100%;object-fit:contain}

@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.80 – Fremdwährungen
+- Währung wählbar (29 gängige + beliebiger ISO-Code) bei: Dokumenten/Belegen, eigenen Rechnungen & Angeboten, Ausgabe erfassen, Verträgen & Fixkosten, Besitz & Garantie, Kassabuch; Kunden mit Standard-Währung
+- EZB-Referenzkurs zum Belegdatum wird automatisch geholt (neue Server-Funktion api/fx.js, Daten über frankfurter/EZB); eigener Kurs oder Euro-Betrag (z. B. laut Kontoauszug) überschreibbar
+- KI-Erkennung übernimmt die Währung des Belegs; Kurs wird danach automatisch ergänzt
+- Summen, Analyse, Firmenauswertung, Steuerberater (Umsatz/Kleinunternehmergrenze), Offene Posten rechnen in Euro um; Fremdwährungsbelege fallen nicht mehr aus den Summen
+- Rechnungs-PDF, Mahnungen, E-Rechnung (ZUGFeRD/XRechnung/ebInterface) in der Rechnungswährung; Zahlen-QR-Code nur bei Euro
+- Ausgabe erfassen / Kassabuch: Buchung in Euro, Originalbetrag und Kurs werden mitgespeichert und angezeigt
+
 ## v0.99.79 – Ausgeblendete Konten aus der Seitenleiste
 - Ausgeblendete Konten verschwinden komplett aus der Seitenleiste, inkl. Bereich „Ausgeblendet (n)“
 - Einstellungen → Konten & Gruppen: Liste „Ausgeblendete Konten“ mit Einblenden / Alle einblenden, dazu 👁/🙈 bei jedem Konto
