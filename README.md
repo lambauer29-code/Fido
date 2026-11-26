@@ -2,6 +2,16 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.66 – Lesbarkeit Firma/Unklar, Minus im Journal, Belegdaten schwebend
+- Kontoauszüge & Buchungen: „Firma“, „Privat“, „Unklar“ im dunklen Modus gut lesbar (helle Schrift) – die Dunkel-Farben hingen an einer Klasse, die die App nicht setzt
+- Journal-Liste: Ausgaben mit Minus (−€ 48,30), Einnahmen mit Plus, farbig wie überall
+- Einstellungen → „Journal: Belegdaten“: Spalte rechts (wie bisher), schwebend auf dem Beleg, oder wie am Handy (Karte von unten über dem Beleg, mit Griff aufziehbar) – gilt für Desktop und iPad
+
+## v0.99.65 – Linie unter der Maus in Diagrammen
+- Linien-Diagramme (Vermögen, Verbrauch im Fahrtenbuch) zeigen beim Darüberfahren bzw. Antippen, wo man ist
+- Vier Varianten unter Einstellungen → Design → Ansichten → „Diagramme – Linie unter der Maus“: Fadenkreuz (Standard), Linie + Box, Wert oben (mit Änderung zum Vormonat), Monats-Streifen
+- Verbrauchs-Diagramme im Fahrtenbuch zeigen jetzt l/100 km bzw. kWh/100 km statt Euro
+
 ## v0.99.64 – Symbol-Einstellungen sauber ausgerichtet
 - Eigene Symbole (Fahrtenbuch, Kategorien, Kontoarten): Symbol, Titel und Eingabefelder stehen in allen Karten oben auf gleicher Höhe – nach „↺ Standard“ rutscht nichts mehr nach unten
 

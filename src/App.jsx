@@ -3707,8 +3707,8 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
         <div className="anagrid">
           <section className="tile"><div className="tilehead"><b>Kosten pro Monat</b><small>gesamt {fmtMoney(st.costs)}</small></div><MiniBars data={costChart} h={130} /></section>
           <section className="tile"><div className="tilehead"><b>Verbrauch</b><small>{vehHasFuel(v) ? "l/100 km" : "kWh/100 km"}</small></div>
-            {st.cons.length >= 2 ? <LineChart points={st.cons.slice(-24).map((c) => ({ m: c.date.slice(0, 7), v: Math.round(c.v * 10) / 10 }))} h={130} /> : st.consE.length >= 2 ? null : <p className="muted small">Ab zwei vollen Tank-/Ladefüllungen wird der Verbrauch berechnet.</p>}
-            {st.consE.length >= 2 && <><small className="muted">Strom kWh/100 km</small><LineChart points={st.consE.slice(-24).map((c) => ({ m: c.date.slice(0, 7), v: Math.round(c.v * 10) / 10 }))} h={110} /></>}
+            {st.cons.length >= 2 ? <LineChart points={st.cons.slice(-24).map((c) => ({ m: c.date.slice(0, 7), v: Math.round(c.v * 10) / 10 }))} h={130} fmt={(v) => `${String(Math.round(v * 10) / 10).replace(".", ",")} l/100 km`} /> : st.consE.length >= 2 ? null : <p className="muted small">Ab zwei vollen Tank-/Ladefüllungen wird der Verbrauch berechnet.</p>}
+            {st.consE.length >= 2 && <><small className="muted">Strom kWh/100 km</small><LineChart points={st.consE.slice(-24).map((c) => ({ m: c.date.slice(0, 7), v: Math.round(c.v * 10) / 10 }))} h={110} fmt={(v) => `${String(Math.round(v * 10) / 10).replace(".", ",")} kWh/100 km`} /></>}
             {lastFuel?.price && <small className="muted">Letzter Preis: {String(lastFuel.price).replace(".", ",")} €/l ({fmtDate(lastFuel.date)})</small>}
           </section>
           <section className="tile"><div className="tilehead"><b>Kosten {year} nach Art</b></div>
@@ -4257,8 +4257,10 @@ function WidgetBoard({ storeKey, title, editing = false, setEditing = () => {}, 
 
 /* ======================= Vermögen ======================= */
 const ASSET_KINDS = { immo: ["🏠", "Immobilie"], auto: ["🚗", "Fahrzeug"], gold: ["🪙", "Gold & Wertsachen"], depot: ["📈", "Depot / Fonds"], krypto: ["₿", "Krypto"], pension: ["🧓", "Vorsorge"], sonst: ["💎", "Sonstiges"], kredit: ["🏦", "Kredit (Schuld)"] };
-function LineChart({ points, h = 180 }) {
-  const [hov, setHov] = useState(null);
+// v0.99.65: Linie/Fadenkreuz unter der Maus – Variante in Einstellungen → Design (A Linie+Box · B Fadenkreuz · C Wert oben · D Monats-Streifen)
+const CHART_HOVER = [["B", "Fadenkreuz", "senkrecht + waagrecht, Werte an den Achsen"], ["A", "Linie + Box", "Linie, Punkt und Box mit Datum & Betrag"], ["C", "Wert oben", "dünne Linie, Betrag oben zeigt den Wert"], ["D", "Monats-Streifen", "heller Streifen + Box"]];
+function LineChart({ points, h = 180, fmt = fmtMoney }) {
+  const [hov, setHov] = useState(null), [hv] = useLsState("chartHover", "B");
   if (points.length < 2) return <p className="muted small">Noch zu wenig Verlauf – sobald Umsätze aus mehreren Monaten vorhanden sind, erscheint hier die Entwicklung.</p>;
   const W = 600, P = 8, vals = points.map((p) => p.v), min = Math.min(0, ...vals), max = Math.max(1, ...vals);
   const x = (i) => P + (i / (points.length - 1)) * (W - 2 * P), y = (v) => P + (1 - (v - min) / (max - min || 1)) * (h - 2 * P);
@@ -4266,17 +4268,28 @@ function LineChart({ points, h = 180 }) {
   const area = `${d} L${x(points.length - 1).toFixed(1)},${y(min)} L${x(0)},${y(min)} Z`;
   const hp = hov != null ? points[hov] : points[points.length - 1];
   const every = Math.ceil(points.length / 6);
+  const pick = (e) => { const r = e.currentTarget.getBoundingClientRect(); const i = Math.round((((e.clientX - r.left) / r.width) * W - P) / (W - 2 * P) * (points.length - 1)); setHov(Math.max(0, Math.min(points.length - 1, i))); };
+  const xp = hov != null ? (x(hov) / W) * 100 : 0, yp = hov != null ? (y(points[hov].v) / h) * 100 : 0, dlt = hov ? points[hov].v - points[hov - 1].v : null;
+  const boxL = xp > 70; // Box links vom Punkt, wenn rechts zu wenig Platz
   return (
-    <div className="linechart">
-      <div className="lcinfo"><b>{fmtMoney(hp.v)}</b><small className="muted">{monthLabel(hp.m)}</small></div>
-      <svg viewBox={`0 0 ${W} ${h}`} preserveAspectRatio="none" onMouseLeave={() => setHov(null)}
-        onPointerMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); const i = Math.round(((e.clientX - r.left) / r.width) * (points.length - 1)); setHov(Math.max(0, Math.min(points.length - 1, i))); }}>
-        <defs><linearGradient id="vgrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="var(--acc)" stopOpacity=".35" /><stop offset="1" stopColor="var(--acc)" stopOpacity="0" /></linearGradient></defs>
-        {min < 0 && <line x1="0" x2={W} y1={y(0)} y2={y(0)} stroke="var(--line)" strokeDasharray="4 4" />}
-        <path d={area} fill="url(#vgrad)" />
-        <path d={d} fill="none" stroke="var(--acc)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-        {hov != null && <line x1={x(hov)} x2={x(hov)} y1="0" y2={h} stroke="var(--muted)" strokeWidth="1" vectorEffect="non-scaling-stroke" />}
-      </svg>
+    <div className={"linechart lch-" + hv + (hov != null ? " hovering" : "")}>
+      <div className="lcinfo"><b>{fmt(hp.v)}</b><small className="muted">{monthLabel(hp.m)}{hv === "C" && dlt != null ? ` · ${dlt >= 0 ? "+" : "−"}${fmt(Math.abs(dlt))} zum Vormonat` : ""}</small></div>
+      <div className="lcplot" style={{ height: h }} onPointerMove={pick} onPointerDown={pick} onPointerLeave={() => setHov(null)}>
+        <svg viewBox={`0 0 ${W} ${h}`} preserveAspectRatio="none" style={{ height: h }}>
+          <defs><linearGradient id="vgrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="var(--acc)" stopOpacity=".35" /><stop offset="1" stopColor="var(--acc)" stopOpacity="0" /></linearGradient></defs>
+          {min < 0 && <line x1="0" x2={W} y1={y(0)} y2={y(0)} stroke="var(--line)" strokeDasharray="4 4" />}
+          <path d={area} fill="url(#vgrad)" />
+          <path d={d} fill="none" stroke="var(--acc)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+        </svg>
+        {hov != null && <div className="lch" aria-hidden="true">
+          {hv === "D" && <span className="lchband" style={{ left: `calc(${xp}% - ${50 / (points.length - 1)}%)`, width: `${100 / (points.length - 1)}%` }} />}
+          <span className="lchv" style={{ left: xp + "%" }} />
+          {hv === "B" && <span className="lchh" style={{ top: yp + "%" }} />}
+          <span className="lchdot" style={{ left: xp + "%", top: yp + "%" }} />
+          {(hv === "A" || hv === "D") && <span className={"lchbox" + (boxL ? " l" : "")} style={{ left: xp + "%", top: `clamp(0px, calc(${yp}% - 46px), calc(100% - 44px))` }}><small>{monthLabel(points[hov].m)}</small><b>{fmt(points[hov].v)}</b></span>}
+          {hv === "B" && <><span className="lchtag lchtx" style={{ left: `clamp(34px, ${xp}%, calc(100% - 34px))` }}>{monthLabel(points[hov].m)}</span><span className="lchtag lchty" style={{ top: yp + "%" }}>{fmt(points[hov].v)}</span></>}
+        </div>}
+      </div>
       <div className="lcx">{points.map((p, i) => <small key={p.m} style={{ visibility: i % every && i !== points.length - 1 ? "hidden" : "visible" }}>{monthLabel(p.m)}</small>)}</div>
     </div>
   );
@@ -5483,7 +5496,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   const [cur, setCur] = useState(null), [side, setSide] = useState(false), [phoneOpen, setPhoneOpen] = useState(false);
   const [q, setQ] = useState("");
   const [mClosed, setMClosed] = useLsState("jMClosed", []);
-  const detOn = !narrow;                                                         // breit: Prüfkarte rechts · schmal: Leiste unter der Vorschau
+  const [jDet] = useFlag("jDetail", "spalte");     // v0.99.66: breit – Spalte rechts · schwebend auf dem Beleg · Karte wie am Handy
+  const detOn = !narrow && jDet === "spalte", sheetOn = jDet === "handy";                                                         // breit: Prüfkarte rechts · schmal: Leiste unter der Vorschau
   useEffect(() => { if (!phoneOpen) return; const c = document.documentElement.classList; c.add("jpopen"); return () => c.remove("jpopen"); }, [phoneOpen]);
   const txByDoc = useMemo(() => { const m = new Map(); for (const t of txs) if (t.docId) m.set(t.docId, t); return m; }, [txs]);
   const base = useMemo(() => docs.filter((d) => !d.deletedAt && !d.stmt), [docs]);
@@ -5564,7 +5578,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
     <button key={d.id} data-id={d.id} className={"jrow" + (curDoc?.id === d.id ? " on" : "")} onClick={() => { setCur(d.id); if (mob) setPhoneOpen(true); }}>
       <span className={"jdot" + (jUnconf(d) ? " un" : "")} title={jUnconf(d) ? "unbestätigt" : "bestätigt"} />
       <span className="grow"><span className="jrd">{jDate(d) ? fmtDate(jDate(d)).slice(0, 6) + fmtDate(jDate(d)).slice(8) : "–"}</span><small className="one">{d.sender || d.title}</small></span>
-      <span className="jra"><b className={v > 0 ? "pos" : ""}>{v != null && v !== 0 ? fmtMoney(Math.abs(v)).replace("€ ", "") : d.amount?.total ? fmtMoney(d.amount.total).replace("€ ", "") : ""}</b>{v != null && v !== 0 && <i className={v > 0 ? "up" : "down"}>{v > 0 ? "▴" : "▾"}</i>}
+      <span className="jra"><b className={v > 0 ? "pos" : v < 0 ? "neg" : ""}>{v != null && v !== 0 ? (v > 0 ? "+" : "") + fmtMoney(v) : d.amount?.total ? fmtMoney(d.amount.total) : ""}</b>
         {d.amount?.currency && d.amount.currency !== "EUR" && <small className="muted block">{d.amount.currency}</small>}</span>
     </button>); };
   const onOriginal = async () => { const b = await db.getFile(curDoc.id); if (b) openPdf(b, curDoc.fileName || "Beleg.pdf", curDoc.title); };
@@ -5627,8 +5641,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
             <b className={"jlsumtop " + (sum >= 0 ? "pos" : "neg")} title="Summe">{fmtMoney(sum)}</b></div>
           <div className="jlscroll">{listV.map(row)}{!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege."}</MEmpty>}</div>
         </div>
-        <div className={"jcenter" + (curDoc && !detOn ? " js-" + jsPos : "")}>
-          {curDoc && !detOn && <div className={"jstrip jstop js" + jsPos} title={curDoc.title || curDoc.fileName}>
+        <div className={"jcenter" + (curDoc && !detOn && !sheetOn ? " js-" + jsPos : "") + (sheetOn ? " jsheet-on" : "")}>
+          {curDoc && !detOn && !sheetOn && <div className={"jstrip jstop js" + jsPos} title={curDoc.title || curDoc.fileName}>
             <div className="grow jstxt"><b className="one">{curDoc.title || curDoc.fileName}</b><small className="muted one">{[jDate(curDoc) && fmtDate(jDate(curDoc)), curDoc.sender, curDoc.category].filter(Boolean).join(" · ")}</small></div>
             {jSigned(curDoc) != null && <b className={"jsamt " + (jSigned(curDoc) >= 0 ? "pos" : "neg")}>{fmtMoney(jSigned(curDoc))}</b>}
             <span className="jsicons">
@@ -5638,7 +5652,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
               <button className="jsib" disabled={idx >= list.length - 1} onClick={() => go(1)} aria-label="Nächster Beleg" title="Nächster Beleg">›</button>
             </span>
           </div>}
-          {curDoc ? <JournalPreview d={curDoc} onOpen={onOriginal} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}</div>
+          {curDoc ? <JournalPreview d={curDoc} onOpen={onOriginal} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}
+          {sheetOn && curDoc && <div className="jdsheet"><JPhoneSheet>{fields}</JPhoneSheet></div>}</div>
         {detOn && <div className="jinsp">{fields}</div>}
       </div>
       {mode === "pruefen" && <small className="muted block jhint">Tastatur: ↑/↓ wechseln · Enter = Bestätigen &amp; weiter</small>}
@@ -5726,7 +5741,7 @@ function JPhoneSheet({ children }) {
   // v0.99.6: Karte mit Griff – ziehen (hoch/runter) oder antippen; rastet bei „wenig“ bzw. „alle Felder“ ein
   const ref = useRef(null), drag = useRef(null);
   const [h, setH] = useState(null), [dragging, setDragging] = useState(false);
-  const box = () => ref.current?.parentElement?.getBoundingClientRect().height || innerHeight;
+  const box = () => (ref.current?.closest(".jcenter") || ref.current?.parentElement)?.getBoundingClientRect().height || innerHeight;
   const lo = () => Math.round(box() * 0.42), hi = () => Math.round(box() * 0.86);
   const cur = h ?? lo(), open = cur > (lo() + hi()) / 2;
   useEffect(() => { document.documentElement.style.setProperty("--jpsh", cur + "px"); }, [cur]);
@@ -7315,6 +7330,12 @@ if (typeof document !== "undefined") cmpApply(cmpNorm(ls.get("cmpTest", "zahl"))
 const useCmp = () => { const [v] = useFlag("cmpTest", "zahl"); const ph = useMedia("(max-width:700px)"); return ph ? cmpNorm(v) : "aus"; };
 const STMT_ZOOM_UI = [["leiste", "Zoom in der Leiste", "− / + und „Breite“ oben in der fixierten Leiste"], ["schwebend", "Schwebender Zoom + Lupe", "Zoom-Knöpfe unten rechts im PDF, Lupe beim Darüberfahren"]];
 const JSTRIP_UI = [["c", "Schwebend auf dem Beleg", "halbtransparent oben auf dem Dokument"], ["b", "Eine Zeile über dem Beleg", "kompakte Zeile, Beleg darunter"]];
+const JDETAIL_UI = [["spalte", "Spalte rechts", "Belegdaten als eigene Spalte neben dem Beleg"], ["schwebend", "Schwebend auf dem Beleg", "Titel, Betrag und ‹ Bearbeiten › als Leiste über dem Dokument"], ["handy", "Wie am Handy", "Karte von unten über dem Beleg, mit Griff aufziehbar"]];
+function JDetailSetting() {
+  const [v, set] = useFlag("jDetail", "spalte");
+  return <label className="switchrow"><span><b>Journal: Belegdaten (Desktop & iPad quer)</b><small className="muted block">Wo Titel, Betrag, Datum, Kategorie und Buchung neben der Belegvorschau stehen.</small></span>
+    <PickMenu label={(JDETAIL_UI.find(([k]) => k === v) || JDETAIL_UI[0])[1]} title="Belegdaten" items={JDETAIL_UI.map(([k, t, sub]) => ({ k, title: t, sub, on: v === k, run: () => set(k) }))} /></label>;
+}
 function JStripSetting() {
   const [v, set] = useFlag("jStripPos", "c");
   return <label className="switchrow"><span><b>Journal: Leiste über dem Beleg</b><small className="muted block">Titel, Betrag, ‹ Bearbeiten › oberhalb der Belegvorschau (Desktop und iPad quer).</small></span>
@@ -11209,6 +11230,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         <CmpSetting />
         <StmtZoomSetting />
         <StmtColorSetting />
+        <JDetailSetting />
         <JStripSetting />
         <small className="muted block tbsethead">Tag- und Nachtmodus</small>
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
@@ -14437,6 +14459,7 @@ function ViewSettings() {
     <div className="optsec"><b>Steuerberater → Monate</b><small className="muted block">Auch direkt im Reiter über „▦ Ansicht“ umschaltbar.</small><OptPicker opts={MON_VIEWS} value={mv} onPick={setMv} pv={(k) => PV_MON[k]} /></div>
     <div className="optsec"><b>Sortierung in Listen</b><small className="muted block">Datum, zuletzt hinzugefügt, Betrag … – nochmal tippen dreht die Reihenfolge um. Jeder Reiter merkt sich seine Sortierung.</small><OptPicker opts={SORT_STYLES} value={ss} onPick={setSs} pv={(k) => PV_SORT[k]} /></div>
     <KbBelegSettings />
+    <ChartHoverSettings />
     <div className="optsec"><b>Fixkosten & Abos – Status</b><small className="muted block">Anzeige für „Bestätigt“, „Prüfen“ und „Beendet“ bei erkannten Abos.</small><OptPicker opts={ABO_STYLES} value={ab} onPick={setAb} pv={(k) => PV_ABO[k]} /></div>
   </>);
 }
@@ -14522,6 +14545,10 @@ async function kbEigenbelegPdf(e, kasse, grund) {
   return tablePdf({ title: "Eigenbeleg", subtitle: `${co.name || "Firma"}${co.street ? " · " + co.street : ""}${co.city ? " · " + (co.zip ? co.zip + " " : "") + co.city : ""}`, columns: [{ label: "Feld", w: 1.6 }, { label: "Angabe", w: 5 }], rows,
     note: "Eigenbeleg für eine Kassenbuchung ohne Fremdbeleg – mit Unterschrift aufbewahren." });
 }
+function ChartHoverSettings() { const [v, setV] = useLsState("chartHover", "B");
+  const pv = (k) => <span className={"pvch pvch-" + k}><svg viewBox="0 0 100 40" preserveAspectRatio="none"><path d="M0 34 L20 30 L40 26 L55 22 L60 12 L80 9 L100 6" fill="none" stroke="var(--acc)" strokeWidth="2" vectorEffect="non-scaling-stroke" /></svg>
+    {k === "D" && <i className="pvb" />}<i className="pvv" />{k === "B" && <i className="pvh" />}<i className="pvd" />{(k === "A" || k === "D") && <i className="pvbox" />}{k === "B" && <><i className="pvtx" /><i className="pvty" /></>}{k === "C" && <i className="pvtop" />}</span>;
+  return <div className="optsec"><b>Diagramme – Linie unter der Maus</b><small className="muted block">Zeigt in Linien-Diagrammen (Vermögen, Verbrauch im Fahrtenbuch), wo du gerade bist.</small><OptPicker opts={CHART_HOVER} value={v} onPick={setV} pv={pv} /></div>; }
 function KbBelegSettings() { const [v, setV] = useLsState("kbBelegStyle", "icons");
   return <div className="optsec"><b>Kassabuch – Beleg-Spalte</b><small className="muted block">Wie Belege in der Kassabuch-Tabelle angezeigt und hinzugefügt werden.</small><OptPicker opts={KB_BELEG_STYLES} value={v} onPick={setV} pv={(k) => ({
     icons: <span className="pvrow"><i className="pvl" /><span className="pvic2">📎 📷 ⋯</span></span>, knopf: <span className="pvrow"><i className="pvl" /><span className="pvbtn ok">📎 Beleg ▾</span></span>,
@@ -16633,6 +16660,23 @@ html.fg .txrow .caticon,html.fg .ditem.center .caticon{width:47px!important;heig
 .wealthdelta{font-size:14px;font-weight:600}
 .linechart{position:relative}.linechart svg{width:100%;height:180px;display:block;touch-action:pan-y}
 .lcinfo{display:flex;gap:8px;align-items:baseline;justify-content:flex-end;font-size:14px}
+.lcplot{position:relative;touch-action:pan-y;cursor:crosshair}.lcplot svg{width:100%;display:block}
+.lch{position:absolute;inset:0;pointer-events:none}
+.lchv{position:absolute;top:0;bottom:0;width:0;border-left:1px solid color-mix(in srgb,var(--txt) 45%,transparent)}
+.lch-B .lchv{border-left-style:dashed}.lch-C .lchv{border-left-color:color-mix(in srgb,var(--txt) 30%,transparent)}
+.lchh{position:absolute;left:0;right:0;height:0;border-top:1px dashed color-mix(in srgb,var(--txt) 45%,transparent)}
+.lchdot{position:absolute;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 2px var(--card)}
+.lchband{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--txt) 10%,transparent)}
+.lchbox{position:absolute;margin-left:12px;display:flex;flex-direction:column;padding:5px 9px;border-radius:8px;background:var(--card);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.25);white-space:nowrap}
+.lchbox.l{transform:translateX(calc(-100% - 24px))}.lchbox small{font-size:11px;color:var(--mut)}.lchbox b{font-size:13px;font-variant-numeric:tabular-nums}
+.lchtag{position:absolute;padding:2px 7px;border-radius:6px;background:var(--txt);color:var(--bg);font-size:11px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.lchtx{bottom:-2px;transform:translate(-50%,100%)}.lchty{left:0;transform:translateY(-50%)}
+.lch-B.hovering .lcx{visibility:hidden}.lch-C.hovering .lcinfo b{color:var(--acc)}
+.pvch{position:relative;display:block;width:80%;height:40px}.pvch svg{width:100%;height:100%;display:block}.pvch i{position:absolute;display:block}
+.pvv{left:60%;top:0;bottom:0;border-left:1px solid var(--mut)}.pvch-B .pvv{border-left-style:dashed}.pvh{left:0;right:0;top:30%;border-top:1px dashed var(--mut)}
+.pvd{left:60%;top:30%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--acc)}.pvb{left:55%;width:10%;top:0;bottom:0;background:color-mix(in srgb,var(--txt) 12%,transparent)}
+.pvbox{left:64%;top:-2px;width:26px;height:14px;border-radius:3px;background:var(--card2);border:1px solid var(--line)}.pvtx{left:50%;bottom:-6px;width:20px;height:7px;border-radius:2px;background:var(--txt)}.pvty{left:0;top:24%;width:16px;height:7px;border-radius:2px;background:var(--txt)}
+.pvtop{right:0;top:-8px;width:30px;height:6px;border-radius:2px;background:var(--acc)}
 .lcx{display:flex;justify-content:space-between}.lcx small{color:var(--mut);font-size:10px}
 .stackbar{display:flex;height:14px;border-radius:7px;overflow:hidden;margin:4px 0 10px;background:var(--line)}
 .assetedit{border:1px solid var(--line);border-radius:14px;padding:4px 12px 12px;margin-top:8px}
@@ -17868,7 +17912,7 @@ html .seg button.sc-unklar.on{background:#e57373!important;color:#fff!important;
 .txask{cursor:pointer;margin:2px 0}.txask .stpill{margin-left:6px}
 .txsc{font-size:13px}
 .stpill.sc-firma{background:#f59e0b2e;color:#b45309}.stpill.sc-privat{background:#3b82f622;color:#2563eb}.stpill.sc-unklar{background:#e5737333;color:#c0392b}
-html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5fd}html.dark .stpill.sc-unklar{color:#fca5a5}
+html.dark .stpill.sc-firma,:root[data-theme=dark] .stpill.sc-firma{color:#fcd34d}html.dark .stpill.sc-privat,:root[data-theme=dark] .stpill.sc-privat{color:#bfdbfe}html.dark .stpill.sc-unklar,:root[data-theme=dark] .stpill.sc-unklar{color:#fecaca}
 .chip .cnt{margin-left:6px;background:var(--red);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}
 .stbhead{display:flex;flex-direction:column;gap:8px}
 .stbtoolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 10px}
@@ -17964,6 +18008,8 @@ html.dark .stpill.sc-firma{color:#fbbf24}html.dark .stpill.sc-privat{color:#93c5
 .stbmwrap>.stbmonth,.stbmwrap>.tile{margin-bottom:12px}
 .stbfrest{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;border-radius:14px;border:1px dashed var(--line);background:none;color:var(--mut);font:inherit;cursor:pointer;grid-column:1/-1}
 .stbfocus .stbmlist{grid-column:1/-1}
+/* v0.99.66 Journal: Belegdaten wie am Handy */
+.jdsheet{position:absolute;left:8px;right:8px;bottom:0;z-index:4;display:flex;flex-direction:column;flex:none;pointer-events:none}.jdsheet>.jpsheet{pointer-events:auto;flex:none}.jdsheet .jpsheet{margin-top:0;border-radius:18px 18px 0 0;box-shadow:0 -10px 30px #0004}.jdsheet .jpsbody{overflow:auto}.jgrid .jcenter.jsheet-on{position:relative!important;overflow:hidden!important}.jcenter.jsheet-on>.jprev,.jcenter.jsheet-on>div:first-child{max-height:100%;overflow:auto}}
 /* v0.99.58 Symbole */
 .glw{display:inline-flex;align-items:center;justify-content:center;line-height:1}.gll{width:1.15em;height:1.15em;flex:none}.gle{line-height:1}
 html.ics-c.ics-c .glw .gll{display:none}html:not(.ics-c) .glw .gle{display:none}
@@ -18210,7 +18256,7 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
 .scpick.sc-firma .scpickbtn{background:#f59e0b2e!important;color:#b45309!important;border-color:#f59e0b55}
 .scpick.sc-privat .scpickbtn{background:#3b82f622!important;color:#2563eb!important;border-color:#3b82f655}
 .scpick.sc-unklar .scpickbtn{background:#e5737333!important;color:#c0392b!important;border-color:#e5737366}
-html.dark .scpick.sc-firma .scpickbtn{color:#fbbf24!important}html.dark .scpick.sc-privat .scpickbtn{color:#93c5fd!important}html.dark .scpick.sc-unklar .scpickbtn{color:#fca5a5!important}
+html.dark .scpick.sc-firma .scpickbtn,:root[data-theme=dark] .scpick.sc-firma .scpickbtn{color:#fcd34d!important;background:#f59e0b33!important;border-color:#f59e0b88!important}html.dark .scpick.sc-privat .scpickbtn,:root[data-theme=dark] .scpick.sc-privat .scpickbtn{color:#bfdbfe!important;background:#3b82f633!important;border-color:#3b82f688!important}html.dark .scpick.sc-unklar .scpickbtn,:root[data-theme=dark] .scpick.sc-unklar .scpickbtn{color:#fecaca!important;background:#ef444438!important;border-color:#ef444488!important}
 .scpick .caret,.ctstatepick .caret{font-size:10px;opacity:.7;margin-left:2px}
 .rowmore .rowmorebtn{width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}
 .rowmore .rowmorebtn .caret{display:none}
@@ -18534,7 +18580,7 @@ html body .stbrfmts .stbprev{height:auto!important;min-height:0!important;align-
 .jstrip.jsb .jstxt b{flex:0 1 auto;min-width:0}.jstrip.jsb .jstxt small{flex:1 1 0;min-width:0}
 .jstrip.jsc{margin:10px 10px -66px;border:1px solid var(--line);border-radius:14px;padding:8px 10px 8px 14px;top:10px;background:color-mix(in srgb,var(--card) 82%,transparent);backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);box-shadow:0 8px 26px #0005}
 .jcenter.js-c>.jstrip+*{padding-top:66px}
-@media (max-width:900px){.jstrip.jsb .jstxt small{display:none}}
+@media (max-width:900px){.jstrip.jsb .jstxt small{display:none}
 
 /* v0.99.31: Adressfelder */
 .addrf{display:flex;flex-direction:column;gap:8px;border:0!important;padding:0!important;margin:4px 0 0!important;background:none!important;box-shadow:none!important;min-width:0}
