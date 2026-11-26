@@ -2,6 +2,26 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.73 – Steuerberater für alle Länder
+- Steuerberater → Berichte/Rücklage: Länderwahl (alle Länder, Suche, Flaggen)
+- Andere Länder: KI-Länderprofil mit Websuche (Formular und Zeilen, Kleinunternehmergrenze, GWG, Abschreibung, km-Pauschale, Freibetrag, Währung/Wechselkurs) – die App rechnet die Berichte selbst
+- 10 Berichte je Land (Jahresbericht, Formular-Zeilen, Journal, Umsatzgrenze, Anlagen, Wareneingang, km, Privat, Offene Posten, Fehlende Belege) als PDF/Excel/CSV/ZIP, Beträge in Euro und Landeswährung (eigener Kurs möglich)
+- Zuordnung Kategorien → Zeilen, KI-Prüfung nach dem Recht des Landes
+- Rücklage je Land: Steuertarif, Sozialversicherung, Freibetrag per KI
+- Österreich: Umschalter „Eingebaut (genau)“ / „KI-Länderprofil“ mit Gegencheck zum eingebauten Gewinn
+- Server: api/tax.js neue Modi (country, reserve/check mit Land)
+
+## v0.99.72 – Kunden-Logo skalieren
+- Logo-Bereich im Kunden: Regler „Größe“ 50–200 % (kleiner = mit Rand, größer = näher herangezoomt/zugeschnitten) und Hintergrund Weiß / Transparent / Dunkel
+- Das Original bleibt gespeichert, Größe und Hintergrund lassen sich jederzeit ändern; Anzeige überall gleich (Kundenliste, Kundendatei, Rechnungen/Mahnungen am Handy)
+
+## v0.99.71 – Logo für Kunden
+- Kunden bearbeiten: neuer Bereich „Logo“ – 📷 Hochladen, 🌐 Von Website (sucht über Name, Website bzw. E-Mail-Domain), 📋 Einfügen aus der Zwischenablage, Bild hineinziehen, Entfernen
+- Das Logo erscheint statt des Anfangsbuchstabens in der Kundenliste, der Kundendatei und am Handy bei Rechnungen und Mahnungen
+
+## v0.99.70 – Aktiver Reiter in der Markierungsfarbe
+- Graphit, Sand, Nacht, Schiefer, Salbei, Papier: der aktive Reiter in der Seitenleiste (Text, Symbol und dezenter Hintergrund) zeigt die gewählte Markierungsfarbe, z. B. Gold – vorher war er fest in der Textfarbe
+
 ## v0.99.69 – Kompaktere Dropdown-Menüs
 - Am Desktop/Mac sind Dropdown-Menüs in allen Designs kompakter: 15 px statt 18 px Schrift (die 18 px stammten aus dem Finanzguru-Stil für Touch), weniger Innenabstand, schmaler
 - Einstellungen → Design → Buttons & Menüs: der Regler für Dropdown-Menüs verkleinert jetzt auch die Breite des Menüs (vorher nur die Schrift)
