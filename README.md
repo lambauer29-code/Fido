@@ -2,6 +2,18 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.86 – Kategorie-Popup bei Buchungen
+- Buchungsdetail: Klick auf die Kategorie öffnet ein Popup statt des Kastens darunter – Suchfeld oben, links Kategorien, rechts Unterkategorien (Hover/Tippen), Klick übernimmt sofort; Enter übernimmt den ersten Treffer
+- „＋ Neue Kategorie“ (mit Suchtext vorbelegt) und „＋ Neue Unterkategorie“ direkt im Popup; „Immer so für …“ unten
+- Größe folgt der Einstellung „Dropdown-Menüs“; Link „Menügröße ›“ springt direkt zu Einstellungen → Design → Buttons & Menüs
+
+## v0.99.85 – Unterkategorien
+- Einstellungen → Dokumente – Kategorien: bei jeder Kategorie „＋ Unterkat.“ – Unterkategorien anlegen, umbenennen (zieht Dokumente, Buchungen, Regeln mit), löschen; Vorschläge für die Standard-Kategorien (z. B. Auto: Tanken, Laden, Werkstatt, Versicherung, Parken & Maut …)
+- Unterkategorie wählbar bei Dokumenten, Buchungen (inkl. „Immer so für …“-Regel) und Ausgabe erfassen; „＋ Neue Unterkategorie …“ direkt im Menü
+- Anzeige „Kategorie › Unterkategorie“ in Listen, Journal und Buchungsdetail; Suche findet Unterkategorien
+- Analyse: beim Antippen einer Kategorie Aufteilung nach Unterkategorien (filterbar)
+- KI schlägt beim Einlesen die passende Unterkategorie vor; Regeln setzen sie beim Import
+
 ## v0.99.84 – Spalten zentriert, Breite natürlich ziehen
 - Kontobuchungen: alle Überschriften und Spalten (Datum, Kategorie, Konto, Betrag) zentriert
 - Spalten rechts von „Empfänger“ haben den Ziehgriff am linken Rand – nach links ziehen macht sie breiter (vorher gegenläufig)

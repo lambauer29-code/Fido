@@ -43,6 +43,25 @@ const CAT_META = {
 };
 const PALETTE = ["#3b82f6", "#f97316", "#22c55e", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444", "#6366f1", "#84cc16"];
 let CAT_STYLE = {}; // Symbol/Farbe umbenannter Kategorien (aus den Einstellungen)
+// v0.99.85: Unterkategorien je Kategorie (nav.subCats), gelten für Dokumente und Buchungen
+const SUBCAT_DEF = {
+  "Auto & Mobilität": ["Tanken", "Laden (E-Auto)", "Werkstatt & Service", "Versicherung", "Parken & Maut", "Öffis & Bahn", "Leasing & Kredit"],
+  "Wohnen & Energie": ["Miete", "Strom", "Gas & Heizung", "Internet & Telefon", "Betriebskosten", "Einrichtung"],
+  "Lebensmittel & Haushalt": ["Supermarkt", "Drogerie", "Bäckerei", "Haushaltswaren"],
+  "Freizeit & Abos": ["Streaming", "Restaurant & Café", "Sport", "Reisen", "Hobby"],
+  "Gesundheit": ["Arzt", "Zahnarzt", "Apotheke", "Brille & Optik"],
+  "Bank & Finanzen": ["Kontoführung", "Zinsen", "Kredit", "Gebühren"],
+  "Steuer & Finanzamt": ["Einkommensteuer", "Umsatzsteuer", "Sozialversicherung"],
+  "Lohn & Arbeit": ["Lohn & Gehalt", "Lohnzettel", "Reisekosten", "Arbeitsmittel"],
+  "Garantie & Kaufbelege": ["Elektronik", "Haushaltsgeräte", "Möbel", "Werkzeug"],
+  "Versicherung": ["Haushalt", "Kfz", "Leben", "Unfall", "Rechtsschutz"],
+  "Bildung": ["Kurse", "Bücher", "Schule"], "Kinder": ["Kleidung", "Betreuung", "Spielzeug"], "Haustier": ["Futter", "Tierarzt"]
+};
+let SUBCATS = {}, SUBCAT_ADD = null, SUBCAT_OPS = null;
+const subsOf = (c) => SUBCATS[c] || [];
+// Unterkategorie aus einer Regel (gleiche Logik wie categorize: erste passende Regel)
+const ruleSub = (t, rules, cat) => { const hay = `${t.counterparty || ""} ${t.purpose || ""} ${t.bookingText || ""}`.toLowerCase(); const r = (rules || []).find((x) => x.match && hay.includes(x.match.toLowerCase())); return r && r.category === cat && r.subcategory ? r.subcategory : null; };
+const catLabel = (c, sub) => (sub ? `${c} › ${sub}` : c || "");
 // v0.99.58: eigene Symbole je Kategorie / Kontoart (Einstellungen → Design → Symbole)
 let CAT_ICONS = ls0("catIcons"), KIND_ICONS = ls0("kindIcons");
 function ls0(k) { try { return JSON.parse(localStorage.getItem(k) || "{}") || {}; } catch { return {}; } }
@@ -59,7 +78,7 @@ const CatIcon = ({ c, size = 40 }) => {
   const m = catMeta(c);
   return <span className={"caticon" + (m.img ? " own" : "")} style={{ width: size, height: size, "--c": m.color, fontSize: size * 0.48 }}><CatGlyph c={c} /></span>;
 };
-const Label = ({ c }) => { const m = catMeta(c); return <span className="label" style={{ color: m.color, background: m.color + "1f" }}>{c}</span>; };
+const Label = ({ c, sub }) => { const m = catMeta(c); return <span className="label" style={{ color: m.color, background: m.color + "1f" }}>{c}{sub ? <span className="labsub"> › {sub}</span> : null}</span>; };
 
 /* ---------- Vorschaubilder (Docutain-Look) ---------- */
 async function loadPdfjs() {
@@ -1146,7 +1165,9 @@ function DocNavSettings({ part = "groups", nav, setNav, docs, renameCategory, de
   const save = (g) => setNav((n) => ({ ...n, docGroups: normGroups(g) }));
   const patch = (gi, p) => save(groups.map((g, k) => (k === gi ? { ...g, ...p } : g)));
   const count = (c) => docs.filter((d) => d.category === c).length;
-  const [styleCat, setStyleCat] = useState(null);
+  const [styleCat, setStyleCat] = useState(null), [subOpen, setSubOpen] = useState(null);
+  const subs = (c) => (nav.subCats || {})[c] || [];
+  const setSubs = (c, l) => setNav((n) => ({ ...n, subCats: { ...(n.subCats || {}), [c]: [...new Set(l)] } }));
   const hasKids = (g) => groups.some((x) => x.parent === g.id);
   const addSub = (g) => save([...groups, { id: "d-" + uid(), title: "Neue Untergruppe", area: g.area, parent: g.id, cats: [] }]);
   const dnd = useDnd((d, over) => {
@@ -1208,12 +1229,21 @@ function DocNavSettings({ part = "groups", nav, setNav, docs, renameCategory, de
                   <button className="ki catki" title="Symbol & Farbe" aria-label="Symbol & Farbe" style={{ background: catMeta(c).color + "22", color: catMeta(c).color }}
                     onClick={() => setStyleCat(styleCat === c ? null : c)}><CatGlyph c={c} /></button>
                   <EditText className="grow" inputClass="catname" value={c} validate={check(c)} onSave={(t) => t !== c && renameCategory(c, t)} />
+                  <button type="button" className={"chip subtog" + (subOpen === c ? " on" : "")} onClick={() => setSubOpen(subOpen === c ? null : c)} title="Unterkategorien">{subs(c).length ? `${subs(c).length} Unterkat.` : "＋ Unterkat."} <span className={"chev" + (subOpen === c ? " open" : "")}>›</span></button>
                   <small className="muted cnt" title="Dokumente">{count(c)}</small>
                   {c !== "Sonstiges"
                     ? <button className="iconbtn" aria-label="Kategorie löschen" title="Kategorie löschen"
                         onClick={() => confirm(`Kategorie „${c}“ löschen?${count(c) ? ` ${count(c)} Dokument(e) wandern nach „Sonstiges“.` : ""}`) && deleteCategory(c)}>🗑</button>
                     : <span className="iconbtn-spacer" />}
                 </div>
+                {subOpen === c && <div className="subcatbox">
+                  {subs(c).map((x) => <div key={x} className="subcatrow"><span className="subarrow" aria-hidden="true">↳</span>
+                    <EditText className="grow" inputClass="catname" value={x} validate={(t) => (!t ? "leer" : t !== x && subs(c).includes(t) ? "doppelt" : undefined)} onSave={(t) => t && t !== x && SUBCAT_OPS?.edit(c, x, t)} />
+                    <small className="muted cnt" title="Dokumente und Buchungen">{SUBCAT_OPS?.count(c, x) || 0}</small>
+                    <button className="iconbtn" title="Unterkategorie löschen" aria-label={`${x} löschen`} onClick={() => { const n = SUBCAT_OPS?.count(c, x) || 0; if (!n || confirm(`Unterkategorie „${x}“ löschen? ${n} Einträge behalten „${c}“ ohne Unterkategorie.`)) SUBCAT_OPS ? SUBCAT_OPS.edit(c, x, null) : setSubs(c, subs(c).filter((y) => y !== x)); }}>🗑</button></div>)}
+                  <div className="subcatrow addsub"><span className="subarrow">＋</span><EditText className="grow" value="" resetOnSave placeholder={`Unterkategorie für „${c}“, z. B. ${(SUBCAT_DEF[c] || ["Tanken", "Laden"]).slice(0, 2).join(", ")}`} validate={(t) => (!t ? "leer" : subs(c).includes(t) ? "doppelt" : undefined)} onSave={(t) => setSubs(c, [...subs(c), t])} /></div>
+                  {!subs(c).length && SUBCAT_DEF[c] && <button className="link small" onClick={() => setSubs(c, SUBCAT_DEF[c])}>Vorschläge übernehmen: {SUBCAT_DEF[c].join(", ")}</button>}
+                </div>}
                 {styleCat === c && <div className="catstylebox">
                   <CatStylePicker icon={catMeta(c).icon} color={catMeta(c).color} img={catMeta(c).img} onChange={(m) => setNav((n) => ({ ...n, catStyle: { ...(n.catStyle || {}), [c]: [m.icon, m.color, m.img] } }))} />
                   <div className="asfoot"><span className="aspreview"><span className="label" style={{ color: catMeta(c).color, background: catMeta(c).color + "1f" }}><CatGlyph c={c} /> {c}</span></span>
@@ -1461,7 +1491,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
     let block = false;
     const down = (e) => {
       const el = rootRef.current; if (!el || el.contains(e.target) || stayRef.current) return;
-      if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost,.sharepop,.sidetip,.pickmenu,.sugmenu")) return;
+      if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost,.sharepop,.sidetip,.pickmenu,.sugmenu,.catpick")) return;
       if (dirtyRef.current) block = true; // Klick nicht weiterreichen, sonst gehen Eingaben verloren
       reqRef.current();
     };
@@ -1815,6 +1845,9 @@ function AppMain() {
   const categories = useMemo(() => flattenCats(nav.docGroups), [nav.docGroups]);
   CAT_AREA = Object.fromEntries(nav.docGroups.flatMap((g) => g.cats.map((c) => [c, g.area])));
   CAT_STYLE = nav.catStyle || {};
+  SUBCATS = nav.subCats || {};
+  useEffect(() => { if (!nav.subCats) setNav((n) => (n.subCats ? n : { ...n, subCats: Object.fromEntries(Object.entries(SUBCAT_DEF).filter(([c]) => flattenCats(n.docGroups).includes(c))) })); }, []);   // Vorschläge einmalig anlegen
+  SUBCAT_ADD = (c, n) => setNav((x) => ({ ...x, subCats: { ...(x.subCats || {}), [c]: [...new Set([...((x.subCats || {})[c] || []), n])] } }));
   useEffect(() => ls.set("categories", categories), [categories]);
   const setCategories = (list) => setNav((n) => ({ ...n, docGroups: buildDocGroups(list) }));
   // neue Kategorie ohne die eigenen Gruppen zu verlieren: in die erste Finanzen-Gruppe
@@ -1919,7 +1952,7 @@ function AppMain() {
     const own = ownIbans || accounts.map((a) => a.iban).filter(Boolean);
     const current = txsRef.current;
     const existing = new Set(current.map((t) => t.id));
-    const withMeta = withIds(list, accountId).map((t) => ({ ...t, category: categorize(t, rules, own), importedAt: stamp }));
+    const withMeta = withIds(list, accountId).map((t) => { const category = categorize(t, rules, own); return { ...t, category, subcategory: ruleSub(t, rules, category), importedAt: stamp }; });
     // Kontostand aus der Datei (Schlusssaldo/Saldo-Spalte) übernehmen, wenn er neuer ist als der bekannte
     const lb = latestBalance(list, meta);
     if (lb) setAccounts((l) => l.map((a) => (a.id === accountId && a.kind !== "cash" && (!a.openingDate || lb.date >= a.openingDate)
@@ -1945,8 +1978,8 @@ function AppMain() {
     let list = txsRef.current.map((x) => (x.id === t.id ? t : x));
     if (applyRule && t.counterparty) {
       const match = t.counterparty.toLowerCase();
-      setRules((r) => [{ match, category: t.category }, ...r.filter((x) => x.match !== match)]);
-      list = list.map((x) => (x.counterparty?.toLowerCase().includes(match) && x.category !== t.category ? { ...x, orig: x.orig || { category: x.category }, category: t.category } : x));
+      setRules((r) => [{ match, category: t.category, ...(t.subcategory ? { subcategory: t.subcategory } : {}) }, ...r.filter((x) => x.match !== match)]);
+      list = list.map((x) => (x.counterparty?.toLowerCase().includes(match) && (x.category !== t.category || (x.subcategory || null) !== (t.subcategory || null)) ? { ...x, orig: x.orig || { category: x.category }, category: t.category, subcategory: t.subcategory || null } : x));
     }
     setTxs(list); await db.putTxs(list.filter((x) => x.id === t.id || (applyRule && x.counterparty?.toLowerCase().includes(t.counterparty.toLowerCase()))));
   }
@@ -2119,7 +2152,8 @@ function AppMain() {
   // Kategorie umbenennen/löschen: Dokumente, Umsätze, Budgets, Regeln mitziehen
   async function renameCategory(from, to) {
     const m = catMeta(from);
-    setNav((n) => ({ ...n, catStyle: { ...(n.catStyle || {}), [to]: [m.icon, m.color, m.img] }, docGroups: n.docGroups.map((g) => ({ ...g, cats: g.cats.map((c) => (c === from ? to : c)) })) }));
+    setNav((n) => { const sc = { ...(n.subCats || {}) }; if (sc[from]) { sc[to] = sc[from]; delete sc[from]; }
+      return { ...n, subCats: sc, catStyle: { ...(n.catStyle || {}), [to]: [m.icon, m.color, m.img] }, docGroups: n.docGroups.map((g) => ({ ...g, cats: g.cats.map((c) => (c === from ? to : c)) })) }; });
     const changed = docs.filter((d) => d.category === from).map((d) => ({ ...d, category: to }));
     for (const d of changed) await saveDoc(d);
     const tx = txsRef.current.filter((t) => t.category === from).map((t) => ({ ...t, category: to }));
@@ -2129,11 +2163,21 @@ function AppMain() {
     if (docCat === from) setDocCat(to);
     notify(`„${from}“ → „${to}“${changed.length ? ` (${changed.length} Dokumente)` : ""}`);
   }
+  // v0.99.85: Unterkategorie umbenennen/löschen (Dokumente, Buchungen und Regeln mitziehen)
+  async function editSub(cat, from, to) {
+    setNav((n) => { const l = ((n.subCats || {})[cat] || []).flatMap((x) => (x === from ? (to ? [to] : []) : [x])); return { ...n, subCats: { ...(n.subCats || {}), [cat]: [...new Set(l)] } }; });
+    const v = to || null;
+    for (const d of docsRef.current.filter((d) => d.category === cat && d.subcategory === from)) await saveDoc({ ...d, subcategory: v });
+    const tx = txsRef.current.filter((t) => t.category === cat && t.subcategory === from).map((t) => ({ ...t, subcategory: v }));
+    if (tx.length) { await db.putTxs(tx); setTxs((p) => p.map((t) => (t.category === cat && t.subcategory === from ? { ...t, subcategory: v } : t))); }
+    setRules((r) => r.map((x) => (x.category === cat && x.subcategory === from ? { ...x, subcategory: to || undefined } : x)));
+  }
+  SUBCAT_OPS = { edit: editSub, count: (cat, sub) => docsRef.current.filter((d) => d.category === cat && d.subcategory === sub).length + txsRef.current.filter((t) => t.category === cat && t.subcategory === sub).length };
   async function deleteCategory(c) {
-    setNav((n) => ({ ...n, docGroups: n.docGroups.map((g) => ({ ...g, cats: g.cats.filter((x) => x !== c) })) }));
-    for (const d of docs.filter((d) => d.category === c)) await saveDoc({ ...d, category: "Sonstiges" });
-    const tx = txsRef.current.filter((t) => t.category === c).map((t) => ({ ...t, category: "Sonstiges" }));
-    if (tx.length) { await db.putTxs(tx); setTxs((p) => p.map((t) => (t.category === c ? { ...t, category: "Sonstiges" } : t))); }
+    setNav((n) => { const sc = { ...(n.subCats || {}) }; delete sc[c]; return { ...n, subCats: sc, docGroups: n.docGroups.map((g) => ({ ...g, cats: g.cats.filter((x) => x !== c) })) }; });
+    for (const d of docs.filter((d) => d.category === c)) await saveDoc({ ...d, category: "Sonstiges", subcategory: null });
+    const tx = txsRef.current.filter((t) => t.category === c).map((t) => ({ ...t, category: "Sonstiges", subcategory: null }));
+    if (tx.length) { await db.putTxs(tx); setTxs((p) => p.map((t) => (t.category === c ? { ...t, category: "Sonstiges", subcategory: null } : t))); }
     if (docCat === c) setDocCat("");
     notify(`Kategorie „${c}“ gelöscht`);
   }
@@ -2173,7 +2217,7 @@ function AppMain() {
     const generic = ["Rechnungen", "Sonstiges", "Garantie & Kaufbelege", "Verträge"].includes(doc.category);
     const fx = docCur(doc) !== "EUR" && canEur(doc);   // v0.99.80: Fremdwährung → in Euro buchen
     const base = { date: doc.documentDate || todayISO(), amount: -Math.abs(fx ? payEur(doc) : doc.amount.total), currency: fx ? "EUR" : doc.amount.currency || "EUR", counterparty: doc.sender || doc.title, purpose: doc.title + (fx ? ` (${fmtMoney(payAmt(doc), docCur(doc))})` : "") };
-    await addManualTx({ ...base, accountId: acc.id, docId: doc.id, category: generic ? categorize({ ...base, kind: "bank" }, rules, []) : doc.category });
+    await addManualTx({ ...base, accountId: acc.id, docId: doc.id, category: generic ? categorize({ ...base, kind: "bank" }, rules, []) : doc.category, ...(!generic && doc.subcategory ? { subcategory: doc.subcategory } : {}) });
     await saveDoc({ ...doc, paid: true, paidCash: true, paidDate: base.date, deadlines: (doc.deadlines || []).map((x) => (/zahl|fällig/i.test(x.label) ? { ...x, done: true } : x)) });
     notify(`💶 ${fmtMoney(-base.amount)} als Barausgabe gebucht (${acc.name})`);
   }
@@ -2246,7 +2290,7 @@ function AppMain() {
       const r = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json", "x-app-token": token },
-        body: JSON.stringify({ data, mediaType: send.type, categories, itemCategories: itemCats(), today: todayISO(), company: me.company || "", person: me.name || "",
+        body: JSON.stringify({ data, mediaType: send.type, categories, subCategories: nav.subCats || {}, itemCategories: itemCats(), today: todayISO(), company: me.company || "", person: me.name || "",
           groups: nav.docGroups.map((g) => `${g.title || "Gruppe"} (${AREAS[g.area][1]}): ${g.cats.join(", ")}`).join("\n") })
       });
       j = await r.json().catch(() => ({ error: r.status === 413 ? "Datei zu groß für den Server (max. ca. 4 MB)" : `HTTP ${r.status}` }));
@@ -2258,6 +2302,7 @@ function AppMain() {
         status: "done", error: null, confirmed: false,
         title: j.title || doc.fileName,
         category: categories.includes(j.category) ? j.category : "Sonstiges",
+        subcategory: categories.includes(j.category) && j.subcategory && subsOf(j.category).includes(j.subcategory) ? j.subcategory : null,
         docType: j.doc_type || "Sonstiges",
         tags: (j.tags || []).map((t) => norm(t).trim()).filter(Boolean),
         sender: j.sender || "",
@@ -2773,6 +2818,7 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
         ...(!t.cur && doc.amount?.currency && doc.amount.currency !== x.cur ? { cur: doc.amount.currency, fx: doc.amount.fx || null, fxDate: doc.amount.fxDate || null, fxSrc: doc.amount.fxSrc || null, eur: null } : {}),
         date: t.date ? x.date : pastOrToday(doc.purchaseDate || doc.documentDate, today),
         category: t.category && x.category ? x.category : docCat || suggestCat(merchant) || x.category,
+        sub: t.sub ? x.sub : !(t.category && x.category) && docCat && doc.subcategory ? doc.subcategory : x.sub,
         dir: doc.direction === "einnahme" ? "in" : x.dir, items: [], taxes: x.taxes.length ? x.taxes : docTaxRows(doc.amount) };
     });
     const tr = docTaxRows(doc.amount);
@@ -2828,7 +2874,7 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
       const amt = foreign ? r2e(eurTotal) : total;   // v0.99.80: Fremdwährung → in Euro aufs Konto, Originalbetrag bleibt gespeichert
       await onSave({ accountId: f.accountId, date, amount: f.dir === "out" ? -amt : amt, counterparty: f.merchant.trim(), purpose: f.note.trim(),
         ...(foreign ? { fxAmount: f.dir === "out" ? -total : total, fxCur: f.cur, fxRate: r2e4(total / amt) } : {}),
-        category: f.dir === "in" && !f.category ? "Einnahmen" : cat, ...(it.length ? { items: it } : {}),
+        category: f.dir === "in" && !f.category ? "Einnahmen" : cat, ...(f.sub && f.dir !== "in" ? { subcategory: f.sub } : {}), ...(it.length ? { items: it } : {}),
         ...(vat.length ? { vat } : {}),
         ...(f.qr ? { receiptQr: { kind: f.qr.kind, register: f.qr.register, receiptNo: f.qr.receiptNo } } : {}) },
         { docId: f.docId, file: f.docId ? null : f.file });
@@ -2891,8 +2937,9 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
       <div className="grid2">
         <label>Konto<PickMenu click icon={curAcc?.icon} label={curAcc?.title || "Konto wählen"} title="Konto" items={accOpt.map((o) => ({ ...o, on: o.k === f.accountId, run: () => set({ accountId: o.k }, true) }))} /></label>
         <label>Kategorie<PickMenu click icon={<CatGlyph c={cat} />} label={cat} title="Kategorie" items={[{ k: "__new", icon: "＋", title: "Kategorie", sub: "neue Kategorie anlegen", run: () => { const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return; addCategory?.(n); setExtraCats((x) => [...x, n]); set({ category: n }, true); } },
-            ...cats.map((c) => ({ k: c, icon: <CatGlyph c={c} />, title: c, on: c === cat, run: () => set({ category: c }, true) }))]} /></label>
+            ...cats.map((c) => ({ k: c, icon: <CatGlyph c={c} />, title: c, on: c === cat, run: () => set({ category: c, ...(c !== cat ? { sub: null } : {}) }, true) }))]} /></label>
       </div>
+      {f.dir !== "in" && <SubSelect cat={cat} value={f.sub} onChange={(v) => set({ sub: v }, true)} />}
       <label>Notizen<textarea rows={2} value={f.note} onChange={(e) => set({ note: e.target.value })} placeholder="optional, z. B. Wocheneinkauf, Projekt …" /></label>
       <button className="btn primary cashsave" disabled={!ok} onClick={save}>{busy ? "Speichert …" : reading ? "Speichern (Beleg wird noch gelesen)" : `Speichern${total > 0 ? " · " + fmtMoney(f.dir === "out" ? -total : total, foreign ? f.cur : "EUR") + (foreign && eurTotal > 0 ? " (≈ " + fmtMoney(f.dir === "out" ? -eurTotal : eurTotal) + ")" : "") : ""}`}</button>
       {qrOpen && createPortal(<CodeScanWin title="Kassenbon-QR scannen" onClose={() => setQrOpen(false)} onResult={(code) => onQr(code)} />, document.querySelector(".app") || document.body)}
@@ -2947,7 +2994,7 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
       <div className="frow click" onClick={() => setOpenId(open ? null : t.id)}>
         <CatIcon c={t.category} size={36} />
         <div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b>
-          <small className="muted block">{t.category}{a ? " · " + a.name : ""}{t.vat?.length ? " · USt " + t.vat.map((v) => v.rate + " %").join("/") : ""}{d ? " · 📎" : ""}</small></div>
+          <small className="muted block">{catLabel(t.category, t.subcategory)}{a ? " · " + a.name : ""}{t.vat?.length ? " · USt " + t.vat.map((v) => v.rate + " %").join("/") : ""}{d ? " · 📎" : ""}</small></div>
         <div className="right"><b className={t.amount < 0 ? "neg" : "pos"}>{fmtMoney(t.amount)}</b></div>
       </div>
       {open && detail(t, d)}
@@ -2977,7 +3024,7 @@ function ExpensePage({ accounts, txs, categories, onSave, onScan, onUpload, addC
                   <div className="mtx" onClick={() => setOpenId(open ? null : t.id)}>
                     <CatIcon c={t.category} size={46} />
                     <div className="grow"><b className="one">{t.counterparty || t.purpose || "Buchung"}</b>
-                      <div className="msub"><span className="one">{t.category}{a ? " · " + a.name : ""}</span>{d && <span title="Beleg">📎</span>}</div></div>
+                      <div className="msub"><span className="one">{catLabel(t.category, t.subcategory)}{a ? " · " + a.name : ""}</span>{d && <span title="Beleg">📎</span>}</div></div>
                     <span className={"mamt" + (t.amount > 0 ? " in" : "")}>{fmtMoney(t.amount)}</span>
                   </div>
                   {open && detail(t, d)}
@@ -3486,6 +3533,55 @@ function optList(children) {
   });
   walk(children);
   return out;
+}
+// v0.99.86: Kategorie-Popup (Variante B): Suche oben, links Kategorien, rechts Unterkategorien – Klick übernimmt sofort; Größe folgt „Dropdown-Menüs“
+function CatPicker({ anchor, categories, cat, sub, onPick, onClose, ruleLabel, onAddCategory, goTab }) {
+  const [q, setQ] = useState(""), [hl, setHl] = useState(cat), [rule, setRule] = useState(false), [pos, setPos] = useState(null), ref = useRef(null), inp = useRef(null);
+  const mnz = +(getComputedStyle(document.documentElement).getPropertyValue("--mnz") || 1) || 1;
+  const W = Math.min(innerWidth - 16, 560 * mnz);
+  useLayoutEffect(() => { const r = anchor?.getBoundingClientRect(); if (!r) return; const h = Math.min(innerHeight - 24, 460 * mnz);
+    let top = r.bottom + 6; if (top + h > innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    setPos({ left: Math.round(Math.max(8, Math.min(r.left + r.width / 2 - W / 2, innerWidth - W - 8))), top: Math.round(top), h }); }, [anchor]);
+  useEffect(() => { const out = (e) => { if (ref.current && !ref.current.contains(e.target) && !anchor?.contains(e.target)) onClose(); };
+    const esc = (e) => { if (e.key === "Escape") { e.stopImmediatePropagation(); e.stopPropagation(); onClose(); } };
+    document.addEventListener("pointerdown", out); addEventListener("keydown", esc, true); setTimeout(() => inp.current?.focus(), 30);
+    return () => { document.removeEventListener("pointerdown", out); removeEventListener("keydown", esc, true); }; }, []);
+  const nq = norm(q.trim());
+  const hits = (c) => !nq || norm(c).includes(nq) || subsOf(c).some((x) => norm(x).includes(nq));
+  const cats = categories.filter(hits);
+  const cur = cats.includes(hl) ? hl : cats[0];
+  const subs = cur ? subsOf(cur).filter((x) => !nq || norm(cur).includes(nq) || norm(x).includes(nq)) : [];
+  const pick = (c, sb) => { onPick(c, sb || null, rule); onClose(); };
+  const newCat = () => { const n = (prompt("Name der neuen Kategorie:", q.trim()) || "").trim(); if (!n) return; onAddCategory?.(n); setHl(n); setQ(""); };
+  const newSub = () => { if (!cur) return; const n = (prompt(`Neue Unterkategorie für „${cur}“:`, "") || "").trim(); if (!n) return; SUBCAT_ADD?.(cur, n); pick(cur, n); };
+  const enter = (e) => { if (e.key !== "Enter") return; e.preventDefault(); const sHit = nq && cur && subsOf(cur).find((x) => norm(x).includes(nq)); if (sHit && !norm(cur).includes(nq)) pick(cur, sHit); else if (cur) pick(cur, null); };
+  if (!pos) return null;
+  return createPortal(<div ref={ref} className="catpick" role="dialog" aria-label="Kategorie wählen" style={{ left: pos.left, top: pos.top, width: W, maxHeight: pos.h }}>
+    <div className="cpsearch"><span aria-hidden="true">🔍</span><input ref={inp} value={q} placeholder="Kategorie oder Unterkategorie suchen …" onChange={(e) => setQ(e.target.value)} onKeyDown={enter} />{q && <button type="button" className="link small" onClick={() => setQ("")}>✕</button>}</div>
+    <div className="cpcols">
+      <div className="cpcol"><div className="cphead">Kategorie</div>
+        {cats.map((c) => <button key={c} type="button" className={"cprow" + (c === cur ? " hl" : "") + (c === cat ? " on" : "")} onMouseEnter={() => subsOf(c).length && setHl(c)} onClick={() => (subsOf(c).length && c !== cur ? setHl(c) : pick(c, c === cat ? sub : null))}>
+          <CatGlyph c={c} /><span className="grow one">{c}</span>{c === cat && <span className="cpok">✓</span>}{subsOf(c).length > 0 && <span className="muted">›</span>}</button>)}
+        {!cats.length && <p className="muted small cpempty">Nichts gefunden.</p>}
+        {onAddCategory && <button type="button" className="cprow cpadd" onClick={newCat}>＋ Neue Kategorie{q.trim() ? ` „${q.trim()}“` : ""}</button>}
+      </div>
+      <div className="cpcol"><div className="cphead">Unterkategorie{cur ? <small className="muted"> · {cur}</small> : null}</div>
+        {cur && <button type="button" className={"cprow" + (cur === cat && !sub ? " on" : "")} onClick={() => pick(cur, null)}><span className="grow muted">– keine –</span>{cur === cat && !sub && <span className="cpok">✓</span>}</button>}
+        {subs.map((x) => <button key={x} type="button" className={"cprow" + (cur === cat && x === sub ? " on" : "")} onClick={() => pick(cur, x)}><span className="cpsub">↳</span><span className="grow one">{x}</span>{cur === cat && x === sub && <span className="cpok">✓</span>}</button>)}
+        {cur && <button type="button" className="cprow cpadd" onClick={newSub}>＋ Neue Unterkategorie</button>}
+      </div>
+    </div>
+    <div className="cpfoot">{ruleLabel ? <label className="check"><input type="checkbox" checked={rule} onChange={(e) => setRule(e.target.checked)} /> {ruleLabel}</label> : <span />}
+      <span className="grow" />{goTab && <button type="button" className="link small" title="Größe der Menüs einstellen" onClick={() => { ls.set("openSettingsSec", "design"); ls.set("jumpTo", "uis-sec"); onClose(); goTab("settings"); }}>Menügröße ›</button>}<small className="muted">Klick = übernehmen</small></div>
+  </div>, document.querySelector(".app") || document.body);
+}
+// v0.99.85: Unterkategorie wählen (mit „Neue Unterkategorie …“)
+function SubSelect({ cat, value, onChange, label = "Unterkategorie", bare = false }) {
+  if (!cat || cat === "Umbuchung") return null;
+  const l = subsOf(cat), add = () => { const n = (prompt(`Neue Unterkategorie für „${cat}“:`) || "").trim(); if (!n) return; SUBCAT_ADD?.(cat, n); onChange(n); };
+  const pm = <PickMenu click block btnClass="selbtn subselbtn" title={label} label={value || "– keine –"}
+    items={[{ k: "__none", title: "– keine –", on: !value, run: () => onChange(null) }, ...[...new Set([...l, ...(value && !l.includes(value) ? [value] : [])])].map((x) => ({ k: x, title: x, on: x === value, run: () => onChange(x) })), { k: "__add", icon: "＋", title: "Neue Unterkategorie …", sub: `für „${cat}“`, run: add }]} />;
+  return bare ? pm : <label className="subsel">{label}{pm}</label>;
 }
 // v0.99.80: Währungsauswahl & Kurszeile (EZB-Kurs, eigener Kurs oder Euro-Betrag laut Kontoauszug)
 function CurSelect({ value, onChange, className = "" }) {
@@ -4165,6 +4261,7 @@ function Analysis({ txs, accounts, hasCash, editing = false, setEditing = () => 
   const [kind, setKind] = useState("out"); // out | in
   const [drill, setDrill] = useState(null); // Kategorie
   const [drillM, setDrillM] = useState(null); // Händler
+  const [drillS, setDrillS] = useState(null); // v0.99.85: Unterkategorie
   const valid = accSel.filter((id) => accounts.some((a) => a.id === id));
   const base = useMemo(() => txs.filter((t) => t.kind !== "broker" && t.category !== "Umbuchung" && !(hasCash && t.category === "Bargeld") && (t.currency || "EUR") === "EUR"
     && (!valid.length || valid.includes(t.accountId))), [txs, valid.join(","), hasCash]);
@@ -4226,15 +4323,24 @@ function Analysis({ txs, accounts, hasCash, editing = false, setEditing = () => 
   const pal = (c, i) => catMeta(c).color || PALETTE[i % PALETTE.length];
 
   if (drill) {
-    const l = sel.filter((t) => (t.category || "Sonstiges") === drill && (!drillM || normName(t.counterparty || t.purpose || "Unbekannt") === drillM)).sort((a, b) => b.date.localeCompare(a.date));
+    const SUBNONE = "ohne Unterkategorie", subK = (t) => t.subcategory || SUBNONE;
+    const l = sel.filter((t) => (t.category || "Sonstiges") === drill && (!drillS || subK(t) === drillS) && (!drillM || normName(t.counterparty || t.purpose || "Unbekannt") === drillM)).sort((a, b) => b.date.localeCompare(a.date));
+    const ss = {}; sel.filter((t) => (t.category || "Sonstiges") === drill).forEach((t) => { ss[subK(t)] = (ss[subK(t)] || 0) + Math.abs(t.amount); });
+    const hasSubs = Object.keys(ss).some((k) => k !== SUBNONE);
     const hist = chartMonths.map((m) => { const v = base.filter((t) => t.date.startsWith(m) && (t.category || "Sonstiges") === drill && (kind === "out" ? t.amount < 0 : t.amount > 0)).reduce((s, t) => s + Math.abs(t.amount), 0); return { k: m, label: monthLabel(m).split(" ")[0], [kind === "out" ? "b" : "a"]: v }; });
-    const mm = {}; sel.filter((t) => (t.category || "Sonstiges") === drill).forEach((t) => { const k = normName(t.counterparty || t.purpose || "Unbekannt"); mm[k] = (mm[k] || 0) + Math.abs(t.amount); });
+    const mm = {}; sel.filter((t) => (t.category || "Sonstiges") === drill && (!drillS || subK(t) === drillS)).forEach((t) => { const k = normName(t.counterparty || t.purpose || "Unbekannt"); mm[k] = (mm[k] || 0) + Math.abs(t.amount); });
     return (
       <div className="anapage">
-        <div className="anahead"><button className="btn sm" data-fback="1" onClick={() => { setDrill(null); setDrillM(null); }}>‹ Zurück</button><b className="grow">{drill}</b><small className="muted">{periodLabel}</small></div>
+        <div className="anahead"><button className="btn sm" data-fback="1" onClick={() => { setDrill(null); setDrillM(null); setDrillS(null); }}>‹ Zurück</button><b className="grow">{catLabel(drill, drillS)}</b><small className="muted">{periodLabel}</small></div>
         <section className="tile anakpi"><CatIcon c={drill} size={44} /><div><small className="muted">{kind === "out" ? "Ausgaben" : "Einnahmen"}</small><div className="kpiv">{fmtMoney(byCat[drill] || 0)}</div>
           <small className="muted">{pct(byCat[drill] || 0, selTotal)} % vom Gesamt · {l.length} Buchungen</small> <Delta a={byCat[drill] || 0} b={pByCat[drill] || 0} good={kind === "out" ? "down" : "up"} /></div></section>
         <section className="tile"><div className="tilehead"><b>Verlauf</b><small>12 Monate</small></div><MiniBars data={hist} /></section>
+        {hasSubs && <section className="tile"><div className="tilehead"><b>Unterkategorien</b>{drillS && <button className="link" onClick={() => setDrillS(null)}>alle zeigen</button>}</div>
+          {Object.entries(ss).sort((a, b) => (a[0] === SUBNONE) - (b[0] === SUBNONE) || b[1] - a[1]).map(([k, v]) => (
+            <div key={k} className={"frow click" + (drillS === k ? " on" : "")} onClick={() => { setDrillS(drillS === k ? null : k); setDrillM(null); }}>
+              <div className="grow"><b className={k === SUBNONE ? "muted" : ""}>↳ {k}</b><Bar value={v} max={byCat[drill]} color={catMeta(drill).color} /></div><div className="right"><b>{fmtMoney(v)}</b><small className="muted block">{pct(v, byCat[drill] || 0)} %</small></div>
+            </div>))}
+        </section>}
         <section className="tile"><div className="tilehead"><b>Händler</b>{drillM && <button className="link" onClick={() => setDrillM(null)}>alle zeigen</button>}</div>
           {Object.entries(mm).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, v]) => (
             <div key={k} className={"frow click" + (drillM === k ? " on" : "")} onClick={() => setDrillM(drillM === k ? null : k)}>
@@ -4243,7 +4349,7 @@ function Analysis({ txs, accounts, hasCash, editing = false, setEditing = () => 
         </section>
         <section className="tile"><div className="tilehead"><b>Buchungen</b><small>{l.length}</small></div>
           {l.slice(0, 100).map((t) => (
-            <div key={t.id} className="frow"><div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b><small className="muted block">{fmtDate(t.date)}{t.items?.length ? ` · ${t.items.length} Positionen` : ""}</small></div>
+            <div key={t.id} className="frow"><div className="grow"><b>{t.counterparty || t.purpose || "Buchung"}</b><small className="muted block">{fmtDate(t.date)}{t.subcategory ? " · " + t.subcategory : ""}{t.items?.length ? ` · ${t.items.length} Positionen` : ""}</small></div>
               <div className="right"><b className={t.amount < 0 ? "neg" : "pos"}>{fmtMoney(t.amount)}</b></div></div>))}
         </section>
       </div>
@@ -5620,7 +5726,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
     return base.filter((d) => test[effFilt](d)
       && (mode === "pruefen" || !sel.y || (sel.y === "ohne" ? !jDate(d) : jDate(d).startsWith(sel.y + (sel.m ? "-" + sel.m : ""))))
       && (!facet || (facet.k === "cat" ? d.category === facet.v : facet.k === "contact" ? (facet.v ? (d.sender || "") === facet.v : !d.sender) : (d.tags || []).includes(facet.v)))
-      && (!qn || norm(`${d.title} ${d.sender} ${d.category} ${(d.tags || []).join(" ")} ${d.amount?.total ?? ""}`).includes(qn)))
+      && (!qn || norm(`${d.title} ${d.sender} ${d.category} ${d.subcategory || ""} ${(d.tags || []).join(" ")} ${d.amount?.total ?? ""}`).includes(qn)))
       .sort((a, b) => jDir * (J_SORTS[jS] || J_SORTS.datum)[2](a, b));
   }, [base, effFilt, sel, facet, q, mode, txByDoc, jS, jDir]);
   const jFlat = !(jS === "datum" && jDir === 1);
@@ -5783,7 +5889,7 @@ function JournalCard({ d, tx, onConfirm, onEdit, pos, onPrev, onNext }) {
     <div className="jcmeta">
       {jDate(d) && <span>📅 {fmtDate(jDate(d))}</span>}
       {d.sender && <span>👤 {d.sender}</span>}
-      <span><CatGlyph c={d.category} /> {d.category || "Sonstiges"}</span>
+      <span><CatGlyph c={d.category} /> {catLabel(d.category || "Sonstiges", d.subcategory)}</span>
       <span>{docScope(d) === "firma" ? "🏢 Firma" : "👤 Privat"}</span>
       {d.direction === "ausgabe" && <span>{d.paid ? "✓ bezahlt" : "○ offen"}</span>}
       {(d.tags || []).length > 0 && <span>#{d.tags.join(" #")}</span>}
@@ -5876,7 +5982,7 @@ const DocListRow = React.memo(function DocListRow({ d, pickMode, picked, prevOpe
         <div className="row1"><b className="clamp dtitle">{d.title}</b><span className="damtin">{H.amt(d)}</span></div>
         <small className="muted block">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
         <div className="labels">
-          <Label c={d.category} />
+          <Label c={d.category} sub={d.subcategory} />
           {d.taxRelevant && <span className="label tax">Steuer</span>}
           {d.contract && <span className="label">Vertrag</span>}
           {(d.tags || []).slice(0, 2).map((t) => <span key={t} className="label tag">#{t}</span>)}
@@ -5884,7 +5990,7 @@ const DocListRow = React.memo(function DocListRow({ d, pickMode, picked, prevOpe
         {H.status(d)}
       </div>
       <span className="damtcol">{H.amt(d)}</span>
-      <span className="dcatcol"><Label c={d.category} /></span>
+      <span className="dcatcol"><Label c={d.category} sub={d.subcategory} /></span>
       {!pickMode && <button className="deyem" title="Vorschau" aria-label="Vorschau" onClick={(e) => { e.stopPropagation(); h.current.setWinPrev(d); }}><IcoEye /></button>}
       <DocActions d={d} prevOpen={prevOpen} onPreview={() => h.current.setWinPrev(d)} onEdit={() => h.current.onOpen(d.id)} onTrash={(x) => h.current.trashDoc(x)} />
     </div></SwipeRow>
@@ -6029,7 +6135,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
                 <DocActions d={d} prevOpen={winPrev?.id === d.id} onPreview={() => setWinPrev(d)} onEdit={() => onOpen(d.id)} onTrash={trashDoc} />
                 <b className="clamp">{d.title}</b>
                 <small className="muted">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
-                <div className="row1"><Label c={d.category} />{amt(d)}</div>
+                <div className="row1"><Label c={d.category} sub={d.subcategory} />{amt(d)}</div>
                 {status(d)}
               </div>
             </div>
@@ -6772,7 +6878,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const list = useMemo(() => {
     const terms = norm(q).split(/\s+/).filter(Boolean);
     return scoped.filter((t) => (!month || t.date.startsWith(month)) && (!coll || (t.colls || []).includes(coll)) &&
-      (!terms.length || terms.every((w) => norm(`${t.counterparty} ${t.purpose} ${t.category} ${t.security || ""} ${t.isin || ""} ${String(t.amount).replace(".", ",")}`).includes(w))))
+      (!terms.length || terms.every((w) => norm(`${t.counterparty} ${t.purpose} ${t.category} ${t.subcategory || ""} ${t.security || ""} ${t.isin || ""} ${String(t.amount).replace(".", ",")}`).includes(w))))
       .sort((a, b) => txDir * (TX_SORTS[txS] || TX_SORTS.datum)[2](a, b));
   }, [scoped, q, month, coll, txS, txDir]);
   const txFlat = !(txS === "datum" && txDir === 1);
@@ -6942,7 +7048,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
                   <TxIcon t={t} size={46} />
                   <div className="grow">
                     <b className="one">{t.kind === "broker" ? (t.security || t.type) : t.counterparty || t.purpose || "Buchung"}</b>
-                    <div className="msub">{isContract(t) && <span className="mtag">Vertrag</span>}<span className="one">{t.kind === "broker" ? t.type : t.category}</span>{t.docId && <span title="Beleg">📎</span>}</div>
+                    <div className="msub">{isContract(t) && <span className="mtag">Vertrag</span>}<span className="one">{t.kind === "broker" ? t.type : catLabel(t.category, t.subcategory)}</span>{t.docId && <span title="Beleg">📎</span>}</div>
                   </div>
                   <span className={"mamt" + (t.amount > 0 ? " in" : "")}>{fmtMoney(t.amount, t.currency)}</span>
                   {recIds.has(t.id) && <span className="mrec" title="Wiederkehrend">↻</span>}
@@ -7085,7 +7191,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
                 {t.kind !== "broker" && t.category !== "Umbuchung" && (() => { const sc = txScopeInfo(t, accounts.find((a) => a.id === t.accountId)).scope; return sc === "firma" ? <span className="txsc sc-firma" title="Firma">🏢</span> : sc === "unklar" ? <span className="txsc sc-unklar" title="Privat/Firma unklar">❓</span> : null; })()}
                 {t.docId && <span title="Beleg verknüpft – Klick auf die Zeile zeigt ihn">📎</span>}
               </span>
-              : k === "cat" ? <span key={k} className="one muted c-cat">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}</span>
+              : k === "cat" ? <span key={k} className="one muted c-cat" title={catLabel(t.category, t.subcategory)}>{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : <>{t.category}{t.subcategory && <small className="block subcl">{t.subcategory}</small>}</>}</span>
               : k === "acc" ? <span key={k} className="one muted c-acc">{accName(t.accountId)}</span>
               : <b key={k} className={"r amt c-amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>)}
               <TxActs t={t} />
@@ -7107,7 +7213,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
                 <TxIcon t={t} />
                 <div className="grow">
                   <b className="clamp">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
-                  <small className="muted block one">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : t.category}{t.docId ? " · 📎 Beleg" : ""}{!acc && sel.length > 1 ? " · " + accName(t.accountId) : ""}</small>
+                  <small className="muted block one">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : catLabel(t.category, t.subcategory)}{t.docId ? " · 📎 Beleg" : ""}{!acc && sel.length > 1 ? " · " + accName(t.accountId) : ""}</small>
                 </div>
                 <b className={"amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
                 <TxActs t={t} />
@@ -7718,7 +7824,9 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
     save({ ...t, invoiceId: undefined });
   };
   const [edit, setEdit] = useState(null);           // Bearbeiten-Formular
-  const [catOpen, setCatOpen] = useState(false), [cat, setCat] = useState(t.category), [rule, setRule] = useState(false), [extraCats, setExtraCats] = useState([]);
+  const [catOpen, setCatOpen] = useState(false), [cat, setCat0] = useState(t.category), [sub, setSub] = useState(t.subcategory || null), [rule, setRule] = useState(false), [extraCats, setExtraCats] = useState([]);
+  const setCat = (c) => { setCat0(c); if (c !== cat) setSub(c === t.category ? t.subcategory || null : null); };
+  const catBtn = useRef(null);
   const [icoOpen, setIcoOpen] = useState(false), [, bump] = useState(0), [logoBusy, setLogoBusy] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false), [note, setNote] = useState(t.note || "");
   const [collOpen, setCollOpen] = useState(false), [colls, setColls] = useState(txColls), [newColl, setNewColl] = useState("");
@@ -7799,7 +7907,10 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
       <div className="txhero">
         <div className="txheroico" onClick={() => setIcoOpen(!icoOpen)} title="Symbol ändern"><TxIcon t={t} size={84} /><span className="txpen">✎</span></div>
         <h2>{title}</h2>
-        {t.kind !== "broker" && <button className="txcat" onClick={() => setCatOpen(!catOpen)}><CatGlyph c={t.category} /> {t.category} <span>✎</span></button>}
+        {t.kind !== "broker" && <button className="txcat" ref={catBtn} onClick={() => setCatOpen(!catOpen)}><CatGlyph c={t.category} /> {catLabel(t.category, t.subcategory)} <span>✎</span></button>}
+        {catOpen && <CatPicker anchor={catBtn.current} categories={[...new Set([...categories, ...extraCats, t.category])]} cat={t.category} sub={t.subcategory || null} goTab={goTab}
+          ruleLabel={t.counterparty ? `Immer so für „${t.counterparty}“` : null} onAddCategory={(n) => { addCategory?.(n); setExtraCats((x) => [...x, n]); }}
+          onClose={() => setCatOpen(false)} onPick={(c, sb, rl) => { if (c !== t.category || (sb || null) !== (t.subcategory || null) || rl) save(withOrig({ ...t, category: c, subcategory: sb || null }), rl); }} />}
         {t.kind !== "broker" && !isTransfer && (
           <div className="txscope">
             <ScopePick scope={si.scope} onPick={(k) => save({ ...t, scope: k, scopeSrc: undefined, ...(k !== "firma" ? { bizPct: undefined } : {}) })} />
@@ -7821,7 +7932,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
           <small className="muted">Gilt für alle Buchungen von „{t.counterparty || title}“. Ein gewähltes Emoji hat Vorrang vor dem Logo.</small>
         </div>
       )}
-      {catOpen && (
+      {false && (
         <div className="tile txpick">
           <PSelect value={cat} onChange={(e) => {
             if (e.target.value !== "__new") return setCat(e.target.value);
@@ -7831,8 +7942,9 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
             {[...new Set([...categories, ...extraCats, t.category])].map((c) => <option key={c}>{c}</option>)}
             <option value="__new">＋ Neue Kategorie …</option>
           </PSelect>
+          <SubSelect cat={cat} value={sub} onChange={setSub} />
           {t.counterparty && <label className="check"><input type="checkbox" checked={rule} onChange={(e) => setRule(e.target.checked)} /> Immer so für „{t.counterparty}“</label>}
-          <button className="btn primary" disabled={cat === t.category && !rule} onClick={() => { save(withOrig({ ...t, category: cat }), rule); setCatOpen(false); }}>Übernehmen</button>
+          <button className="btn primary" disabled={cat === t.category && (sub || null) === (t.subcategory || null) && !rule} onClick={() => { save(withOrig({ ...t, category: cat, subcategory: sub || null }), rule); setCatOpen(false); }}>Übernehmen</button>
         </div>
       )}
       {linkedInv && <div className="lookbox ok txinv">
@@ -10866,7 +10978,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         <div className="seg areaseg" style={{ margin: "6px 0 10px" }}>
           {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={docArea(d) === k ? "on" : ""} onClick={() => set({ areaManual: k })}>{i} {l}</button>)}
         </div>
-        <div className="labels" style={{ marginBottom: 4 }}><Label c={d.category} />{d.taxRelevant && <span className="label tax">Steuer</span>}{d.contract && <span className="label">Vertrag</span>}</div>
+        <div className="labels" style={{ marginBottom: 4 }}><Label c={d.category} sub={d.subcategory} />{d.taxRelevant && <span className="label tax">Steuer</span>}{d.contract && <span className="label">Vertrag</span>}</div>
 
         {doc.status === "error" && <div className="err">Analyse fehlgeschlagen: {doc.error}</div>}
         {doc.status === "processing" && <div className="muted">Wird analysiert …</div>}
@@ -10874,13 +10986,14 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         <label>Titel<input value={d.title || ""} onChange={(e) => set({ title: e.target.value })} /></label>
         <div className="grid2">
           <label>Kategorie
-            <PSelect value={d.category} onChange={(e) => (e.target.value === "__new" ? setNewCat(true) : set({ category: e.target.value }))}>
+            <PSelect value={d.category} onChange={(e) => (e.target.value === "__new" ? setNewCat(true) : set({ category: e.target.value, ...(e.target.value !== d.category ? { subcategory: null } : {}) }))}>
               {[...new Set([...categories, d.category])].map((c) => <option key={c}>{c}</option>)}
               {addCategoryEx && <option value="__new">＋ Neue Kategorie …</option>}
             </PSelect>
           </label>
+          <SubSelect cat={d.category} value={d.subcategory} onChange={(v) => set({ subcategory: v })} />
           {newCat && createPortal(<NewCategoryWin groups={docGroups} existing={categories} defGroup={docGroups.find((g) => g.cats.includes(d.category))?.id}
-            onClose={() => setNewCat(false)} onCreate={(n, gid, st) => { addCategoryEx(n, gid, st); set({ category: n }); }} />, document.querySelector(".app") || document.body)}
+            onClose={() => setNewCat(false)} onCreate={(n, gid, st) => { addCategoryEx(n, gid, st); set({ category: n, subcategory: null }); }} />, document.querySelector(".app") || document.body)}
           <label>Typ<input value={d.docType || ""} onChange={(e) => set({ docType: e.target.value })} /></label>
           <label>Absender<input value={d.sender || ""} onChange={(e) => set({ sender: e.target.value })} /></label>
           <label>Datum<input type="date" value={d.documentDate || ""} onChange={(e) => set({ documentDate: e.target.value })} /></label>
@@ -11318,13 +11431,14 @@ function applyUiScale(v) { const r = document.documentElement.style; r.setProper
 if (typeof window !== "undefined") try { applyUiScale(JSON.parse(localStorage.getItem("dev:uiScale") || "{}")); } catch {}
 function UiScaleSettings() {
   const [v, setV] = useLsState("dev:uiScale", {}), [mo, setMo] = useState(false);
+  useEffect(() => { if (ls.get("jumpTo", "") !== "uis-sec") return; ls.set("jumpTo", ""); setTimeout(() => { const el = document.getElementById("uis-sec"); el?.scrollIntoView({ behavior: "smooth", block: "start" }); el?.classList.add("flashsec"); setTimeout(() => el?.classList.remove("flashsec"), 1600); }, 350); }, []);
   useEffect(() => applyUiScale(v), [v.btn, v.menu]);
   const val = (k) => v[k] || 100, set = (k, n) => setV({ ...v, [k]: Math.max(70, Math.min(120, n)) });
   const ctl = (k, label, sub) => (<div className="uisrow"><div className="uish"><b>{label}</b><small className="muted block">{sub}</small></div>
     <div className="uisctl"><div className="seg">{UI_SCALE_PRESETS.map(([l, n]) => <button key={n} type="button" className={val(k) === n ? "on" : ""} onClick={() => set(k, n)}>{l}</button>)}</div>
       <input type="range" min="70" max="120" step="5" value={val(k)} onChange={(e) => set(k, +e.target.value)} aria-label={label + " in Prozent"} /><span className="uisv">{val(k)} %</span></div></div>);
   return (<>
-    <h4 className="subhead">Buttons & Menüs</h4>
+    <h4 className="subhead" id="uis-sec">Buttons & Menüs</h4>
     <p className="muted small">Größe aller Buttons, Filter-Chips, Umschalter und Auswahlfelder sowie der aufklappenden Dropdown-Menüs – gilt nur für dieses Gerät.</p>
     {ctl("btn", "Buttons", "z. B. „＋ Einnahme“, „Vorlage ▾“, Filter, Reiter")}
     {ctl("menu", "Dropdown-Menüs", "Einträge in aufklappenden Auswahl-Menüs")}
@@ -18770,6 +18884,17 @@ html.sty-graphit.sty-graphit nav.bottom>button.on,html.sty-sand.sty-sand nav.bot
 .txcolh.over-l{box-shadow:inset 3px 0 0 var(--acc)}.txcolh.over-r{box-shadow:inset -3px 0 0 var(--acc)}
 .colgrip.lft{right:auto;left:-9px}.colgrip{position:absolute;top:8px;bottom:8px;right:-9px;width:10px;cursor:col-resize;z-index:2;display:flex;justify-content:center}.colgrip::after{content:"";width:2px;border-radius:2px;background:var(--line)}.txcolh:hover .colgrip::after,.colgrip:hover::after{background:var(--acc)}
 html.colresizing,html.colresizing *{cursor:col-resize!important;user-select:none!important}.txcolreset{display:flex;justify-content:flex-end;align-items:center}
+.subtog{flex:none;font-size:12px;padding:3px 9px;white-space:nowrap}.subtog .chev{display:inline-block;transition:transform .15s}.subtog .chev.open{transform:rotate(90deg)}
+.subcatbox{margin:2px 0 8px 46px;padding:6px 8px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:4px}.subcatrow{display:flex;align-items:center;gap:8px}.subcatrow .subarrow{color:var(--mut);width:16px;text-align:center}.subcatrow.addsub .subarrow{color:var(--acc)}
+.labsub{opacity:.8;font-weight:400}.subcl{font-size:.85em;opacity:.75}.subsel{display:block}
+.catpick{position:fixed;z-index:4000;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 48px #0006;overflow:hidden;zoom:var(--mnz,1)}
+.cpsearch{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}.cpsearch input{flex:1;border:0;background:transparent;font-size:15px;padding:4px 0;outline:none;color:var(--txt)}
+.cpcols{display:grid;grid-template-columns:1fr 1fr;min-height:0;flex:1;overflow:hidden}.cpcol{overflow:auto;padding:4px 6px 8px;min-height:0}.cpcol+.cpcol{border-left:1px solid var(--line)}
+.cphead{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);padding:8px 8px 4px;position:sticky;top:0;background:var(--card);z-index:1}
+.cprow{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;color:var(--txt);font:inherit;font-size:14px;text-align:left;padding:7px 8px;border-radius:9px;cursor:pointer;min-width:0}
+.cprow:hover,.cprow.hl{background:color-mix(in srgb,var(--txt) 7%,transparent)}.cprow.on{color:var(--acc);font-weight:600}.cpok{color:var(--acc)}.cpsub{color:var(--mut)}.cpadd{color:var(--acc)}.cpempty{padding:8px}
+.cpfoot{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);font-size:13px}.cpfoot .check{margin:0}
+.flashsec{animation:flashsec 1.6s ease}@keyframes flashsec{0%,60%{background:color-mix(in srgb,var(--acc) 22%,transparent)}100%{background:transparent}}
 .amtgrid{align-items:end}.amtgrid>label{display:flex;flex-direction:column;justify-content:flex-end;min-width:0;white-space:nowrap}.amtgrid>label>input{width:100%}
 .fxrow{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:12px;background:color-mix(in srgb,var(--acc) 5%,transparent)}.fxrow .fxinfo{font-size:13.5px}.fxins{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.fxins label{flex:1 1 140px;margin:0;font-size:12.5px}.fxins .btn{flex:none}
 .expcur{display:flex;gap:8px;align-items:stretch;flex-wrap:nowrap}.expcur>input{flex:1;min-width:0}.expcur>.vehpick,.fxhead>.vehpick{flex:none!important;width:auto!important;display:inline-flex}.expcur .cursel,.fxhead .cursel{width:auto!important;min-width:96px;white-space:nowrap}.fxhead{gap:10px;align-items:center;flex-wrap:wrap}.fxhead .seg{flex:1}

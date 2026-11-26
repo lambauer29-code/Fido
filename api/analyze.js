@@ -17,6 +17,7 @@ const tool = (categories) => ({
     properties: {
       title: { type: "string", description: "Kurzer, sprechender Titel, z. B. 'Stromrechnung Oktober 2026 – Energie AG'" },
       category: { type: "string", enum: categories },
+      subcategory: { type: ["string", "null"], description: "Unterkategorie aus der Liste zur gewählten Kategorie (siehe Anweisung), sonst null" },
       doc_type: { type: "string", enum: DOC_TYPES },
       tags: { type: "array", items: { type: "string" }, description: "3–6 kurze Schlagwörter, kleingeschrieben" },
       sender: { type: ["string", "null"], description: "Absender / Firma / Behörde" },
@@ -113,7 +114,8 @@ export default async function handler(req, res) {
   }
   if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY fehlt in Vercel – unter Settings → Environment Variables eintragen und danach neu deployen" });
 
-  const { data, mediaType, categories, today, groups, company, person, itemCategories } = req.body || {};
+  const { data, mediaType, categories, today, groups, company, person, itemCategories, subCategories } = req.body || {};
+  const subTxt = subCategories && typeof subCategories === "object" ? Object.entries(subCategories).filter(([, l]) => Array.isArray(l) && l.length).map(([c, l]) => `${c}: ${l.slice(0, 20).join(", ")}`).join("\n").slice(0, 3000) : "";
   if (!data || !mediaType) return res.status(400).json({ error: "data und mediaType erforderlich" });
   const cats = Array.isArray(categories) && categories.length ? categories : ["Sonstiges"];
 
@@ -123,7 +125,7 @@ export default async function handler(req, res) {
       : { type: "image", source: { type: "base64", media_type: mediaType, data } };
 
   const prompt = `Analysiere dieses Dokument (Kontext: Person in Österreich${person ? ` (${String(person).slice(0, 80)})` : ""}, angestellt${company ? ` und mit eigener Firma „${String(company).slice(0, 80)}“` : ""}). Heute ist ${today || new Date().toISOString().slice(0, 10)}.
-- Wähle die passendste Kategorie aus der vorgegebenen Liste.${groups ? `\n  Die Kategorien des Nutzers sind so gruppiert:\n${groups}` : ""}
+- Wähle die passendste Kategorie aus der vorgegebenen Liste.${groups ? `\n  Die Kategorien des Nutzers sind so gruppiert:\n${groups}` : ""}${subTxt ? `\n- subcategory: passende Unterkategorie genau aus dieser Liste der gewählten Kategorie, sonst null:\n${subTxt}` : ""}
 - Beträge: Endsumme brutto als "total". Österreichische Schreibweise beachten (1.234,56 € = 1234.56).
 - Fristen: rechne relative Angaben ("zahlbar binnen 14 Tagen", "Einspruch binnen 4 Wochen ab Zustellung") ausgehend vom Dokumentdatum in ein konkretes Datum um. Keine erfundenen Fristen.
 - Vertrag: bei Verträgen/Abos Anbieter, Kundennummer, regelmäßigen Betrag, Intervall, Vertragsende und Kündigungsfrist erfassen; "cancel_by" aus Vertragsende minus Kündigungsfrist berechnen und zusätzlich als Frist "Kündigung bis" eintragen.
