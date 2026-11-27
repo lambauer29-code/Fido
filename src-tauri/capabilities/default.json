@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Rechte für das FinDocu-Hauptfenster",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "deep-link:default",
@@ -12,23 +14,182 @@
     "notification:default",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://*" }, { "url": "mailto:*" }, { "url": "tel:*" }]
+      "allow": [
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "mailto:*"
+        },
+        {
+          "url": "tel:*"
+        }
+      ]
     },
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "$TEMP/findocu/**" }]
+      "allow": [
+        {
+          "path": "$TEMP/findocu/**"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-write-file",
-      "allow": [{ "path": "$TEMP/findocu/**" }, { "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }, { "path": "$DOWNLOAD/**" }, { "path": "$DESKTOP/**" }]
+      "allow": [
+        {
+          "path": "$TEMP/findocu/**"
+        },
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-mkdir",
-      "allow": [{ "path": "$TEMP/findocu" }, { "path": "$TEMP/findocu/**" }]
+      "allow": [
+        {
+          "path": "$TEMP/findocu"
+        },
+        {
+          "path": "$TEMP/findocu/**"
+        }
+      ]
     },
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://fido-five.vercel.app/*" }, { "url": "https://*.vercel.app/*" }]
+      "allow": [
+        {
+          "url": "https://fido-five.vercel.app/*"
+        },
+        {
+          "url": "https://*.vercel.app/*"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-read-dir",
+      "allow": [
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "/Volumes/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "**"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "/Volumes/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "**"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-stat",
+      "allow": [
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "/Volumes/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "**"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-watch",
+      "allow": [
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "/Volumes/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "**"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-unwatch",
+      "allow": [
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "/Volumes/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "**"
+        }
+      ]
     }
   ]
 }

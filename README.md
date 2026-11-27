@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.93 – Überwachter Ordner
+- Einstellungen → Daten & Ablage → **Überwachter Ordner**: einen lokalen oder Cloud-Ordner (iCloud Drive, OneDrive, Dropbox, Google Drive für Desktop) festlegen – neue Dateien, auch in Unterordnern, werden erkannt.
+- Wählbar: **Automatisch einlesen** (KI sortiert sofort ein) oder **Erst prüfen** (Liste mit Einlesen / Ignorieren / Alle einlesen). Hinweis-Leiste in Dokumente, wenn Dateien warten.
+- Beim Festlegen: vorhandene Dateien übernehmen oder nur neue ab jetzt. Dateien im Ordner werden nur gelesen, nie verändert.
+- Browser: Chrome/Edge, Prüfung alle 30 s – 15 min solange FinDocu offen ist; nach Browser-Neustart Zugriff einmal neu erlauben. Mac/Windows-App: Datei-Ereignisse (plugin-fs „watch“) + Leserechte vorbereitet.
+
 ## v0.99.92 – „＋ Buchung“ nicht mehr dauerhaft aktiv
 - Konten: Knopf „＋ Buchung ▾“ sieht wie die anderen Knöpfe aus (war dauerhaft als aktiv eingefärbt); nur das offene Menü wird hervorgehoben
 

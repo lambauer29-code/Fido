@@ -1,4 +1,5 @@
 import "./defaults.js";   // v0.99.90: persönliche Standard-Einstellungen zuerst
+import * as FWX from "./folderwatch.js";
 import { createPortal } from "react-dom";
 import { version as APP_VER } from "../package.json";
 // v0.98.1: Intl-Formatierer wiederverwenden – jeder toLocale…-Aufruf legt sonst einen neuen an (am Handy sehr teuer)
@@ -2050,6 +2051,16 @@ function AppMain() {
     const c = q.contacts; appQ.current = { files: [], i: 0, contacts: null, running: false };
     if (c?.length) { ls.set("pendingContactImport", c); setTab("kunden"); setBizReq((n) => n + 1); }
   };
+  // v0.99.93: Überwachter Ordner – im Hintergrund prüfen, solange die App offen ist
+  FW.importer = (files) => smartImport(files); FW.notify = notify; FW.goSettings = () => { ls.set("openSettingsSec", "watch"); setTab("settings"); };
+  const [fwc] = useLsState("watchCfg", FW_DEF);
+  useEffect(() => { fwRefresh(); }, []);
+  useEffect(() => { const c = { ...FW_DEF, ...fwc }; if (!c.on || !FWX.fwSupported()) return; let un = null, t = null;
+    const run = () => { clearTimeout(t); t = setTimeout(() => fwScan(), 800); };
+    fwScan(); const iv = setInterval(() => fwScan(), Math.max(20, c.every || 60) * 1000);
+    const vis = () => document.visibilityState === "visible" && run(); document.addEventListener("visibilitychange", vis); addEventListener("focus", run);
+    FWX.watchEvents(run).then((u) => { un = u; });
+    return () => { clearInterval(iv); clearTimeout(t); document.removeEventListener("visibilitychange", vis); removeEventListener("focus", run); try { un?.(); } catch {} }; }, [fwc?.on, fwc?.every, fwc?.sub, fwc?.mode]);
   async function smartImport(list) {
     const docs = [], stmts = [], vcf = [], skip = [];
     for (const f of list) {
@@ -4176,6 +4187,83 @@ async function wipeAllData() {
 }
 // v0.99.78: „Daten löschen, Design behalten“ – erhalten bleiben nur Darstellung, Design und Schrift-/Button-Größen
 const WIPE_KEEP = /^(design|theme|iconStyle|iconSize|catIcons|kindIcons|fbIcons|cpIcons|vehIcons|tabbarIcons|stmtColors|stmtZoom|stmtZoomUi|stmtLupe2|stmtLink|chartHover|sortStyle|aboStyle|kbBelegStyle|stbMonView|jDetail|jStripPos|jMode|cmpTest|mobileBeta|homeLayout|homeTiles|bizGrid|sideMini|sideW|settingsOrder|settingsClosed|view|invView|astView|deadlineView|docMode|fbViews|calMode|hideAmounts|txCols)$|^(dev:|sort:|views:|win:)/;
+/* ---------- v0.99.93: Überwachter Ordner (Controller + Einstellungen) ---------- */
+const FW_DEF = { on: false, mode: "review", sub: true, every: 60 };
+const fwCfg = () => ({ ...FW_DEF, ...ls.get("watchCfg", {}) });
+const FW = { st: { folder: null, perm: "none", last: null, busy: false, queue: [], err: "", total: null, lastNew: 0 }, subs: new Set(), importer: null, notify: null, goSettings: null,
+  set(p) { this.st = { ...this.st, ...p }; this.subs.forEach((f) => f(this.st)); } };
+function useFW() { const [s, setS] = useState(FW.st); useEffect(() => { FW.subs.add(setS); return () => FW.subs.delete(setS); }, []); return s; }
+async function fwRefresh() { try { FW.set({ folder: await FWX.folderInfo(), perm: await FWX.permission(), queue: await FWX.queueAll() }); } catch (e) { FW.set({ err: e.message }); } }
+async function fwImport(items) {
+  const list = []; for (const f of items) { try { list.push(await FWX.readRel(f.rel)); } catch {} }
+  if (list.length && FW.importer) await FW.importer(list);
+  return list.length;
+}
+async function fwScan({ manual = false } = {}) {
+  const c = fwCfg(); if (!FWX.fwSupported() || FW.st.busy || (!c.on && !manual)) return;
+  const perm = await FWX.permission(); if (perm !== "granted") { FW.set({ perm }); return; }
+  FW.set({ busy: true, err: "" });
+  try {
+    const files = await FWX.listFiles({ sub: c.sub }), seen = await FWX.seenKeys(), fresh = files.filter((f) => !seen.has(f.key));
+    if (fresh.length) {
+      await FWX.seenAdd(fresh.map((f) => f.key));
+      if (c.mode === "auto") { const n = await fwImport(fresh); if (n) FW.notify?.(`📂 ${n} neue Datei${n > 1 ? "en" : ""} aus „${FW.st.folder?.name || "Ordner"}“ eingelesen`); }
+      else { await FWX.queuePut(fresh.map((f) => ({ ...f, found: Date.now() }))); FW.notify?.(`📂 ${fresh.length} neue Datei${fresh.length > 1 ? "en" : ""} im überwachten Ordner – zum Prüfen bereit`); }
+    }
+    FW.set({ last: Date.now(), total: files.length, lastNew: fresh.length, queue: await FWX.queueAll(), perm });
+  } catch (e) { FW.set({ err: e.message || String(e) }); } finally { FW.set({ busy: false }); }
+}
+function FwBanner() {   // Hinweis über den Dokumenten, wenn Dateien zur Prüfung warten
+  const st = useFW(); const n = st.queue?.length || 0;
+  if (!n && st.perm !== "prompt") return null;
+  return (<div className="fwbanner">{n ? <span>📂 <b>{n} neue Datei{n > 1 ? "en" : ""}</b> im überwachten Ordner „{st.folder?.name}“</span> : <span>📂 Zugriff auf „{st.folder?.name}“ muss erneut erlaubt werden</span>}
+    <span className="grow" />{!n && <button className="btn sm" onClick={async () => { await FWX.permission(true); await fwRefresh(); fwScan(); }}>Zugriff erlauben</button>}
+    {n > 0 && <button className="btn sm" onClick={() => FW.goSettings?.()}>Prüfen</button>}</div>);
+}
+function FolderWatchSettings() {
+  const st = useFW(), [cfg, setCfg0] = useLsState("watchCfg", FW_DEF), c = { ...FW_DEF, ...cfg }, [sel, setSel] = useState([]), [busy, setBusy] = useState("");
+  const setCfg = (p) => setCfg0({ ...c, ...p });
+  useEffect(() => { fwRefresh(); }, []);
+  if (!FWX.fwSupported()) return (<div><p className="small">Dieser Browser erlaubt keinen dauerhaften Ordnerzugriff (Safari, iPhone, iPad). Der überwachte Ordner funktioniert in <b>Chrome oder Edge</b> am Mac/PC und in der <b>FinDocu-App für Mac/Windows</b>.</p>
+    <p className="muted small">Hier geht's stattdessen über das Ablagefeld oder „Teilen → FinDocu“.</p></div>);
+  const pick = async () => { setBusy("pick"); try { const f = await FWX.pickFolder(); if (!f) return; FW.set({ folder: f, perm: "granted", queue: [] });
+      const files = await FWX.listFiles({ sub: c.sub });
+      const take = files.length && confirm(`Im Ordner „${f.name}“ liegen bereits ${files.length} Dateien${c.sub ? " (mit Unterordnern)" : ""}.\n\nOK = diese auch übernehmen (${c.mode === "auto" ? "werden eingelesen" : "kommen in die Prüfliste"})\nAbbrechen = nur neue Dateien ab jetzt`);
+      if (!take) await FWX.seenAdd(files.map((x) => x.key));
+      setCfg({ on: true }); setTimeout(() => fwScan({ manual: true }), 50);
+    } catch (e) { if (e.name !== "AbortError") alert("Ordner konnte nicht gewählt werden: " + e.message); } finally { setBusy(""); } };
+  const remove = async () => { if (!confirm("Überwachung beenden und Ordner entfernen? Deine Dateien im Ordner bleiben unverändert.")) return; await FWX.resetAll(); setCfg({ on: false }); FW.set({ folder: null, perm: "none", queue: [], total: null, last: null }); };
+  const q = st.queue || [], allSel = q.length && sel.length === q.length;
+  const take = async (items) => { setBusy("imp"); try { const n = await fwImport(items); await FWX.queueDel(items.map((x) => x.key)); setSel([]); await fwRefresh(); FW.notify?.(`${n} Datei${n !== 1 ? "en" : ""} eingelesen`); } finally { setBusy(""); } };
+  const drop = async (items) => { await FWX.queueDel(items.map((x) => x.key)); setSel([]); await fwRefresh(); };
+  const kb = (n) => (n > 1048576 ? (n / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
+  return (<div className="fwset">
+    <p className="muted small">Lege einen Ordner fest – lokal oder ein Cloud-Ordner, der auf diesem Gerät gespiegelt wird (iCloud Drive, OneDrive, Dropbox, Google Drive für Desktop). Neue Dateien darin (auch in Unterordnern) erkennt FinDocu automatisch. Dateien im Ordner werden nur gelesen, nie verschoben oder gelöscht.</p>
+    <div className="fwfolder"><span className="fwico">📂</span><div className="grow"><b>{st.folder ? st.folder.name : "Kein Ordner gewählt"}</b>
+      <small className="muted block">{st.folder ? (st.perm === "granted" ? (c.on ? `Überwachung aktiv${st.last ? " · zuletzt geprüft " + new Date(st.last).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" }) : ""}${st.total != null ? ` · ${st.total} Dateien` : ""}` : "Überwachung pausiert") : "Zugriff muss erneut erlaubt werden (Browser-Neustart)") : FWX.fwKind() === "app" ? "Mac/Windows-App" : "Chrome/Edge – solange die App offen ist"}</small></div>
+      <button className="btn" disabled={!!busy} onClick={pick}>{busy === "pick" ? "…" : st.folder ? "Ändern" : "Ordner wählen …"}</button></div>
+    {st.folder && st.perm !== "granted" && <div className="rlnote">Der Browser fragt nach einem Neustart erneut. <button className="btn sm" onClick={async () => { await FWX.permission(true); await fwRefresh(); fwScan({ manual: true }); }}>Zugriff erlauben</button></div>}
+    {st.folder && <>
+      <label className="switchrow"><span><b>Überwachung aktiv</b></span><input type="checkbox" className="switch" checked={!!c.on} onChange={(e) => { setCfg({ on: e.target.checked }); if (e.target.checked) setTimeout(() => fwScan({ manual: true }), 50); }} /></label>
+      <div className="fwmode"><span className="muted small">Neue Dateien</span><div className="seg">
+        <button className={c.mode === "auto" ? "on" : ""} onClick={() => setCfg({ mode: "auto" })}>✨ Automatisch einlesen</button>
+        <button className={c.mode !== "auto" ? "on" : ""} onClick={() => setCfg({ mode: "review" })}>📋 Erst prüfen (Liste)</button></div></div>
+      <small className="muted block">{c.mode === "auto" ? "Jede neue Datei wird sofort mit der KI eingelesen und einsortiert (Dokumente, Kontoauszüge, E-Rechnungen …). Doppelte erkennt die Duplikaterkennung." : "Neue Dateien landen unten in der Liste – du entscheidest, was eingelesen wird."}</small>
+      <label className="switchrow"><span><b>Unterordner einbeziehen</b></span><input type="checkbox" className="switch" checked={!!c.sub} onChange={(e) => setCfg({ sub: e.target.checked })} /></label>
+      {FWX.fwKind() === "web" && <label className="fwevery">Prüfen alle<PSelect value={String(c.every)} onChange={(e) => setCfg({ every: +e.target.value })}>{[[30, "30 Sekunden"], [60, "1 Minute"], [300, "5 Minuten"], [900, "15 Minuten"]].map(([v, l]) => <option key={v} value={String(v)}>{l}</option>)}</PSelect></label>}
+      <div className="actions"><button className="btn" disabled={st.busy || st.perm !== "granted"} onClick={() => fwScan({ manual: true })}>{st.busy ? "⏳ Prüft …" : "🔄 Jetzt prüfen"}</button><button className="link red" onClick={remove}>Ordner entfernen</button></div>
+      {st.err && <p className="red small">✕ {st.err}</p>}
+    </>}
+    {q.length > 0 && <div className="fwqueue">
+      <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 6 }}><b style={{ flex: 1 }}>Neu im Ordner ({q.length})</b><label className="check"><input type="checkbox" checked={!!allSel} onChange={(e) => setSel(e.target.checked ? q.map((x) => x.key) : [])} /> alle</label></div>
+      {q.slice(0, 200).map((x) => { const dir = x.rel.includes("/") ? x.rel.slice(0, x.rel.lastIndexOf("/")) : ""; return (<label key={x.key} className="fwqrow"><input type="checkbox" checked={sel.includes(x.key)} onChange={(e) => setSel(e.target.checked ? [...sel, x.key] : sel.filter((k) => k !== x.key))} />
+        <span className="fwqn one"><b>{x.name}</b><small className="muted block one">{dir ? dir + " · " : ""}{kb(x.size)}{x.mtime ? " · " + new Date(x.mtime).toLocaleDateString("de-AT") : ""}</small></span>
+        <button type="button" className="btn sm" disabled={!!busy} onClick={(e) => { e.preventDefault(); take([x]); }}>Einlesen</button></label>); })}
+      <div className="actions"><button className="btn primary" disabled={!!busy || !sel.length} onClick={() => take(q.filter((x) => sel.includes(x.key)))}>{busy === "imp" ? "Liest ein …" : `Ausgewählte einlesen (${sel.length})`}</button>
+        <button className="btn" disabled={!!busy} onClick={() => take(q)}>Alle einlesen</button><button className="link" disabled={!sel.length} onClick={() => drop(q.filter((x) => sel.includes(x.key)))}>Ausgewählte ignorieren</button></div>
+    </div>}
+  </div>);
+}
 // v0.99.90: Einstellungen (Optik & Struktur) ohne Daten exportieren/importieren
 const SET_EXTRA = /^(stmtColors|nav|contactTypes|ctCats|itemCats|units)$/;
 const settingsKeyOk = (k) => (WIPE_KEEP.test(k) || SET_EXTRA.test(k)) && !/^win:/.test(k);
@@ -6137,6 +6225,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
       {akte && <AkteHead akte={akte} docs={docs} sub={akteSub} setSub={setAkteSub} />}
       {area === "sonstiges" && <p className="muted small" style={{ margin: "4px 2px 8px" }}>Dokumente in „Sonstiges“ zählen nicht in Übersicht, Budgets und Auswertungen.</p>}
       {(dupN > 0 || dupOnly) && <div className={"dupbar" + (dupOnly ? " on" : "")}><span className="grow">⚠️ {dupN} mögliche{dupN === 1 ? "s" : ""} Duplikat{dupN === 1 ? "" : "e"}</span><button className="btn sm" onClick={() => setDupOnly(!dupOnly)}>{dupOnly ? "Alle Dokumente zeigen" : "Mögliche Duplikate anzeigen"}</button></div>}
+      {onFiles && !overview && !subOpen && <FwBanner />}
       {onFiles && showDrop && !overview && !subOpen && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} what="PDF, Fotos & E-Rechnungen (XML)" accept="application/pdf,image/*,.xml,application/xml,text/xml" isOk={(x) => isDocFile(x) || isXmlFile(x)} />}
       {docBusy && <ImportBar {...docBusy} />}
       {!overview && <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>}
@@ -11404,12 +11493,12 @@ function SetSec({ id, title, children }) {
   );
 }
 
-const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung", "info"]], ["Daten & Ablage", ["import", "docgroups", "doccats", "rules", "kontaktarten", "fbicons", "trash"]],
+const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung", "info"]], ["Daten & Ablage", ["watch", "import", "docgroups", "doccats", "rules", "kontaktarten", "fbicons", "trash"]],
   ["Navigation & Budgets", ["nav-tabs", "nav-mob", "nav-accounts", "budgets"]], ["Firma", ["meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel"]]];
 const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-mob": "Handy-Menü", info: "Info & Versionen", "nav-accounts": "Konten & Gruppen" };
 const SET_ICONS = { fbicons: "🚗", darstellung: "🌓", design: "🎨", applock: "🔒", datenschutz: "🛡️", verbindung: "🔌", import: "📥", docgroups: "🗂️", doccats: "🏷️", rules: "⚙️", kontaktarten: "👥", trash: "🗑️",
   "nav-tabs": "📑", "nav-mob": "📱", info: "ℹ️", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
-const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "import", "nav-tabs", "nav-mob", "nav-accounts", "info", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
+const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "watch", "import", "nav-tabs", "nav-mob", "nav-accounts", "info", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -12078,6 +12167,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
           <input type="checkbox" className="switch" checked={!hideAmounts} onChange={(e) => setHideAmounts(!e.target.checked)} />
         </label>
       </SetSec></>,
+    "watch": <><SetSec id="watch" title="Überwachter Ordner"><FolderWatchSettings /></SetSec></>,
     "import": <><SetSec id="import" title="Umsätze importieren">
         <p className="muted small">Kontoauszüge von Banken, Brokern & Co.: CSV · Excel · CAMT · MT940 · OFX · QIF · JSON · Finanzguru · PDF/Foto (per Claude). Doppelte Buchungen werden übersprungen, Kontostände übernommen.</p>
         <input ref={impRef} type="file" accept={IMPORT_ACCEPT} hidden onChange={async (e) => {
@@ -18977,6 +19067,11 @@ button.txmark.m-doc{cursor:pointer}button.txmark.m-doc:hover{background:var(--ca
 .txrow.sc-firma:hover{background:color-mix(in srgb,var(--stc-firma) 12%,transparent)}
 nav .doctree .accitem .an{color:inherit!important}
 .splitbtn{display:inline-flex;align-items:stretch;gap:0}.splitbtn .splitarrow.on,.splitbtn .splitarrow.open{background:color-mix(in srgb,var(--acc) 14%,transparent)!important}.splitbtn>.splitmain{border-top-right-radius:0!important;border-bottom-right-radius:0!important;margin-right:0}.splitbtn .splitarrow{border-top-left-radius:0!important;border-bottom-left-radius:0!important;border-left:1px solid color-mix(in srgb,currentColor 30%,transparent)!important;padding-left:8px!important;padding-right:10px!important;height:100%}.splitbtn>.vehpick{display:inline-flex}
+.fwfolder{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;margin:8px 0}.fwico{font-size:26px}
+.fwmode{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 2px}.fwevery{display:flex;align-items:center;gap:10px;margin:8px 0}.fwevery>.vehpick{width:auto}
+.fwqueue{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.fwqrow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}
+.fwqrow>input,.fwqueue .check>input{flex:none!important;width:18px!important;height:18px;margin:0}.fwqrow>.fwqn{flex:1 1 auto;min-width:0;text-align:left}.fwqueue .check{display:inline-flex;align-items:center;gap:6px;width:auto}
+.fwbanner{display:flex;align-items:center;gap:10px;padding:9px 12px;margin:0 0 10px;border-radius:12px;border:1px solid color-mix(in srgb,var(--acc) 45%,transparent);background:color-mix(in srgb,var(--acc) 10%,transparent);font-size:14px}
 .amtgrid{align-items:end}.amtgrid>label{display:flex;flex-direction:column;justify-content:flex-end;min-width:0;white-space:nowrap}.amtgrid>label>input{width:100%}
 .fxrow{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:9px 11px;border:1px dashed var(--line);border-radius:12px;background:color-mix(in srgb,var(--acc) 5%,transparent)}.fxrow .fxinfo{font-size:13.5px}.fxins{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.fxins label{flex:1 1 140px;margin:0;font-size:12.5px}.fxins .btn{flex:none}
 .expcur{display:flex;gap:8px;align-items:stretch;flex-wrap:nowrap}.expcur>input{flex:1;min-width:0}.expcur>.vehpick,.fxhead>.vehpick{flex:none!important;width:auto!important;display:inline-flex}.expcur .cursel,.fxhead .cursel{width:auto!important;min-width:96px;white-space:nowrap}.fxhead{gap:10px;align-items:center;flex-wrap:wrap}.fxhead .seg{flex:1}
