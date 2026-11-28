@@ -339,6 +339,9 @@ function useScopeOpts() { const [areas] = useLsState("scopeAreas", []); const [c
 const scopeKeyOf = (o, opts = scopeOpts(), def = "privat") => (o?.scopeX && opts.some((x) => x.id === o.scopeX) ? o.scopeX : o?.scope === "firma" ? "firma" : o?.scope === "privat" ? "privat" : def);
 // Filter: „alle“, „privat“/„firma“ (inkl. eigener Bereiche mit dieser Basis) oder ein eigener Bereich
 const scopeMatch = (o, f) => f === "alle" || !f || (f === "firma" || f === "privat" ? (o?.scope === "firma" ? "firma" : "privat") === f : o?.scopeX === f);
+// v1.0.12: Farbe für den Kopf der Spalte rechts (Bereich des Eintrags)
+const tintOf = (o, def = "privat") => { const opts = scopeOpts(), k = o === "unklar" ? null : scopeKeyOf(typeof o === "string" ? { scope: o } : o, opts, def);
+  return k ? (opts.find((x) => x.id === k) || opts[0]).color : { ...STMT_COL_DEF, ...ls.get("stmtColors", {}) }.unklar; };
 const scopePatch = (opt) => ({ scope: opt.base, scopeX: opt.fixed ? undefined : opt.id });
 function ScopeSelect({ obj, onPick, def = "privat", small = false }) {
   const opts = useScopeOpts(), cur = opts.find((o) => o.id === scopeKeyOf(obj, opts, def)) || opts[0];
@@ -1699,18 +1702,36 @@ let detailOpen = 0, sheetDepth = 0, sheetScrollY = 0, lastListY = 0;
 if (typeof window !== "undefined") addEventListener("scroll", () => { if (!sheetDepth) lastListY = scrollY; }, { passive: true });
 // v1.0.11: große Fenster – Details öffnen sich als Spalte rechts neben der Liste statt als Popup
 const DOCK_MIN_W = 1400, dockReg = new Map();
+// Pfeil zur angeklickten Zeile: zuletzt angeklickte Listenzeile merken (vor allen Fenster-Handlern, daher hier beim Laden registriert)
+const DOCK_ROW_SEL = ".txrow,.ditem,.frow,.kbr,.invrow,.ctrow,.astrow,.jrow,.subrow,.contactrow,[data-dockrow]";
+let dockAnchor = null, dockAnchorPrev = null;
+if (typeof document !== "undefined") document.addEventListener("pointerdown", (e) => {
+  const r = e.target.closest?.(DOCK_ROW_SEL); if (!r || r.closest(".win")) return; dockAnchorPrev = dockAnchor; dockAnchor = r;
+}, true);
 function dockApply() {
   const html = document.documentElement, w = Math.max(0, ...dockReg.values());
   html.classList.toggle("docked", w > 0); if (w > 0) html.style.setProperty("--dockw", w + "px"); else html.style.removeProperty("--dockw");
 }
 function DockSetting() {
-  const [on, setOn] = useLsState("dockDetails", true);
-  return <label className="switchrow"><span><b>Details in rechter Spalte öffnen</b><small className="muted block">ab {DOCK_MIN_W} px Fensterbreite öffnen sich Buchungen, Dokumente, Rechnungen, Kunden usw. rechts neben der Liste statt als Popup</small></span><input type="checkbox" className="switch" checked={!!on} onChange={(e) => setOn(e.target.checked)} /></label>;
+  const [on, setOn] = useLsState("dockDetails", true), [minW, setMinW] = useLsState("dockMinW", DOCK_MIN_W);
+  const [cur, setCur] = useState(innerWidth); useEffect(() => { const h = () => setCur(innerWidth); addEventListener("resize", h); return () => removeEventListener("resize", h); }, []);
+  const mw = Number(minW) || DOCK_MIN_W, active = on !== false && cur >= mw;
+  return <div className="docksetting">
+    <label className="switchrow"><span><b>Details in rechter Spalte öffnen</b><small className="muted block">Buchungen, Dokumente, Rechnungen, Kunden usw. öffnen sich rechts neben der Liste statt als Popup – ab der unten eingestellten Fensterbreite</small></span><input type="checkbox" className="switch" checked={on !== false} onChange={(e) => setOn(e.target.checked)} /></label>
+    <div className={"dockminw" + (on === false ? " off" : "")}>
+      <div style={{ display: "flex", gap: 8 }}><span style={{ flex: 1 }}>Ab Fensterbreite</span><b>{mw} px</b></div>
+      <input type="range" min="1000" max="2600" step="50" value={mw} disabled={on === false} onChange={(e) => setMinW(+e.target.value)} aria-label="Ab Fensterbreite" />
+      <div className="row dockminchips">{[1200, 1400, 1600, 1920].map((v) => <button key={v} type="button" disabled={on === false} className={"chip" + (mw === v ? " on" : "")} onClick={() => setMinW(v)}>{v}</button>)}
+        <button type="button" className="chip" disabled={on === false} onClick={() => setMinW(Math.max(1000, Math.round(cur / 50) * 50))} title="Aktuelle Fensterbreite übernehmen">Jetzt ({cur})</button></div>
+      <small className="muted block">Dein Fenster ist gerade {cur} px breit – die Spalte rechts ist damit {active ? "aktiv" : "aus (Popup)"}.</small>
+    </div>
+  </div>;
 }
-function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false, extraW = 0, onExtraW, dock = false }) {
+function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false, extraW = 0, onExtraW, dock = false, tint = null }) {
   // v0.99.8: iPad bekommt dieselben Popups wie das iPhone (Karte von unten)
   const wide = useMedia("(min-width:768px)") && !IS_TABLET;
-  const bigWin = useMedia(`(min-width:${DOCK_MIN_W}px)`), [dockPref] = useLsState("dockDetails", true);
+  const [dockPref] = useLsState("dockDetails", true), [dockMin] = useLsState("dockMinW", DOCK_MIN_W);
+  const bigWin = useMedia(`(min-width:${Number(dockMin) || DOCK_MIN_W}px)`);
   const docked = !!dock && wide && bigWin && dockPref !== false;
   const dockedRef = useRef(docked); dockedRef.current = docked;
   useEdgeBack(() => reqRef.current?.(), !wide);
@@ -1737,7 +1758,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
       if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost,.sharepop,.sidetip,.pickmenu,.sugmenu,.catpick")) return;
       // Spalte rechts: Liste bleibt bedienbar – nur der Wechsel in einen anderen Bereich schließt; bei ungespeicherten Änderungen erst nachfragen
       if (dockedRef.current && !e.target.closest?.("nav") && !dirtyRef.current) return;
-      if (dockedRef.current && dirtyRef.current) { e.stopPropagation(); e.preventDefault(); }   // Zeile darf nicht wechseln, bevor gespeichert/verworfen ist
+      if (dockedRef.current && dirtyRef.current) { e.stopPropagation(); e.preventDefault(); dockAnchor = dockAnchorPrev; }   // Zeile darf nicht wechseln, bevor gespeichert/verworfen ist
       if (dirtyRef.current) blockRef.current = true; // Klick nicht weiterreichen, sonst gehen Eingaben verloren
       reqRef.current();
     };
@@ -1775,6 +1796,32 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   const dockTotal = useRef(0), dockKey = useRef(null); if (!dockKey.current) dockKey.current = Symbol(id);
   useLayoutEffect(() => { const k = dockKey.current; if (docked && dockTotal.current) dockReg.set(k, dockTotal.current); else dockReg.delete(k); dockApply(); });
   useLayoutEffect(() => () => { dockReg.delete(dockKey.current); dockApply(); }, []);
+  // v1.0.12: Pfeil zur angeklickten Zeile + farbiger Kopf (Höhe des Kopfbereichs wird gemessen)
+  const arrRef = useRef(null), innerRef = useRef(null), gripRef = useRef(null);
+  useEffect(() => {
+    if (!docked) return;
+    let raf = 0, anchor = dockAnchor, last = "";
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const el = rootRef.current, arr = arrRef.current, inner = innerRef.current; if (!el || !arr || !inner) return;
+      if (dockAnchor && dockAnchor !== anchor && dockAnchor.isConnected) anchor = dockAnchor;
+      // Kopfbereich: Element mit data-dockhead, sonst .txhero, sonst der Fensterkopf
+      const hd = inner.querySelector("[data-dockhead],.txhero") || inner.querySelector(".panelhead");
+      const ir = inner.getBoundingClientRect();
+      let hb = 0; if (hd) { const hr = hd.getBoundingClientRect(), nx = hd.nextElementSibling?.getBoundingClientRect(); hb = nx && nx.height && nx.top > hr.bottom ? (hr.bottom + nx.top) / 2 : hr.bottom + 14; }
+      const headH = hd ? Math.round(hb - ir.top + inner.scrollTop) : 0;
+      const wr = el.getBoundingClientRect();
+      let y = null;
+      if (anchor && anchor.isConnected) { const r = anchor.getBoundingClientRect(); if (r.height) y = Math.max(wr.top + 22, Math.min(wr.bottom - 22, r.top + r.height / 2)) - wr.top; }
+      const yIn = y == null ? 0 : y - (ir.top - wr.top) + inner.scrollTop;
+      const key = headH + "|" + y + "|" + inner.scrollTop;
+      if (key === last) return; last = key;
+      el.style.setProperty("--dockhead", headH + "px");
+      if (y == null) arr.style.display = "none"; else { arr.style.display = ""; arr.style.top = (y - 12) + "px"; arr.classList.toggle("inhead", yIn < headH); arr.style.setProperty("--ay", (yIn - 12) + "px"); }
+      const g = gripRef.current; if (g) g.classList.toggle("up", y != null && Math.abs(y - wr.height / 2) < 60);
+    };
+    tick(); return () => cancelAnimationFrame(raf);
+  }, [docked]);
   // Handy-Sheet (v0.98): nach unten wischen schließt, Speichern-Leiste unten
   const [dragY, setDragY] = useState(0), drag = useRef(null), [bar, setBar] = useState(null);
   // v0.99.8: iPad – Karte in Höhe (Griff oben) und Breite (Griffe links/rechts) veränderbar, Größe pro Popup gemerkt
@@ -1878,7 +1925,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   };
   if (docked) {
     const sideW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--side")) || 260;
-    const maxTotal = Math.max(420, innerWidth - sideW - 460), ex = extraW ? WIN_EXTRA_MIN : 0;
+    const maxTotal = Math.max(420, innerWidth - sideW - 490), ex = extraW ? WIN_EXTRA_MIN : 0;
     const form = Math.round(Math.max(360, Math.min(dockW || Math.min(Math.max(rect.w, 420), 640), maxTotal - ex)));
     const total = extraW ? Math.min(form + extraW, Math.max(maxTotal, form + WIN_EXTRA_MIN)) : form;
     dockTotal.current = total;
@@ -1891,9 +1938,10 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
     };
     return (
       <WinCtx.Provider value={requestClose}>
-      <div ref={rootRef} className={"win docked " + className + (small ? " small" : "")} style={{ width: total, zIndex: z, ...(extraW ? { "--formw": form + "px" } : {}) }} onPointerDown={() => z !== winZ && setZ(++winZ)} {...touchProps}>
-        <div className="dockgrip" onPointerDown={dockDrag} onDoubleClick={() => { setDockW(null); ls.set("dock:" + id, null); }} title="Ziehen: Breite ändern · Doppelklick: Standardbreite"><i /></div>
-        <div className="wininner">{guard}{children}</div>
+      <div ref={rootRef} className={"win docked " + className + (small ? " small" : "") + (tint ? " tinted" : "")} style={{ width: total, zIndex: z, ...(extraW ? { "--formw": form + "px" } : {}), ...(tint ? { "--dockc": tint } : {}) }} onPointerDown={() => z !== winZ && setZ(++winZ)} {...touchProps}>
+        <div className="dockgrip" ref={gripRef} onPointerDown={dockDrag} onDoubleClick={() => { setDockW(null); ls.set("dock:" + id, null); }} title="Ziehen: Breite ändern · Doppelklick: Standardbreite"><i /></div>
+        <div className="dockarr" ref={arrRef} aria-hidden="true"><i /></div>
+        <div className="wininner" ref={innerRef}>{guard}{children}</div>
       </div>
       </WinCtx.Provider>
     );
@@ -7320,13 +7368,19 @@ const IMPORT_ACCEPT = ".csv,.txt,.tsv,.xml,.sta,.mt940,.940,.ofx,.qfx,.qif,.json
 const TX_CATS = (categories) => [...new Set([...categories, "Einnahmen", "Bargeld", "Umbuchung"])];
 
 /* v0.99.83: Spalten der Kontobuchungen – Breite am Rand ziehen, Reihenfolge per Überschrift ziehen (gilt für alle Konten) */
-const TX_COL_DEF = { order: ["date", "desc", "cat", "acc", "amt"], w: { date: 92, cat: 190, acc: 150, amt: 130 } };
-const TX_COL_LBL = { date: "Datum", desc: "Empfänger", cat: "Kategorie", acc: "Konto", amt: "Betrag" };
-const txColNorm = (c) => { const o = (c?.order || []).filter((k) => TX_COL_LBL[k]); for (const k of TX_COL_DEF.order) if (!o.includes(k)) o.splice(TX_COL_DEF.order.indexOf(k), 0, k); return { order: [...new Set(o)], w: { ...TX_COL_DEF.w, ...(c?.w || {}) } }; };
+// v1.0.11: „Bereich“ (Privat/Firma/eigene Bereiche) ist eine eigene Spalte – verschiebbar und in der Breite änderbar wie alle anderen
+const TX_COL_DEF = { order: ["date", "desc", "cat", "acc", "sc", "amt"], w: { date: 92, cat: 190, acc: 150, sc: 96, amt: 130 } };
+const TX_COL_LBL = { date: "Datum", desc: "Empfänger", cat: "Kategorie", acc: "Konto", sc: "Bereich", amt: "Betrag" };
+const txColNorm = (c) => { const o = (c?.order || []).filter((k) => TX_COL_LBL[k]), D = TX_COL_DEF.order;
+  // fehlende Spalte (z. B. neue „Bereich“) vor ihren Nachfolger aus der Standard-Reihenfolge setzen
+  for (const k of D) if (!o.includes(k)) { const nx = D.slice(D.indexOf(k) + 1).find((x) => o.includes(x)); o.splice(nx ? o.indexOf(nx) : o.length, 0, k); }
+  return { order: [...new Set(o)], w: { ...TX_COL_DEF.w, ...(c?.w || {}) } }; };
 const txColKeys = (c, withAcc) => c.order.filter((k) => k !== "acc" || withAcc);
-// v1.0.11: Betrag-Spalte enthält vorne die Plakette Privat/Firma (feste Breite, alle in einer Flucht)
-const TX_SCP_W = 72;
-const txColTpl = (c, withAcc) => txColKeys(c, withAcc).map((k) => (k === "desc" ? "minmax(160px,1fr)" : Math.round(c.w[k] + (k === "amt" ? TX_SCP_W : 0)) + "px")).join(" ") + " 184px";
+const txColTpl = (c, withAcc) => txColKeys(c, withAcc).map((k) => (k === "desc" ? "minmax(160px,1fr)" : Math.round(c.w[k]) + "px")).join(" ") + " 184px";
+// schmale Liste (z. B. neben der Spalte rechts): nur Datum, Empfänger, Bereich und Betrag – in der eigenen Reihenfolge
+const TX_COL_MID = { date: "100px", desc: "minmax(0,1fr)", sc: "84px", amt: "110px" }, TX_COL_NARROW = { date: "96px", desc: "minmax(0,1fr)", sc: "74px", amt: "100px" };
+const txColTplM = (c) => c.order.filter((k) => TX_COL_MID[k]).map((k) => TX_COL_MID[k]).join(" ") + " 150px";
+const txColTplN = (c) => c.order.filter((k) => TX_COL_NARROW[k]).map((k) => TX_COL_NARROW[k]).join(" ");
 function TxHead({ cfg, setCfg, withAcc }) {
   const keys = txColKeys(cfg, withAcc), ref = useRef(null), [drag, setDrag] = useState(null);
   const changed = JSON.stringify(cfg) !== JSON.stringify(txColNorm(TX_COL_DEF));
@@ -7701,7 +7755,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       {!!txs.length && <div className="row expsearch"><span className="grow"><SearchBox placeholder="Umsätze durchsuchen" value={q} onChange={setQ} /></span>{txSort}</div>}
 
       {wideTx ? (
-        <div className={"txtable txcustom" + (!acc && sel.length > 1 ? " withacc" : "")} style={{ "--txcols": txColTpl(txColCfg, !acc && sel.length > 1) }}>
+        <div className={"txtable txcustom" + (!acc && sel.length > 1 ? " withacc" : "")} style={{ "--txcols": txColTpl(txColCfg, !acc && sel.length > 1), "--txcolsm": txColTplM(txColCfg), "--txcolsn": txColTplN(txColCfg) }}>
           <div className={"txscroll" + (fitH ? " fit" : "")} ref={scrollRef} style={fitH ? { maxHeight: fitH } : undefined} onScroll={onListScroll}>
           <TxHead cfg={txColCfg} setCfg={setTxCols} withAcc={!acc && sel.length > 1} />
           {list.slice(0, limit).map((t) => (
@@ -7715,7 +7769,8 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
               </span>
               : k === "cat" ? <span key={k} className="one muted c-cat" title={catLabel(t.category, t.subcategory)}>{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : <>{t.category}{t.subcategory && <small className="block subcl">{t.subcategory}</small>}</>}</span>
               : k === "acc" ? <span key={k} className="one muted c-acc">{accName(t.accountId)}</span>
-              : <span key={k} className="c-amtw">{txPill(t)}<b className={"r amt c-amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b></span>)}
+              : k === "sc" ? <span key={k} className="c-sc">{txPill(t)}</span>
+              : <b key={k} className={"r amt c-amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>)}
               <TxActs t={t} marks />
             </div></SwipeRow>
             {prevTx === t.id && docOf(t) && <div className="txprev"><DocPreview d={docOf(t)} onOpen={() => onOpen(docOf(t).id)} /></div>}
@@ -8406,7 +8461,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
   </>);
 
   if (edit) return (
-    <Win dock id="tx" onClose={() => setEdit(null)} dirty small defW={520}>
+    <Win dock tint={tintOf(t)} id="tx" onClose={() => setEdit(null)} dirty small defW={520}>
       <div className="panelhead"><b>Buchung bearbeiten</b>
         <button className="btn primary" onClick={() => {
           const amt = parseAmt(edit.amount);
@@ -8424,7 +8479,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
   );
 
   return (
-    <Win dock id="tx" onClose={onClose} dirty={false} small defW={520} className="txdetail">
+    <Win dock tint={tintOf(t.scopeX ? t : si.scope)} id="tx" onClose={onClose} dirty={false} small defW={520} className="txdetail">
       <div className="panelhead"><span className="grow" /><button className="link" onClick={() => setEdit({ counterparty: t.counterparty || "", purpose: t.purpose || "", date: t.date, amount: String(t.amount).replace(".", ","), accountId: t.accountId })}>Bearbeiten</button><XBtn /></div>
       <div className="txhero">
         <div className="txheroico" onClick={() => setIcoOpen(!icoOpen)} title="Symbol ändern"><TxIcon t={t} size={84} /><span className="txpen">✎</span></div>
@@ -11513,7 +11568,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
   const numIn = (v) => { const s = String(v).replace(",", "."); return s === "" ? null : Number(s); };
 
   return (
-    <Win dock id="detail" onClose={onClose} center dirty={dirty} className={side ? "detsplit" : ""} extraW={side ? sideW : 0} onExtraW={setSideW}>
+    <Win dock tint={tintOf(d)} id="detail" onClose={onClose} center dirty={dirty} className={side ? "detsplit" : ""} extraW={side ? sideW : 0} onExtraW={setSideW}>
         <div className="detbody"><div className="detcol">
         <div className="panelhead">
           <b>Dokument</b>
@@ -11528,7 +11583,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         {url && (doc.mimeType.startsWith("image/")
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
           : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b className="clamp">{doc.fileName || doc.title}</b></div></div>)}
-        <ScopeSelect obj={d} onPick={(p) => set({ ...p, scopeManual: true })} />
+        <div data-dockhead=""><ScopeSelect obj={d} onPick={(p) => set({ ...p, scopeManual: true })} /></div>
         <div className="seg areaseg" style={{ margin: "6px 0 10px" }}>
           {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={docArea(d) === k ? "on" : ""} onClick={() => set({ areaManual: k })}>{i} {l}</button>)}
         </div>
@@ -13614,7 +13669,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
     onClose();
   };
   return (
-    <Win dock id="invedit" defW={760} onClose={onClose} dirty={!locked && JSON.stringify(inv) !== JSON.stringify(init)}>
+    <Win dock tint={tintOf("firma")} id="invedit" defW={760} onClose={onClose} dirty={!locked && JSON.stringify(inv) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{isA ? "Angebot" : "Rechnung"} {inv.number || "(Entwurf)"}</b>
         <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(inv, co), invFileName(inv), "", inv.customer?.email)}>Vorschau</button>
         {!locked && <button className="btn primary" onClick={() => doSave(false)}>Speichern</button>}
@@ -14214,7 +14269,7 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
   const [prevOpen, setPrevOpen] = useState(false);
   const cand = docs.filter((x) => !(c.docIds || []).includes(x.id)).slice(0, 300);
   return (
-    <Win dock id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
+    <Win dock tint={tintOf(c)} id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name ? c.name || "Vertrag" : "Neuer Vertrag"}</b>
         {linked.length > 0 && <button className="btn detprevbtn" title="Dokumente ansehen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>}
         <button className="btn primary" disabled={!c.name} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
@@ -14542,7 +14597,7 @@ function ContactEditor({ c: init, onSave, onDelete, onClose }) {
   const set = (p) => setC((x) => ({ ...x, ...p }));
   const f = (k, label, ph = "", type = "text") => <label>{label}<input type={type} value={c[k] || ""} placeholder={ph} onChange={(e) => set({ [k]: e.target.value })} /></label>;
   return (
-    <Win dock id="contact" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
+    <Win dock tint={tintOf("firma")} id="contact" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name || "Neuer Kontakt"}</b><button className="btn primary" disabled={!c.name?.trim()} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
       <div className="typepick">{types.map((t) => <button key={t.id} className={"chip" + ((c.type || types[0]?.name) === t.name ? " on" : "")} style={(c.type || types[0]?.name) === t.name ? undefined : { color: t.color }} onClick={() => set({ type: t.name })}><TypeGlyph t={t} /> {t.name}</button>)}</div>
       <ContactLogo c={c} set={set} />
@@ -14820,7 +14875,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       </section>
       </FitScroll>
       </div></div>)}
-      {!mob && selC && createPortal(<Win dock id="custdet" onClose={() => setSelId(null)} dirty={false} className="custwin" defW={720}>
+      {!mob && selC && createPortal(<Win dock tint={tintOf("firma")} id="custdet" onClose={() => setSelId(null)} dirty={false} className="custwin" defW={720}>
         <div className="panelhead"><b>Kundendatei</b><XBtn /></div>
         <div className="custwinbody">{detail}</div>
       </Win>, document.querySelector(".app") || document.body)}
@@ -15406,7 +15461,7 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
   const posFields = fields.filter((f) => f.scope === "position");
   const C = artCfg();
   return (
-    <Win dock id="artedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
+    <Win dock tint={tintOf("firma")} id="artedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.text || "Neuer Artikel"}</b><button className="btn primary" disabled={!a.text?.trim()} onClick={doSave}>Speichern</button><XBtn /></div>
       <div className="scanrow">
         <label className="grow">EAN / Strichcode<input value={a.ean || ""} inputMode="numeric" placeholder="scannen oder eintippen" onChange={(e) => set({ ean: e.target.value })} /></label>
@@ -15601,7 +15656,7 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
   const w = astWarr(a), e = astExtra(a), end = astEndAll(a);
   const cats = [...new Set([...Object.keys(ASSET_CATS), a.cat].filter(Boolean))];
   return (
-    <Win dock id="astedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
+    <Win dock tint={tintOf(a)} id="astedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name || "Neues Gerät"}</b><button className="btn primary" disabled={!a.name?.trim()} onClick={() => { onSave({ ...a, price: a.price === "" || a.price == null ? "" : Number(String(a.price).replace(",", ".")) || 0 }); onClose(); }}>Speichern</button><XBtn /></div>
       {init.name && <MHero icon="🛡️" sub={[a.brand, a.cat].filter(Boolean).join(" · ") || "Gerät"} title={a.name || init.name} value={a.price !== "" && a.price != null ? fmtMoney(Number(String(a.price).replace(",", ".")) || 0, a.currency || "EUR") : null}
         pills={[a.date && "gekauft " + fmtDate(a.date), astEndAll(a) && { label: (astEndAll(a) < todayISO() ? "Garantie abgelaufen " : "Garantie bis ") + fmtDate(astEndAll(a)), cls: astEndAll(a) < todayISO() ? "st-draft" : "st-paid" }]} />}
@@ -15929,7 +15984,7 @@ function KassaDetailWin({ e, kasse, saldo, entries, docs, onOpen, onStorno, onCl
   const doc = docs?.find((d) => d.id === e.docId);
   const Row = ({ l, v }) => v ? <div className="kbrow"><small className="muted">{l}</small><span>{v}</span></div> : null;
   return (
-    <Win dock id="kbdetail" onClose={onClose} small dirty={false}>
+    <Win dock tint={tintOf("firma")} id="kbdetail" onClose={onClose} small dirty={false}>
       <div className="panelhead"><b>Buchung {kbNo(e)}</b><XBtn /></div>
       <div className="kbhero"><span className={e.kind === "ein" ? "pos" : "neg"}>{e.kind === "ein" ? "+" : "−"}{fmtMoney(e.amount)}</span><small className="muted">{e.text}</small>
         {e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}</div>
@@ -17315,26 +17370,38 @@ body.rz-active,body.rz-active *{cursor:nwse-resize!important;user-select:none!im
 .accitem:hover .aeye,.aeye:focus-visible{opacity:1}.aeye:hover{background:var(--line);color:var(--txt)}
 @media (hover:none){.aeye{opacity:.6}}
 /* v1.0.11: Privat/Firma als gleich breite Plakette vor dem Betrag, Beträge rechtsbündig; offene Buchung markiert */
-.txrow>.c-amtw{display:flex;align-items:center;gap:10px;min-width:0;justify-self:stretch}
-.txrow>.c-amtw>.amt{flex:1;min-width:0;text-align:right;white-space:nowrap}
+.txrow>.c-sc{display:flex;justify-content:center;min-width:0}
+.txtable.txcustom .txrow>.c-amt{text-align:right!important;padding-right:4px;white-space:nowrap}
 .txscp{flex:none;width:62px;box-sizing:border-box;text-align:center;font-size:11.5px;line-height:1.6;border-radius:999px;padding:0 6px;background:color-mix(in srgb,var(--scc,#888) 18%,transparent);color:color-mix(in srgb,var(--scc,#888) 80%,var(--txt));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
 .txscp.none{background:none}
 .txhead>.c-amt{text-align:right!important;justify-content:flex-end!important;padding-right:4px}
 .txrow.cur{background:color-mix(in srgb,var(--acc) 13%,transparent)!important;box-shadow:inset 4px 0 0 var(--acc)!important}
-@container (max-width:640px){.txtable.txcustom .txhead,.txtable.txcustom .txrow{grid-template-columns:76px minmax(0,1fr) 186px!important}}
-/* v1.0.11: Details als Spalte rechts neben der Liste (ab 1400 px) – Linie mit Schatten und Ziehgriff */
-html .win.docked.docked{top:0!important;right:0!important;bottom:0!important;left:auto!important;height:auto!important;max-height:none!important;border-radius:0!important;border-width:0 0 0 1px!important;box-shadow:-14px 0 28px -16px rgba(0,0,0,.6)!important;overflow:visible;animation:dockin .16s ease-out}
-html .win.docked.docked>.wininner{border-radius:0}
-.win.docked .panelhead{cursor:default}
+@container (max-width:980px){.txtable.txcustom.txcustom .txhead,.txtable.txcustom.txcustom .txrow{grid-template-columns:var(--txcolsm)!important}
+  .txtable.txcustom.txcustom .txhead>.c-cat,.txtable.txcustom.txcustom .txrow>.c-cat,.txtable.txcustom.txcustom .txhead>.c-acc,.txtable.txcustom.txcustom .txrow>.c-acc{display:none}}
+@container (max-width:560px){.txtable.txcustom.txcustom .txhead,.txtable.txcustom.txcustom .txrow{grid-template-columns:var(--txcolsn)!important}
+  .txtable.txcustom.txcustom .txhead>span:last-child,.txtable.txcustom.txcustom .txrow>.txacts{display:none}}
+/* v1.0.11/12: Details als Spalte rechts neben der Liste – schwebende Karte, farbiger Kopf, Pfeil zur Zeile, Ziehleiste */
+html .win.docked.docked{top:12px!important;right:12px!important;bottom:12px!important;left:auto!important;height:auto!important;max-height:none!important;border-radius:18px!important;border:1px solid color-mix(in srgb,var(--txt) 14%,transparent)!important;box-shadow:0 14px 36px rgba(0,0,0,.45)!important;overflow:visible;animation:dockin .16s ease-out}
+html .win.docked.docked>.wininner{border-radius:18px}
+.win.docked.tinted>.wininner{background:linear-gradient(color-mix(in srgb,var(--dockc) 38%,transparent),color-mix(in srgb,var(--dockc) 38%,transparent)) 0 var(--dockhead,0px)/100% 1px no-repeat local,linear-gradient(180deg,color-mix(in srgb,var(--dockc) 30%,transparent),color-mix(in srgb,var(--dockc) 7%,transparent)) 0 0/100% var(--dockhead,0px) no-repeat local,var(--bg)}
+.win.docked .panelhead{cursor:default;background:transparent!important}
+.win.docked .txhero{display:flex;flex-direction:column;align-items:center}
+.win.docked .txhero>.txscope{display:contents}.win.docked .txhero>.txscope>:first-child{order:2}.win.docked .txhero>.txcat{order:3;margin-top:8px}.win.docked .txhero>.txscope>small{order:4;margin-top:6px}
 @keyframes dockin{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
-.dockgrip{position:absolute;left:-6px;top:0;bottom:0;width:11px;cursor:col-resize;z-index:5;display:flex;align-items:center;justify-content:center;touch-action:none}
-.dockgrip i{width:5px;height:42px;border-radius:3px;background:color-mix(in srgb,var(--txt) 28%,transparent);transition:background .12s}
-.dockgrip:hover i,body.win-moving .dockgrip i{background:var(--acc)}
-.dockgrip::before{content:"";position:absolute;top:0;bottom:0;left:5px;border-left:1px solid transparent;transition:border-color .12s}.dockgrip:hover::before{border-color:var(--acc)}
-@media (min-width:1400px){html.docked .app{padding-right:calc(var(--dockw) + 28px)!important}
-  html.docked .topactions{right:calc(var(--dockw) + 24px)}}
-@media (min-width:1400px) and (max-width:1799px){html.docked .ditem .dcatcol,html.docked .ditem .dactions,html.docked .invrow .invacts,html.docked .ctrow .ctacts{display:none!important}
+.dockgrip{position:absolute;left:-15px;top:-12px;bottom:-12px;width:12px;cursor:col-resize;z-index:5;display:flex;align-items:center;justify-content:center;touch-action:none}
+.dockgrip::before{content:"";position:absolute;top:0;bottom:0;left:5px;border-left:1px solid var(--line);transition:border-color .12s}
+.dockgrip i{width:5px;height:42px;border-radius:3px;background:color-mix(in srgb,var(--txt) 30%,transparent);transition:background .12s,transform .15s;position:relative}
+.dockgrip.up i{transform:translateY(-84px)}
+.dockgrip:hover i,body.win-moving .dockgrip i{background:var(--acc)}.dockgrip:hover::before{border-color:var(--acc)}
+.dockarr{position:absolute;left:-12px;top:0;width:13px;height:24px;z-index:6;background:color-mix(in srgb,var(--txt) 14%,transparent);clip-path:polygon(0 50%,100% 0,100% 100%);pointer-events:none;transition:top .12s ease-out}
+.dockarr i{position:absolute;left:1.5px;top:1px;right:-1px;bottom:1px;clip-path:polygon(0 50%,100% 0,100% 100%);background:var(--bg)}
+.win.docked.tinted .dockarr.inhead i{background:linear-gradient(180deg,color-mix(in srgb,var(--dockc) 30%,transparent),color-mix(in srgb,var(--dockc) 7%,transparent)) 0 calc(-1px - var(--ay,0px))/100% var(--dockhead,0px) no-repeat,var(--bg)}
+html.docked .app{padding-right:calc(var(--dockw) + 54px)!important}
+html.docked .topactions{right:calc(var(--dockw) + 50px)}
+@media (max-width:1799px){html.docked .ditem .dcatcol,html.docked .ditem .dactions,html.docked .invrow .invacts,html.docked .ctrow .ctacts{display:none!important}
   html.docked .ditem .grow,html.docked .invrow .invmain{min-width:0}}
+.docksetting .dockminw{display:flex;flex-direction:column;gap:6px;padding:4px 0 10px}.docksetting .dockminw.off{opacity:.45}
+.docksetting .dockminw input[type=range]{width:100%;accent-color:var(--acc)}.docksetting .dockminchips{gap:6px;flex-wrap:wrap}
 /* v1.0.10: Seitenleiste – Anzahlen (Dokumente) und Kontostände in einer Flucht unter den Gruppen-Pfeilen, Anzahlen als Plakette */
 .subnav .acctree .accitem .ab{font-variant-numeric:tabular-nums}
 .subnav .doctree .accitem .ab{background:color-mix(in srgb,var(--txt) 11%,transparent);border-radius:999px;padding:1px 8px;font-size:12px;line-height:1.5;min-width:22px;text-align:center;box-sizing:border-box}

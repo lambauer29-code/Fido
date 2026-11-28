@@ -2,6 +2,15 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.12 – Spalte rechts als Karte mit farbigem Kopf, „Bereich“ als eigene Spalte
+- Spalte rechts als schwebende Karte mit runden Ecken; oben ein Band in der Farbe des Bereichs (Privat, Firma, eigene Bereiche), darin mittig Symbol, Name, Privat/Firma und darunter die Kategorie
+- Pfeil am Kartenrand zeigt auf die angeklickte Zeile und wandert beim Scrollen mit; Ziehleiste zwischen Liste und Karte (Griff weicht dem Pfeil aus)
+- Einstellungen → Darstellung: Ein/Aus-Schalter und „Ab Fensterbreite“ (Regler 1000–2600 px, Schnellwahl 1200/1400/1600/1920 oder aktuelle Fensterbreite)
+- Privat/Firma (und eigene Bereiche) stehen in einer eigenen Spalte „Bereich“ – wie Datum, Empfänger, Kategorie und Betrag per Ziehen verschiebbar und in der Breite änderbar; „↺ Spalten“ setzt zurück
+- Eine bereits gespeicherte Spalten-Anordnung bekommt „Bereich“ automatisch vor den Betrag
+- Schmale Liste (kleines Fenster oder Spalte rechts offen): Datum, Empfänger, Bereich und Betrag bleiben in der eigenen Reihenfolge, nichts bricht mehr um oder läuft seitlich über
+- Bei ungespeicherten Änderungen wird ein Klick daneben zuverlässig zurückgehalten
+
 ## v1.0.11 – Details als Spalte rechts neben der Liste
 - Ab 1400 px Fensterbreite öffnen sich Buchungen (Konten), Dokumente, Rechnungen, Kunden & Kontakte, Verträge, Artikel, Besitz & Garantie und Kassabuch-Einträge rechts neben der Liste statt als Popup; die Liste bleibt bedienbar, ein Klick auf eine andere Zeile wechselt nur den Inhalt
 - Trennung mit feiner Linie und Schatten, in der Mitte ein Griff zum Breiterziehen (Breite pro Fensterart gemerkt, Doppelklick = Standard)
