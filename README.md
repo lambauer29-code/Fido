@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.16 – Standard-Einstellungen für neue Installationen
+- Frische Installation startet mit Rolis Einstellungen (Design Gold/Graphit/Lora, Seitenleiste mit Privat/Firma/Sicherung, Spalten, Startseite, Sortierungen, Schriftgrößen …); bestehende Geräte bleiben unverändert
+- Einstellungs-Export enthält jetzt auch die Cloud-Dienst-Symbole sowie Spalte rechts, Markierung neuer Einträge und eigene Bereiche
+
 ## v1.0.15 – Spalte rechts pro Bereich einstellbar
 - Einstellungen → Darstellung → „In diesen Bereichen rechts öffnen“: für Konten, Dokumente, Rechnungen, Kunden, Verträge, Artikel, Besitz & Garantie und Kassabuch einzeln Spalte rechts oder Popup; „Alle an / Alle aus“
 - Farbauswahl für neue Einträge: alle Farbkreise exakt in einer Linie

@@ -1,12 +1,48 @@
-// v0.99.90: Persönliche Standard-Einstellungen (Optik & Struktur, ohne Daten).
-// Werden beim ersten Start bzw. nach „Alle Daten löschen“ übernommen – nur für Schlüssel, die noch nicht gesetzt sind.
-// Inhalt kommt aus „Einstellungen exportieren“ (Backup-Reiter) → src/defaults.json.
-import DEF from "./defaults.json";
+// v1.0.16: Standard-Einstellungen für eine frische Installation (aus Rolis Einstellungs-Export vom 28.11.2026)
+// Wird nur angewendet, wenn auf diesem Gerät noch nichts eingerichtet ist – bestehende Einstellungen bleiben unberührt.
+// Muss in main.jsx VOR App.jsx importiert werden, weil App.jsx einige Werte schon beim Laden liest.
+export const DEFAULT_SETTINGS = {
+ "settingsOrder": "[\"info\",\"design\",\"darstellung\",\"applock\",\"datenschutz\",\"watch\",\"import\",\"nav-tabs\",\"nav-mob\",\"nav-accounts\",\"budgets\",\"meinedaten\",\"rechnungen\",\"rechnungsdesign\",\"mahnwesen\",\"artikel\",\"kontaktarten\",\"docgroups\",\"doccats\",\"backup\",\"trash\",\"fbicons\",\"rules\",\"verbindung\"]",
+ "sort:artikel": "{\"k\":\"name\",\"d\":1}",
+ "txCols": "{\"order\":[\"date\",\"desc\",\"cat\",\"amt\",\"acc\"],\"w\":{\"date\":133,\"cat\":200,\"acc\":150,\"amt\":174}}",
+ "view": "\"list\"",
+ "kindIcons": "{}",
+ "deadlineView": "\"cal\"",
+ "jMode": "\"journal\"",
+ "fbIcons": "{}",
+ "dev:fontSizes": "{\"title\":90,\"head\":85,\"group\":90,\"row\":85,\"hero\":70,\"kpi\":80,\"num\":90,\"text\":90,\"btn\":85,\"small\":90,\"nav\":85}",
+ "settingsClosed": "[\"backup\",\"trash\",\"rechnungen\",\"nav-mob\",\"dups\",\"retain\",\"docgroups\",\"artikel\",\"mahnwesen\",\"rechnungsdesign\",\"import\",\"datenschutz\",\"nav-tabs\",\"kontaktarten\",\"budgets\",\"meinedaten\",\"applock\",\"design\",\"watch\",\"nav-accounts\",\"doccats\",\"info\",\"rules\",\"fbicons\",\"verbindung\",\"darstellung\",\"bereiche\"]",
+ "kbBelegStyle": "\"knopf\"",
+ "stmtLink": "true",
+ "hideAmounts": "false",
+ "cpIcons": "{}",
+ "iconSize": "28",
+ "fbViews": "{\"order\":[\"verlauf\",\"fuel\",\"trip\",\"expense\",\"bericht\",\"rem\"],\"hidden\":[]}",
+ "sideMini": "false",
+ "stmtLupe2": "false",
+ "aboStyle": "\"hakendd\"",
+ "theme": "\"dark\"",
+ "homeLayout": "{\"gap\":16,\"h\":{\"fristen\":10},\"w\":{\"fristen\":8},\"order\":[\"ablage\",\"bargeld\",\"kategorien\",\"hero\",\"alerts\",\"quick\",\"ruecklage\",\"budgets\",\"konten\",\"verlauf\",\"docs\"],\"hidden\":[\"contracts\",\"tx\",\"tax\",\"barerfassung\",\"fristen\"],\"seenAblage\":true,\"pos\":{\"ablage\":{\"x\":0,\"y\":0},\"bargeld\":{\"x\":4,\"y\":0},\"kategorien\":{\"x\":8,\"y\":0},\"hero\":{\"x\":0,\"y\":10},\"alerts\":{\"x\":0,\"y\":19},\"quick\":{\"x\":0,\"y\":24},\"ruecklage\":{\"x\":4,\"y\":24},\"verlauf\":{\"x\":4,\"y\":33},\"budgets\":{\"x\":8,\"y\":24},\"konten\":{\"x\":0,\"y\":32},\"docs\":{\"x\":4,\"y\":45}}}",
+ "stmtZoom": "1",
+ "contactTypes": "[{\"id\":\"ct-Kunde\",\"name\":\"Kunde\",\"icon\":\"🧑‍💼\",\"color\":\"#4f8cff\"},{\"id\":\"ct-Partner\",\"name\":\"Partner\",\"icon\":\"🤝\",\"color\":\"#00b3a4\"},{\"id\":\"ct-Privat\",\"name\":\"Privat\",\"icon\":\"👤\",\"color\":\"#a855f7\"},{\"id\":\"ct-Behörde\",\"name\":\"Behörde\",\"icon\":\"🏛️\",\"color\":\"#64748b\"}]",
+ "stmtColors": "{\"firma\":\"#1d9e75\",\"unklar\":\"#ef9f27\",\"privat\":\"#64b5f6\",\"privatMark\":false,\"app\":true}",
+ "stbMonView": "\"jahr\"",
+ "iconStyle": "\"c\"",
+ "sort:journal": "{\"k\":\"datum\",\"d\":1}",
+ "calMode": "\"monat\"",
+ "sortStyle": "\"segment\"",
+ "nav": "{\"tabs\":[{\"key\":\"home\",\"side\":true,\"phone\":true},{\"key\":\"cash\",\"side\":true,\"phone\":true},{\"key\":\"docs\",\"side\":true,\"phone\":true},{\"key\":\"journal\",\"side\":true,\"phone\":true},{\"key\":\"accounts\",\"side\":true,\"phone\":true},{\"key\":\"auszuege\",\"side\":true,\"phone\":true},{\"key\":\"sep-y392luobmwxnbq9k\",\"sep\":true},{\"key\":\"head-9i4z2vcpmwxndbvb\",\"head\":\"Privat\",\"fold\":true,\"closed\":false},{\"key\":\"vermoegen\",\"side\":true,\"phone\":true},{\"key\":\"vertraege\",\"side\":true,\"phone\":true},{\"key\":\"deadlines\",\"side\":true,\"phone\":true},{\"key\":\"analyse\",\"side\":true,\"phone\":true},{\"key\":\"sep-qxsbv7n9mwxnb1ck\",\"sep\":true},{\"key\":\"head-p251dcylmwxncx5w\",\"head\":\"Firma\",\"fold\":true,\"closed\":false},{\"key\":\"firma\",\"side\":true,\"phone\":true},{\"key\":\"fahrtenbuch\",\"side\":true,\"phone\":true},{\"key\":\"invoices\",\"side\":true,\"phone\":true},{\"key\":\"mahnungen\",\"side\":false,\"phone\":false},{\"key\":\"kunden\",\"side\":true,\"phone\":true},{\"key\":\"artikel\",\"side\":false,\"phone\":false},{\"key\":\"inventur\",\"side\":false,\"phone\":false},{\"key\":\"besitz\",\"side\":true,\"phone\":true},{\"key\":\"kassa\",\"side\":false,\"phone\":false},{\"key\":\"steuer\",\"side\":true,\"phone\":true},{\"key\":\"contracts\",\"side\":true,\"phone\":true},{\"key\":\"sep-35kgg9p5mwxnavj1\",\"sep\":true},{\"key\":\"head-51mvu1t5mwxndw6q\",\"head\":\"Sicherung\",\"fold\":true,\"closed\":false},{\"key\":\"settings\",\"side\":true,\"phone\":true},{\"key\":\"backup\",\"side\":true,\"phone\":true}],\"groups\":[{\"id\":\"g-cash\",\"title\":\"Bargeld\",\"kinds\":[\"cash\"],\"ids\":[],\"collapsed\":false},{\"id\":\"g-giro\",\"title\":\"Girokonten\",\"kinds\":[\"bank\",\"card\",\"wallet\"],\"ids\":[],\"collapsed\":false},{\"id\":\"g-furdi78pmwxnq04o\",\"title\":\"Kredit\",\"kinds\":[],\"ids\":[],\"collapsed\":false},{\"id\":\"g-save\",\"title\":\"Sparkonten\",\"kinds\":[\"savings\"],\"ids\":[],\"collapsed\":false},{\"id\":\"g-depot\",\"title\":\"Depots\",\"kinds\":[\"broker\"],\"ids\":[],\"collapsed\":false}],\"accOpen\":true,\"docsOpen\":true,\"docGroups\":[{\"id\":\"d-fin\",\"title\":\"Finanzen\",\"area\":\"finanzen\",\"cats\":[\"Rechnungen\",\"Auto & Mobilität\",\"Bank & Finanzen\",\"Steuer & Finanzamt\",\"Lohn & Arbeit\",\"Gesundheit\",\"Wohnen & Energie\",\"Lebensmittel & Haushalt\",\"Freizeit & Abos\",\"Garantie & Kaufbelege\",\"Depot Ertrag\",\"Elektronik\",\"Kredit\"],\"collapsed\":false},{\"id\":\"d-firma\",\"title\":\"Firma\",\"area\":\"finanzen\",\"cats\":[\"Ausgangsrechnung\",\"Trading\",\"Software\"],\"collapsed\":false},{\"id\":\"d-vert\",\"title\":\"Verträge\",\"area\":\"vertraege\",\"cats\":[\"Verträge\",\"Versicherung\"],\"collapsed\":false},{\"id\":\"d-sonst\",\"title\":\"Sonstiges\",\"area\":\"sonstiges\",\"cats\":[\"Behörden\",\"Sonstiges\"],\"collapsed\":false}],\"v27\":true,\"v19\":true,\"showChecks\":false,\"subCats\":{\"Auto & Mobilität\":[\"Tanken\",\"Laden (E-Auto)\",\"Werkstatt & Service\",\"Versicherung\",\"Parken & Maut\",\"Öffis & Bahn\",\"Leasing & Kredit\"],\"Wohnen & Energie\":[\"Miete\",\"Strom\",\"Gas & Heizung\",\"Internet & Telefon\",\"Betriebskosten\",\"Einrichtung\"],\"Lebensmittel & Haushalt\":[\"Supermarkt\",\"Drogerie\",\"Bäckerei\",\"Haushaltswaren\"],\"Freizeit & Abos\":[\"Streaming\",\"Restaurant & Café\",\"Sport\",\"Reisen\",\"Hobby\"],\"Gesundheit\":[\"Arzt\",\"Zahnarzt\",\"Apotheke\",\"Brille & Optik\",\"Krankenhaus\"],\"Bank & Finanzen\":[\"Kontoführung\",\"Zinsen\",\"Kredit\",\"Gebühren\"],\"Steuer & Finanzamt\":[\"Einkommensteuer\",\"Umsatzsteuer\",\"Sozialversicherung\",\"SVS\"],\"Lohn & Arbeit\":[\"Lohn & Gehalt\",\"Lohnzettel\",\"Reisekosten\",\"Arbeitsmittel\"],\"Garantie & Kaufbelege\":[\"Elektronik\",\"Haushaltsgeräte\",\"Möbel\",\"Werkzeug\",\"Einrichtungsgegenstände\"],\"Versicherung\":[\"Haushalt\",\"Kfz\",\"Leben\",\"Unfall\",\"Rechtsschutz\",\"Pension\",\"Krankenversicherung\"],\"Trading\":[\"Software\",\"Prop Firma\",\"Markt Daten\"],\"Software\":[\"Abo\",\"KI Token\",\"KI Abo\",\"Cloud Speicher\"]},\"catStyle\":{\"Trading\":[\"📁\",\"#84cc16\",null]}}",
+ "sort:invoices": "{\"k\":\"neu\",\"d\":1}",
+ "sort:konten": "{\"k\":\"datum\",\"d\":1}",
+ "stmtZoomUi": "\"schwebend\"",
+ "astView": "\"list\"",
+ "design": "{\"preset\":\"gold\",\"neg\":\"#9333ea\",\"style\":\"graphit\",\"font\":\"lora\",\"fontHead\":\"same\",\"pos\":\"#00c52d\",\"posList\":[\"#00c52d\"],\"outNeg\":true,\"flatAcc\":{\"graphit\":\"#c8a24a\"},\"flatAccList\":[\"#669c35\"]}",
+ "dev:uiScale": "{\"btn\":85,\"menu\":90}",
+ "sideW": "390"
+};
 try {
-  const st = DEF && DEF.store;
-  if (typeof localStorage !== "undefined" && st && typeof st === "object" && !localStorage.getItem("findocuDefaultsApplied")) {
-    for (const [k, v] of Object.entries(st)) if (typeof v === "string" && localStorage.getItem(k) == null) localStorage.setItem(k, v);
-    localStorage.setItem("findocuDefaultsApplied", "1");
-  }
+  const fresh = typeof localStorage !== "undefined" && !localStorage.getItem("findocuDefaults") &&
+    !["nav", "design", "accounts", "theme", "settingsOrder"].some((k) => localStorage.getItem(k) != null);
+  if (fresh) for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) if (localStorage.getItem(k) == null) localStorage.setItem(k, v);
+  if (typeof localStorage !== "undefined" && !localStorage.getItem("findocuDefaults")) localStorage.setItem("findocuDefaults", fresh ? "applied-v1" : "skipped-v1");
 } catch {}
-export default DEF;

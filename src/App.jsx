@@ -4659,7 +4659,8 @@ function FolderWatchSettings() {
   </div>);
 }
 // v0.99.90: Einstellungen (Optik & Struktur) ohne Daten exportieren/importieren
-const SET_EXTRA = /^(stmtColors|nav|contactTypes|ctCats|itemCats|units)$/;
+// v1.0.16: + Cloud-Dienst-Symbole (provIcons) und die neuen Darstellungs-Einstellungen (Spalte rechts, Markierung neuer Einträge, Bereiche)
+const SET_EXTRA = /^(stmtColors|nav|contactTypes|ctCats|itemCats|units|provIcons|dockDetails|dockMinW|dockTabs|newMarks|newMarkColor|navDlBadge|scopeAreas)$|^dock:/;
 const settingsKeyOk = (k) => (WIPE_KEEP.test(k) || SET_EXTRA.test(k)) && !/^win:/.test(k);
 function settingsSnapshot() {
   const store = {};

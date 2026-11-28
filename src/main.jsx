@@ -1,3 +1,4 @@
+import "./defaults.js";   // v1.0.16: Standard-Einstellungen vor allem anderen setzen
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/outfit/index.css";
