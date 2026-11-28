@@ -6926,7 +6926,7 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
             {upMove && <div className="upmove">
               <button className="btn sm" onClick={() => moveSel((d) => addDays(d, 7), "um 1 Woche")}>+1 Woche</button>
               <button className="btn sm" onClick={() => moveSel((d) => addMonth(d, 1), "um 1 Monat")}>+1 Monat</button>
-              <label className="small">auf <input type="date" min={today} onChange={(e) => e.target.value && moveSel(e.target.value, "auf " + fmtDate(e.target.value))} /></label>
+              <label>auf <input type="date" min={today} onChange={(e) => e.target.value && moveSel(e.target.value, "auf " + fmtDate(e.target.value))} /></label>
               <small className="muted">Überfällige werden ab heute verschoben.</small>
             </div>}
           </div>}
@@ -17378,7 +17378,11 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .datebox.tick:hover::after,.datebox.tick:focus-visible::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;font-size:22px;font-weight:700;color:#fff;background:#16a34a;border-radius:inherit}
 .upbar{position:sticky;bottom:0;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px -8px 0;padding:10px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);box-shadow:0 -6px 18px #0003}
 .upbar .btn{margin:0}.upbar.undo{background:color-mix(in srgb,#16a34a 18%,var(--card))}
-.upmove{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-top:4px}.upmove input[type=date]{width:auto;padding:5px 8px;font-size:13px}.upmove label{display:flex;align-items:center;gap:6px;margin:0}
+.upmove{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-top:4px}.upmove input[type=date]{width:auto;padding:5px 8px;font-size:13px}.upmove label{display:flex;align-items:center;gap:6px;margin:0;color:var(--mut)}
+/* drei Felder gleich hoch, 2 px kleiner als ein normaler kleiner Knopf (46 px), gleicher Zoom wie die Knöpfe (Einstellung „Button-Größe“) */
+.upmove .btn,.upmove input[type=date]{height:calc(46px - 2px / (var(--fsbtn,1) * var(--btnz,1)))!important;min-height:0!important;box-sizing:border-box;margin:0;line-height:1;display:inline-flex;align-items:center}
+.upmove input[type=date]{zoom:calc(var(--fsbtn,1) * var(--btnz,1));width:auto;padding:0 12px;font-size:13px;border-radius:10px}
+.upmove small{flex-basis:100%}.upmove label{font-size:14px}
 .calupclist .calrow{border-radius:12px;padding:6px 8px}.calupclist .calrow:hover{background:var(--card2)}
 .nowrap{white-space:nowrap}
 .calsel.top{display:block!important}.calsel.top>.frow{width:100%;box-sizing:border-box}.calupclist .calrow.cur{background:color-mix(in srgb,var(--acc) 14%,transparent)}
