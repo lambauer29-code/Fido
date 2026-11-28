@@ -447,7 +447,7 @@ function DocPreview({ d, onOpen, getBlob, onPrint, onOriginal, noPrint }) {
 
 /* v1.0.6: Vorschau direkt neben dem Dokument-Dialog – mit Zoom (−/+, 100 %, Breite, Ganze Seite, Strg/⌘ + Mausrad) */
 const SP_A4 = 794, SP_MAXPAGES = 30, SP_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
-function SidePreview({ d, blob, onPrint }) {
+function SidePreview({ d, blob, onPrint, noPrint = false }) {
   const [pages, setPages] = useState([]), [total, setTotal] = useState(0), [err, setErr] = useState(""), [ratio, setRatio] = useState(1.414);
   const [zoom, setZoom] = useState(() => ls.get("spZoom", "page"));   // "page" | "width" | Faktor (1 = 100 % = A4-Breite)
   const boxRef = useRef(null), [box, setBox] = useState({ w: 600, h: 700 });
@@ -482,17 +482,50 @@ function SidePreview({ d, blob, onPrint }) {
   }, [d.id, blob]);
   const fitW = Math.max(120, box.w - 36), fitPage = Math.max(120, Math.min(fitW, (box.h - 28) / ratio));
   const pw = Math.round(zoom === "width" ? fitW : zoom === "page" ? fitPage : SP_A4 * zoom), cur = pw / SP_A4;
-  const zin = () => setZoom(SP_STEPS.find((x) => x > cur + 0.01) ?? 4);
-  const zout = () => setZoom([...SP_STEPS].reverse().find((x) => x < cur - 0.01) ?? 0.25);
+  const zin = () => zoomAt(SP_STEPS.find((x) => x > cur + 0.01) ?? 4);
+  const zout = () => zoomAt([...SP_STEPS].reverse().find((x) => x < cur - 0.01) ?? 0.25);
   const curRef = useRef(cur); curRef.current = cur;
-  useEffect(() => {   // Strg/⌘ + Mausrad bzw. Trackpad-Zoom (nur über der Vorschau)
+  // v1.0.20: Werkzeuge – Lupe, Hand (ziehen zum Verschieben), Maus (normal); Zoom per Strg/⌘ + Mausrad genau zum Mauszeiger
+  const [mode, setMode] = useLsState("pvMode", "maus"), [lupeK, setLupeK] = useLsState("pvLupe", 2.5);
+  const modeRef = useRef(mode); modeRef.current = mode; const lupeRef = useRef(null), anchorRef = useRef(null), [mini, setMini] = useState(null);
+  const zoomAt = (nz, cx, cy) => {   // nz = neuer Faktor; cx/cy = Mausposition (Bildschirm) → dieser Punkt bleibt stehen
+    const el = boxRef.current; if (!el) { setZoom(nz); return; }
+    const r = el.getBoundingClientRect(), px = (cx ?? r.left + r.width / 2) - r.left, py = (cy ?? r.top + r.height / 2) - r.top;
+    anchorRef.current = { fx: (el.scrollLeft + px) / Math.max(1, el.scrollWidth), fy: (el.scrollTop + py) / Math.max(1, el.scrollHeight), px, py };
+    setZoom(Math.min(4, Math.max(0.25, Math.round(nz * 100) / 100)));
+  };
+  useLayoutEffect(() => { const a = anchorRef.current, el = boxRef.current; if (!a || !el) return; anchorRef.current = null;
+    el.scrollLeft = a.fx * el.scrollWidth - a.px; el.scrollTop = a.fy * el.scrollHeight - a.py; }, [pw]);
+  useEffect(() => {
     const el = boxRef.current; if (!el) return;
-    const wheel = (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); setZoom(Math.min(4, Math.max(0.25, Math.round(curRef.current * Math.exp(-e.deltaY / 300) * 100) / 100))); };
+    const wheel = (e) => {
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomAt(curRef.current * Math.exp(-e.deltaY / 300), e.clientX, e.clientY); return; }
+      if (modeRef.current === "lupe" && lupeRef.current?.style.display === "block") { e.preventDefault(); setLupeK((k) => Math.min(5, Math.max(1.5, Math.round((k - e.deltaY / 400) * 10) / 10))); }
+    };
     el.addEventListener("wheel", wheel, { passive: false }); return () => el.removeEventListener("wheel", wheel);
   }, []);
+  const lupeMove = (e) => {
+    const L = lupeRef.current; if (!L) return;
+    const img = e.target.closest?.("img"); if (mode !== "lupe" || !img) { L.style.display = "none"; return; }
+    const r = img.getBoundingClientRect(), k = lupeK, S = 170, x = e.clientX - r.left, y = e.clientY - r.top;
+    Object.assign(L.style, { display: "block", left: e.clientX - S / 2 + "px", top: e.clientY - S / 2 + "px", backgroundImage: `url("${img.src}")`,
+      backgroundSize: `${r.width * k}px ${r.height * k}px`, backgroundPosition: `${-(x * k - S / 2)}px ${-(y * k - S / 2)}px` });
+  };
+  const handDown = (e) => {
+    if (mode !== "hand" || e.button !== 0) return; const el = boxRef.current; e.preventDefault();
+    const sx = e.clientX, sy = e.clientY, l0 = el.scrollLeft, t0 = el.scrollTop; el.classList.add("grabbing");
+    const mv = (ev) => { el.scrollLeft = l0 - (ev.clientX - sx); el.scrollTop = t0 - (ev.clientY - sy); };
+    const up = () => { el.classList.remove("grabbing"); removeEventListener("pointermove", mv); removeEventListener("pointerup", up); };
+    addEventListener("pointermove", mv); addEventListener("pointerup", up);
+  };
+  const upMini = () => { const el = boxRef.current; if (!el) return; const big = el.scrollWidth > el.clientWidth + 4 || el.scrollHeight > el.clientHeight + 4;
+    setMini(big ? { l: el.scrollLeft / el.scrollWidth, t: el.scrollTop / el.scrollHeight, w: el.clientWidth / el.scrollWidth, h: el.clientHeight / el.scrollHeight, ar: el.scrollHeight / el.scrollWidth } : null); };
+  useEffect(() => { upMini(); }, [pw, box.w, box.h, pages.length]);
   return (
     <div className="sideprev">
       <div className="spbar">
+        <span className="pvtools">{[["lupe", "🔍", "Lupe – folgt der Maus, Mausrad = stärker/schwächer"], ["hand", "✋", "Hand – gezoomte Seite mit gedrückter Maus verschieben"], ["maus", "↖︎", "Maus – normal; Strg/⌘ + Mausrad zoomt, Doppelklick = 100 %"]].map(([k, ic, t]) =>
+          <button key={k} type="button" className={"btn sm" + (mode === k ? " on" : "")} title={t} aria-label={t} onClick={() => setMode(k)}>{ic}<span className="pvtl"> {k === "lupe" ? "Lupe" : k === "hand" ? "Hand" : "Maus"}</span></button>)}</span>
         <small>{total > 1 ? `${total} Seiten` : total ? "1 Seite" : ""}</small>
         <span className="grow" />
         <button className="btn sm" title="Verkleinern" aria-label="Verkleinern" onClick={zout}>−</button>
@@ -501,16 +534,19 @@ function SidePreview({ d, blob, onPrint }) {
         <span className="spsep" />
         <button className={"btn sm" + (zoom === "width" ? " on" : "")} onClick={() => setZoom("width")}>Breite</button>
         <button className={"btn sm" + (zoom === "page" ? " on" : "")} onClick={() => setZoom("page")}>Ganze Seite</button>
-        <span className="spsep" />
-        <button className="btn sm" title="Drucken" aria-label="Drucken" onClick={onPrint}><IcoPrint /></button>
+        {!noPrint && <><span className="spsep" />
+        <button className="btn sm" title="Drucken" aria-label="Drucken" onClick={onPrint}><IcoPrint /></button></>}
       </div>
-      <div className="spbox" ref={boxRef}>
+      <div className={"spbox pv-" + mode} ref={boxRef} onMouseMove={lupeMove} onMouseLeave={() => { if (lupeRef.current) lupeRef.current.style.display = "none"; }} onPointerDown={handDown} onScroll={upMini}
+        onDoubleClick={(e) => { if (mode === "lupe") return; if (zoom === 1) setZoom("page"); else zoomAt(1, e.clientX, e.clientY); }}>
+        <div className="pvlupe" ref={lupeRef} aria-hidden="true" />
         {err ? <p className="muted small">Vorschau nicht möglich: {err}</p> : <>
           {pages.map((src, i) => <img key={i} src={src} alt={`Seite ${i + 1}`} style={{ width: pw }} />)}
           {pages.length < Math.min(total || 1, SP_MAXPAGES) && <div className="dpload">Seite wird geladen …</div>}
           {total > SP_MAXPAGES && pages.length >= SP_MAXPAGES && <p className="muted small">Die Vorschau zeigt die ersten {SP_MAXPAGES} von {total} Seiten.</p>}
         </>}
       </div>
+      {mini && <div className="pvmini" style={{ height: Math.min(110, Math.round(64 * mini.ar)) }} aria-hidden="true"><i style={{ left: mini.l * 100 + "%", top: mini.t * 100 + "%", width: mini.w * 100 + "%", height: mini.h * 100 + "%" }} /></div>}
     </div>
   );
 }
@@ -4338,7 +4374,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
       {winPrev && createPortal(
         <Win id="docprev" onClose={() => setWinPrev(null)} dirty={false} className="docprevwin" fitDoc={winPrev}>
           <div className="panelhead"><b className="clamp">{winPrev.title}</b><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(winPrev)}><IcoPrint /></button><XBtn /></div>
-          <DocPreview d={winPrev} onOpen={() => onOpen(winPrev.id)} noPrint />
+          <SidePreview d={winPrev} noPrint />
         </Win>, document.querySelector(".app") || document.body)}
       {edit && <FbEntryWin init={edit} vehicles={vehicles} accounts={accounts} txs={txs} docs={docs} onScan={onScan} onUpload={onUpload} onOpen={onOpen} lastKm={st.odo} fuelPrice={lastFuel?.price} onClose={() => setEdit(null)} onSave={(x) => { if (x.type === "trip") ls.set("fbPurpose", x.purpose); saveEntry(x); }}
         onDelete={(id) => { upd((o) => ({ entries: o.entries.filter((y) => y.id !== id) })); setEdit(null); }} />}
@@ -6723,7 +6759,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
             <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(winPrev)}><IcoPrint /></button>
             <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = winPrev.id; setWinPrev(null); onOpen(id); }}><IcoEdit /></button>
             <XBtn /></div>
-          <DocPreview d={winPrev} onOpen={() => onOpen(winPrev.id)} noPrint />
+          <SidePreview d={winPrev} noPrint />
         </Win>, document.querySelector(".app") || document.body)}
 
       {mode === "ordner" && !cat && !q.trim() ? (
@@ -6818,7 +6854,7 @@ function Deadlines({ docs: docsAll, onOpen: onEdit, saveDoc, calSync, setCalSync
             <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(prev)}><IcoPrint /></button>
             <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = prev.id; setPrev(null); onEdit(id); }}><IcoEdit /></button>
             <XBtn /></div>
-          <DocPreview d={prev} onOpen={() => onEdit(prev.id)} noPrint />
+          <SidePreview d={prev} noPrint />
         </Win>
       )}
       {syncOpen && <CalSyncSheet sync={calSync} setSync={setCalSync} items={allItems.filter(([dl]) => !dl.done)} token={token} notify={notify} onClose={() => setSyncOpen(false)} />}
@@ -8824,7 +8860,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
             <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(prevDoc)}><IcoPrint /></button>
             <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = prevDoc.id; setPrevDoc(null); onOpen(id); }}><IcoEdit /></button>
             <XBtn /></div>
-          <DocPreview key={prevDoc.id} d={prevDoc} onOpen={() => onOpen(prevDoc.id)} noPrint />
+          <SidePreview key={prevDoc.id} d={prevDoc} noPrint />
         </Win>, document.querySelector(".app") || document.body)}
       <h3 className="txsec">Sonstiges</h3>
       <section className="tile txcard">
@@ -11909,7 +11945,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         {!side && prevOpen && createPortal(
           <Win id="docprev" onClose={() => setPrevOpen(false)} dirty={false} className="docprevwin" fitDoc={doc}>
             <div className="panelhead"><b className="clamp">{doc.title}</b><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(doc)}><IcoPrint /></button><XBtn /></div>
-            <DocPreview d={doc} onOpen={() => setPrevOpen(false)} noPrint />
+            <SidePreview d={doc} noPrint />
           </Win>, document.querySelector(".app") || document.body)}
     </Win>
   );
@@ -17641,6 +17677,15 @@ html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon .gll{widt
 .jcolreset{position:absolute;right:4px;top:-26px;pointer-events:auto}
 /* v1.0.19: Kundendatei – 3 px Luft unter „Kunde · Nummer · Ort“ im farbigen Band */
 .custwin .cdhead{padding-bottom:3px}
+/* v1.0.20: Vorschau – Lupe, Hand, Maus */
+.docprevwin>.wininner{display:flex;flex-direction:column;overflow:hidden}.docprevwin .sideprev{border-left:0;border-radius:0 0 14px 14px;min-height:0;position:relative}
+.pvtools{display:inline-flex;gap:4px}.pvtools .btn{padding-left:8px;padding-right:8px}
+@container (max-width:620px){.pvtl{display:none}}
+.spbox{position:relative}.spbox.pv-hand{cursor:grab}.spbox.pv-hand.grabbing{cursor:grabbing}.spbox.pv-hand img{user-select:none;-webkit-user-drag:none}
+.spbox.pv-lupe{cursor:zoom-in}.spbox.pv-lupe img{-webkit-user-drag:none}
+.pvlupe{position:fixed;display:none;width:170px;height:170px;border-radius:50%;border:3px solid var(--acc);box-shadow:0 10px 30px rgba(0,0,0,.5);background-color:#fff;background-repeat:no-repeat;pointer-events:none;z-index:99999}
+.sideprev{position:relative}.pvmini{position:absolute;right:14px;bottom:14px;width:64px;overflow:hidden;background:rgba(255,255,255,.85);border:1px solid var(--line);border-radius:4px;pointer-events:none;z-index:3;box-shadow:0 4px 12px #0006}
+.pvmini i{position:absolute;border:2px solid var(--acc);border-radius:2px;box-sizing:border-box}
 .docksetting .dockminw{display:flex;flex-direction:column;gap:6px;padding:4px 0 10px}.docksetting .dockminw.off{opacity:.45}
 .docksetting .dockminw input[type=range]{width:100%;accent-color:var(--acc)}.docksetting .dockminchips{gap:6px;flex-wrap:wrap}
 /* v1.0.10: Seitenleiste – Anzahlen (Dokumente) und Kontostände in einer Flucht unter den Gruppen-Pfeilen, Anzahlen als Plakette */
