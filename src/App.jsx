@@ -2788,14 +2788,27 @@ function AppMain() {
       {fabOpen && <div className="fabmenu-bg" onClick={() => setFabOpen(false)} />}
       {fabOpen && (
         <div className="fabmenu" role="menu">
-          <button role="menuitem" onClick={() => { setFabOpen(false); startScan(); }}><span>📷</span><div><b>Scannen</b><small>Bon oder Rechnung fotografieren</small></div></button>
-          <button role="menuitem" onClick={() => { setFabOpen(false); fileInput.current.click(); }}><span>📄</span><div><b>Datei / Foto</b><small>PDF oder Bild hochladen</small></div></button>
-          <button role="menuitem" onClick={() => { setFabOpen(false); setManualTx(tab === "accounts" && selAcc ? { accountId: selAcc } : {}); }}><span>💶</span><div><b>Buchung</b><small>Barausgabe oder Buchung erfassen</small></div></button>
-          <button role="menuitem" onClick={() => { setFabOpen(false); ls.set("pendingInvoice", { kind: "rechnung" }); setTab("invoices"); setBizReq((n) => n + 1); }}><span>🧾</span><div><b>Neue Rechnung</b><small>Rechnung für deine Firma schreiben</small></div></button>
-          <button role="menuitem" onClick={() => { setFabOpen(false); ls.set("pendingContactSources", true); setTab("kunden"); setBizReq((n) => n + 1); }}><span>📥</span><div><b>Kontakte importieren</b><small>{isMacApp ? "Apple-Kontakte, Outlook, Google oder vCard" : "Handy, Outlook, Google oder vCard-Datei"}</small></div></button>
-          <button role="menuitem" onClick={() => { setFabOpen(false); ls.set("pendingContact", "new"); setTab("kunden"); setBizReq((n) => n + 1); }}><span>👥</span><div><b>Neuer Kunde</b><small>Kontakt anlegen oder aus dem Handy übernehmen</small></div></button>
-          <button role="menuitem" onClick={() => { setFabOpen(false); impRef.current.click(); }}><span>⬆️</span><div><b>Umsätze importieren</b><small>Kontoauszug: CSV, Excel, CAMT, PDF …</small></div></button>
-          <button role="menuitem" onClick={() => { setFabOpen(false); setTab("accounts"); setNewAccReq(true); }}><span>🏦</span><div><b>Konto anlegen</b><small>Girokonto, Karte, Sparkonto, Bargeld …</small></div></button>
+          {(() => {   // v1.0.8: passende Aktionen zum aktuellen Reiter zuerst, darunter der Rest
+            const go = (f) => () => { setFabOpen(false); f(); };
+            const biz = (k, v, t) => { ls.set(k, v); setTab(t); setBizReq((n) => n + 1); };
+            const A = {
+              scan: ["📷", "Scannen", "Bon oder Rechnung fotografieren", () => startScan()],
+              file: ["📄", "Datei / Foto", "PDF oder Bild hochladen", () => fileInput.current.click()],
+              tx: ["💶", "Buchung", "Barausgabe oder Buchung erfassen", () => setManualTx(tab === "accounts" && selAcc ? { accountId: selAcc } : {})],
+              inv: ["🧾", "Neue Rechnung", "Rechnung für deine Firma schreiben", () => biz("pendingInvoice", { kind: "rechnung" }, "invoices")],
+              offer: ["📝", "Neues Angebot", "Angebot für einen Kunden schreiben", () => biz("pendingInvoice", { kind: "angebot" }, "invoices")],
+              ctNew: ["👥", "Neuer Kunde", "Kontakt anlegen", () => biz("pendingContact", "new", "kunden")],
+              ctImp: ["📥", "Kunden importieren", isMacApp ? "Apple-Kontakte, Outlook, Google oder vCard" : "Handy, Outlook, Google oder vCard-Datei", () => biz("pendingContactSources", true, "kunden")],
+              ctExp: ["📤", "Kunden exportieren", "vCard, Excel, PDF oder CSV", () => biz("pendingContactExport", true, "kunden")],
+              txImp: ["⬆️", "Umsätze importieren", "Kontoauszug: CSV, Excel, CAMT, PDF …", () => impRef.current.click()],
+              acc: ["🏦", "Konto anlegen", "Girokonto, Karte, Sparkonto, Bargeld …", () => { setTab("accounts"); setNewAccReq(true); }]
+            };
+            const CTX = { kunden: ["Kunden", ["ctImp", "ctExp", "ctNew"]], invoices: ["Rechnungen", ["inv", "offer"]], mahnungen: ["Rechnungen", ["inv", "offer"]],
+              accounts: ["Konten", ["txImp", "tx", "acc"]], auszuege: ["Kontoauszüge", ["txImp", "acc"]], cash: ["Konten", ["tx", "txImp"]], docs: ["Dokumente", ["scan", "file"]] };
+            const ctx = CTX[tab], first = ctx ? ctx[1] : [], rest = ["scan", "file", "tx", "inv", "ctImp", "ctNew", "txImp", "acc"].filter((k) => !first.includes(k));
+            const btn = (k) => { const [i, t, sub, f] = A[k]; return <button key={k} role="menuitem" onClick={go(f)}><span>{i}</span><div><b>{t}</b><small>{sub}</small></div></button>; };
+            return <>{ctx && <div className="fabhead">{ctx[0]}</div>}{first.map(btn)}{ctx && <div className="fabsep" role="separator" />}{rest.map(btn)}</>;
+          })()}
         </div>
       )}
       <button className={"fab" + (fabOpen ? " open" : "")} onClick={() => setFabOpen(!fabOpen)} aria-label="Hinzufügen">＋</button>
@@ -14555,6 +14568,17 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
     downloadFiles([new File([v], safeName(c.name) + ".vcf", { type: "text/vcard" })]);
   };
   const detail = selC && <CustomerDetail c={selC} customers={list} invoices={invoices} typeOf={typeOf} back={mob} onBack={() => setSelId(null)} onEdit={() => setEdit(selC)} setTab={setTab} vcard={vcard} />;
+  // v1.0.8: Export-Möglichkeiten (Menü ⋯ und ＋-Menü „Kunden exportieren“)
+  const ctExp = [
+          { label: "📇 vCard (.vcf)", sub: "für Handy, Outlook, iCloud", run: () => saveBlob(new Blob([vcardText(shown)], { type: "text/vcard" }), `kontakte-${isoToday()}.vcf`) },
+          { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`kontakte-${isoToday()}.xlsx`, [{ name: "Kontakte", head: ["Nr.", "Art", "Name", "Ansprechperson", "Anschrift", "E-Mail", "Telefon", "Mobil", "Web", "UID", "Notiz"], rows: shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.web || "", c.uid || "", c.note || ""]) }]) },
+          { label: "🖨️ PDF (Kontaktliste)", sub: "zum Drucken oder Weitergeben", run: async () => { try { const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
+            saveBlob(await tablePdf({ title: `Kontaktliste${type !== "alle" ? " – " + type : ""}`, subtitle: `${co.name ? co.name + " · " : ""}${shown.length} Kontakte · Stand ${fmtDate(isoToday())}`, landscape: true, fontSize: 8,
+              columns: [{ label: "Nr.", w: 0.8 }, { label: "Art", w: 1 }, { label: "Name", w: 2.6 }, { label: "Ansprechperson", w: 1.7 }, { label: "Anschrift", w: 3 }, { label: "E-Mail", w: 2.5 }, { label: "Telefon", w: 1.6 }, { label: "Mobil", w: 1.6 }, { label: "UID", w: 1.3 }],
+              rows: shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.uid || ""]), empty: "Keine Kontakte." }), `kontakte-${isoToday()}.pdf`); } catch (e) { alert("PDF fehlgeschlagen: " + e.message); } } },
+          { label: "📄 CSV", run: () => downloadCsv(`kontakte-${isoToday()}.csv`, ["Nr.", "Art", "Name", "Ansprechperson", "Anschrift", "E-Mail", "Telefon", "Mobil", "Web", "UID"], shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.web || "", c.uid || ""])) }];
+  const [expOpen, setExpOpen] = useState(false);
+  useEffect(() => { if (ls.get("pendingContactExport", null)) { ls.set("pendingContactExport", null); setExpOpen(true); } }, [req]);
   return (
     <div className="ctpage">
       {mob && selC ? <div className="mpage custpage">{detail}</div> : mob ? (
@@ -14599,14 +14623,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         tabs={[["alle", "Alle", list.length], ...types.map((t) => [t.name, t.name, list.filter((c) => (c.type || "Kunde") === t.name).length])]} tab={type} setTab={setType}
         actions={[{ k: "new", icon: "＋", title: "Neuer Kontakt", run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) },
           unmatched.length > 0 && { k: "assign", icon: "🔗", title: `Rechnungen zuordnen (${unmatched.length})`, sub: "Rechnungen ohne passenden Kunden", run: () => setAssignOpen(true) }, { k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }, { k: "phone", icon: "📥", title: "Kontakte importieren", sub: "Apple, Handy, Outlook, Google, vCard", run: () => setSources(true) },
-          setTab && { k: "set", icon: "⚙︎", title: "Kontaktarten bearbeiten", run: () => { ls.set("openSettingsSec", "kontaktarten"); setTab("settings"); } }, { head: "Export" }, ...exp2pick([{ head: `${shown.length} Kontakte (aktueller Filter)` },
-          { label: "📇 vCard (.vcf)", sub: "für Handy, Outlook, iCloud", run: () => saveBlob(new Blob([vcardText(shown)], { type: "text/vcard" }), `kontakte-${isoToday()}.vcf`) },
-          { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`kontakte-${isoToday()}.xlsx`, [{ name: "Kontakte", head: ["Nr.", "Art", "Name", "Ansprechperson", "Anschrift", "E-Mail", "Telefon", "Mobil", "Web", "UID", "Notiz"], rows: shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.web || "", c.uid || "", c.note || ""]) }]) },
-          { label: "🖨️ PDF (Kontaktliste)", sub: "zum Drucken oder Weitergeben", run: async () => { try { const co = { ...CO_DEFAULT, ...ls.get("company", {}) };
-            saveBlob(await tablePdf({ title: `Kontaktliste${type !== "alle" ? " – " + type : ""}`, subtitle: `${co.name ? co.name + " · " : ""}${shown.length} Kontakte · Stand ${fmtDate(isoToday())}`, landscape: true, fontSize: 8,
-              columns: [{ label: "Nr.", w: 0.8 }, { label: "Art", w: 1 }, { label: "Name", w: 2.6 }, { label: "Ansprechperson", w: 1.7 }, { label: "Anschrift", w: 3 }, { label: "E-Mail", w: 2.5 }, { label: "Telefon", w: 1.6 }, { label: "Mobil", w: 1.6 }, { label: "UID", w: 1.3 }],
-              rows: shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.uid || ""]), empty: "Keine Kontakte." }), `kontakte-${isoToday()}.pdf`); } catch (e) { alert("PDF fehlgeschlagen: " + e.message); } } },
-          { label: "📄 CSV", run: () => downloadCsv(`kontakte-${isoToday()}.csv`, ["Nr.", "Art", "Name", "Ansprechperson", "Anschrift", "E-Mail", "Telefon", "Mobil", "Web", "UID"], shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.web || "", c.uid || ""])) }].filter((x) => !x.head))]} />
+          setTab && { k: "set", icon: "⚙︎", title: "Kontaktarten bearbeiten", run: () => { ls.set("openSettingsSec", "kontaktarten"); setTab("settings"); } }, { head: "Export" }, ...exp2pick([{ head: `${shown.length} Kontakte (aktueller Filter)` }, ...ctExp].filter((x) => !x.head))]} />
       {showDrop ? <DropField onFiles={dropVcf} onHide={() => setShowDrop(false)} busy={!!busy} title="Kontaktdateien (.vcf) oder Ordner hierher ziehen" what="vCard (.vcf)"
         accept=".vcf,text/vcard,text/x-vcard" isOk={(f) => /\.vcf$/i.test(f.name) || /vcard/i.test(f.type)} emptyMsg="Keine .vcf-Kontaktdateien gefunden." />
         : null}
@@ -14637,6 +14654,13 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         <div className="custwinbody">{detail}</div>
       </Win>, document.querySelector(".app") || document.body)}
       {assignOpen && <AssignWin items={unmatched} customers={list} onAssign={assign} onNew={(i) => { const c = { id: uid(), type: "Kunde", number: nextNo(), ...i.customer }; c.id = c.id && !list.some((x) => x.id === c.id) ? c.id : uid(); setList((l) => [...l, c]); assign(i.id, c); }} onClose={() => setAssignOpen(false)} />}
+      {expOpen && <Win id="ctexport" onClose={() => setExpOpen(false)} dirty={false} small>
+        <div className="panelhead"><b>Kunden exportieren</b><XBtn /></div>
+        <p className="muted small">{shown.length} Kontakt{shown.length === 1 ? "" : "e"}{shown.length !== list.length ? " (aktueller Filter)" : ""} – in welchem Format?</p>
+        <div className="ctsrclist">{ctExp.map((e, i) => { const [ic, ...t] = e.label.split(" "); return (
+          <div key={i} className="ctsrc"><button className="ctsrcbtn" disabled={!shown.length} onClick={() => { setExpOpen(false); e.run(); }}>
+            <span className="ctsrcico" aria-hidden="true">{ic}</span><span className="grow"><b>{t.join(" ")}</b>{e.sub && <small className="muted block">{e.sub}</small>}</span></button></div>); })}</div>
+      </Win>}
       {sources && <ContactSourcesWin onClose={() => setSources(false)} onVcf={() => { setSources(false); vcfRef.current?.click(); }} onPicked={(l) => { setSources(false); setPicked(l.map((c) => ({ ...c, on: true }))); }} />}
       {picked && <ContactImportWin items={picked} existing={list} onClose={() => setPicked(null)} onImport={(sel) => {
         let n = list.reduce((m, c) => Math.max(m, parseInt(String(c.number || "").replace(/\D/g, ""), 10) || 0), 0);
@@ -16791,6 +16815,8 @@ img{max-width:100%}
 .twobtn{display:flex;gap:8px;margin:-4px 0 12px}.twobtn .btn{flex:1}
 .fab{transition:transform .2s}.fab.open{transform:rotate(45deg)}
 .fabmenu-bg{position:fixed;inset:0;z-index:5;background:#0f1b2d59}
+.fabhead{padding:6px 12px 2px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+.fabsep{height:1px;background:var(--line);margin:6px 8px}
 .fabmenu{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom) + 146px);z-index:6;display:flex;flex-direction:column;gap:2px;width:min(300px,calc(100vw - 32px));
   background:var(--card);opacity:1;border:1px solid var(--line);border-radius:18px;padding:6px;box-shadow:0 18px 50px #0f1b2d66;animation:menuin .16s ease-out;isolation:isolate}
 :root[data-theme=dark] .fabmenu{background:#1c222c;border-color:#323a47}
@@ -17220,6 +17246,7 @@ nav .acctree .accitem .ab{font-size:11.5px}
 @media (max-width:700px){.calday{min-height:52px;padding:4px;align-items:center}.calchip,.calmore{display:none}.caldots{display:flex}}
 .calsel{margin-top:14px;border-top:1px solid var(--line);padding-top:6px}.calsel h3{text-transform:capitalize}
 .calrow{gap:10px}.calrow input[type=date]{width:auto;padding:6px 8px;font-size:13px}.calrow input[type=checkbox]{width:18px;height:18px}
+.calsel.top>.calrow>input[type=checkbox]{margin-left:2px}   /* v1.0.8: Abstand zum farbigen Rand */
 .calrow.done b{text-decoration:line-through;opacity:.6}.calrow.over b{color:var(--red)}
 .steps{margin:6px 0 0;padding-left:18px}.steps li{margin:3px 0}
 .dlbar .seg button{display:inline-flex;flex-direction:row;align-items:center;gap:6px;white-space:nowrap;padding:8px 14px}

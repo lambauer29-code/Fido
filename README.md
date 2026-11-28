@@ -9,6 +9,9 @@ Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags,
   - **Outlook / Microsoft 365** und **Google Kontakte** (überall – Mac, Windows, Browser, Handy): Anmeldung mit dem eigenen Konto, nur Lesen; nutzt die App-Registrierungen von OneDrive bzw. Google Drive, braucht dort zusätzlich „Contacts.Read“ bzw. die „People API“ (Anleitung im Fenster); die Cloud-Synchronisierung bleibt davon unberührt
   - **vCard-Datei (.vcf)** wie bisher
 - Danach wie gewohnt Auswahl mit Suche, „Alle/Keine“ und Erkennung vorhandener Kontakte; Firma und Ansprechperson werden getrennt übernommen
+- ＋-Menü passt sich dem Reiter an: oben die passenden Aktionen (z. B. Kunden: importieren, exportieren, neuer Kunde · Rechnungen: neue Rechnung, neues Angebot · Konten: Umsätze importieren, Buchung, Konto anlegen · Dokumente: Scannen, Datei), darunter alle übrigen
+- Neu: „Kunden exportieren“ als eigenes Fenster (vCard, Excel, PDF, CSV) – auch über das ＋-Menü
+- Fristen-Tagesansicht: Häkchen-Feld 2 px weiter rechts (berührt den farbigen Rand nicht mehr)
 
 ## v1.0.7 – Vorschau hängt rechts an, Knöpfe bleiben stehen
 - Dokument-Dialog: Die Vorschau wird rechts angehängt – „Vorschau“, „Speichern“ und ✕ bleiben genau dort, wo sie ohne Vorschau sind (der Dialog selbst wird nicht mehr verbreitert oder verschoben); reicht der Platz rechts nicht, wird zuerst die Vorschau schmäler (mind. 360 px)
