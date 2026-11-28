@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.4 – Mac: Titelleiste über die ganze Breite
+- Mac-App: Leiste mit den Ampel-Knöpfen geht über die ganze Fensterbreite (Farbe der Seitenleiste, feine Linie darunter), 28 px hoch. Seitenleiste, Knöpfe oben rechts und mitlaufende Bereiche beginnen darunter. Windows und Browser unverändert.
+
 ## v1.0.3 – Windows druckt das Original-PDF, „⋯“-Menüs nicht mehr abgeschnitten
 - Windows-App: PDFs (auch mehrere zusammengefügt) werden im eingebauten PDF-Betrachter gedruckt statt als Bilder; schlägt das fehl, wird wie bisher über Bilder gedruckt.
 - „⋯“-Menüs in Listen (Verträge, Fixkosten, Kontoauszüge …) schweben über allem, öffnen bei wenig Platz nach oben und scrollen bei Bedarf – in Browser, Mac- und Windows-App.
