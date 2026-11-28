@@ -542,6 +542,17 @@ function CardBar({ d }) {
   );
 }
 
+// v1.0.18: Seitenverhältnis eines Dokuments (aus dem Vorschaubild; PDF ohne Vorschaubild = A4 hoch)
+const aspectCache = new Map();
+function useDocAspect(d) {
+  const [a, setA] = useState(() => (d ? aspectCache.get(d.id) || null : null));
+  useEffect(() => {
+    if (!d) return; if (aspectCache.has(d.id)) { setA(aspectCache.get(d.id)); return; }
+    const def = 1 / 1.414; if (!d.thumb) { setA(def); return; }
+    const im = new Image(); im.onload = () => { const r = im.naturalWidth && im.naturalHeight ? im.naturalWidth / im.naturalHeight : def; aspectCache.set(d.id, r); setA(r); }; im.onerror = () => setA(def); im.src = d.thumb;
+  }, [d?.id, d?.thumb]);
+  return a;
+}
 const Thumb = ({ d, className = "thumb" }) => (
   <div className={className}>{d.thumb ? <img src={d.thumb} alt="" /> : <span>{d.mimeType === "application/pdf" ? "PDF" : "🖼"}</span>}</div>
 );
@@ -1697,6 +1708,18 @@ function useScrollLock(on = true) {
 }
 const XBtn = () => { const close = React.useContext(WinCtx); return <button className="xbtn" onClick={() => close?.()} aria-label="Schließen" title="Schließen"><span className="xi">✕</span><span className="xt" /></button>; };
 /* Kopfkarte für Detailansichten – nur im Handy-Sheet sichtbar (v0.98) */
+// v1.0.18: Kopf wie bei Buchungen – großes Symbol/Logo, Name, Privat/Firma, Kategorie/Status, Hinweis (nur am Desktop; Handy behält MHero)
+function WinHero({ icon, img, title, scope, chip, hint }) {
+  return (<div className="winhero" data-dockhead="">
+    <span className={"winheroic" + (img ? " img" : "")}>{img ? <img src={img} alt="" /> : icon}</span>
+    <h2 className="winherot">{title}</h2>
+    {scope}
+    {chip && <span className="winherochip">{chip}</span>}
+    {hint && <small className="winherohint">{hint}</small>}
+  </div>);
+}
+const FirmaPill = () => <span className="scsel"><span className="scselbtn static" style={{ "--scc": tintOf("firma") }}>🏢 Firma</span></span>;
+const initials = (n) => String(n || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 function MHero({ icon, title, sub, value, valueCls = "", pills = [] }) {
   return (<div className="mhero">
     {icon && <span className="mheroic">{icon}</span>}
@@ -1714,7 +1737,7 @@ const DOCK_MIN_W = 1400, dockReg = new Map();
 // v1.0.15: pro Bereich einstellbar, ob die Details rechts aufgehen
 const DOCK_TABS = [["tx", "🏦", "Konten", "Buchungen – auch aus Journal und Steuerberater"], ["doc", "📄", "Dokumente", "Dokument bearbeiten, auch aus Fristen"], ["inv", "🧾", "Rechnungen", "Rechnung bearbeiten und neu anlegen"], ["kunde", "👥", "Kunden", "Kundendetail und Kontakt bearbeiten"], ["vertrag", "📑", "Verträge", "Vertrag bearbeiten"], ["artikel", "📦", "Artikel", "auch Lager & Inventur"], ["besitz", "🛡️", "Besitz & Garantie", "Gegenstand bearbeiten"], ["kassa", "📒", "Kassabuch", "Eintrag im Kassabuch"]];
 // Pfeil zur angeklickten Zeile: zuletzt angeklickte Listenzeile merken (vor allen Fenster-Handlern, daher hier beim Laden registriert)
-const DOCK_ROW_SEL = ".txrow,.ditem,.frow,.kbr,.invrow,.ctrow,.astrow,.jrow,.subrow,.contactrow,[data-dockrow]";
+const DOCK_ROW_SEL = ".txrow,.ditem,.frow,.kbr,.invrow,.ctrow,.astrow,.jrow,.subrow,.contactrow,.stmtrow,.ctcard,[data-dockrow]";
 let dockAnchor = null, dockAnchorPrev = null;
 if (typeof document !== "undefined") document.addEventListener("pointerdown", (e) => {
   const r = e.target.closest?.(DOCK_ROW_SEL); if (!r || r.closest(".win")) return; dockAnchorPrev = dockAnchor; dockAnchor = r;
@@ -1750,7 +1773,7 @@ function DockSetting() {
     </div>
   </div>;
 }
-function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false, extraW = 0, onExtraW, dock = false, tint = null }) {
+function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false, extraW = 0, onExtraW, dock = false, tint = null, fitDoc = null }) {
   // v0.99.8: iPad bekommt dieselben Popups wie das iPhone (Karte von unten)
   const wide = useMedia("(min-width:768px)") && !IS_TABLET;
   const [dockPref] = useLsState("dockDetails", true), [dockMin] = useLsState("dockMinW", DOCK_MIN_W);
@@ -1937,9 +1960,19 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
     track(e, (s, dx, dy) => ({ ...s, x: s.x + dx, y: s.y + dy }));
   };
   const extraRef = useRef(extraW); extraRef.current = extraW;
+  // v1.0.18: Vorschaufenster öffnen sich in der Größe des Dokuments (ganze Seite sichtbar, max. 90 % des Bildschirms) – solange man nicht selbst die Größe ändert
+  const fitAsp = useDocAspect(fitDoc), fitManual = useRef(false);
+  useEffect(() => {
+    if (!fitAsp || fitManual.current || !wide) return;
+    const CH = 108, CW = 36, maxH = Math.round(innerHeight * 0.9), maxW = Math.round(innerWidth * 0.9);
+    let h = maxH, w = Math.round((h - CH) * fitAsp + CW);
+    if (w > maxW) { w = maxW; h = Math.round((w - CW) / fitAsp + CH); }
+    w = Math.max(320, w); h = Math.max(300, Math.min(maxH, h));
+    setRect(clampRect({ x: Math.round((innerWidth - w) / 2), y: Math.round((innerHeight - h) / 2), w, h }));
+  }, [fitAsp, fitDoc?.id]);
   const onExtraRef = useRef(onExtraW); onExtraRef.current = onExtraW;
   const edge = (dir) => (e) => {
-    e.stopPropagation();
+    e.stopPropagation(); fitManual.current = true;
     // v1.0.7: rechter Rand ändert die angehängte Vorschau, nicht den Dialog – ausgehend von ihrer sichtbaren Breite
     const ex0 = extraRef.current ? Math.max(WIN_EXTRA_MIN, (rootRef.current?.offsetWidth || 0) - rect.w) : 0;
     track(e, (s, dx, dy) => {
@@ -4303,7 +4336,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
       </>)}
       </FitScroll>
       {winPrev && createPortal(
-        <Win id="docprev" onClose={() => setWinPrev(null)} dirty={false} className="docprevwin">
+        <Win id="docprev" onClose={() => setWinPrev(null)} dirty={false} className="docprevwin" fitDoc={winPrev}>
           <div className="panelhead"><b className="clamp">{winPrev.title}</b><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(winPrev)}><IcoPrint /></button><XBtn /></div>
           <DocPreview d={winPrev} onOpen={() => onOpen(winPrev.id)} noPrint />
         </Win>, document.querySelector(".app") || document.body)}
@@ -6317,6 +6350,9 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFi
     </button>); };
   const onOriginal = async () => { const b = await db.getFile(curDoc.id); if (b) openPdf(b, curDoc.fileName || "Beleg.pdf", curDoc.title); };
   const pos = curDoc && (mode === "pruefen" ? `${idx + 1} von ${list.length} unbestätigt` : `${idx + 1} von ${list.length}`);
+  const [jColsRaw, setJCols] = useLsState("jCols", JCOL_DEF), jCols = jColNorm(jColsRaw);
+  const jWide = useMedia("(min-width:1100px)");
+  const jKeys = jCols.order.filter((k) => (k === "side" ? mode !== "pruefen" : k === "insp" ? detOn : true)), jColsOn = jWide && !narrow && !mob;
   const fields = curDoc && <JournalCard key={curDoc.id} d={curDoc} tx={txByDoc.get(curDoc.id)} onConfirm={confirm} onEdit={() => onOpen(curDoc.id)} pos={pos}
     onPrev={idx > 0 ? () => go(-1) : null} onNext={idx < list.length - 1 ? () => go(1) : null} />;
 
@@ -6368,7 +6404,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFi
   /* ---------- 1 + 2 · Drei-Spalten-Journal / Prüf-Modus ---------- */
   return (
     <div className="jpage-wrap">{modeBar}
-      <div ref={boxRef} className={"jgrid jv-c" + (narrow ? " narrow" : "") + (mode === "pruefen" ? " pruef" : "") + (detOn ? " det" : " nodet")} style={boxH ? { height: boxH } : undefined}>
+      <div ref={boxRef} className={"jgrid jv-c" + (narrow ? " narrow" : "") + (mode === "pruefen" ? " pruef" : "") + (detOn ? " det" : " nodet") + (jColsOn ? " jcustom" : "")} style={{ ...(boxH ? { height: boxH } : {}), ...(jColsOn ? { gridTemplateColumns: jKeys.map((k) => (k === "center" ? "minmax(0,1fr)" : (jCols.w[k] || JCOL_DEF.w[k]) + "px")).join(" "), ...Object.fromEntries(jKeys.map((k, i) => ["--o-" + k, i])) } : {}) }}>
+        {jColsOn && <JColsOverlay boxRef={boxRef} keys={jKeys} cfg={jCols} setCfg={setJCols} />}
         {mode !== "pruefen" && sidebar}
         <div className="jlist">
           <div className="jlhead"><span className="jlht"><b>{mode === "pruefen" ? "Zu prüfen" : facet ? (facet.v || "Nicht zugewiesen") : sel.m ? MONTHS_DE[+sel.m - 1] + " " + sel.y : sel.y === "ohne" ? "Ohne Datum" : sel.y || "Alle Jahre"}</b><small className="muted">{list.length} {list.length === 1 ? "Beleg" : "Belege"}</small></span>
@@ -6393,6 +6430,47 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFi
       {mode === "pruefen" && <small className="muted block jhint">Tastatur: ↑/↓ wechseln · Enter = Bestätigen &amp; weiter</small>}
     </div>
   );
+}
+// v1.0.18: Journal – Spalten verschiebbar (am Griff ⠿ ziehen) und in der Breite änderbar (am Rand ziehen)
+const JCOL_SEL = { side: ".jside", list: ".jlist", center: ".jcenter", insp: ".jinsp" };
+const JCOL_LBL = { side: "Ordner", list: "Belege", center: "Vorschau", insp: "Details" };
+const JCOL_DEF = { order: ["side", "list", "center", "insp"], w: { side: 230, list: 270, insp: 270 } };
+const jColNorm = (c) => { const o = (c?.order || []).filter((k) => JCOL_LBL[k]); for (const k of JCOL_DEF.order) if (!o.includes(k)) o.push(k); return { order: o, w: { ...JCOL_DEF.w, ...(c?.w || {}) } }; };
+function JColsOverlay({ boxRef, keys, cfg, setCfg }) {
+  const [rects, setRects] = useState([]), [drag, setDrag] = useState(null);
+  useEffect(() => {   // useEffect: der Ref des Rasters ist erst nach dem Einhängen des Elternteils gesetzt
+    const box = boxRef.current; if (!box) return;
+    const m = () => { const br = box.getBoundingClientRect(); setRects(keys.map((k) => { const el = box.querySelector(":scope>" + JCOL_SEL[k]); if (!el || !el.offsetWidth) return null; const r = el.getBoundingClientRect(); return { k, l: r.left - br.left, w: r.width }; }).filter(Boolean)); };
+    m(); const ro = new ResizeObserver(m); ro.observe(box); addEventListener("resize", m);
+    return () => { ro.disconnect(); removeEventListener("resize", m); };
+  }, [keys.join(), JSON.stringify(cfg)]);
+  const startMove = (e, k) => {
+    e.preventDefault(); const box = boxRef.current, br = box.getBoundingClientRect();
+    let target = null;
+    const mv = (ev) => { const x = ev.clientX - br.left; const others = rects.filter((r) => r.k !== k);
+      let idx = others.findIndex((r) => x < r.l + r.w / 2); if (idx < 0) idx = others.length;
+      const lineX = idx < others.length ? others[idx].l - 5 : others[others.length - 1].l + others[others.length - 1].w + 5;
+      target = idx; setDrag({ k, x, lineX }); };
+    const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); setDrag(null);
+      if (target == null) return; const vis = keys.filter((x) => x !== k); vis.splice(target, 0, k);
+      const hidden = cfg.order.filter((x) => !keys.includes(x)); setCfg({ ...cfg, order: [...vis, ...hidden] }); };
+    addEventListener("pointermove", mv); addEventListener("pointerup", up); setDrag({ k, x: null, lineX: null });
+  };
+  const startSize = (e, i) => {
+    e.preventDefault(); const a = rects[i], b = rects[i + 1], x0 = e.clientX;
+    const k = a.k !== "center" ? a.k : b.k, sign = a.k !== "center" ? 1 : -1, w0 = cfg.w[k] || JCOL_DEF.w[k];
+    document.body.classList.add("win-moving");
+    const mv = (ev) => setCfg({ ...cfg, w: { ...cfg.w, [k]: Math.round(Math.max(170, Math.min(720, w0 + sign * (ev.clientX - x0)))) } });
+    const up = () => { document.body.classList.remove("win-moving"); removeEventListener("pointermove", mv); removeEventListener("pointerup", up); };
+    addEventListener("pointermove", mv); addEventListener("pointerup", up);
+  };
+  const changed = JSON.stringify(jColNorm(cfg)) !== JSON.stringify(jColNorm(JCOL_DEF));
+  return (<div className="jcolsov" aria-hidden="false">
+    {rects.map((r) => <button key={r.k} type="button" className={"jcolgrip" + (drag?.k === r.k ? " on" : "")} style={{ left: r.l + r.w / 2 }} title={`„${JCOL_LBL[r.k]}“ verschieben – ziehen`} onPointerDown={(e) => startMove(e, r.k)}>⠿</button>)}
+    {rects.slice(0, -1).map((r, i) => <span key={"rz" + r.k} className="jcolrz" style={{ left: r.l + r.w + 5 }} title="Breite ändern – ziehen" onPointerDown={(e) => startSize(e, i)}><i /></span>)}
+    {drag?.lineX != null && <span className="jcolline" style={{ left: drag.lineX }} />}
+    {changed && <button type="button" className="link small jcolreset" onClick={() => setCfg(JCOL_DEF)} title="Spalten zurücksetzen">↺ Spalten</button>}
+  </div>);
 }
 function JournalCard({ d, tx, onConfirm, onEdit, pos, onPrev, onNext }) {
   const v = jSigned(d);
@@ -6640,7 +6718,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
       )}
 
       {winPrev && createPortal(
-        <Win id="docprev" onClose={() => setWinPrev(null)} dirty={false} className="docprevwin">
+        <Win id="docprev" onClose={() => setWinPrev(null)} dirty={false} className="docprevwin" fitDoc={winPrev}>
           <div className="panelhead"><b className="clamp">{winPrev.title}</b>
             <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(winPrev)}><IcoPrint /></button>
             <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = winPrev.id; setWinPrev(null); onOpen(id); }}><IcoEdit /></button>
@@ -6735,7 +6813,7 @@ function Deadlines({ docs: docsAll, onOpen: onEdit, saveDoc, calSync, setCalSync
       <div className="chips dlkinds">{DL_KINDS.map(([k, i, l]) => <button key={k} className={"chip k-" + k + (dlc.hide?.[k] ? "" : " on")} onClick={() => lsSetEv("dlCfg", { ...dlCfgGet(), hide: { ...dlc.hide, [k]: !dlc.hide?.[k] } })}><i className="dlkdot" />{i} {l}{kindN(k) ? <span className="cnt">{kindN(k)}</span> : null}</button>)}</div>
       {setOpen && <DlSettingsWin onClose={() => setSetOpen(false)} notify={notify} />}
       {prev && (
-        <Win id="docprev" onClose={() => setPrev(null)} dirty={false} className="docprevwin">
+        <Win id="docprev" onClose={() => setPrev(null)} dirty={false} className="docprevwin" fitDoc={prev}>
           <div className="panelhead"><b className="clamp">{prev.title}</b>
             <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(prev)}><IcoPrint /></button>
             <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = prev.id; setPrev(null); onEdit(id); }}><IcoEdit /></button>
@@ -8741,7 +8819,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
           <button className="btn" style={{ marginTop: 12 }} onClick={() => { ls.set("ctOpenReq", ct.id); goTab?.("vertraege"); setCtPrev(false); onClose(); }}>In Verträgen öffnen ›</button>
         </Win>, document.querySelector(".app") || document.body); })()}
       {prevDoc && createPortal(
-        <Win id="docprev" onClose={() => setPrevDoc(null)} dirty={false} className="docprevwin">
+        <Win id="docprev" onClose={() => setPrevDoc(null)} dirty={false} className="docprevwin" fitDoc={prevDoc}>
           <div className="panelhead"><b className="clamp">{prevDoc.title}</b>
             <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(prevDoc)}><IcoPrint /></button>
             <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = prevDoc.id; setPrevDoc(null); onOpen(id); }}><IcoEdit /></button>
@@ -11829,7 +11907,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         {side && <SidePreview d={doc} blob={blob} onPrint={() => (blob ? printBlobs([blob], d.title || doc.title) : printDoc(doc))} />}
         </div>
         {!side && prevOpen && createPortal(
-          <Win id="docprev" onClose={() => setPrevOpen(false)} dirty={false} className="docprevwin">
+          <Win id="docprev" onClose={() => setPrevOpen(false)} dirty={false} className="docprevwin" fitDoc={doc}>
             <div className="panelhead"><b className="clamp">{doc.title}</b><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(doc)}><IcoPrint /></button><XBtn /></div>
             <DocPreview d={doc} onOpen={() => setPrevOpen(false)} noPrint />
           </Win>, document.querySelector(".app") || document.body)}
@@ -13767,6 +13845,9 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
         <XBtn /></div>
       {(inv.customer?.name || (inv.items || []).length > 0) && <MHero icon={isA ? "📝" : "🧾"} sub={`${isA ? "Angebot" : "Rechnung"} ${inv.number || "Entwurf"}${inv.date ? " · " + fmtDate(inv.date) : ""}`} title={inv.customer?.name || "Ohne Kunde"} value={fmtInv(inv)}
         pills={[{ label: invState(inv), cls: { bezahlt: "st-paid", "überfällig": "st-over", offen: "st-open" }[invState(inv)] || "st-draft" }]} />}
+      <WinHero icon={isA ? "📝" : "🧾"} title={(isA ? "Angebot " : "Rechnung ") + (inv.number || "(Entwurf)")} scope={<FirmaPill />}
+        chip={(STATE_UI[invState(inv)]?.[0] || invState(inv)) + (!isA && invState(inv) !== "bezahlt" && invState(inv) !== "entwurf" && invDueEff(inv) ? " · fällig " + fmtDate(invDueEff(inv)) : "") + " · " + fmtInv(inv)}
+        hint={[inv.customer?.name, inv.date && "erstellt " + fmtDate(inv.date)].filter(Boolean).join(" · ") || null} />
       {locked && <p className="warn small">Diese {isA ? "Angebot" : "Rechnung"} ist ausgestellt und kann nicht mehr geändert werden (Rechnungen dürfen nachträglich nicht verändert werden – bei Fehlern stornieren und neu ausstellen).</p>}
       <fieldset disabled={locked}>
         <legend>Kunde</legend>
@@ -14371,7 +14452,9 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
         </Win>, document.querySelector(".app") || document.body)}
       {init.name && (() => { const cd = ctDates(c); return <MHero icon="📑" sub={c.provider || "Vertrag"} title={c.name || "Vertrag"} value={c.amount ? fmtMoney(Number(String(c.amount).replace(",", ".")) || 0, c.currency || "EUR") : null}
         pills={[c.interval || "monatlich", cd.cancelBy && { label: "kündbar bis " + fmtDate(cd.cancelBy), cls: "st-open" }, c.cancelledAt && { label: "gekündigt", cls: "st-over" }]} />; })()}
-      <ScopeSelect obj={c} onPick={(p) => set(p)} />
+      {(() => { const cd = ctDates(c); return <WinHero icon="📑" title={c.name || "Neuer Vertrag"} scope={<ScopeSelect obj={c} onPick={(p) => set(p)} />}
+        chip={[c.cat, c.interval || (c.amount ? "monatlich" : ""), c.amount && fmtMoney(Number(String(c.amount).replace(",", ".")) || 0, c.currency || "EUR")].filter(Boolean).join(" · ") || null}
+        hint={[c.provider, c.cancelledAt ? "gekündigt" : cd.cancelBy && "kündbar bis " + fmtDate(cd.cancelBy)].filter(Boolean).join(" · ") || null} />; })()}
       <fieldset><legend>Vertrag</legend>
         <div className="grid2">
           <label>Bezeichnung<input value={c.name || ""} placeholder="z. B. Internet Zuhause" onChange={(e) => set({ name: e.target.value })} /></label>
@@ -14690,6 +14773,7 @@ function ContactEditor({ c: init, onSave, onDelete, onClose }) {
   return (
     <Win dock="kunde" tint={tintOf("firma")} id="contact" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name || "Neuer Kontakt"}</b><button className="btn primary" disabled={!c.name?.trim()} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
+      <WinHero icon={initials(c.name)} img={c.logo} title={c.name || "Neuer Kontakt"} scope={<FirmaPill />} chip={[c.type || types[0]?.name, c.number].filter(Boolean).join(" · ")} hint={[c.email, c.phone || c.mobile].filter(Boolean).join(" · ") || null} />
       <div className="typepick">{types.map((t) => <button key={t.id} className={"chip" + ((c.type || types[0]?.name) === t.name ? " on" : "")} style={(c.type || types[0]?.name) === t.name ? undefined : { color: t.color }} onClick={() => set({ type: t.name })}><TypeGlyph t={t} /> {t.name}</button>)}</div>
       <ContactLogo c={c} set={set} />
       <fieldset><legend>Kontakt</legend>
@@ -14968,6 +15052,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       </div></div>)}
       {!mob && selC && createPortal(<Win dock="kunde" tint={tintOf("firma")} id="custdet" onClose={() => setSelId(null)} dirty={false} className="custwin" defW={720}>
         <div className="panelhead"><b>Kundendatei</b><XBtn /></div>
+        <WinHero icon={initials(selC.name)} img={selC.logo} title={selC.name || "Kunde"} scope={<FirmaPill />} chip={[selC.type, selC.number].filter(Boolean).join(" · ") || null} hint={[selC.email, selC.phone || selC.mobile].filter(Boolean).join(" · ") || null} />
         <div className="custwinbody">{detail}</div>
       </Win>, document.querySelector(".app") || document.body)}
       {assignOpen && <AssignWin items={unmatched} customers={list} onAssign={assign} onNew={(i) => { const c = { id: uid(), type: "Kunde", number: nextNo(), ...i.customer }; c.id = c.id && !list.some((x) => x.id === c.id) ? c.id : uid(); setList((l) => [...l, c]); assign(i.id, c); }} onClose={() => setAssignOpen(false)} />}
@@ -15554,6 +15639,8 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
   return (
     <Win dock="artikel" tint={tintOf("firma")} id="artedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.text || "Neuer Artikel"}</b><button className="btn primary" disabled={!a.text?.trim()} onClick={doSave}>Speichern</button><XBtn /></div>
+      <WinHero icon="📦" img={a.photo} title={a.text || "Neuer Artikel"} scope={<FirmaPill />} chip={[a.group, a.number].filter(Boolean).join(" · ") || null}
+        hint={[a.price !== "" && a.price != null && fmtMoney(Number(String(a.price).replace(",", ".")) || 0) + (a.unit ? " / " + a.unit : ""), a.stock && "Lagerartikel"].filter(Boolean).join(" · ") || null} />
       <div className="scanrow">
         <label className="grow">EAN / Strichcode<input value={a.ean || ""} inputMode="numeric" placeholder="scannen oder eintippen" onChange={(e) => set({ ean: e.target.value })} /></label>
         <button className="btn" onClick={() => setScan(true)}>📷 Scannen</button>
@@ -15751,7 +15838,9 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
       <div className="panelhead"><b>{init.name || "Neues Gerät"}</b><button className="btn primary" disabled={!a.name?.trim()} onClick={() => { onSave({ ...a, price: a.price === "" || a.price == null ? "" : Number(String(a.price).replace(",", ".")) || 0 }); onClose(); }}>Speichern</button><XBtn /></div>
       {init.name && <MHero icon="🛡️" sub={[a.brand, a.cat].filter(Boolean).join(" · ") || "Gerät"} title={a.name || init.name} value={a.price !== "" && a.price != null ? fmtMoney(Number(String(a.price).replace(",", ".")) || 0, a.currency || "EUR") : null}
         pills={[a.date && "gekauft " + fmtDate(a.date), astEndAll(a) && { label: (astEndAll(a) < todayISO() ? "Garantie abgelaufen " : "Garantie bis ") + fmtDate(astEndAll(a)), cls: astEndAll(a) < todayISO() ? "st-draft" : "st-paid" }]} />}
-      <ScopeSelect obj={a} onPick={(p) => set(p)} />
+      <WinHero icon="🛡️" img={a.photo} title={a.name || "Neues Gerät"} scope={<ScopeSelect obj={a} onPick={(p) => set(p)} />}
+        chip={[a.cat, a.brand].filter(Boolean).join(" · ") || null}
+        hint={astEndAll(a) ? (astEndAll(a) < todayISO() ? "Garantie abgelaufen am " : "Garantie bis ") + fmtDate(astEndAll(a)) + (astEndAll(a) >= todayISO() ? " · noch " + daysUntil(astEndAll(a)) + " Tage" : "") : a.date ? "gekauft " + fmtDate(a.date) : null} />
       {a.docId || busy ? (
         <div className="expatt">
           {doc?.thumb ? <img src={doc.thumb} alt="" /> : <span className="attpdf">📄</span>}
@@ -17529,6 +17618,28 @@ html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon .gll{widt
 .win.detsplit>.wininner>.winguard{position:absolute;top:10px;left:12px;right:auto;width:calc(var(--formw,700px) - 24px);box-sizing:border-box;margin:0;box-shadow:0 10px 28px rgba(0,0,0,.45)}
 @media (min-width:768px){.win .winguard{flex-wrap:nowrap}.win .winguard>b:first-child{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.win .winguard .grow{display:none}.win .winguard .btn{flex:0 0 auto;white-space:nowrap}}
 .updevery{display:flex;align-items:center;gap:10px;margin:8px 0 4px}.updevery>span{flex:1}
+/* v1.0.18: Kopf wie bei Buchungen für alle Fenster (Besitz, Rechnungen, Kunden, Verträge, Artikel) */
+.winhero{display:flex;flex-direction:column;align-items:center;gap:9px;margin:4px 0 18px;text-align:center}
+.winheroic{width:75px;height:75px;border-radius:21px;background:color-mix(in srgb,var(--txt) 12%,var(--card));display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:700;color:var(--txt);overflow:hidden;flex:none}
+.winheroic.img{background:#fff}.winheroic img{width:100%;height:100%;object-fit:contain}
+.winherot{margin:2px 0 0;font-size:26px;line-height:1.15;font-weight:500;word-break:break-word}
+.winherochip{display:inline-flex;align-items:center;gap:6px;padding:6px 16px;border-radius:12px;background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);font-size:15px}
+.winherohint{color:var(--mut);font-size:13px}
+.winhero>.scsel{margin:0}.scselbtn.static{cursor:default}
+.panelhead:has(~ .winhero)>b:first-child{visibility:hidden}
+@media (max-width:767px){.winhero{display:none}}
+.txheroico .caticon.caticon.caticon{width:75px!important;height:75px!important}
+/* v1.0.18: Journal-Spalten verschiebbar */
+.jgrid.jcustom{position:relative}
+.jgrid.jcustom>.jside{order:var(--o-side,0)}.jgrid.jcustom>.jlist{order:var(--o-list,1)}.jgrid.jcustom>.jcenter{order:var(--o-center,2)}.jgrid.jcustom>.jinsp{order:var(--o-insp,3)}
+.jcolsov{position:absolute;inset:0;pointer-events:none;z-index:4}
+.jcolgrip{position:absolute;top:-11px;transform:translateX(-50%);pointer-events:auto;border:1px solid var(--line);background:var(--card);color:var(--mut);border-radius:8px;font-size:12px;line-height:1;padding:3px 10px;cursor:grab;opacity:0;transition:opacity .15s}
+.jgrid.jcustom:hover .jcolgrip,.jcolgrip.on{opacity:1}.jcolgrip:hover,.jcolgrip.on{color:var(--acc);border-color:var(--acc)}
+.jcolrz{position:absolute;top:0;bottom:0;width:10px;margin-left:-5px;pointer-events:auto;cursor:col-resize;display:flex;align-items:center;justify-content:center}
+.jcolrz i{width:4px;height:40px;border-radius:2px;background:color-mix(in srgb,var(--txt) 25%,transparent);opacity:0;transition:opacity .15s}
+.jgrid.jcustom:hover .jcolrz i,body.win-moving .jcolrz i{opacity:1}.jcolrz:hover i{background:var(--acc)}
+.jcolline{position:absolute;top:0;bottom:0;width:3px;margin-left:-1.5px;background:var(--acc);border-radius:2px}
+.jcolreset{position:absolute;right:4px;top:-26px;pointer-events:auto}
 .docksetting .dockminw{display:flex;flex-direction:column;gap:6px;padding:4px 0 10px}.docksetting .dockminw.off{opacity:.45}
 .docksetting .dockminw input[type=range]{width:100%;accent-color:var(--acc)}.docksetting .dockminchips{gap:6px;flex-wrap:wrap}
 /* v1.0.10: Seitenleiste – Anzahlen (Dokumente) und Kontostände in einer Flucht unter den Gruppen-Pfeilen, Anzahlen als Plakette */
@@ -20298,7 +20409,7 @@ button.jmhead{width:100%;border:0;font-family:inherit;cursor:pointer;align-items
 /* v0.99.10/12: Journal – Prüfkarte */
 .jcard{display:flex;flex-direction:column;gap:10px;height:100%}
 .jcard .jctitle{font-size:17px;line-height:1.3}
-.jcard .jcamt{font-size:28px;font-weight:700}
+.jcard .jcamt{font-size:26px;font-weight:700}
 .jcard .jcmeta{display:flex;flex-direction:column;gap:6px;font-size:14px}
 .jcard .jcnote{white-space:pre-wrap;margin:0}
 .jcard .jcbtns{position:static;margin:0 0 4px;padding:0;background:none}

@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.18 – Einheitlicher Kopf, Journal-Spalten, Vorschau in Dokumentgröße
+- Besitz & Garantie, Rechnungen, Kunden (Kundendatei und Kontakt), Verträge, Artikel / Lager: Kopf wie bei Buchungen – großes Symbol bzw. Logo, Name, Privat/Firma, Kategorie/Status, Hinweis; Inhalte darunter unverändert
+- Symbol/Logo im Kopf 1 px kleiner (75 px)
+- Steuerberater → Prüfen: Pfeil zeigt jetzt auf die angeklickte Buchung
+- Journal: Spalten (Ordner, Belege, Vorschau, Details) am Griff ⠿ umordnen und am Rand in der Breite ändern, „↺ Spalten“ setzt zurück; Betrag in den Details 2 px kleiner
+- Vorschaufenster öffnen sich in der Größe des Dokuments (ganze Seite sichtbar, max. 90 % des Bildschirms)
+
 ## v1.0.17 – Update-Suche einstellbar
 - Einstellungen → Verbindung → „Automatisch suchen“: nur beim App-Start, alle 5 / 10 / 15 / 30 Minuten, stündlich, alle 6 Stunden (Standard), täglich oder nie automatisch
 - Nach Ruhezustand oder längerer Pause wird beim Zurückkehren ins Fenster sofort nachgeholt, wenn das Intervall abgelaufen ist; Anzeige „Zuletzt gesucht“
