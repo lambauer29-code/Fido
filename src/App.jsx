@@ -1772,12 +1772,17 @@ if (typeof window !== "undefined") addEventListener("scroll", () => { if (!sheet
 // v1.0.11: große Fenster – Details öffnen sich als Spalte rechts neben der Liste statt als Popup
 const DOCK_MIN_W = 1400, dockReg = new Map();
 // v1.0.15: pro Bereich einstellbar, ob die Details rechts aufgehen
-const DOCK_TABS = [["tx", "🏦", "Konten", "Buchungen – auch aus Journal und Steuerberater"], ["doc", "📄", "Dokumente", "Dokument bearbeiten, auch aus Fristen"], ["inv", "🧾", "Rechnungen", "Rechnung bearbeiten und neu anlegen"], ["kunde", "👥", "Kunden", "Kundendetail und Kontakt bearbeiten"], ["vertrag", "📑", "Verträge", "Vertrag bearbeiten"], ["artikel", "📦", "Artikel", "auch Lager & Inventur"], ["besitz", "🛡️", "Besitz & Garantie", "Gegenstand bearbeiten"], ["kassa", "📒", "Kassabuch", "Eintrag im Kassabuch"]];
+const DOCK_TABS = [["tx", "🏦", "Konten", "Buchungen – auch aus Journal und Steuerberater"], ["doc", "📄", "Dokumente", "Dokument bearbeiten, auch aus Fristen"], ["inv", "🧾", "Rechnungen", "Rechnung bearbeiten und neu anlegen"], ["kunde", "👥", "Kunden", "Kundendetail und Kontakt bearbeiten"], ["vertrag", "📑", "Verträge", "Vertrag bearbeiten"], ["artikel", "📦", "Artikel", "auch Lager & Inventur"], ["besitz", "🛡️", "Besitz & Garantie", "Gegenstand bearbeiten"], ["kassa", "📒", "Kassabuch", "Eintrag im Kassabuch"], ["fb", "🚗", "Fahrtenbuch", "Tanken, Fahrt und Ausgabe bearbeiten"]];
 // Pfeil zur angeklickten Zeile: zuletzt angeklickte Listenzeile merken (vor allen Fenster-Handlern, daher hier beim Laden registriert)
 const DOCK_ROW_SEL = ".crow:not(.chead),.txrow,.ditem,.frow,.kbr,.invrow,.ctrow,.astrow,.jrow,.subrow,.contactrow,.stmtrow,.ctcard,[data-dockrow]";
 let dockAnchor = null, dockAnchorPrev = null;
+const dockKeyOf = (el) => ({ id: el?.dataset?.dockid || "", b: (el?.querySelector("b")?.textContent || "").trim(), t: new Set((el?.textContent || "").split(/[\s·|]+/).filter((w) => w.length > 2)) });
+const dockFind = (key) => { if (key?.id) { const el = [...document.querySelectorAll(".app main [data-dockid]")].find((e) => e.dataset.dockid === key.id && e.getBoundingClientRect().height); if (el) return el; } if (!key?.b) return null; let best = null, bs = -1;
+  for (const el of document.querySelectorAll(".app main " + DOCK_ROW_SEL.split(",").join(",.app main "))) { if (!el.getBoundingClientRect().height || (el.querySelector("b")?.textContent || "").trim() !== key.b) continue;
+    let sc = 0; for (const w of (el.textContent || "").split(/[\s·|]+/)) if (key.t.has(w)) sc++; if (sc > bs) { bs = sc; best = el; } }
+  return best; };
 if (typeof document !== "undefined") document.addEventListener("pointerdown", (e) => {
-  const r = e.target.closest?.(DOCK_ROW_SEL); if (!r || r.closest(".win")) return; dockAnchorPrev = dockAnchor; dockAnchor = r;
+  const r = e.target.closest?.(DOCK_ROW_SEL); if (!r || r.closest(".win")) return; dockAnchorPrev = dockAnchor; dockAnchor = r; r._dockKey = dockKeyOf(r);
 }, true);
 function dockApply() {
   const html = document.documentElement, w = Math.max(0, ...dockReg.values());
@@ -1809,6 +1814,16 @@ function DockSetting() {
         <input type="checkbox" className="switch" disabled={on === false} checked={(tabs || {})[k] !== false} onChange={(e) => setTabs({ ...(tabs || {}), [k]: e.target.checked })} /></label>)}
     </div>
   </div>;
+}
+// v1.0.25: würde ein Fenster mit diesem dock-Schlüssel gerade rechts angedockt erscheinen?
+// freie Breite links neben einer angedockten rechten Spalte (Popups öffnen dort mittig statt unter der Spalte)
+const winAvailW = () => { const h = document.documentElement; return h.classList.contains("docked") ? Math.max(480, innerWidth - (parseFloat(h.style.getPropertyValue("--dockw")) || 0) - 24) : innerWidth; };
+function useDocked(key) {
+  const wide = useMedia("(min-width:768px)") && !IS_TABLET;
+  const [dockPref] = useLsState("dockDetails", true), [dockMin] = useLsState("dockMinW", DOCK_MIN_W);
+  const bigWin = useMedia(`(min-width:${Number(dockMin) || DOCK_MIN_W}px)`);
+  const [dockTabs] = useLsState("dockTabs", {});
+  return wide && bigWin && dockPref !== false && (dockTabs || {})[key] !== false;
 }
 function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false, extraW = 0, onExtraW, dock = false, tint = null, fitDoc = null }) {
   // v0.99.8: iPad bekommt dieselben Popups wie das iPhone (Karte von unten)
@@ -1874,7 +1889,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
     const r = ls.get("win:" + id, null) || defaultRect(defW, small);
     // v1.0.9: jedes Fenster öffnet sich mittig (gemerkte Größe bleibt) – mit angehängter Vorschau wird beides zusammen zentriert
     const total = r.w + (extraW || 0);
-    return clampRect({ ...r, x: Math.max(12, Math.round((innerWidth - total) / 2)), y: Math.max(16, Math.round((innerHeight - r.h) / 2)) });
+    return clampRect({ ...r, x: Math.max(12, Math.round((winAvailW() - total) / 2)), y: Math.max(16, Math.round((innerHeight - r.h) / 2)) });
   });
   const [z, setZ] = useState(() => ++winZ);
   zRef.current = z;
@@ -1891,7 +1906,11 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
       raf = requestAnimationFrame(tick);
       const el = rootRef.current, arr = arrRef.current, inner = innerRef.current; if (!el || !arr || !inner) return;
       if (dockAnchor && dockAnchor !== anchor && dockAnchor.isConnected) anchor = dockAnchor;
-      if (!anchor || !anchor.isConnected || !anchor.getBoundingClientRect().height) { const c = document.querySelector(".app .txrow.cur,.app .cur[data-dockrow]"); if (c) anchor = c; }
+      if (!anchor || !anchor.isConnected || !anchor.getBoundingClientRect().height) {
+        // v1.0.25: Liste wurde neu aufgebaut (z. B. Tabelle → schmale Liste) – dieselbe Zeile über ihren Titel wiederfinden
+        const key = anchor && (anchor._dockKey || (anchor._dockKey = dockKeyOf(anchor)));
+        const now = performance.now(), c = (now - (tick.tried || 0) > 250 && ((tick.tried = now), dockFind(key))) || document.querySelector(".app .txrow.cur,.app .cur[data-dockrow]");
+        if (c) { c._dockKey = key; anchor = c; } }
       // Kopfbereich: Element mit data-dockhead, sonst .txhero, sonst der Fensterkopf
       const hd = inner.querySelector("[data-dockhead],.txhero") || inner.querySelector(".panelhead");
       const ir = inner.getBoundingClientRect();
@@ -1964,7 +1983,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   const hasExtra = !!extraW, extraFirst = useRef(true);
   useEffect(() => {
     if (extraFirst.current) { extraFirst.current = false; return; }
-    setRect((r) => { const total = r.w + (hasExtra ? extraRef.current || 0 : 0); return { ...r, x: Math.max(12, Math.round((innerWidth - Math.min(total, innerWidth - 24)) / 2)) }; });
+    setRect((r) => { const total = r.w + (hasExtra ? extraRef.current || 0 : 0); return { ...r, x: Math.max(12, Math.round((winAvailW() - Math.min(total, winAvailW() - 24)) / 2)) }; });
   }, [hasExtra]);
   useEffect(() => { const h = () => setRect((r) => clampRect(r)); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, []);
 
@@ -2007,11 +2026,11 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   const fitAsp = useDocAspect(fitDoc), fitManual = useRef(false);
   useEffect(() => {
     if (!fitAsp || fitManual.current || !wide) return;
-    const CH = 108, CW = 36, maxH = Math.round(innerHeight * 0.9), maxW = Math.round(innerWidth * 0.9);
+    const CH = 108, CW = 36, maxH = Math.round(innerHeight * 0.9), avail = winAvailW(), maxW = Math.round(avail * 0.9);
     let h = maxH, w = Math.round((h - CH) * fitAsp + CW);
     if (w > maxW) { w = maxW; h = Math.round((w - CW) / fitAsp + CH); }
     w = Math.max(320, w); h = Math.max(300, Math.min(maxH, h));
-    setRect(clampRect({ x: Math.round((innerWidth - w) / 2), y: Math.round((innerHeight - h) / 2), w, h }));
+    setRect(clampRect({ x: Math.round((avail - w) / 2), y: Math.round((innerHeight - h) / 2), w, h }));
   }, [fitAsp, fitDoc?.id]);
   const onExtraRef = useRef(onExtraW); onExtraRef.current = onExtraW;
   const edge = (dir) => (e) => {
@@ -3784,7 +3803,7 @@ function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onD
   const title = { fuel: elec ? "Laden" : "Tanken", expense: "Ausgabe", trip: "Fahrt" }[t];
   const placeBtn = (f) => <button className="iconbtn fbgps" title="Aktuellen Ort einsetzen" aria-label="Aktuellen Ort einsetzen" disabled={!!placeBusy} onClick={() => fillPlace(f)}>{placeBusy === f ? <span className="spin" /> : "📍"}</button>;
   return (
-    <Win id={"fb-" + t} onClose={onClose} small>
+    <Win dock="fb" tint={tintOf(vehicles.find((v) => v.id === x.vid) || "privat")} id={"fb-" + t} onClose={onClose} small>
       <div className="panelhead"><b>{t === "fuel" && elec ? "⚡" : FB_ICON[t]} {isNew ? title + " erfassen" : title}</b><XBtn /></div>
       {vehicles.length > 1 && <label>Fahrzeug<PSelect value={x.vid} onChange={(e) => set({ vid: e.target.value })}>{vehicles.map((y) => <option key={y.id} value={y.id}>{y.icon || "🚗"} {y.name}</option>)}</PSelect></label>}
       {t === "trip" ? (<>
@@ -4332,7 +4351,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
             onClick={(x) => openEdit(x)} onPrev={setWinPrev} Acts={FbActs}
             preview={(x) => <div className="txprev"><DocPreview d={docOf(x)} onOpen={() => onOpen(docOf(x).id)} /></div>} />}
             table={() => mine.filter((x) => view === "verlauf" || x.type === view).map((x) => { const icon = x.type === "expense" ? (FB_EXP.find((c) => c[0] === x.cat)?.[1] || "🧾") : FB_ICON[x.type]; return (
-              <ColRow key={x.id} DEF={FB_COLS} cfg={fbCols} onClick={() => openEdit(x)} lead={<span className={"fbic " + x.type}>{x.type === "fuel" && isElec(x.fuel) ? "⚡" : icon}</span>}
+              <ColRow key={x.id} data-dockid={x.id} DEF={FB_COLS} cfg={fbCols} onClick={() => openEdit(x)} lead={<span className={"fbic " + x.type}>{x.type === "fuel" && isElec(x.fuel) ? "⚡" : icon}</span>}
                 cells={{ date: <>{fmtDate(x.date)}{x.time && <small className="muted block">{x.time}</small>}</>, type: x.type === "fuel" ? (isElec(x.fuel) ? "Laden" : "Tanken") : x.type === "trip" ? "Fahrt" : "Ausgabe",
                   desc: <><b className="invname">{x.type === "fuel" ? `${amtStr(x.liters).replace(",00", "")} ${unitOf(x.fuel)}${x.station ? " · " + x.station : ""}` : x.type === "trip" ? `${x.from || "?"} → ${x.to}` : x.cat}</b>
                     <small className="muted block">{x.type === "trip" ? [{ business: "geschäftlich", private: "privat", commute: "Arbeitsweg" }[x.purpose], x.note].filter(Boolean).join(" · ") : [x.type === "fuel" && x.price ? `${String(x.price).replace(".", ",")} €/${unitOf(x.fuel)}` : "", x.note, x.txId && "🏦", x.docId && "📎"].filter(Boolean).join(" · ")}</small></>,
@@ -7403,6 +7422,7 @@ function TxFold({ list, accounts }) {
 
 function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = [], accounts = [], saveDoc, goTab }) {
   const [fkCols, setFkCols] = useCols("fixkosten", FK_COLS);
+  const [fkPrev, setFkPrev] = useState(null);
   const [open, setOpen] = useState({});
   const toggleOpen = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const txById = useMemo(() => Object.fromEntries(txs.map((t) => [t.id, t])), [txs]);
@@ -7497,7 +7517,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
                 <div className="invacts" onClick={(e) => e.stopPropagation()}>
                   {(aboStyle === "pill" || (x.doc && aboStyle !== "punkt" && x.cls !== "st-paid")) && <span className={"stpill invst " + x.cls}>{x.label}</span>}
                   {!x.doc && aboStyle !== "pill" && stCtl(x)}
-                  {x.doc ? <button className="iconbtn" title="Vertrag ansehen" onClick={() => onOpen(x.doc.id)}><IcoEye /></button>
+                  {x.doc ? <button className="iconbtn" title="Vertrag ansehen" onClick={() => setFkPrev(x.doc)}><IcoEye /></button>
                     : aboStyle === "pill" && <button className={"iconbtn ok" + (isOk(x.r) ? " on" : "")} title={isOk(x.r) ? "Bestätigung aufheben" : "Bestätigen: läuft noch, zählt zu den Fixkosten"} aria-pressed={isOk(x.r)} onClick={() => verify(x.r)}>✓</button>}
                   {x.doc ? <button className="iconbtn" title="Kündigungsschreiben" onClick={() => setLetterFor(x.doc)}>✉︎</button>
                     : aboStyle === "pill" && <button className={"iconbtn no" + (isEnded(x.r) ? " on" : "")} title={isEnded(x.r) ? "Wieder aktivieren" : "Deaktivieren: Vertrag beendet, zählt nicht mehr"} aria-pressed={isEnded(x.r)} onClick={() => endIt(x.r)}>✕</button>}
@@ -7506,7 +7526,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
                       const mi = (k, label, on, why, run, cls = "") => <button key={k} className={"fkmi " + cls} disabled={!on} title={on ? undefined : why} onClick={(e) => { e.currentTarget.closest("details").open = false; run(); }}>{label}{!on && why && <small className="muted block">{why}</small>}</button>;
                       return [
                         mi("tx", open[x.key] ? "Buchungen ausblenden" : `Buchungen anzeigen (${x.txs.length})`, true, "", () => toggleOpen(x.key)),
-                        mi("view", "👁 Vertrag ansehen", !!x.doc, "kein Dokument – „Als Vertrag anlegen“", () => onOpen(x.doc.id)),
+                        mi("view", "👁 Vertrag ansehen", !!x.doc, "kein Dokument – „Als Vertrag anlegen“", () => setFkPrev(x.doc)),
                         mi("ok", !x.doc && isOk(x.r) ? "Bestätigung aufheben" : "✓ Bestätigen", !x.doc, "Vertrag gilt immer als bestätigt", () => verify(x.r)),
                         mi("end", !x.doc && isEnded(x.r) ? "Wieder aktivieren" : "✕ Als beendet markieren", x.doc ? !!saveDoc : true, "hier nicht möglich", async () => x.doc ? (await uiAsk(`Vertrag „${x.name}“ als beendet markieren? Er zählt dann nicht mehr zu den Fixkosten.`)) && saveDoc({ ...x.doc, contract: { ...x.doc.contract, active: false } }) : endIt(x.r)),
                         mi("letter", "✉︎ Kündigungsschreiben", true, "", () => setLetterFor(x.doc || { contract: { provider: x.name } })),
@@ -7531,7 +7551,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
                   iv: x.int || <span className="muted">–</span>, amt: <b className="invamt">{x.amount ? fmtMoney(x.amount) : "–"}</b>, stat: <span className={"stpill invst " + x.cls}>{x.label}</span> }}
                 trail={<span className="invacts">
                   {!x.doc && aboStyle !== "pill" && stCtl(x)}
-                  {x.doc ? <button className="iconbtn" title="Vertrag ansehen" onClick={() => onOpen(x.doc.id)}><IcoEye /></button>
+                  {x.doc ? <button className="iconbtn" title="Vertrag ansehen" onClick={() => setFkPrev(x.doc)}><IcoEye /></button>
                     : aboStyle === "pill" && <button className={"iconbtn ok" + (isOk(x.r) ? " on" : "")} title={isOk(x.r) ? "Bestätigung aufheben" : "Bestätigen: läuft noch, zählt zu den Fixkosten"} aria-pressed={isOk(x.r)} onClick={() => verify(x.r)}>✓</button>}
                   {x.doc ? <button className="iconbtn" title="Kündigungsschreiben" onClick={() => setLetterFor(x.doc)}>✉︎</button>
                     : aboStyle === "pill" && <button className={"iconbtn no" + (isEnded(x.r) ? " on" : "")} title={isEnded(x.r) ? "Wieder aktivieren" : "Deaktivieren: Vertrag beendet, zählt nicht mehr"} aria-pressed={isEnded(x.r)} onClick={() => endIt(x.r)}>✕</button>}
@@ -7540,7 +7560,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
                       const mi = (k, label, on, why, run, cls = "") => <button key={k} className={"fkmi " + cls} disabled={!on} title={on ? undefined : why} onClick={(e) => { e.currentTarget.closest("details").open = false; run(); }}>{label}{!on && why && <small className="muted block">{why}</small>}</button>;
                       return [
                         mi("tx", open[x.key] ? "Buchungen ausblenden" : `Buchungen anzeigen (${x.txs.length})`, true, "", () => toggleOpen(x.key)),
-                        mi("view", "👁 Vertrag ansehen", !!x.doc, "kein Dokument – „Als Vertrag anlegen“", () => onOpen(x.doc.id)),
+                        mi("view", "👁 Vertrag ansehen", !!x.doc, "kein Dokument – „Als Vertrag anlegen“", () => setFkPrev(x.doc)),
                         mi("ok", !x.doc && isOk(x.r) ? "Bestätigung aufheben" : "✓ Bestätigen", !x.doc, "Vertrag gilt immer als bestätigt", () => verify(x.r)),
                         mi("end", !x.doc && isEnded(x.r) ? "Wieder aktivieren" : "✕ Als beendet markieren", x.doc ? !!saveDoc : true, "hier nicht möglich", async () => x.doc ? (await uiAsk(`Vertrag „${x.name}“ als beendet markieren? Er zählt dann nicht mehr zu den Fixkosten.`)) && saveDoc({ ...x.doc, contract: { ...x.doc.contract, active: false } }) : endIt(x.r)),
                         mi("letter", "✉︎ Kündigungsschreiben", true, "", () => setLetterFor(x.doc || { contract: { provider: x.name } })),
@@ -7565,6 +7585,11 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
         setSubs && { icon: "✓", label: "Bestätigen", run: (sel) => { const k = sel.filter((x) => !x.doc).map((x) => x.key); setSubs({ ...subs, verified: [...new Set([...(subs.verified || []), ...k])], ended: (subs.ended || []).filter((y) => !k.includes(y)) }); } },
         setSubs && { icon: "✕", label: "Beenden", run: (sel) => { const k = sel.filter((x) => !x.doc).map((x) => x.key); setSubs({ ...subs, ended: [...new Set([...(subs.ended || []), ...k])], verified: (subs.verified || []).filter((y) => !k.includes(y)) }); } }]} />
 
+      {fkPrev && createPortal(
+        <Win id="docprev" onClose={() => setFkPrev(null)} dirty={false} className="docprevwin" fitDoc={fkPrev}>
+          <div className="panelhead"><b className="clamp">{fkPrev.title}</b><button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = fkPrev.id; setFkPrev(null); onOpen(id); }}><IcoEdit /></button><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(fkPrev)}><IcoPrint /></button><XBtn /></div>
+          <SidePreview d={fkPrev} noPrint />
+        </Win>, document.querySelector(".app") || document.body)}
       {letterFor && (
         <Win id="letter" onClose={() => setLetterFor(null)} dirty={false}>
             <div className="panelhead"><b>Kündigung</b><XBtn /></div>
@@ -7630,7 +7655,7 @@ const colNorm = (DEF, c) => { const keys = DEF.cols.map((x) => x[0]), o = (c?.or
   return { order: [...new Set(o)], w: { ...Object.fromEntries(DEF.cols.filter((x) => x[0] !== DEF.flex).map((x) => [x[0], x[2]])), ...(c?.w || {}) } }; };
 function useCols(id, DEF) { const [raw, set] = useLsState("cols:" + id, null); const cfg = useMemo(() => colNorm(DEF, raw), [raw]); return [cfg, set]; }
 const colAlign = (DEF, k) => (k === DEF.flex ? "cflex" : "c");   // v1.0.23: alle Spalten zentriert, nur die Hauptspalte links
-const colTpl = (DEF, cfg) => [DEF.lead && DEF.lead + "px", ...cfg.order.map((k) => (k === DEF.flex ? "minmax(150px,1fr)" : "minmax(" + Math.min(64, Math.round(cfg.w[k])) + "px," + Math.round(cfg.w[k]) + "px)")), (DEF.trail || 64) + "px"].filter(Boolean).join(" ");
+const colTpl = (DEF, cfg) => [DEF.lead && DEF.lead + "px", ...cfg.order.map((k) => (k === DEF.flex ? "minmax(150px,1fr)" : "minmax(" + Math.min(Math.round(cfg.w[k]), Math.max(48, Math.round(cfg.w[k] * 0.6))) + "px," + Math.round(cfg.w[k]) + "px)")), (DEF.trail || 64) + "px"].filter(Boolean).join(" ");
 function ColHead({ DEF, cfg, setCfg }) {
   const ref = useRef(null), [drag, setDrag] = useState(null), keys = cfg.order, lbl = Object.fromEntries(DEF.cols.map((x) => [x[0], x[1]]));
   const def = colNorm(DEF, null), changed = JSON.stringify(cfg) !== JSON.stringify(def);
@@ -11002,7 +11027,7 @@ const ABO_STYLES = [["pill", "Status + ✓ ✕", "bisherige Anzeige"], ["haken",
 let fileUi = null;   // in App gesetzt: { add(file, opts) → ids }
 let scanUi = null;   // in App gesetzt: { withFile(file, cb) } – Zuschneiden/Verbessern eines Fotos
 function StbItemsWin({ req, x, docs, txs, updateTx, openTx, onOpenDoc, onClose, setTab }) {
-  const [beleg, setBeleg] = useState(null), kbFile = useRef(null), [kbFor, setKbFor] = useState(null);
+  const [beleg, setBeleg] = useState(null), kbFile = useRef(null), [kbFor, setKbFor] = useState(null), [pv, setPv] = useState(null);
   const kind = req.kind, title = { beleg: "Firmenausgaben ohne Beleg", unklar: "Privat/Firma unklar", asks: "Offene Fragen an den Steuerberater", inv: "Ausgangsrechnungen", kassa: "Kassabuch" }[kind];
   const txRow = (r, extra) => (<div key={r.t.id} className="sbrow click" onClick={() => openTx?.(r.t)}>
     <span className="grow"><b className="one">{r.t.counterparty || r.t.purpose || "Buchung"}</b><small className="muted block one">{fmtDate(r.t.date)}{r.t.purpose && r.t.counterparty ? " · " + r.t.purpose : ""}{r.t.category ? " · " + r.t.category : ""}</small></span>
@@ -11023,7 +11048,7 @@ function StbItemsWin({ req, x, docs, txs, updateTx, openTx, onOpenDoc, onClose, 
       {kind === "kassa" && x.kE.filter((e) => !e.stornoBy && !e.stornoOf).map((e) => { const d = e.docId && docs.find((y) => y.id === e.docId);
         return (<div key={e.id} className="sbrow"><span className="grow"><b className="one">{e.text}</b><small className="muted block one">{kbNo(e)} · {fmtDate(e.date)} · {e.cat}{!d && !e.beleg && !e.eigen ? " · Beleg fehlt" : ""}</small></span>
           <b className={e.kind === "ein" ? "pos" : "neg"}>{(e.kind === "ein" ? "+" : "−") + fmtMoney(e.amount)}</b>
-          {d ? <button className="iconbtn" title="Beleg ansehen" onClick={() => onOpenDoc?.(d.id)}><IcoEye /></button> : !e.beleg && !e.eigen && <button className="btn sm" onClick={() => { setKbFor(e); kbFile.current?.click(); }}>📎 Beleg</button>}</div>); })}
+          {d ? <button className="iconbtn" title="Beleg ansehen" onClick={() => setPv(d)}><IcoEye /></button> : !e.beleg && !e.eigen && <button className="btn sm" onClick={() => { setKbFor(e); kbFile.current?.click(); }}>📎 Beleg</button>}</div>); })}
     </div>
     <div className="actions">
       {kind === "inv" && <button className="link" onClick={() => { onClose(); setTab?.("mahnungen"); }}>Zu den Mahnungen ›</button>}
@@ -11031,6 +11056,8 @@ function StbItemsWin({ req, x, docs, txs, updateTx, openTx, onOpenDoc, onClose, 
     </div>
     <input ref={kbFile} type="file" accept="image/*,application/pdf" hidden onChange={async (ev) => { const f = ev.target.files[0]; ev.target.value = ""; if (!f || !kbFor || !fileUi) return; const ids = await fileUi.add(f, { stay: true, receipt: true }); if (ids?.[0]) kbSet(kbFor, ids[0]); }} />
     {beleg && <StmtBelegWin r={beleg} docs={docs} txs={txs} onClose={() => setBeleg(null)} onOpenDoc={onOpenDoc} />}
+    {pv && createPortal(<Win id="docprev" onClose={() => setPv(null)} dirty={false} className="docprevwin" fitDoc={pv}>
+      <div className="panelhead"><b className="clamp">{pv.title}</b><XBtn /></div><SidePreview d={pv} noPrint /></Win>, document.querySelector(".app") || document.body)}
   </Win>, document.querySelector(".app") || document.body);
 }
 function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs, getTxs, categories, token, notify, setTab, onOpen, openTx, setAccounts, only }) {
@@ -11268,6 +11295,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
     offen: r.scope === "unklar" || (r.scope === "firma" && r.t.amount < 0 && !r.t.docId), unklar: r.scope === "unklar", beleg: r.scope === "firma" && r.t.amount < 0 && !r.t.docId,
     firma: r.scope === "firma", privat: r.scope === "privat", alle: true }[filt.kind])).sort((a, b) => b.t.date.localeCompare(a.t.date));
   const [aiBusy, setAiBusy] = useState(false), [askFor, setAskFor] = useState(null), [askTxt, setAskTxt] = useState("");
+  const [stbPrev, setStbPrev] = useState(null);   // v1.0.25: Beleg-Vorschau als eigenes Fenster
   async function aiCheck() {
     const open = pr.filter((r) => !(r.t.scope && !r.t.scopeSrc)).slice(0, 300);
     if (!open.length) return notify("Alle angezeigten Buchungen sind schon selbst zugeordnet");
@@ -11297,7 +11325,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
               <b className="one">{r.t.counterparty || r.t.purpose || "Buchung"}</b>
               <small className="muted block one">{fmtDate(r.t.date)} · {r.acc?.name || "Konto"} · {r.t.category}</small>
               <div className="stmtflags">
-                {r.t.docId ? <span className="stpill st-paid">📎 Beleg</span> : r.scope === "firma" && r.t.amount < 0 ? <span className="stpill st-over">Beleg fehlt</span> : null}
+                {r.t.docId ? <button type="button" className="stpill st-paid stbbeleg" title="Beleg ansehen" onClick={(e) => { e.stopPropagation(); const d = docs.find((x) => x.id === r.t.docId); if (d) setStbPrev(d); }}>📎 Beleg <IcoEye /></button> : r.scope === "firma" && r.t.amount < 0 ? <span className="stpill st-over">Beleg fehlt</span> : null}
                 {r.scope === "firma" && bizPctOf(r.t, "firma") < 100 && <span className="stpill st-open">✂️ {bizPctOf(r.t, "firma")} % Firma</span>}
                 {r.t.ask && <span className={"stpill " + (r.t.ask.state === "geklärt" ? "st-paid" : "st-open")}>❓ Frage</span>}
                 {r.src && <small className="muted">{r.src}</small>}{r.t.scopeWhy && <small className="muted one">· {r.t.scopeWhy}</small>}
@@ -11313,6 +11341,11 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
         {!pr.length && <MEmpty>{filt.kind === "offen" ? "Nichts offen 🎉 – alle Buchungen sind zugeordnet und alle Firmenausgaben haben einen Beleg." : "Keine Buchungen für diese Auswahl."}</MEmpty>}
         {pr.length > 400 && <p className="muted small center-text">Die ersten 400 von {pr.length} – Monat wählen, um einzuschränken.</p>}
       </div>
+      {stbPrev && createPortal(
+        <Win id="docprev" onClose={() => setStbPrev(null)} dirty={false} className="docprevwin" fitDoc={stbPrev}>
+          <div className="panelhead"><b className="clamp">{stbPrev.title}</b><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(stbPrev)}><IcoPrint /></button><XBtn /></div>
+          <SidePreview d={stbPrev} noPrint />
+        </Win>, document.querySelector(".app") || document.body)}
       {askFor && createPortal(<Win id="stbask" onClose={() => setAskFor(null)} small defW={480}>
         <div className="panelhead"><b>Frage an den Steuerberater</b><button className="btn primary" disabled={!askTxt.trim()} onClick={async () => { await updateTx({ ...askFor, ask: { q: askTxt.trim(), state: "offen", at: todayISO() } }); setAskFor(null); notify("Zur Klärungsliste hinzugefügt"); }}>Hinzufügen</button><XBtn /></div>
         <p className="small"><b>{askFor.counterparty || askFor.purpose}</b> · {fmtDate(askFor.date)} · {fmtMoney(askFor.amount)}</p>
@@ -11848,7 +11881,8 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
   // v1.0.6: am Computer öffnet die Vorschau direkt neben dem Dialog (Zustand wird gemerkt), am Handy/iPad wie bisher als eigenes Fenster
   const wideDet = useMedia("(min-width:1000px)") && !IS_TABLET;
   const [sideOpen, setSideOpen] = useState(() => !!ls.get("detSidePrev", false));
-  const side = wideDet && sideOpen;
+  const dockedDet = useDocked("doc");   // v1.0.25: rechts angedockt → Vorschau als eigenes Fenster, als Popup → rechts angehängt
+  const side = wideDet && sideOpen && !dockedDet;
   const toggleSide = () => setSideOpen((v) => { ls.set("detSidePrev", !v); return !v; });
   const [sideW, setSideW] = useState(() => ls.get("detSidePrevW", 560));
   useEffect(() => { const t = setTimeout(() => ls.set("detSidePrevW", sideW), 200); return () => clearTimeout(t); }, [sideW]);
@@ -11880,7 +11914,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         <div className="detbody"><div className="detcol">
         <div className="panelhead">
           <b>Dokument</b>
-          {wideDet
+          {wideDet && !dockedDet
             ? <button className={"btn detprevbtn" + (side ? " on" : "")} title={side ? "Vorschau ausblenden" : "Vorschau daneben anzeigen"} aria-pressed={side} onClick={toggleSide}><IcoEye /> <span>Vorschau</span></button>
             : <button className="btn detprevbtn" title="Vorschau öffnen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>}
           <button className="btn primary" disabled={!dirty} onClick={() => saveDoc(d)}>Speichern</button>
@@ -14579,7 +14613,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
       </FitScroll>
       {bulkBar}
       </>)}
-      {edit && <InvoiceEditor book={book} accounts={book?.accounts || []} txs={book?.txs || []} onPayWin={book ? (x) => { setEdit(null); setPayFor2(x); } : null} onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
+      {edit && <InvoiceEditor key={edit.id || "neu"} book={book} accounts={book?.accounts || []} txs={book?.txs || []} onPayWin={book ? (x) => { setEdit(null); setPayFor2(x); } : null} onPatch={(id, p) => { patch(id, p); setEdit((e) => (e ? { ...e, ...p } : e)); }} inv={edit} co={co} customers={customers} articles={articles} setArticles={setArticles} onSave={save} onFinalize={finalize} onClose={() => setEdit(null)} />}
       {coOpen && <CompanyWin co={co} setCo={setCo} onClose={() => setCoOpen(false)} />}
       {mdOpen && <MasterDataWin articles={articles} setArticles={setArticles} onClose={() => setMdOpen(false)} />}
       {remind && <RemindWin inv={remind} co={co} onClose={() => setRemind(null)} onDone={(n) => patch(n.id, { reminders: n.reminders })} />}
@@ -14633,7 +14667,8 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
   // v1.0.22: Vorschau wie bei Dokumenten – am Computer rechts an die Details angehängt (Zustand gemerkt), mehrere Dokumente als Reiter
   const wideDet = useMedia("(min-width:1000px)") && !IS_TABLET;
   const [sideOpen, setSideOpen] = useState(() => !!ls.get("ctSidePrev", false));
-  const side = wideDet && sideOpen && linked.length > 0;
+  const dockedCt = useDocked("vertrag");
+  const side = wideDet && sideOpen && linked.length > 0 && !dockedCt;
   const toggleSide = () => setSideOpen((v) => { ls.set("ctSidePrev", !v); return !v; });
   const [sideW, setSideW] = useState(() => ls.get("ctSidePrevW", 560));
   useEffect(() => { const t = setTimeout(() => ls.set("ctSidePrevW", sideW), 200); return () => clearTimeout(t); }, [sideW]);
@@ -14645,7 +14680,7 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
     <Win dock="vertrag" tint={tintOf(c)} id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)} className={side ? "detsplit" : ""} extraW={side ? sideW : 0} onExtraW={setSideW}>
       <div className="detbody"><div className="detcol">
       <div className="panelhead"><b>{init.name ? c.name || "Vertrag" : "Neuer Vertrag"}</b>
-        {linked.length > 0 && (wideDet
+        {linked.length > 0 && (wideDet && !dockedCt
           ? <button className={"btn detprevbtn" + (side ? " on" : "")} title={side ? "Vorschau ausblenden" : "Vorschau daneben anzeigen"} aria-pressed={side} onClick={toggleSide}><IcoEye /> <span>Vorschau</span></button>
           : <button className="btn detprevbtn" title="Dokumente ansehen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>)}
         <button className="btn primary" disabled={!c.name} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
@@ -14903,7 +14938,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
             <button className="iconbtn" title="Vertrag bearbeiten" aria-label="Vertrag bearbeiten" onClick={() => { setPrevCt(null); setEdit(pc); }}><IcoEdit /></button><XBtn /></div>
           <div className="ctprevdocs">{pd.map((x) => <DocPreview key={x.id} d={x} onOpen={() => onOpen(x.id)} />)}</div>
         </Win>, document.querySelector(".app") || document.body) : null; })()}
-      {edit && <ContractEditor c={edit} docs={docs} me={me} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
+      {edit && <ContractEditor key={edit.id || "neu"} c={edit} docs={docs} me={me} onSave={save} onDelete={(c) => setList((l) => l.filter((x) => x.id !== c.id))} onClose={() => setEdit(null)} />}
     </div>
   );
 }
@@ -15499,7 +15534,7 @@ function FbTimeline({ list, all, st, kmRate, prevId, docOf, onClick, Acts, previ
         : x.type === "trip" ? [kmFmt(Math.max(0, x.endKm - x.startKm)), { business: "geschäftlich", private: "privat", commute: "Arbeitsweg" }[x.purpose], x.note].filter(Boolean)
         : [x.km && kmFmt(x.km), x.station, x.note].filter(Boolean);
       return (<div key={x.id} className={"fbtlrow" + (prevId === x.id ? " open" : "")}>
-        <div className="frow click fbtlitem" onClick={() => onClick(x)}>
+        <div className="frow click fbtlitem" data-dockid={x.id} onClick={() => onClick(x)}>
           <span className={"fbtldot" + (ics[ik]?.img ? " own" : "")} style={{ background: col, "--c": col }} aria-hidden="true">{icon}</span>
           <div className="grow"><b className="fbtltitle">{title}{docOf(x) && (onPrev ? <button type="button" className="fbclip fbclipbtn" title="Beleg ansehen" aria-label="Beleg ansehen" onClick={(e) => { e.stopPropagation(); onPrev(docOf(x)); }}>📎</button> : <span className="fbclip" title="Beleg angehängt"> 📎</span>)}</b><small className="muted block">{sub.join(" · ")}</small></div>
           <div className="right fbtlright"><b>{x.type === "trip" ? (x.purpose === "business" ? fmtMoney((x.endKm - x.startKm) * kmRate) : kmFmt(x.endKm - x.startKm)) : fmtMoney(+x.total || 0)}</b><small className="muted block">{fbDay(x.date)}</small></div>
@@ -16015,7 +16050,7 @@ function ArticlesPage({ setTab }) {
         const hit = list.find((a) => a.ean && a.ean === code);
         setEdit(hit || { id: uid(), text: "", unit: C.defUnit, price: "", number: C.autoNo ? nextNo() : "", group: "", ean: code, eanFormat: fmt, autoLookup: true });
       }} />}
-      {edit && <ArticleEditor a={edit} onSave={save} onDelete={(a) => setList((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
+      {edit && <ArticleEditor key={edit.id || "neu"} a={edit} onSave={save} onDelete={(a) => setList((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
     </div>
   );
 }
@@ -16269,7 +16304,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
       </>)}
       
       </>)}
-      {edit && <AssetEditor a={edit} docs={docs} onScan={onScan} onUpload={onUpload} onOpenDoc={onOpen} notify={notify}
+      {edit && <AssetEditor key={edit.id || "neu"} a={edit} docs={docs} onScan={onScan} onUpload={onUpload} onOpenDoc={onOpen} notify={notify}
         onSave={save} onDelete={(a) => setList((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
       {syncOpen && <CalSyncSheet sync={calSync} setSync={setCalSync} items={calItems} token={token} notify={notify} onClose={() => setSyncOpen(false)} what="Fristen & Garantien" />}
     </div>
@@ -16695,7 +16730,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
   const modals = (<>{kbModals}
     {form && <KassaEntryWin init={form} kasse={kasse} entries={entries} lastCount={lastCount} docs={docs} onUpload={onUpload} onScan={onScan} onOpen={onOpen} notify={notify} onSave={(n) => { setEntries((l) => [...l, n]); notify?.(`Gebucht: ${kbNo(n)}`); }} onClose={() => setForm(null)} />}
     {countOpen && <KassaCountWin kasse={kasse} entries={entries} onSave={saveCount} onClose={() => setCountOpen(false)} />}
-    {det && <KassaDetailWin e={entries.find((x) => x.id === det) || {}} kasse={kasse} saldo={saldo[det]} entries={entries} docs={docs} onOpen={onOpen} onStorno={doStorno} onClose={() => setDet(null)} />}
+    {det && <KassaDetailWin key={det} e={entries.find((x) => x.id === det) || {}} kasse={kasse} saldo={saldo[det]} entries={entries} docs={docs} onOpen={onOpen} onStorno={doStorno} onClose={() => setDet(null)} />}
     {setup && <KassaSetupWin addNew={setup === "neu"} kassen={kassen} setKassen={setKassen} entries={entries} sel={kasse.id} setSel={setSel} onClose={() => setSetup(false)} />}
   </>);
   const rowCls = (e) => (e.stornoBy || e.stornoOf ? " kbstorno" : "");
@@ -17119,7 +17154,7 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
       {mv && <StockMoveWin a={mv.a} type={mv.type} st={st(mv.a)} onSave={addMove} onClose={() => setMv(null)} />}
       {scan && <CodeScanWin title="Lagerartikel scannen" onClose={() => setScan(false)} onResult={scanHit} />}
       {rcpt && <StockReceiptWin arts={arts} docs={docs} onScan={onScan} onUpload={onUpload} onOpen={onOpen} onBook={bookReceipt} onClose={() => setRcpt(false)} />}
-      {edit && <ArticleEditor a={edit} onSave={(a, mvs) => { saveArt(a); if (mvs?.length) setMoves((l) => [...l, ...mvs]); }} onDelete={(a) => setArts((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
+      {edit && <ArticleEditor key={edit.id || "neu"} a={edit} onSave={(a, mvs) => { saveArt(a); if (mvs?.length) setMoves((l) => [...l, ...mvs]); }} onDelete={(a) => setArts((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
       {cnt && counts.find((c) => c.id === cnt) && <CountWin count={counts.find((c) => c.id === cnt)} arts={stockArts} moves={allMoves} onChange={(c) => setCounts((l) => l.map((x) => (x.id === c.id ? c : x)))}
         onFinish={finish} onDelete={(c) => setCounts((l) => l.filter((x) => x.id !== c.id))} onClose={() => setCnt(null)} />}
       {newCnt && <Win id="newcount" onClose={() => setNewCnt(null)} small dirty={false}>
@@ -17260,14 +17295,14 @@ function DunningPage({ setTab, book }) {
             cells={{ cust: <><b className="invname">{x.customer?.name || "Ohne Kunde"}</b>{(x.tags || []).length > 0 && <small className="muted block">{x.tags.map((t) => "#" + t).join(" ")}</small>}</>,
               nr: x.number, due: fmtDate(invDueEff(x)), since: <span className="neg">{since} Tage</span>,
               last: last ? <>{remindName(last.level)}<small className="muted block">{fmtDate(last.date)}</small></> : <span className="muted">noch nicht</span>,
-              amt: <b className="invamt neg">{fmtInv(x)}</b>, stage: <span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? "fällig" : `in ${(dn.waitDays || 0) - since} T.`}</span> }}
-            trail={<span className="invacts">
-              <button className={"btn sm" + (ready ? " danger" : "")} onClick={() => setRemind(x)}>{remindName(next)} erstellen</button>
-              <StatusMenu x={x} s={invState(x)} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />
-              <button className="iconbtn" title="Rechnung ansehen" aria-label="Vorschau" onClick={async () => openPdf(await buildInvoicePdf({ ...x, reminders: [] }, co), invFileName(x))}><IcoEye /></button>
-              <button className="iconbtn" title="Rechnung drucken" aria-label="Drucken" onClick={() => printInvs([[x, null]])}><IcoPrint /></button>
-              <button className="iconbtn" title="Tags bearbeiten" aria-label="Tags bearbeiten" onClick={() => tagInv([x])}>#</button>
-            </span>} />))} />
+              amt: <b className="invamt neg">{fmtInv(x)}</b>, stage: <span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? "fällig" : `in ${(dn.waitDays || 0) - since} T.`}</span>,
+              make: <span onClick={(e) => e.stopPropagation()}><button className={"btn sm" + (ready ? " danger" : "")} title={remindName(next) + " erstellen"} onClick={() => setRemind(x)}>{remindName(next)}</button></span>,
+              st: <span onClick={(e) => e.stopPropagation()}><StatusMenu x={x} s={invState(x)} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} /></span>,
+              acts: <span className="invacts cacts" onClick={(e) => e.stopPropagation()}>
+                <button className="iconbtn" title="Rechnung ansehen" aria-label="Vorschau" onClick={async () => openPdf(await buildInvoicePdf({ ...x, reminders: [] }, co), invFileName(x))}><IcoEye /></button>
+                <button className="iconbtn" title="Rechnung drucken" aria-label="Drucken" onClick={() => printInvs([[x, null]])}><IcoPrint /></button>
+                <button className="iconbtn" title="Tags bearbeiten" aria-label="Tags bearbeiten" onClick={() => tagInv([x])}>#</button>
+              </span> }} />))} />
       </section>}
       {(mf === "alle" || mf === "verlauf") && <section className="tile invlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Mahnverlauf</b><small>{histS.length}</small></div>
@@ -17312,7 +17347,7 @@ function DunningPage({ setTab, book }) {
   );
 }
 
-const DUN_COLS = { flex: "cust", trail: 380, trailLbl: "Aktionen", cols: [["cust", "Kunde"], ["nr", "Rechnung", 120], ["due", "Fällig", 104], ["since", "Überfällig", 100], ["last", "Gemahnt", 120], ["amt", "Betrag", 110], ["stage", "Mahnen", 90]] };
+const DUN_COLS = { flex: "cust", trail: 40, cols: [["cust", "Kunde"], ["nr", "Rechnung", 104], ["due", "Fällig", 92], ["since", "Überfällig", 84], ["last", "Gemahnt", 96], ["amt", "Betrag", 96], ["stage", "Frist", 70], ["make", "Erstellen", 170], ["st", "Status", 116], ["acts", "Aktionen", 110]] };
 const DUNH_COLS = { flex: "cust", trail: 190, trailLbl: "Aktionen", cols: [["cust", "Kunde"], ["stage", "Stufe", 130], ["nr", "Rechnung", 120], ["date", "Datum", 104], ["due", "Frist", 104], ["fee", "Spesen", 90], ["amt", "Betrag", 110], ["stat", "Status", 120]] };
 const CSS = `
 :root{color-scheme:light;--bg:#f3f5f9;--card:#ffffff;--card2:#f6f8fb;--line:#e6e9ef;--txt:#0f1b2d;--mut:#6b7686;--acc:#0b63f6;--acc2:#00b3a4;--red:#e5484d;--warn:#e88a00;--ok:#16a34a;
@@ -20279,19 +20314,21 @@ html.sty-graphit.sty-graphit nav.bottom>button.on,html.sty-sand.sty-sand nav.bot
 .txtable.txcustom .txrow>.c-date,.txtable.txcustom .txrow>.c-cat,.txtable.txcustom .txrow>.c-acc,.txtable.txcustom .txrow>.c-amt{text-align:center;justify-self:stretch}.txcolh.dragging{opacity:.45;cursor:grabbing}
 .txcolh.over-l{box-shadow:inset 3px 0 0 var(--acc)}.txcolh.over-r{box-shadow:inset -3px 0 0 var(--acc)}
 .colgrip.lft{right:auto;left:-9px}.colgrip{position:absolute;top:8px;bottom:8px;right:-9px;width:10px;cursor:col-resize;z-index:2;display:flex;justify-content:center}.colgrip::after{content:"";width:2px;border-radius:2px;background:var(--line)}.txcolh:hover .colgrip::after,.colgrip:hover::after{background:var(--acc)}
-.ctab .crow{display:grid;grid-template-columns:var(--ctpl);align-items:center;column-gap:14px}
+.ctab .crow{display:grid;grid-template-columns:var(--ctpl);align-items:center;column-gap:10px}
 .ctab .chead{position:sticky;top:0;z-index:3;background:var(--card);min-height:40px;border-bottom:1px solid var(--line);font-size:11.5px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;padding:0 14px;margin:0 -2px}
 .ctab .ccolh{justify-content:center;text-align:center}.ctab .ccolh.cflex{justify-content:flex-start;text-align:left}
 .ctab .invstcell{display:inline-flex;align-items:center;gap:6px;justify-content:center}.ctab .invacts{display:flex;gap:0;align-items:center}
 .ctab .ccontact{display:inline-flex;gap:2px}.ctab .crow.sel{background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .ctab .ditemt .clead{position:relative;gap:6px}.ctab .ditemt .clead .thumb{width:34px;height:44px;flex:none}.ctab .ditemt .c-amt .amt{font-size:16px!important;font-weight:500!important}.ctab .ditemt .c-amt{font-size:16px}.ctab .ditemt .clead .newdot.abs{left:-10px}.ctab .ditemt.isnew{box-shadow:inset 3px 0 0 var(--newc,#9aa0a6)}
 .ctab .kbfootrow,.ctab .kbopenrow{cursor:default}.ctab .kbfootrow{border-top:1px solid var(--line)}
-.ctrlbl{text-transform:uppercase;letter-spacing:.05em;font-weight:600}.ccolreset{display:flex;justify-content:flex-end;align-items:center;text-transform:none;letter-spacing:0;font-weight:500}
+.ctab .cacts{display:inline-flex;justify-content:center}.ctab .invacts{width:auto!important;flex-wrap:nowrap;justify-content:center}
+.stbbeleg{cursor:pointer;border:0;display:inline-flex;align-items:center;gap:4px;font:inherit}.stbbeleg svg{width:13px;height:13px}
+.ctrlbl{text-transform:uppercase;letter-spacing:.05em;font-weight:600}.ccolreset{display:flex;justify-content:center;align-items:center;text-transform:none;letter-spacing:0;font-weight:500}
 .ctab .crow:not(.chead){padding:11px 14px;border-bottom:1px solid var(--line);border-radius:10px;cursor:pointer}.ctab .crow:not(.chead):last-child{border-bottom:0}.ctab .crow:not(.chead):hover{background:color-mix(in srgb,var(--txt) 5%,transparent)}
 .ctab .crow.ended,.ctab .crow.inactive{opacity:.55}
 .ctab .ccell{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ctab .ccell.c{text-align:center}.ctab .ccell.c>*{margin-left:auto;margin-right:auto}
 .ctab .ccell>small,.ctab .ccell .sub{display:block;overflow:hidden;text-overflow:ellipsis}
-.ctab .ctrail{display:flex;justify-content:flex-end;align-items:center;gap:2px;overflow:visible}.ctab .ctrail>*{flex-wrap:nowrap;white-space:nowrap}.ctab .ccolh{min-width:0}.ctab .ccl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ctab .ctrail{display:flex;justify-content:center;align-items:center;gap:2px;overflow:visible}.ctab .ctrail>*{flex-wrap:nowrap;white-space:nowrap}.ctab .ccolh{min-width:0}.ctab .ccl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ctab .clead{display:flex;align-items:center;overflow:visible}
 .ctab .invname:hover{text-decoration:none}.ctab .invamt{min-width:0}
 .ctab .ccell .stpill,.ctab .ccell .label{white-space:nowrap}

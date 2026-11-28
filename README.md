@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.25 – Vorschau als eigenes Fenster, Fahrtenbuch rechts, Mahnungen-Spalten
+- Dokumente und Verträge: Sind die Details rechts angedockt, öffnet „Vorschau“ ein eigenes Fenster (in Dokumentgröße, mittig im freien Bereich); als Popup hängt sie wie bisher rechts an
+- Fixkosten & Abos und Steuerberater (Prüfen, Kassabuch-Belege): 👁 öffnet die Beleg-Vorschau als eigenes Fenster statt der Details
+- Pfeil zur aktuellen Zeile bleibt auch, wenn die Liste beim Andocken von Tabelle auf schmale Liste wechselt (z. B. Kunden)
+- Rechnungen, Verträge, Artikel, Besitz, Kassabuch: Klick auf eine andere Zeile lädt deren Daten in die offenen Details
+- Fahrtenbuch: Details in der rechten Spalte, eigener Schalter in den Einstellungen
+- Mahnungen: „Erstellen“, Status und Aktionen als eigene, verschiebbare Spalten; Aktionen-Überschrift überall zentriert
+
 ## v1.0.24 – Journal: Höhe der Vorschau verstellbar
 - Journal: Die Vorschau in der Mitte lässt sich am unteren Rand in der Höhe ziehen (Doppelklick = wieder volle Höhe); die Höhe wird gemerkt
 
