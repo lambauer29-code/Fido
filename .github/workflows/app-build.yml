@@ -1,4 +1,4 @@
-# Baut die FinDocu-App für macOS (Apple Silicon + Intel) und veröffentlicht sie als GitHub-Release.
+# Baut die FinDocu-App für macOS (Apple Silicon + Intel) und Windows und veröffentlicht sie als GitHub-Release.
 # Die installierte App findet das Release selbst (latest.json) und bietet das Update an.
 #
 # Läuft automatisch, wenn eine NEUE Version (package.json → "version") hochgeladen wird.
@@ -47,13 +47,13 @@ jobs:
     if: needs.check.outputs.build == 'true'
     strategy:
       fail-fast: false
+      max-parallel: 1   # nacheinander bauen, damit sich Mac und Windows nicht die latest.json überschreiben
       matrix:
         include:
           - os: macos-latest
             args: --target universal-apple-darwin
-          # Windows bei Bedarf wieder einschalten:
-          # - os: windows-latest
-          #   args: ""
+          - os: windows-latest
+            args: ""
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +82,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: FinDocu v__VERSION__
-          releaseBody: "Neue FinDocu-Version für den Mac. Erstinstallation: .dmg – bestehende Apps aktualisieren sich selbst."
+          releaseBody: "Neue FinDocu-Version für Mac und Windows. Erstinstallation: Mac .dmg, Windows …-setup.exe – bestehende Apps aktualisieren sich selbst."
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
