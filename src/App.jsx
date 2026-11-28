@@ -343,7 +343,7 @@ const scopePatch = (opt) => ({ scope: opt.base, scopeX: opt.fixed ? undefined : 
 function ScopeSelect({ obj, onPick, def = "privat", small = false }) {
   const opts = useScopeOpts(), cur = opts.find((o) => o.id === scopeKeyOf(obj, opts, def)) || opts[0];
   return <span className={"scsel" + (small ? " sm" : "")} style={{ "--scc": cur.color }} onClick={(e) => e.stopPropagation()}>
-    <PickMenu btnClass="scselbtn" block icon={cur.icon} label={cur.label} title="Privat, Firma oder eigener Bereich"
+    <PickMenu btnClass="scselbtn" icon={cur.icon} label={cur.label} title="Privat, Firma oder eigener Bereich"
       items={[{ head: "Zuordnung" }, ...opts.map((o) => ({ k: o.id, icon: <i className="scdot" style={{ background: o.color }} />, title: `${o.icon} ${o.label}`, sub: o.fixed ? undefined : o.base === "firma" ? "zählt wie Firma" : "zählt wie Privat", on: o.id === cur.id, run: () => onPick(scopePatch(o)) }))]} />
   </span>;
 }
@@ -2818,7 +2818,7 @@ function AppMain() {
         {tab === "kassa" && <KassaPage docs={active} onOpen={setOpenId} notify={notify} onScan={scanFor} onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]} />}
         {tab === "kunden" && <ContactsPage setTab={setTab} req={bizReq} busy={ctBusy} setBusy={setCtBusy} />}
         {tab === "vertraege" && <ContractsPage docs={active} me={me} onOpen={setOpenId} onFiles={onFiles} docBusy={docBusy} notify={notify} />}
-        {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} />}
+        {tab === "contracts" && <Contracts docs={active} onOpen={setOpenId} me={me} notify={notify} extra={confirmedSubs} subs={subs} setSubs={setSubs} txs={txs} accounts={accounts} saveDoc={saveDoc} goTab={setTab} />}
         {(tab === "settings" || tab === "backup") && (
           <Settings key={tab} only={tab === "backup" ? "backup" : ""} theme={theme} design={design} setDesign={setDesign} themeMode={themeMode} setThemeMode={setThemeMode} importTxs={importTxs} hideAmounts={hideAmounts} setHideAmounts={setHideAmounts} nav={nav} setNav={setNav} deleteAccount={deleteAccount} renameCategory={renameCategory} deleteCategory={deleteCategory} txs={txs} setTxs={setTxs} accounts={accounts} setAccounts={setAccounts} rules={rules} setRules={setRules} setTab={setTab} categories={categories} setCategories={setCategories} budgets={budgets} setBudgets={setBudgets}
             me={me} setMe={setMe} token={token} setToken={setToken}
@@ -7124,7 +7124,7 @@ function TxFold({ list, accounts }) {
   );
 }
 
-function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = [], accounts = [] }) {
+function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = [], accounts = [], saveDoc, goTab }) {
   const [open, setOpen] = useState({});
   const toggleOpen = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const txById = useMemo(() => Object.fromEntries(txs.map((t) => [t.id, t])), [txs]);
@@ -7223,14 +7223,20 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
                   {x.doc ? <button className="iconbtn" title="Kündigungsschreiben" onClick={() => setLetterFor(x.doc)}>✉︎</button>
                     : aboStyle === "pill" && <button className={"iconbtn no" + (isEnded(x.r) ? " on" : "")} title={isEnded(x.r) ? "Wieder aktivieren" : "Deaktivieren: Vertrag beendet, zählt nicht mehr"} aria-pressed={isEnded(x.r)} onClick={() => endIt(x.r)}>✕</button>}
                   <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
-                    <div className="moremenu">
-                      <button onClick={(e) => { e.currentTarget.closest("details").open = false; toggleOpen(x.key); }}>{open[x.key] ? "Buchungen ausblenden" : `Buchungen anzeigen (${x.txs.length})`}</button>
-                      {x.doc && <button onClick={(e) => { e.currentTarget.closest("details").open = false; setLetterFor(x.doc); }}>✉︎ Kündigungsschreiben</button>}
-                      {x.doc && <button onClick={(e) => { e.currentTarget.closest("details").open = false; printDoc(x.doc); }}>🖨 Vertrag drucken</button>}
-                      {!x.doc && aboStyle !== "pill" && <button onClick={(e) => { e.currentTarget.closest("details").open = false; verify(x.r); }}>{isOk(x.r) ? "Bestätigung aufheben" : "✓ Bestätigen"}</button>}
-                      {!x.doc && aboStyle !== "pill" && <button onClick={(e) => { e.currentTarget.closest("details").open = false; endIt(x.r); }}>{isEnded(x.r) ? "Wieder aktivieren" : "✕ Als beendet markieren"}</button>}
-                      {setSubs && <button onClick={(e) => { e.currentTarget.closest("details").open = false; tagFk([x]); }}># Tags bearbeiten</button>}
-                      {!x.doc && setSubs && <button className="red" onClick={(e) => { e.currentTarget.closest("details").open = false; remove(x.r); }}>Aus der Liste entfernen</button>}
+                    <div className="moremenu">{(() => {   // v1.0.9: ein Menü für Verträge und Abos – feste Reihenfolge, nicht Verfügbares ausgegraut
+                      const mi = (k, label, on, why, run, cls = "") => <button key={k} className={"fkmi " + cls} disabled={!on} title={on ? undefined : why} onClick={(e) => { e.currentTarget.closest("details").open = false; run(); }}>{label}{!on && why && <small className="muted block">{why}</small>}</button>;
+                      return [
+                        mi("tx", open[x.key] ? "Buchungen ausblenden" : `Buchungen anzeigen (${x.txs.length})`, true, "", () => toggleOpen(x.key)),
+                        mi("view", "👁 Vertrag ansehen", !!x.doc, "kein Dokument – „Als Vertrag anlegen“", () => onOpen(x.doc.id)),
+                        mi("ok", !x.doc && isOk(x.r) ? "Bestätigung aufheben" : "✓ Bestätigen", !x.doc, "Vertrag gilt immer als bestätigt", () => verify(x.r)),
+                        mi("end", !x.doc && isEnded(x.r) ? "Wieder aktivieren" : "✕ Als beendet markieren", x.doc ? !!saveDoc : true, "hier nicht möglich", async () => x.doc ? (await uiAsk(`Vertrag „${x.name}“ als beendet markieren? Er zählt dann nicht mehr zu den Fixkosten.`)) && saveDoc({ ...x.doc, contract: { ...x.doc.contract, active: false } }) : endIt(x.r)),
+                        mi("letter", "✉︎ Kündigungsschreiben", true, "", () => setLetterFor(x.doc || { contract: { provider: x.name } })),
+                        mi("print", "🖨 Vertrag drucken", !!x.doc, "kein Dokument vorhanden", () => printDoc(x.doc)),
+                        setSubs && mi("tags", "# Tags bearbeiten", true, "", () => tagFk([x])),
+                        mi("asct", "📄 Als Vertrag anlegen", !x.doc && !!goTab, "ist schon ein Vertrag", () => { ls.set("pendingContractNew", { name: x.name, provider: x.name, amount: x.amount || "", interval: x.r?.interval || "monatlich" }); goTab("vertraege"); }),
+                        setSubs && mi("rm", "Aus der Liste entfernen", !x.doc, "Vertrag löschen im Dokument", async () => (await uiAsk(`„${x.name}“ aus der Liste entfernen?`)) && remove(x.r), "red")
+                      ];
+                    })()}
                     <MenuCancel /></div>
                   </details>
                 </div>
@@ -10597,7 +10603,7 @@ function StbItemsWin({ req, x, docs, txs, updateTx, openTx, onOpenDoc, onClose, 
   return createPortal(<Win id="stbitems" onClose={onClose} small defW={600} stay>
     <div className="panelhead"><b className="clamp">{title} · {monthLabel(req.m)}</b><XBtn /></div>
     <div className="sblist">
-      {kind === "beleg" && x.noBeleg.map((r) => txRow(r, <button className="btn sm" onClick={st(() => setBeleg({ t: r.t, cp: r.t.counterparty, purpose: r.t.purpose, date: r.t.date, amount: r.t.amount }))}>📎 Beleg zuordnen</button>))}
+      {kind === "beleg" && x.noBeleg.map((r) => txRow(r, <button className="btn sm bzbtn" onClick={st(() => setBeleg({ t: r.t, cp: r.t.counterparty, purpose: r.t.purpose, date: r.t.date, amount: r.t.amount }))}>📎 Beleg zuordnen</button>))}
       {kind === "unklar" && x.unklar.map((r) => txRow(r, <span className="seg sm" onClick={(e) => e.stopPropagation()}><button onClick={() => updateTx({ ...r.t, scope: "firma", scopeSrc: undefined })}>🏢 Firma</button><button onClick={() => updateTx({ ...r.t, scope: "privat", scopeSrc: undefined })}>👤 Privat</button></span>))}
       {kind === "asks" && x.asks.map((r) => txRow(r, <small className="muted">{r.t.ask?.q || ""}</small>))}
       {kind === "inv" && invL.map((i) => (<div key={i.id} className="sbrow click" onClick={async () => openPdf(await buildInvoicePdf(i, co), invFileName(i), "", i.customer?.email)}>
@@ -14308,6 +14314,8 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
     { icon: "#", label: "Tag", run: (sel) => tagCts(sel.map((o) => o.c)) },
     { icon: "⏸", label: "Aktiv/Inaktiv", run: (sel) => { const ids = new Set(sel.map((o) => o.c.id)), allOff = sel.every((o) => o.c.inactive); setList((l) => l.map((x) => (ids.has(x.id) ? { ...x, inactive: !allOff } : x))); } }]} />;
   const newCt = () => setEdit({ id: uid(), scope: scope === "firma" ? "firma" : "privat", interval: "monatlich", noticeUnit: "Monate", cat: "Internet", docIds: [] });
+  // v1.0.9: „Als Vertrag anlegen“ aus Fixkosten & Abos → Editor vorbefüllt öffnen
+  useEffect(() => { const p = ls.get("pendingContractNew", null); if (!p) return; ls.set("pendingContractNew", null); setEdit({ id: uid(), scope: "privat", interval: "monatlich", noticeUnit: "Monate", cat: "Internet", docIds: [], ...p }); }, []);
   newCtRef.current = newCt;
   const dropCt = async (files) => { const ids = await onFiles(files, { stay: true }); setWaitIds((w) => [...w, ...(ids || [])]); };
   return (
@@ -19765,16 +19773,20 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
 .dactions button.on{color:var(--acc)}
 .detprevbtn{display:inline-flex;align-items:center;gap:6px}.detprevbtn svg{width:18px;height:18px}
 /* v1.0.9: Privat/Firma/Bereiche – nur die Auswahl, in ihrer Farbe */
-.scsel{display:block;margin:6px 0 10px}.scsel .vehpick{display:block;width:100%}
-.scselbtn{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;padding:11px 16px;border-radius:12px;border:1px solid var(--scc);background:color-mix(in srgb,var(--scc) 26%,var(--card));color:var(--txt);font:inherit;font-size:16px;font-weight:600;cursor:pointer;text-align:left}
-.scselbtn:hover{background:color-mix(in srgb,var(--scc) 34%,var(--card))}.scselbtn .caret{margin-left:auto;opacity:.8;font-weight:400}
-.scsel.sm .scselbtn{padding:6px 12px;font-size:14px}
+.scsel{display:flex;justify-content:center;margin:8px 0 12px}
+.scselbtn{display:inline-flex;align-items:center;gap:6px;min-height:34px;box-sizing:border-box;padding:5px 14px;border-radius:999px;border:1px solid color-mix(in srgb,var(--scc) 55%,transparent);background:color-mix(in srgb,var(--scc) 20%,transparent);color:color-mix(in srgb,var(--scc) 72%,var(--txt));font:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.scselbtn:hover{background:color-mix(in srgb,var(--scc) 28%,transparent)}.scselbtn .caret{opacity:.8;font-weight:400}
+.app .scselbtn,.win .scselbtn{zoom:calc(var(--fsbtn,1) * var(--btnz,1))}
 .scdot{display:inline-block;width:12px;height:12px;border-radius:50%}
 .areaset .arearow{display:flex;align-items:center;gap:10px;padding:8px 10px;margin:6px 0;border-radius:12px;background:var(--card2)}
 .areaset .arearow.add{background:transparent;border:1px dashed var(--line)}
 .areaset input[type=color]{width:30px;height:30px;min-height:0;padding:0;border:0;border-radius:8px;background:none;flex:none;cursor:pointer}
 .areaset .areaico{width:30px;text-align:center;font-size:18px}.areaset .areaicoin{width:46px;flex:none;text-align:center;padding:6px;font-size:16px}
 .areaset .areaname{padding:7px 10px;font-size:15px;min-width:0}.areaset .areabase{width:auto;flex:none;padding:7px 10px;font-size:14px}
+/* v1.0.9: „Beleg zuordnen“ 3 px weiter vom Betrag, 1 px kleiner */
+.btn.sm.bzbtn{margin-left:3px;padding-top:5.5px;padding-bottom:5.5px;font-size:12px}
+/* v1.0.9: gemeinsames Menü Fixkosten & Abos – nicht verfügbare Einträge ausgegraut mit Grund */
+.moremenu .fkmi:disabled{opacity:.45;cursor:default}.moremenu .fkmi small{font-size:12px;font-weight:400}
 /* v1.0.8: Kontaktquellen */
 .ctsrclist{display:flex;flex-direction:column;gap:8px;margin:10px 0}
 .ctsrc{display:flex;flex-direction:column;align-items:flex-start;gap:4px}

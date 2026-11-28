@@ -9,6 +9,9 @@ Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags,
 - Fristen → „Bevorstehend“: nur noch das große Datumsfeld zum Auswählen (grün mit ✓), die kleinen Kästchen sind weg; Aktionen wie bisher über die Leiste
 - Fristen-Tagesansicht: Häkchen mit 10 px Abstand zum farbigen Rand
 - Roter Zähler offener Fristen in der Seitenleiste nur noch, wenn eingeschaltet (Einstellungen → Darstellung, Standard: aus)
+- Auswahlfeld Privat/Firma/Bereich kompakt und mittig (wie bei Buchungen), in deiner Farbe
+- Fixkosten & Abos: ein gemeinsames „⋯“-Menü für Verträge und Abos aus Umsätzen in fester Reihenfolge – nicht Verfügbares ausgegraut mit Grund; neu „Als Vertrag anlegen“ (öffnet Verträge vorbefüllt), „Als beendet markieren“ auch für Verträge, Kündigungsschreiben auch für erkannte Abos
+- „📎 Beleg zuordnen“ in den Listen 3 px weiter vom Betrag und 1 px kleiner
 
 ## v1.0.8 – Kontakte direkt importieren: Apple, Outlook, Google
 - Neues Fenster „Kontakte importieren“ (Kunden → ⋯ bzw. „📥 Importieren“, oder ＋-Menü) mit allen Quellen, die auf dem Gerät gehen:
