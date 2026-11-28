@@ -324,6 +324,59 @@ function PdfViewWin({ data, onClose }) {
   );
 }
 
+/* ---------- v1.0.9: Privat, Firma & eigene Bereiche ----------
+   Eigene Bereiche (max. 4) haben Name, Symbol, Farbe und zählen steuerlich wie Privat oder Firma:
+   gespeichert wird scope = Basis (für alle Berechnungen wie bisher) und scopeX = eigener Bereich (Anzeige & Filter). */
+const AREA_MAX = 4, AREA_PALETTE = ["#ab47bc", "#ef9f27", "#e57373", "#26a69a"], AREA_ICONS = ["🏠", "⚽", "🎨", "🚜"];
+function scopeOptsFrom(areas, cols) {
+  const c = { ...STMT_COL_DEF, ...(cols || {}) };
+  return [{ id: "privat", base: "privat", icon: "👤", label: "Privat", color: c.privat, fixed: true }, { id: "firma", base: "firma", icon: "🏢", label: "Firma", color: c.firma, fixed: true },
+    ...(Array.isArray(areas) ? areas : []).filter((a) => a && a.id).map((a) => ({ ...a, label: a.label || "Bereich", icon: a.icon || "🏷️", color: a.color || "#888888", base: a.base === "firma" ? "firma" : "privat" }))];
+}
+const scopeOpts = () => scopeOptsFrom(ls.get("scopeAreas", []), ls.get("stmtColors", {}));
+function useScopeOpts() { const [areas] = useLsState("scopeAreas", []); const [cols] = useLsState("stmtColors", {}); return scopeOptsFrom(areas, cols); }
+// Bereich eines Eintrags: eigener Bereich (falls noch vorhanden), sonst Privat/Firma
+const scopeKeyOf = (o, opts = scopeOpts(), def = "privat") => (o?.scopeX && opts.some((x) => x.id === o.scopeX) ? o.scopeX : o?.scope === "firma" ? "firma" : o?.scope === "privat" ? "privat" : def);
+// Filter: „alle“, „privat“/„firma“ (inkl. eigener Bereiche mit dieser Basis) oder ein eigener Bereich
+const scopeMatch = (o, f) => f === "alle" || !f || (f === "firma" || f === "privat" ? (o?.scope === "firma" ? "firma" : "privat") === f : o?.scopeX === f);
+const scopePatch = (opt) => ({ scope: opt.base, scopeX: opt.fixed ? undefined : opt.id });
+function ScopeSelect({ obj, onPick, def = "privat", small = false }) {
+  const opts = useScopeOpts(), cur = opts.find((o) => o.id === scopeKeyOf(obj, opts, def)) || opts[0];
+  return <span className={"scsel" + (small ? " sm" : "")} style={{ "--scc": cur.color }} onClick={(e) => e.stopPropagation()}>
+    <PickMenu btnClass="scselbtn" block icon={cur.icon} label={cur.label} title="Privat, Firma oder eigener Bereich"
+      items={[{ head: "Zuordnung" }, ...opts.map((o) => ({ k: o.id, icon: <i className="scdot" style={{ background: o.color }} />, title: `${o.icon} ${o.label}`, sub: o.fixed ? undefined : o.base === "firma" ? "zählt wie Firma" : "zählt wie Privat", on: o.id === cur.id, run: () => onPick(scopePatch(o)) }))]} />
+  </span>;
+}
+function AreaSettings() {
+  const [areas, setAreas] = useLsState("scopeAreas", []), [cols, setCols] = useLsState("stmtColors", {});
+  const c = { ...STMT_COL_DEF, ...(cols || {}) }, list = Array.isArray(areas) ? areas : [];
+  const [name, setName] = useState(""), [base, setBase] = useState("firma");
+  const upd = (id, p) => setAreas((l) => (l || []).map((a) => (a.id === id ? { ...a, ...p } : a)));
+  const add = () => { const i = list.length; setAreas((l) => [...(l || []), { id: "b" + uid(), label: name.trim() || "Bereich " + (i + 1), icon: AREA_ICONS[i % 4], color: AREA_PALETTE[i % 4], base }]); setName(""); };
+  return (
+    <div className="areaset">
+      <p className="muted small">Neben Privat und Firma kannst du bis zu {AREA_MAX} eigene Bereiche anlegen, z. B. Vermietung oder Verein. Jeder Bereich zählt steuerlich wie Privat oder wie Firma – „wie Firma“ fließt in Firmenauswertung, Steuer und E/A-Rechnung ein.</p>
+      {[["privat", "👤", "Privat"], ["firma", "🏢", "Firma"]].map(([k, i, l]) => (
+        <div key={k} className="arearow"><input type="color" value={c[k]} onChange={(e) => setCols((o) => ({ ...(o || {}), [k]: e.target.value }))} aria-label={"Farbe " + l} title="Farbe" />
+          <span className="areaico">{i}</span><b className="grow">{l}</b><small className="muted">fest</small></div>))}
+      {list.map((a) => (
+        <div key={a.id} className="arearow">
+          <input type="color" value={a.color || "#888888"} onChange={(e) => upd(a.id, { color: e.target.value })} aria-label={"Farbe " + a.label} title="Farbe" />
+          <input className="areaicoin" value={a.icon || ""} maxLength={4} onChange={(e) => upd(a.id, { icon: e.target.value })} aria-label="Symbol" title="Symbol (Emoji)" />
+          <input className="grow areaname" value={a.label || ""} onChange={(e) => upd(a.id, { label: e.target.value })} aria-label="Name" />
+          <select className="areabase" value={a.base === "firma" ? "firma" : "privat"} onChange={(e) => upd(a.id, { base: e.target.value })} aria-label="zählt wie"><option value="firma">zählt wie Firma</option><option value="privat">zählt wie Privat</option></select>
+          <button className="iconbtn" title="Bereich entfernen" aria-label={"Bereich entfernen: " + a.label} onClick={async () => (await uiAsk(`Bereich „${a.label}“ entfernen? Einträge darin bleiben erhalten und zählen weiter als ${a.base === "firma" ? "Firma" : "Privat"}.`)) && setAreas((l) => (l || []).filter((x) => x.id !== a.id))}>✕</button>
+        </div>))}
+      {list.length < AREA_MAX ? (
+        <div className="arearow add">
+          <input className="grow areaname" value={name} onChange={(e) => setName(e.target.value)} placeholder="Neuer Bereich, z. B. Vermietung" aria-label="Name des neuen Bereichs" onKeyDown={(e) => e.key === "Enter" && add()} />
+          <select className="areabase" value={base} onChange={(e) => setBase(e.target.value)} aria-label="zählt wie"><option value="firma">zählt wie Firma</option><option value="privat">zählt wie Privat</option></select>
+          <button className="btn primary sm" onClick={add}>＋ Bereich hinzufügen</button>
+        </div>) : <p className="muted small">Maximal {AREA_MAX} eigene Bereiche.</p>}
+    </div>
+  );
+}
+
 function DocActions({ d, prevOpen, onPreview, onEdit, onTrash }) {
   const stop = (f) => (e) => { e.stopPropagation(); f(); };
   return (
@@ -1694,8 +1747,9 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   const touchProps = { onInput: (e) => own(e) && setTouched(true), onChange: (e) => own(e) && setTouched(true) };
   const [rect, setRect] = useState(() => {
     const r = ls.get("win:" + id, null) || defaultRect(defW, small);
-    // center: gemerkte Größe, aber immer mittig öffnen
-    return clampRect(center ? { ...r, x: Math.round((innerWidth - r.w) / 2), y: Math.max(16, Math.round((innerHeight - r.h) / 2)) } : r);
+    // v1.0.9: jedes Fenster öffnet sich mittig (gemerkte Größe bleibt) – mit angehängter Vorschau wird beides zusammen zentriert
+    const total = r.w + (extraW || 0);
+    return clampRect({ ...r, x: Math.max(12, Math.round((innerWidth - total) / 2)), y: Math.max(16, Math.round((innerHeight - r.h) / 2)) });
   });
   const [z, setZ] = useState(() => ++winZ);
   zRef.current = z;
@@ -2927,11 +2981,18 @@ function AppMain() {
   );
 }
 
+// v1.0.9: Zähler offener Fristen in der Seitenleiste nur, wenn in Einstellungen → Darstellung eingeschaltet (Standard: aus)
+function NavBadgeSetting() {
+  const [on, setOn] = useLsState("navDlBadge", false);
+  return <label className="switchrow"><span><b>Anzahl offener Fristen in der Seitenleiste</b><small className="muted block">roter Zähler neben „Übersicht“ und „Fristen“ – fällig in 7 Tagen oder überfällig</small></span><input type="checkbox" className="switch" checked={!!on} onChange={(e) => setOn(e.target.checked)} /></label>;
+}
 function DeadlineBadge({ docs }) {
+  const [on] = useLsState("navDlBadge", false); if (!on) return null;
   const n = docs.reduce((s, d) => s + (d.deadlines || []).filter((dl) => !dl.done && daysUntil(dl.date) <= 7).length, 0);
   return n ? <i className="badge">{n}</i> : null;
 }
 function Badge({ docs }) {
+  const [on] = useLsState("navDlBadge", false); if (!on) return null;
   const n = docs.flatMap((d) => d.deadlines || []).filter((x) => !x.done && daysUntil(x.date) <= 7).length;
   return n ? <b className="badge" title={`${n} offene Frist${n > 1 ? "en" : ""} – fällig in den nächsten 7 Tagen oder überfällig`}>{n}</b> : null;
 }
@@ -5294,10 +5355,10 @@ function LbSheet({ children, onClose, onReset, hits }) {
 }
 // Privat/Firma als Stichwort, Vorschlag und Blatt-Abschnitt
 function scopeBits(scope, setScope, count) {
-  const lab = { privat: "👤 Privat", firma: "🏢 Firma" };
-  return { token: scope && scope !== "alle" ? [lab[scope], () => setScope("alle")] : null,
-    smart: [{ label: "🏢 Firma", kind: "Bereich", words: ["firma", "geschäftlich"], run: () => setScope("firma") }, { label: "👤 Privat", kind: "Bereich", words: ["privat"], run: () => setScope("privat") }],
-    sheet: <><h4 className="lbh">Bereich</h4><div className="seg">{[["alle", "Privat & Firma"], ["privat", "👤 Privat"], ["firma", "🏢 Firma"]].map(([k, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{l}{count && <small className="cnt"> {count(k)}</small>}</button>)}</div></> };
+  const extra = scopeOpts().filter((o) => !o.fixed), lab = { privat: "👤 Privat", firma: "🏢 Firma", ...Object.fromEntries(extra.map((o) => [o.id, o.icon + " " + o.label])) };   // v1.0.9: eigene Bereiche
+  return { token: scope && scope !== "alle" ? [lab[scope] || scope, () => setScope("alle")] : null,
+    smart: [{ label: "🏢 Firma", kind: "Bereich", words: ["firma", "geschäftlich"], run: () => setScope("firma") }, { label: "👤 Privat", kind: "Bereich", words: ["privat"], run: () => setScope("privat") }, ...extra.map((o) => ({ label: lab[o.id], kind: "Bereich", words: [String(o.label).toLowerCase()], run: () => setScope(o.id) }))],
+    sheet: <><h4 className="lbh">Bereich</h4><div className="seg">{[["alle", "Privat & Firma"], ["privat", "👤 Privat"], ["firma", "🏢 Firma"], ...extra.map((o) => [o.id, lab[o.id]])].map(([k, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{l}{count && <small className="cnt"> {count(k)}</small>}</button>)}</div></> };
 }
 // Handy: beim Scrollen kleiner Titel in der fixierten Suchleiste
 const LB_MINI = IS_TABLET; // v0.97.6: kleiner Titel beim Scrollen nur auf dem iPad
@@ -6376,7 +6437,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
   const list = useMemo(() => {
     const terms = norm(qDef).split(/\s+/).filter(Boolean);
     return docs
-      .filter((d) => (scope === "alle" || docScope(d) === scope) && (area === "alle" || docArea(d) === area) && (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) && (!month || monthKey(d).slice(5, 7) === month) &&
+      .filter((d) => scopeMatch(d, scope) && (area === "alle" || docArea(d) === area) && (!cat || d.category === cat) && (!tag || (d.tags || []).includes(tag)) && (!year || monthKey(d).startsWith(year)) && (!month || monthKey(d).slice(5, 7) === month) &&
         (!taxOnly || d.taxRelevant) && (!unpaid || (d.direction === "ausgabe" && d.amount?.total && !d.paid)) && (!dupOnly || (d.dupOf && docs.some((x) => x.id === d.dupOf))))
       .filter((d) => { if (!terms.length) return true; const h = haystack(d); return terms.every((t) => h.includes(t)); })
       .filter((d) => !akte || (akteMatch(akte, d) && (akteSub === "alle" || (akteSub === "vertraege" ? !!d.contract : akteSub === "fristen" ? (d.deadlines || []).some((x) => !x.done && x.date && daysUntil(x.date) >= -60) : d.direction === "ausgabe" && d.amount?.total && !d.paid))))
@@ -6405,8 +6466,9 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
   const dPre = (o) => JSON.stringify({ ...D0, ...o });
   const docTabs = [[dPre({}), "Alle", docs.length], [dPre({ scope: "firma" }), "🏢 Firma", docs.filter((d) => docScope(d) === "firma").length], [dPre({ scope: "privat" }), "👤 Privat", docs.filter((d) => docScope(d) === "privat").length],
     [dPre({ unpaid: true }), "💶 Unbezahlt", docs.filter((d) => d.direction === "ausgabe" && d.amount?.total && !d.paid).length], [dPre({ taxOnly: true }), "🧾 Steuerrelevant", docs.filter((d) => d.taxRelevant).length],
+    ...scopeOpts().filter((o) => !o.fixed).map((o) => [dPre({ scope: o.id }), `${o.icon} ${o.label}`, docs.filter((d) => scopeMatch(d, o.id)).length]),   // v1.0.9: eigene Bereiche
     ...Object.entries(AREAS).map(([k, [ic, l]]) => [dPre({ area: k }), `${ic} ${l}`, docs.filter((d) => docArea(d) === k).length])];
-  const dSc = scopeBits(scope, setScope, (k) => (k === "alle" ? docs.length : docs.filter((d) => docScope(d) === k).length));
+  const dSc = scopeBits(scope, setScope, (k) => (k === "alle" ? docs.length : docs.filter((d) => scopeMatch(d, k)).length));
   const docBar = <ListBar q={q} setQ={setQ} placeholder="Dokumente durchsuchen oder „firma 2026“" id="kit:docs" tabs={docTabs} tab={fState} setTab={setFState} hits={list.length}
     lk={{ ...kit, yr: year, setYr: setYear, years, sortBy: sort, tagF: tag, setTagF: setTag, tags, sorts: Object.fromEntries(Object.entries(kit.sorts).map(([k, [t, sub]]) => [k, [t, sub]])) }}
     tokens={[mode === "liste" && cat && [cat, () => setCat("")], dSc.token, area !== "alle" && [AREAS[area]?.[1] || area, () => setArea("alle")], unpaid && ["💶 Unbezahlt", () => setUnpaid(false)], taxOnly && ["🧾 Steuer", () => setTaxOnly(false)], month && ["🗓 " + MONTHS_DE[Number(month) - 1], () => setMonth("")]]}
@@ -6462,9 +6524,9 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
         </Win>, document.querySelector(".app") || document.body)}
 
       {mode === "ordner" && !cat && !q.trim() ? (
-        <FolderGrid docGroups={docGroups} docs={docs.filter((d) => (scope === "alle" || docScope(d) === scope) && (area === "alle" || docArea(d) === area))} onOpen={setCat} />
+        <FolderGrid docGroups={docGroups} docs={docs.filter((d) => scopeMatch(d, scope) && (area === "alle" || docArea(d) === area))} onOpen={setCat} />
       ) : mode === "akten" && !akte && !q.trim() ? (
-        <AktenGrid akten={akten} docs={docs.filter((d) => scope === "alle" || docScope(d) === scope)} onOpen={(id) => { setAkteId(id); setAkteSub("alle"); }} onNew={() => setAkteEdit({ id: uid(), name: "", icon: "🗂️", cats: [], scope: "alle", tax: false, year: "" })} />
+        <AktenGrid akten={akten} docs={docs.filter((d) => scopeMatch(d, scope))} onOpen={(id) => { setAkteId(id); setAkteSub("alle"); }} onNew={() => setAkteEdit({ id: uid(), name: "", icon: "🗂️", cats: [], scope: "alle", tax: false, year: "" })} />
       ) : view === "grid" ? (
         <div className="grid">
           {visList.map((d) => (
@@ -6899,7 +6961,7 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
             {[["alle", "Alle", upAll.length], ["over", "Überfällig", overdue.length], ["woche", "Diese Woche", upAll.filter(UPF.woche).length], ...upKinds.map(([k, i, l]) => [k, i + " " + l, upAll.filter(([, doc]) => dlKindOf(doc) === k).length])]
               .filter(([k, , n]) => k === "alle" || n > 0).map(([k, l, n]) => <button key={k} className={"chip" + (upF === k ? " on" : "") + (k === "over" ? " warn" : "")} onClick={() => setUpF(k)}>{l} <b>{n}</b></button>)}
           </div>
-          {upList.length > 0 && <label className="check upall"><input type="checkbox" checked={allOn} onChange={() => setUpSel((s0) => { const s1 = new Set(s0); upList.forEach(([dl, doc]) => (allOn ? s1.delete(keyOf(dl, doc)) : s1.add(keyOf(dl, doc)))); return s1; })} /> {allOn ? "Auswahl aufheben" : `Alle ${upList.length} auswählen`}<small className="muted"> · Tipp: aufs Datum klicken = erledigt</small></label>}
+          {upList.length > 0 && <label className="check upall"><input type="checkbox" checked={allOn} onChange={() => setUpSel((s0) => { const s1 = new Set(s0); upList.forEach(([dl, doc]) => (allOn ? s1.delete(keyOf(dl, doc)) : s1.add(keyOf(dl, doc)))); return s1; })} /> {allOn ? "Auswahl aufheben" : `Alle ${upList.length} auswählen`}<small className="muted"> · Tipp: aufs Datum klicken = auswählen</small></label>}
           <div className="calupclist">
             {!upAll.length && <p className="muted small">Keine offenen Fristen 🎉</p>}
             {upAll.length > 0 && !upList.length && <p className="muted small">Keine Fristen für diesen Filter.</p>}
@@ -6907,8 +6969,7 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
               const n = daysUntil(dl.date), on = upSel.has(keyOf(dl, doc));
               return (
                 <div key={dl.id} className={"frow calrow click k-" + dlKindOf(doc) + " " + tone(dl) + (dl.date === selDay ? " cur" : "") + (on ? " sel" : "")} onClick={() => pick(dl.date)}>
-                  <input type="checkbox" className="upck" checked={on} onClick={(e) => e.stopPropagation()} onChange={() => flip(dl, doc)} aria-label={"Auswählen: " + dl.label} />
-                  <button type="button" className={"datebox tick" + (n < 0 ? " red" : n <= 7 ? " warn" : "")} title="Als erledigt abhaken" aria-label={"Erledigt: " + dl.label} onClick={(e) => { e.stopPropagation(); markDone([[dl, doc]]); }}><b>{new Date(dl.date + "T12:00").getDate()}</b><small>{new Date(dl.date + "T12:00").toLocaleDateString("de-AT", { month: "short" })}</small></button>
+                  <button type="button" className={"datebox tick" + (on ? " on" : "") + (n < 0 ? " red" : n <= 7 ? " warn" : "")} title={on ? "Auswahl aufheben" : "Auswählen"} aria-pressed={on} aria-label={(on ? "Ausgewählt: " : "Auswählen: ") + dl.label} onClick={(e) => { e.stopPropagation(); setUndo(null); flip(dl, doc); }}><b>{new Date(dl.date + "T12:00").getDate()}</b><small>{new Date(dl.date + "T12:00").toLocaleDateString("de-AT", { month: "short" })}</small></button>
                   <div className="grow"><b>{dl.label}</b><small className="muted block">{doc.title}</small></div>
                   {payAmt(doc) != null && <b>{fmtMoney(payAmt(doc), doc.amount.currency)}</b>}
                   <small className={"muted nowrap" + (n < 0 ? " red" : "")}>{n === 0 ? "heute" : n < 0 ? `vor ${-n} T.` : `in ${n} T.`}</small>
@@ -11412,9 +11473,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         {url && (doc.mimeType.startsWith("image/")
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
           : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b className="clamp">{doc.fileName || doc.title}</b></div></div>)}
-        <div className="seg scopeseg" style={{ margin: "6px 0 6px" }} role="group" aria-label="Privat oder Firma">
-          {SCOPES.map(([k, i, l]) => <button key={k} className={docScope(d) === k ? "on" : ""} onClick={() => set({ scope: k, scopeManual: true })}>{i} {l}</button>)}
-        </div>
+        <ScopeSelect obj={d} onPick={(p) => set({ ...p, scopeManual: true })} />
         <div className="seg areaseg" style={{ margin: "6px 0 10px" }}>
           {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={docArea(d) === k ? "on" : ""} onClick={() => set({ areaManual: k })}>{i} {l}</button>)}
         </div>
@@ -11778,12 +11837,12 @@ function SetSec({ id, title, children }) {
   );
 }
 
-const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung", "info"]], ["Daten & Ablage", ["watch", "import", "docgroups", "doccats", "rules", "kontaktarten", "fbicons", "trash"]],
+const SET_GROUPS = [["Allgemein", ["darstellung", "design", "applock", "datenschutz", "verbindung", "info"]], ["Daten & Ablage", ["watch", "import", "bereiche", "docgroups", "doccats", "rules", "kontaktarten", "fbicons", "trash"]],
   ["Navigation & Budgets", ["nav-tabs", "nav-mob", "nav-accounts", "budgets"]], ["Firma", ["meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel"]]];
-const SET_TITLES = { docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-mob": "Handy-Menü", info: "Info & Versionen", "nav-accounts": "Konten & Gruppen" };
-const SET_ICONS = { fbicons: "🚗", darstellung: "🌓", design: "🎨", applock: "🔒", datenschutz: "🛡️", verbindung: "🔌", import: "📥", docgroups: "🗂️", doccats: "🏷️", rules: "⚙️", kontaktarten: "👥", trash: "🗑️",
+const SET_TITLES = { bereiche: "Privat, Firma & Bereiche", docgroups: "Dokumente – Gruppen", doccats: "Dokumente – Kategorien", rules: "Regeln", "nav-tabs": "Seitenleiste", "nav-mob": "Handy-Menü", info: "Info & Versionen", "nav-accounts": "Konten & Gruppen" };
+const SET_ICONS = { bereiche: "🧭", fbicons: "🚗", darstellung: "🌓", design: "🎨", applock: "🔒", datenschutz: "🛡️", verbindung: "🔌", import: "📥", docgroups: "🗂️", doccats: "🏷️", rules: "⚙️", kontaktarten: "👥", trash: "🗑️",
   "nav-tabs": "📑", "nav-mob": "📱", info: "ℹ️", "nav-accounts": "🏦", budgets: "💶", meinedaten: "🏢", rechnungen: "🧾", rechnungsdesign: "🖌️", mahnwesen: "⚠️", artikel: "📦" };
-const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "watch", "import", "nav-tabs", "nav-mob", "nav-accounts", "info", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
+const SET_IDS = ["darstellung", "design", "applock", "datenschutz", "watch", "import", "bereiche", "nav-tabs", "nav-mob", "nav-accounts", "info", "budgets", "meinedaten", "rechnungen", "rechnungsdesign", "mahnwesen", "artikel", "kontaktarten", "docgroups", "doccats", "rules", "trash", "backup", "fbicons", "verbindung"];
 // gespeicherte Reihenfolge + neue Bereiche an ihrer Standardposition einfügen
 function mergeOrder(cur, ids) {
   const out = cur.filter((x) => ids.includes(x));
@@ -12497,6 +12556,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         <StmtColorSetting />
         <JDetailSetting />
         <JStripSetting />
+        <NavBadgeSetting />
         <small className="muted block tbsethead">Tag- und Nachtmodus</small>
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
@@ -12555,6 +12615,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
     "mahnwesen": <><SetSec id="mahnwesen" title="Mahnungen"><DunningSettings /></SetSec></>,
     "artikel": <><SetSec id="artikel" title="Artikel"><ArticleSettings /></SetSec></>,
     "kontaktarten": <><SetSec id="kontaktarten" title="Kunden – Kategorien"><ContactTypeSettings /></SetSec></>,
+    "bereiche": <><SetSec id="bereiche" title="Privat, Firma & Bereiche"><AreaSettings /></SetSec></>,
     "doccats": <><DocNavSettings part="cats" nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} /></>,
     "docgroups": <><DocNavSettings nav={nav} setNav={setNav} docs={docs.filter((d) => !d.deletedAt)} renameCategory={renameCategory} deleteCategory={deleteCategory} notify={notify} /></>,
     "rules": <>{!!rules.length && (
@@ -14108,7 +14169,7 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
         </Win>, document.querySelector(".app") || document.body)}
       {init.name && (() => { const cd = ctDates(c); return <MHero icon="📑" sub={c.provider || "Vertrag"} title={c.name || "Vertrag"} value={c.amount ? fmtMoney(Number(String(c.amount).replace(",", ".")) || 0, c.currency || "EUR") : null}
         pills={[c.interval || "monatlich", cd.cancelBy && { label: "kündbar bis " + fmtDate(cd.cancelBy), cls: "st-open" }, c.cancelledAt && { label: "gekündigt", cls: "st-over" }]} />; })()}
-      <div className="seg">{SCOPES.map(([k, i, l]) => <button key={k} className={(c.scope || "privat") === k ? "on" : ""} onClick={() => set({ scope: k })}>{i} {l}</button>)}</div>
+      <ScopeSelect obj={c} onPick={(p) => set(p)} />
       <fieldset><legend>Vertrag</legend>
         <div className="grid2">
           <label>Bezeichnung<input value={c.name || ""} placeholder="z. B. Internet Zuhause" onChange={(e) => set({ name: e.target.value })} /></label>
@@ -14186,7 +14247,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
   const monthly = (c) => ctEur(c) * (CT_FACTOR[c.interval || "monatlich"] || 1);
   const active = list.filter((c) => !c.cancelledAt || (c.cancelledEnd && c.cancelledEnd >= todayISO()));
   const counting = active.filter((c) => !c.inactive);
-  const inScope = (c) => scope === "alle" || (c.scope || "privat") === scope;
+  const inScope = (c) => scopeMatch(c, scope);
   const kit = useListKit("contracts", { def: "kuend", dateOf: (c) => c.start, sorts: {
     kuend: ["Kündigung", "früheste Frist zuerst", (a, b) => { const x = ctDates(a), y = ctDates(b); return (x.cancelBy || x.end || "9999").localeCompare(y.cancelBy || y.end || "9999"); }],
     kosten: ["Kosten", "höchste pro Monat zuerst", (a, b) => monthly(b) - monthly(a)],
@@ -14237,7 +14298,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
     { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`vertraege-${isoToday()}.xlsx`, [{ name: "Verträge", head: ctHead, rows: shown.map(ctRow) }]) },
     { label: "📄 CSV", run: () => downloadCsv(`vertraege-${isoToday()}.csv`, ctHead, shown.map(ctRow)) },
     { label: "📅 Kündigungstermine (.ics)", sub: "in den Kalender, mit Erinnerung 2 Tage vorher", run: ctIcs }];
-  const ctSc = scopeBits(scope, setScope, (k) => (k === "alle" ? active.length : active.filter((c) => (c.scope || "privat") === k).length));
+  const ctSc = scopeBits(scope, setScope, (k) => (k === "alle" ? active.length : active.filter((c) => scopeMatch(c, k)).length));
   const ctBar = <KitBar kit={kit} all={list.filter(inScope)} filters={CT_F} filter={cf} setFilter={setCf} q={cq} setQ={setCq} placeholder="Vertrag, Anbieter, Kundennr. suchen" hits={shown.length}
     tokens={[ctSc.token]} smart={ctSc.smart} sheet={ctSc.sheet}
     actions={[{ k: "new", icon: "＋", title: "Neuer Vertrag", run: newCtRef.current }, ...(docCands.length ? [{ k: "imp", icon: "📄", title: `Aus Dokumenten (${docCands.length})`, run: () => setImp((v) => !v) }] : []),
@@ -15486,7 +15547,7 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
       <div className="panelhead"><b>{init.name || "Neues Gerät"}</b><button className="btn primary" disabled={!a.name?.trim()} onClick={() => { onSave({ ...a, price: a.price === "" || a.price == null ? "" : Number(String(a.price).replace(",", ".")) || 0 }); onClose(); }}>Speichern</button><XBtn /></div>
       {init.name && <MHero icon="🛡️" sub={[a.brand, a.cat].filter(Boolean).join(" · ") || "Gerät"} title={a.name || init.name} value={a.price !== "" && a.price != null ? fmtMoney(Number(String(a.price).replace(",", ".")) || 0, a.currency || "EUR") : null}
         pills={[a.date && "gekauft " + fmtDate(a.date), astEndAll(a) && { label: (astEndAll(a) < todayISO() ? "Garantie abgelaufen " : "Garantie bis ") + fmtDate(astEndAll(a)), cls: astEndAll(a) < todayISO() ? "st-draft" : "st-paid" }]} />}
-      <div className="seg scopeseg">{SCOPES.map(([k, i, l]) => <button key={k} className={a.scope === k ? "on" : ""} onClick={() => set({ scope: k })}>{i} {l}</button>)}</div>
+      <ScopeSelect obj={a} onPick={(p) => set(p)} />
       {a.docId || busy ? (
         <div className="expatt">
           {doc?.thumb ? <img src={doc.thumb} alt="" /> : <span className="attpdf">📄</span>}
@@ -15554,7 +15615,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
   const AST_SORTS = { ablauf: ["Garantie-Ende", "läuft zuerst ab", (x, y) => (astEndAll(x) || "9999").localeCompare(astEndAll(y) || "9999") || (x.name || "").localeCompare(y.name || "", "de")], datum: ["Kaufdatum", "neueste zuerst", (x, y) => (y.date || "").localeCompare(x.date || "")], neu: SORT_NEW, preis: ["Preis", "höchster zuerst", (x, y) => (Number(y.price) || 0) - (Number(x.price) || 0)], name: ["Name", "A–Z", (x, y) => (x.name || "").localeCompare(y.name || "", "de")] };
   useEffect(() => { const id = ls.get("assetOpenReq", null); if (!id) return; ls.set("assetOpenReq", null); const x = list.find((y) => y.id === id); if (x) setEdit(x); }, []);
   const save = (a) => setList((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
-  const inScope = list.filter((a) => scope === "alle" || (a.scope || "privat") === scope);
+  const inScope = list.filter((a) => scopeMatch(a, scope));
   const byState = (st) => inScope.filter((a) => astState(a) === st);
   const shown = inScope.filter((a) => (filter === "alle" ? !astOut(a) : filter === "aus" ? astOut(a) : astState(a) === filter))
     .filter((a) => !q || norm(`${a.name} ${a.brand} ${a.serial} ${a.dealer} ${a.cat} ${a.note}`).includes(norm(q)))
@@ -15588,7 +15649,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
   const pill = (a) => { const st = astState(a); if (st === "bald") return <span className="stpill st-over">in {daysUntil(astEndAll(a))} T.</span>; if (st === "aktiv") return <span className="stpill st-paid">Garantie</span>; return null; };
   const cal = <MonthCalendar items={calItems} docs={dlDocsA} onOpen={(id) => { const x = list.find((y) => "as:" + y.id === id); if (x) setEdit(x); }} saveDoc={() => notify?.("Das Garantieende ergibt sich aus Kaufdatum und Dauer – bitte im Gerät ändern")} />;
   const empty = <MEmpty>{list.length ? "Keine Treffer in dieser Ansicht." : "Noch nichts erfasst. Mit „＋ Gerät“ anlegen oder den Kaufbeleg scannen – das Garantieende landet automatisch im Fristen-Kalender."}</MEmpty>;
-  const scopeSeg = <div className="seg scopeseg">{[["alle", "", "Privat & Firma"], ...SCOPES].map(([k, i, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small>({list.filter((a) => k === "alle" || (a.scope || "privat") === k).length})</small></button>)}</div>;
+  const scopeSeg = <div className="seg scopeseg">{[["alle", "", "Privat & Firma"], ...SCOPES, ...scopeOpts().filter((o) => !o.fixed).map((o) => [o.id, o.icon, o.label])].map(([k, i, l]) => <button key={k} className={scope === k ? "on" : ""} onClick={() => setScope(k)}>{i} {l} <small>({list.filter((a) => scopeMatch(a, k)).length})</small></button>)}</div>;
   const viewSeg = <div className="seg" role="group" aria-label="Ansicht"><button className={mode === "list" ? "on" : ""} onClick={() => setMode("list")}>☰ Liste</button><button className={mode === "cal" ? "on" : ""} onClick={() => setMode("cal")}>📅 Kalender</button></div>;
   return (
     <div className="ctpage astpage">
@@ -17298,7 +17359,7 @@ nav .acctree .accitem .ab{font-size:11.5px}
 @media (max-width:700px){.calday{min-height:52px;padding:4px;align-items:center}.calchip,.calmore{display:none}.caldots{display:flex}}
 .calsel{margin-top:14px;border-top:1px solid var(--line);padding-top:6px}.calsel h3{text-transform:capitalize}
 .calrow{gap:10px}.calrow input[type=date]{width:auto;padding:6px 8px;font-size:13px}.calrow input[type=checkbox]{width:18px;height:18px}
-.calsel.top>.calrow>input[type=checkbox]{margin-left:2px}   /* v1.0.8: Abstand zum farbigen Rand */
+.calsel.top>.calrow>input[type=checkbox]{margin-left:10px}   /* v1.0.9: deutlicher Abstand zum farbigen Rand */
 .calrow.done b{text-decoration:line-through;opacity:.6}.calrow.over b{color:var(--red)}
 .steps{margin:6px 0 0;padding-left:18px}.steps li{margin:3px 0}
 .dlbar .seg button{display:inline-flex;flex-direction:row;align-items:center;gap:6px;white-space:nowrap;padding:8px 14px}
@@ -17372,10 +17433,11 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .upchips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 8px}.upchips .chip b{font-weight:600;opacity:.75;margin-left:2px}
 .upall{margin:0 0 6px 12px;font-size:14px}.upall small{font-size:12px}
 .calupclist .calrow.sel{background:color-mix(in srgb,var(--acc) 12%,transparent)}
-.calrow .upck{width:18px;height:18px;margin:0 0 0 4px;flex-shrink:0}
 .datebox.tick{position:relative;border:0;font:inherit;cursor:pointer;color:inherit}
-.datebox.tick:hover>*,.datebox.tick:focus-visible>*{visibility:hidden}
-.datebox.tick:hover::after,.datebox.tick:focus-visible::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;font-size:22px;font-weight:700;color:#fff;background:#16a34a;border-radius:inherit}
+/* v1.0.9: Datumsfeld = Auswahl – ausgewählt grün mit ✓, beim Darüberfahren angedeutet */
+.datebox.tick.on>*{visibility:hidden}
+.datebox.tick.on::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;font-size:24px;font-weight:700;color:#fff;background:#43a047;border-radius:inherit}
+.datebox.tick:not(.on):hover,.datebox.tick:not(.on):focus-visible{box-shadow:inset 0 0 0 2px #43a047}
 .upbar{position:sticky;bottom:0;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px -8px 0;padding:10px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);box-shadow:0 -6px 18px #0003}
 .upbar .btn{margin:0}.upbar.undo{background:color-mix(in srgb,#16a34a 18%,var(--card))}
 .upmove{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-top:4px}.upmove input[type=date]{width:auto;padding:5px 8px;font-size:13px}.upmove label{display:flex;align-items:center;gap:6px;margin:0;color:var(--mut)}
@@ -18281,7 +18343,7 @@ html,body{min-height:100%}
 .calupbtn b{margin-left:4px;background:var(--acc);color:#000;border-radius:999px;padding:0 7px;font-size:12px}
 .calupbtn.warn b{background:var(--red);color:#fff}
 @media (max-width:600px){.calhead{flex-wrap:wrap}.calhead .calupbtn{order:-1;flex:1 1 100%;justify-content:center;display:flex;align-items:center}}
-@media (max-width:600px){.calupcwin .calrow{display:grid;grid-template-columns:auto auto auto 1fr auto;grid-template-areas:"c d t t btn" "c d amt days btn";column-gap:10px;row-gap:2px;align-items:center}.calupcwin .calrow>.upck{grid-area:c}
+@media (max-width:600px){.calupcwin .calrow{display:grid;grid-template-columns:auto auto 1fr auto;grid-template-areas:"d t t btn" "d amt days btn";column-gap:10px;row-gap:2px;align-items:center}
 .calupcwin .calrow>.datebox{grid-area:d}.calupcwin .calrow>.grow{grid-area:t;min-width:0}.calupcwin .calrow>b{grid-area:amt;font-size:14px}
 .calupcwin .calrow>small.nowrap{grid-area:days;justify-self:start}.calupcwin .calrow>.iconbtn{grid-area:btn}}
 .calupcwin .calrow .datebox{width:46px;height:46px;padding:0;overflow:hidden}
@@ -19702,6 +19764,17 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
 @media (max-width:700px){.deyem{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;border-radius:50%;border:0;background:var(--card2);color:var(--acc);padding:0;margin-left:4px;cursor:pointer}.deyem svg{width:19px;height:19px}}
 .dactions button.on{color:var(--acc)}
 .detprevbtn{display:inline-flex;align-items:center;gap:6px}.detprevbtn svg{width:18px;height:18px}
+/* v1.0.9: Privat/Firma/Bereiche – nur die Auswahl, in ihrer Farbe */
+.scsel{display:block;margin:6px 0 10px}.scsel .vehpick{display:block;width:100%}
+.scselbtn{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;padding:11px 16px;border-radius:12px;border:1px solid var(--scc);background:color-mix(in srgb,var(--scc) 26%,var(--card));color:var(--txt);font:inherit;font-size:16px;font-weight:600;cursor:pointer;text-align:left}
+.scselbtn:hover{background:color-mix(in srgb,var(--scc) 34%,var(--card))}.scselbtn .caret{margin-left:auto;opacity:.8;font-weight:400}
+.scsel.sm .scselbtn{padding:6px 12px;font-size:14px}
+.scdot{display:inline-block;width:12px;height:12px;border-radius:50%}
+.areaset .arearow{display:flex;align-items:center;gap:10px;padding:8px 10px;margin:6px 0;border-radius:12px;background:var(--card2)}
+.areaset .arearow.add{background:transparent;border:1px dashed var(--line)}
+.areaset input[type=color]{width:30px;height:30px;min-height:0;padding:0;border:0;border-radius:8px;background:none;flex:none;cursor:pointer}
+.areaset .areaico{width:30px;text-align:center;font-size:18px}.areaset .areaicoin{width:46px;flex:none;text-align:center;padding:6px;font-size:16px}
+.areaset .areaname{padding:7px 10px;font-size:15px;min-width:0}.areaset .areabase{width:auto;flex:none;padding:7px 10px;font-size:14px}
 /* v1.0.8: Kontaktquellen */
 .ctsrclist{display:flex;flex-direction:column;gap:8px;margin:10px 0}
 .ctsrc{display:flex;flex-direction:column;align-items:flex-start;gap:4px}

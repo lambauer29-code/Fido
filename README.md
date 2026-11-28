@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.9 – Eigene Bereiche, Auswahlmenü Privat/Firma, Fenster mittig
+- **Eigene Bereiche** neben Privat und Firma (Einstellungen → Daten & Ablage → „Privat, Firma & Bereiche“): bis zu 4, je mit Name, Symbol, Farbe und „zählt wie Firma“ bzw. „zählt wie Privat“ – Steuer, Firmenauswertung und E/A-Rechnung rechnen wie bisher mit der Basis (gespeichert als scope + scopeX); Farben von Privat und Firma dort ebenfalls einstellbar
+- **Privat/Firma als Auswahlmenü**: im Dokument, Vertrag und Besitz zeigt ein farbiges Feld nur die aktuelle Zuordnung, Klick öffnet das Menü mit allen Bereichen; Filter in Dokumenten, Verträgen und Besitz kennen die eigenen Bereiche („Firma“ enthält auch die Bereiche, die wie Firma zählen)
+- **Alle Fenster öffnen sich mittig** (gemerkte Größe bleibt); mit offener Vorschau werden Dialog und Vorschau zusammen zentriert
+- Fristen → „Bevorstehend“: nur noch das große Datumsfeld zum Auswählen (grün mit ✓), die kleinen Kästchen sind weg; Aktionen wie bisher über die Leiste
+- Fristen-Tagesansicht: Häkchen mit 10 px Abstand zum farbigen Rand
+- Roter Zähler offener Fristen in der Seitenleiste nur noch, wenn eingeschaltet (Einstellungen → Darstellung, Standard: aus)
+
 ## v1.0.8 – Kontakte direkt importieren: Apple, Outlook, Google
 - Neues Fenster „Kontakte importieren“ (Kunden → ⋯ bzw. „📥 Importieren“, oder ＋-Menü) mit allen Quellen, die auf dem Gerät gehen:
   - **Apple Kontakte** (nur Mac-App): direkt aus der Kontakte-App, inkl. iCloud-, Exchange- und Google-Konten am Mac; macOS fragt beim ersten Mal um Erlaubnis (contacts.rs, NSContactsUsageDescription)
