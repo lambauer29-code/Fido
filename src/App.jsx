@@ -17264,6 +17264,12 @@ body.rz-active,body.rz-active *{cursor:nwse-resize!important;user-select:none!im
 .aeye svg{width:15px;height:15px}
 .accitem:hover .aeye,.aeye:focus-visible{opacity:1}.aeye:hover{background:var(--line);color:var(--txt)}
 @media (hover:none){.aeye{opacity:.6}}
+/* v1.0.10: Seitenleiste – Anzahlen (Dokumente) und Kontostände in einer Flucht unter den Gruppen-Pfeilen, Anzahlen als Plakette */
+.subnav .acctree .accitem .ab{font-variant-numeric:tabular-nums}
+.subnav .doctree .accitem .ab{background:color-mix(in srgb,var(--txt) 11%,transparent);border-radius:999px;padding:1px 8px;font-size:12px;line-height:1.5;min-width:22px;text-align:center;box-sizing:border-box}
+@media (hover:hover){.subnav .acctree:not(.doctree) .accitem{position:relative}
+.subnav .acctree:not(.doctree) .accitem .aeye{position:absolute;right:4px;top:50%;transform:translateY(-50%)}
+.subnav .acctree:not(.doctree) .accitem .ab{transition:transform .12s}.subnav .acctree:not(.doctree) .accitem:hover .ab{transform:translateX(-28px)}}
 .acchidden{margin-top:10px;padding-top:6px;border-top:1px solid var(--line)}
 .accitem.hid{color:var(--mut)}.accitem.hid .an{text-decoration:line-through;flex:1}
 .unhide{border:1px solid var(--line);background:transparent;color:var(--mut);border-radius:999px;font:inherit;font-size:11px;padding:2px 9px;cursor:pointer}
