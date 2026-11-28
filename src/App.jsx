@@ -1665,8 +1665,9 @@ function defaultRect(defW, small) {
 const WinCtx = React.createContext(null);
 /* Hintergrund sperren, solange ein Fenster offen ist (iOS: body fixieren, Scrollposition merken) */
 let lockCount = 0, lockY = 0;
-function useScrollLock() {
+function useScrollLock(on = true) {
   useEffect(() => {
+    if (!on) return;
     const html = document.documentElement, b = document.body;
     if (lockCount++ === 0) {
       lockY = window.scrollY;
@@ -1680,7 +1681,7 @@ function useScrollLock() {
         window.scrollTo(0, lockY);
       }
     };
-  }, []);
+  }, [on]);
 }
 const XBtn = () => { const close = React.useContext(WinCtx); return <button className="xbtn" onClick={() => close?.()} aria-label="Schließen" title="Schließen"><span className="xi">✕</span><span className="xt" /></button>; };
 /* Kopfkarte für Detailansichten – nur im Handy-Sheet sichtbar (v0.98) */
@@ -1696,16 +1697,29 @@ function MHero({ icon, title, sub, value, valueCls = "", pills = [] }) {
    dirty: true/false erzwingt, undefined = automatisch (sobald im Fenster etwas eingegeben wurde) */
 let detailOpen = 0, sheetDepth = 0, sheetScrollY = 0, lastListY = 0;
 if (typeof window !== "undefined") addEventListener("scroll", () => { if (!sheetDepth) lastListY = scrollY; }, { passive: true });
-function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false, extraW = 0, onExtraW }) {
+// v1.0.11: große Fenster – Details öffnen sich als Spalte rechts neben der Liste statt als Popup
+const DOCK_MIN_W = 1400, dockReg = new Map();
+function dockApply() {
+  const html = document.documentElement, w = Math.max(0, ...dockReg.values());
+  html.classList.toggle("docked", w > 0); if (w > 0) html.style.setProperty("--dockw", w + "px"); else html.style.removeProperty("--dockw");
+}
+function DockSetting() {
+  const [on, setOn] = useLsState("dockDetails", true);
+  return <label className="switchrow"><span><b>Details in rechter Spalte öffnen</b><small className="muted block">ab {DOCK_MIN_W} px Fensterbreite öffnen sich Buchungen, Dokumente, Rechnungen, Kunden usw. rechts neben der Liste statt als Popup</small></span><input type="checkbox" className="switch" checked={!!on} onChange={(e) => setOn(e.target.checked)} /></label>;
+}
+function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false, extraW = 0, onExtraW, dock = false }) {
   // v0.99.8: iPad bekommt dieselben Popups wie das iPhone (Karte von unten)
   const wide = useMedia("(min-width:768px)") && !IS_TABLET;
+  const bigWin = useMedia(`(min-width:${DOCK_MIN_W}px)`), [dockPref] = useLsState("dockDetails", true);
+  const docked = !!dock && wide && bigWin && dockPref !== false;
+  const dockedRef = useRef(docked); dockedRef.current = docked;
   useEdgeBack(() => reqRef.current?.(), !wide);
   // iPad: Liste rückt zur Seite, solange ein Detail rechts offen ist (Split View)
   // Handy: Scrollposition der Liste merken und nach dem Schließen wiederherstellen (v0.97.7)
   useLayoutEffect(() => { if (wide) return; if (sheetDepth++ === 0) sheetScrollY = lastListY;
     return () => { if (--sheetDepth <= 0) { sheetDepth = 0; const y = sheetScrollY; requestAnimationFrame(() => requestAnimationFrame(() => scrollTo(0, y))); setTimeout(() => { if (sheetDepth === 0 && Math.abs(scrollY - y) > 4) scrollTo(0, y); }, 120); } }; }, []);
   useEffect(() => { if (small) return; detailOpen++; document.documentElement.classList.add("hasdetail"); return () => { if (--detailOpen <= 0) { detailOpen = 0; document.documentElement.classList.remove("hasdetail"); } }; }, []);
-  useScrollLock();
+  useScrollLock(!docked);
   const rootRef = useRef(null);
   const [touched, setTouched] = useState(false);
   const [ask, setAsk] = useState(false);
@@ -1715,15 +1729,19 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   const reqRef = useRef(requestClose); reqRef.current = requestClose;
   const stayRef = useRef(stay); stayRef.current = stay;   // v0.99.25: Klick daneben schließt nicht
   const zRef = useRef(0);
+  const blockRef = useRef(false);   // v1.0.11: als Ref, damit das Sperren den Neuaufbau der Listener (ask) übersteht
   useEffect(() => {
-    let block = false;
     const down = (e) => {
+      blockRef.current = false;
       const el = rootRef.current; if (!el || el.contains(e.target) || stayRef.current) return;
       if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost,.sharepop,.sidetip,.pickmenu,.sugmenu,.catpick")) return;
-      if (dirtyRef.current) block = true; // Klick nicht weiterreichen, sonst gehen Eingaben verloren
+      // Spalte rechts: Liste bleibt bedienbar – nur der Wechsel in einen anderen Bereich schließt; bei ungespeicherten Änderungen erst nachfragen
+      if (dockedRef.current && !e.target.closest?.("nav") && !dirtyRef.current) return;
+      if (dockedRef.current && dirtyRef.current) { e.stopPropagation(); e.preventDefault(); }   // Zeile darf nicht wechseln, bevor gespeichert/verworfen ist
+      if (dirtyRef.current) blockRef.current = true; // Klick nicht weiterreichen, sonst gehen Eingaben verloren
       reqRef.current();
     };
-    const click = (e) => { if (block) { block = false; e.stopPropagation(); e.preventDefault(); } };
+    const click = (e) => { if (blockRef.current) { blockRef.current = false; e.stopPropagation(); e.preventDefault(); } };
     const key = (e) => { if (e.key === "Escape" && zRef.current === winZ) { e.stopPropagation(); if (ask) setAsk(false); else reqRef.current(); } };
     document.addEventListener("pointerdown", down, true); document.addEventListener("click", click, true); window.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", down, true); document.removeEventListener("click", click, true); window.removeEventListener("keydown", key); };
@@ -1753,6 +1771,10 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   });
   const [z, setZ] = useState(() => ++winZ);
   zRef.current = z;
+  const [dockW, setDockW] = useState(() => ls.get("dock:" + id, null));
+  const dockTotal = useRef(0), dockKey = useRef(null); if (!dockKey.current) dockKey.current = Symbol(id);
+  useLayoutEffect(() => { const k = dockKey.current; if (docked && dockTotal.current) dockReg.set(k, dockTotal.current); else dockReg.delete(k); dockApply(); });
+  useLayoutEffect(() => () => { dockReg.delete(dockKey.current); dockApply(); }, []);
   // Handy-Sheet (v0.98): nach unten wischen schließt, Speichern-Leiste unten
   const [dragY, setDragY] = useState(0), drag = useRef(null), [bar, setBar] = useState(null);
   // v0.99.8: iPad – Karte in Höhe (Griff oben) und Breite (Griffe links/rechts) veränderbar, Größe pro Popup gemerkt
@@ -1854,6 +1876,28 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
       return r;
     });
   };
+  if (docked) {
+    const sideW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--side")) || 260;
+    const maxTotal = Math.max(420, innerWidth - sideW - 460), ex = extraW ? WIN_EXTRA_MIN : 0;
+    const form = Math.round(Math.max(360, Math.min(dockW || Math.min(Math.max(rect.w, 420), 640), maxTotal - ex)));
+    const total = extraW ? Math.min(form + extraW, Math.max(maxTotal, form + WIN_EXTRA_MIN)) : form;
+    dockTotal.current = total;
+    const dockDrag = (e) => {
+      e.preventDefault(); e.stopPropagation(); setZ(++winZ);
+      const x0 = e.clientX, w0 = form; let last = w0; document.body.classList.add("win-moving");
+      const mv = (ev) => { last = Math.round(Math.max(360, Math.min(maxTotal - ex, w0 - (ev.clientX - x0)))); setDockW(last); };
+      const up = () => { document.body.classList.remove("win-moving"); removeEventListener("pointermove", mv); removeEventListener("pointerup", up); removeEventListener("pointercancel", up); ls.set("dock:" + id, last); };
+      addEventListener("pointermove", mv); addEventListener("pointerup", up); addEventListener("pointercancel", up);
+    };
+    return (
+      <WinCtx.Provider value={requestClose}>
+      <div ref={rootRef} className={"win docked " + className + (small ? " small" : "")} style={{ width: total, zIndex: z, ...(extraW ? { "--formw": form + "px" } : {}) }} onPointerDown={() => z !== winZ && setZ(++winZ)} {...touchProps}>
+        <div className="dockgrip" onPointerDown={dockDrag} onDoubleClick={() => { setDockW(null); ls.set("dock:" + id, null); }} title="Ziehen: Breite ändern · Doppelklick: Standardbreite"><i /></div>
+        <div className="wininner">{guard}{children}</div>
+      </div>
+      </WinCtx.Provider>
+    );
+  }
   return (
     <WinCtx.Provider value={requestClose}>
     <div ref={rootRef} className={"win " + className + (small ? " small" : "") + (center ? " center" : "")} style={{ ...winBox(rect, extraW), height: rect.h, zIndex: z }} onPointerDown={onHead} {...touchProps}>
@@ -7280,7 +7324,9 @@ const TX_COL_DEF = { order: ["date", "desc", "cat", "acc", "amt"], w: { date: 92
 const TX_COL_LBL = { date: "Datum", desc: "Empfänger", cat: "Kategorie", acc: "Konto", amt: "Betrag" };
 const txColNorm = (c) => { const o = (c?.order || []).filter((k) => TX_COL_LBL[k]); for (const k of TX_COL_DEF.order) if (!o.includes(k)) o.splice(TX_COL_DEF.order.indexOf(k), 0, k); return { order: [...new Set(o)], w: { ...TX_COL_DEF.w, ...(c?.w || {}) } }; };
 const txColKeys = (c, withAcc) => c.order.filter((k) => k !== "acc" || withAcc);
-const txColTpl = (c, withAcc) => txColKeys(c, withAcc).map((k) => (k === "desc" ? "minmax(160px,1fr)" : Math.round(c.w[k]) + "px")).join(" ") + " 230px";
+// v1.0.11: Betrag-Spalte enthält vorne die Plakette Privat/Firma (feste Breite, alle in einer Flucht)
+const TX_SCP_W = 72;
+const txColTpl = (c, withAcc) => txColKeys(c, withAcc).map((k) => (k === "desc" ? "minmax(160px,1fr)" : Math.round(c.w[k] + (k === "amt" ? TX_SCP_W : 0)) + "px")).join(" ") + " 184px";
 function TxHead({ cfg, setCfg, withAcc }) {
   const keys = txColKeys(cfg, withAcc), ref = useRef(null), [drag, setDrag] = useState(null);
   const changed = JSON.stringify(cfg) !== JSON.stringify(txColNorm(TX_COL_DEF));
@@ -7370,10 +7416,13 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
     ]
   });
   const txScOf = (t) => (t.kind === "broker" || t.category === "Umbuchung" ? null : txScopeInfo(t, accounts.find((a) => a.id === t.accountId)).scope);
+  const scOpts = useScopeOpts();
+  const txPill = (t) => { const sc = txScOf(t); if (!sc) return <span className="txscp none" />;
+    const o = (t.scopeX && scOpts.find((x) => x.id === t.scopeX)) || (sc === "unklar" ? { label: "Unklar", color: { ...STMT_COL_DEF, ...ls.get("stmtColors", {}) }.unklar } : scOpts.find((x) => x.id === sc));
+    return <span className={"txscp sc-" + sc} style={{ "--scc": o?.color }} title={sc === "unklar" ? "Privat oder Firma unklar" : o?.label}>{o?.label}</span>; };
   const TxActs = ({ t, marks = false }) => { const d = docOf(t); const st = (f) => (e) => { e.stopPropagation(); f(); }; const sc = marks ? txScOf(t) : null; return (
     <div className="dactions txacts" onClick={(e) => e.stopPropagation()}>
       {marks && <span className="txmarks">
-        <span className={"txmark" + (sc === "firma" ? " m-firma" : sc === "unklar" ? " m-unklar" : "")} title={sc === "firma" ? "Firma" : sc === "unklar" ? "Privat oder Firma unklar" : ""}>{sc === "firma" ? "🏢" : sc === "unklar" ? "❓" : ""}</span>
         {d ? <button className="txmark m-doc" title={`Beleg: ${d.title || "öffnen"}`} aria-label="Beleg öffnen" onClick={st(() => onOpen(d.id))}>📎</button> : <span className="txmark" />}
       </span>}
       <button title="Buchung bearbeiten" aria-label="Bearbeiten" onClick={st(() => setTxOpen(t))}><IcoEdit /></button>
@@ -7657,7 +7706,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           <TxHead cfg={txColCfg} setCfg={setTxCols} withAcc={!acc && sel.length > 1} />
           {list.slice(0, limit).map((t) => (
             <React.Fragment key={t.id}>
-            <SwipeRow {...txSwipe(t)}><div className={"txrow" + (prevTx === t.id ? " open" : "") + (txScOf(t) === "firma" ? " sc-firma" : txScOf(t) === "unklar" ? " sc-unklar" : "")} onClick={() => openTx(t)}>
+            <SwipeRow {...txSwipe(t)}><div className={"txrow" + (prevTx === t.id ? " open" : "") + (txOpen?.id === t.id ? " cur" : "") + (txScOf(t) === "firma" ? " sc-firma" : txScOf(t) === "unklar" ? " sc-unklar" : "")} onClick={() => openTx(t)}>
               {txColKeys(txColCfg, !acc && sel.length > 1).map((k) => k === "date" ? <span key={k} className="muted c-date">{fmtDate(t.date)}</span>
               : k === "desc" ? <span key={k} className="txdesc c-desc">
                 <TxIcon t={t} size={30} />
@@ -7666,7 +7715,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
               </span>
               : k === "cat" ? <span key={k} className="one muted c-cat" title={catLabel(t.category, t.subcategory)}>{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : <>{t.category}{t.subcategory && <small className="block subcl">{t.subcategory}</small>}</>}</span>
               : k === "acc" ? <span key={k} className="one muted c-acc">{accName(t.accountId)}</span>
-              : <b key={k} className={"r amt c-amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>)}
+              : <span key={k} className="c-amtw">{txPill(t)}<b className={"r amt c-amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b></span>)}
               <TxActs t={t} marks />
             </div></SwipeRow>
             {prevTx === t.id && docOf(t) && <div className="txprev"><DocPreview d={docOf(t)} onOpen={() => onOpen(docOf(t).id)} /></div>}
@@ -8357,7 +8406,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
   </>);
 
   if (edit) return (
-    <Win id="tx" onClose={() => setEdit(null)} dirty small defW={520}>
+    <Win dock id="tx" onClose={() => setEdit(null)} dirty small defW={520}>
       <div className="panelhead"><b>Buchung bearbeiten</b>
         <button className="btn primary" onClick={() => {
           const amt = parseAmt(edit.amount);
@@ -8375,7 +8424,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
   );
 
   return (
-    <Win id="tx" onClose={onClose} dirty={false} small defW={520} className="txdetail">
+    <Win dock id="tx" onClose={onClose} dirty={false} small defW={520} className="txdetail">
       <div className="panelhead"><span className="grow" /><button className="link" onClick={() => setEdit({ counterparty: t.counterparty || "", purpose: t.purpose || "", date: t.date, amount: String(t.amount).replace(".", ","), accountId: t.accountId })}>Bearbeiten</button><XBtn /></div>
       <div className="txhero">
         <div className="txheroico" onClick={() => setIcoOpen(!icoOpen)} title="Symbol ändern"><TxIcon t={t} size={84} /><span className="txpen">✎</span></div>
@@ -11464,7 +11513,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
   const numIn = (v) => { const s = String(v).replace(",", "."); return s === "" ? null : Number(s); };
 
   return (
-    <Win id="detail" onClose={onClose} center dirty={dirty} className={side ? "detsplit" : ""} extraW={side ? sideW : 0} onExtraW={setSideW}>
+    <Win dock id="detail" onClose={onClose} center dirty={dirty} className={side ? "detsplit" : ""} extraW={side ? sideW : 0} onExtraW={setSideW}>
         <div className="detbody"><div className="detcol">
         <div className="panelhead">
           <b>Dokument</b>
@@ -12563,6 +12612,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         <JDetailSetting />
         <JStripSetting />
         <NavBadgeSetting />
+        <DockSetting />
         <small className="muted block tbsethead">Tag- und Nachtmodus</small>
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
@@ -13564,7 +13614,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
     onClose();
   };
   return (
-    <Win id="invedit" defW={760} onClose={onClose} dirty={!locked && JSON.stringify(inv) !== JSON.stringify(init)}>
+    <Win dock id="invedit" defW={760} onClose={onClose} dirty={!locked && JSON.stringify(inv) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{isA ? "Angebot" : "Rechnung"} {inv.number || "(Entwurf)"}</b>
         <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(inv, co), invFileName(inv), "", inv.customer?.email)}>Vorschau</button>
         {!locked && <button className="btn primary" onClick={() => doSave(false)}>Speichern</button>}
@@ -14164,7 +14214,7 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
   const [prevOpen, setPrevOpen] = useState(false);
   const cand = docs.filter((x) => !(c.docIds || []).includes(x.id)).slice(0, 300);
   return (
-    <Win id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
+    <Win dock id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name ? c.name || "Vertrag" : "Neuer Vertrag"}</b>
         {linked.length > 0 && <button className="btn detprevbtn" title="Dokumente ansehen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>}
         <button className="btn primary" disabled={!c.name} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
@@ -14492,7 +14542,7 @@ function ContactEditor({ c: init, onSave, onDelete, onClose }) {
   const set = (p) => setC((x) => ({ ...x, ...p }));
   const f = (k, label, ph = "", type = "text") => <label>{label}<input type={type} value={c[k] || ""} placeholder={ph} onChange={(e) => set({ [k]: e.target.value })} /></label>;
   return (
-    <Win id="contact" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
+    <Win dock id="contact" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name || "Neuer Kontakt"}</b><button className="btn primary" disabled={!c.name?.trim()} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
       <div className="typepick">{types.map((t) => <button key={t.id} className={"chip" + ((c.type || types[0]?.name) === t.name ? " on" : "")} style={(c.type || types[0]?.name) === t.name ? undefined : { color: t.color }} onClick={() => set({ type: t.name })}><TypeGlyph t={t} /> {t.name}</button>)}</div>
       <ContactLogo c={c} set={set} />
@@ -14770,7 +14820,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       </section>
       </FitScroll>
       </div></div>)}
-      {!mob && selC && createPortal(<Win id="custdet" onClose={() => setSelId(null)} dirty={false} className="custwin" defW={720}>
+      {!mob && selC && createPortal(<Win dock id="custdet" onClose={() => setSelId(null)} dirty={false} className="custwin" defW={720}>
         <div className="panelhead"><b>Kundendatei</b><XBtn /></div>
         <div className="custwinbody">{detail}</div>
       </Win>, document.querySelector(".app") || document.body)}
@@ -15356,7 +15406,7 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
   const posFields = fields.filter((f) => f.scope === "position");
   const C = artCfg();
   return (
-    <Win id="artedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
+    <Win dock id="artedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.text || "Neuer Artikel"}</b><button className="btn primary" disabled={!a.text?.trim()} onClick={doSave}>Speichern</button><XBtn /></div>
       <div className="scanrow">
         <label className="grow">EAN / Strichcode<input value={a.ean || ""} inputMode="numeric" placeholder="scannen oder eintippen" onChange={(e) => set({ ean: e.target.value })} /></label>
@@ -15551,7 +15601,7 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
   const w = astWarr(a), e = astExtra(a), end = astEndAll(a);
   const cats = [...new Set([...Object.keys(ASSET_CATS), a.cat].filter(Boolean))];
   return (
-    <Win id="astedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
+    <Win dock id="astedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name || "Neues Gerät"}</b><button className="btn primary" disabled={!a.name?.trim()} onClick={() => { onSave({ ...a, price: a.price === "" || a.price == null ? "" : Number(String(a.price).replace(",", ".")) || 0 }); onClose(); }}>Speichern</button><XBtn /></div>
       {init.name && <MHero icon="🛡️" sub={[a.brand, a.cat].filter(Boolean).join(" · ") || "Gerät"} title={a.name || init.name} value={a.price !== "" && a.price != null ? fmtMoney(Number(String(a.price).replace(",", ".")) || 0, a.currency || "EUR") : null}
         pills={[a.date && "gekauft " + fmtDate(a.date), astEndAll(a) && { label: (astEndAll(a) < todayISO() ? "Garantie abgelaufen " : "Garantie bis ") + fmtDate(astEndAll(a)), cls: astEndAll(a) < todayISO() ? "st-draft" : "st-paid" }]} />}
@@ -15879,7 +15929,7 @@ function KassaDetailWin({ e, kasse, saldo, entries, docs, onOpen, onStorno, onCl
   const doc = docs?.find((d) => d.id === e.docId);
   const Row = ({ l, v }) => v ? <div className="kbrow"><small className="muted">{l}</small><span>{v}</span></div> : null;
   return (
-    <Win id="kbdetail" onClose={onClose} small dirty={false}>
+    <Win dock id="kbdetail" onClose={onClose} small dirty={false}>
       <div className="panelhead"><b>Buchung {kbNo(e)}</b><XBtn /></div>
       <div className="kbhero"><span className={e.kind === "ein" ? "pos" : "neg"}>{e.kind === "ein" ? "+" : "−"}{fmtMoney(e.amount)}</span><small className="muted">{e.text}</small>
         {e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}</div>
@@ -17264,6 +17314,27 @@ body.rz-active,body.rz-active *{cursor:nwse-resize!important;user-select:none!im
 .aeye svg{width:15px;height:15px}
 .accitem:hover .aeye,.aeye:focus-visible{opacity:1}.aeye:hover{background:var(--line);color:var(--txt)}
 @media (hover:none){.aeye{opacity:.6}}
+/* v1.0.11: Privat/Firma als gleich breite Plakette vor dem Betrag, Beträge rechtsbündig; offene Buchung markiert */
+.txrow>.c-amtw{display:flex;align-items:center;gap:10px;min-width:0;justify-self:stretch}
+.txrow>.c-amtw>.amt{flex:1;min-width:0;text-align:right;white-space:nowrap}
+.txscp{flex:none;width:62px;box-sizing:border-box;text-align:center;font-size:11.5px;line-height:1.6;border-radius:999px;padding:0 6px;background:color-mix(in srgb,var(--scc,#888) 18%,transparent);color:color-mix(in srgb,var(--scc,#888) 80%,var(--txt));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.txscp.none{background:none}
+.txhead>.c-amt{text-align:right!important;justify-content:flex-end!important;padding-right:4px}
+.txrow.cur{background:color-mix(in srgb,var(--acc) 13%,transparent)!important;box-shadow:inset 4px 0 0 var(--acc)!important}
+@container (max-width:640px){.txtable.txcustom .txhead,.txtable.txcustom .txrow{grid-template-columns:76px minmax(0,1fr) 186px!important}}
+/* v1.0.11: Details als Spalte rechts neben der Liste (ab 1400 px) – Linie mit Schatten und Ziehgriff */
+html .win.docked.docked{top:0!important;right:0!important;bottom:0!important;left:auto!important;height:auto!important;max-height:none!important;border-radius:0!important;border-width:0 0 0 1px!important;box-shadow:-14px 0 28px -16px rgba(0,0,0,.6)!important;overflow:visible;animation:dockin .16s ease-out}
+html .win.docked.docked>.wininner{border-radius:0}
+.win.docked .panelhead{cursor:default}
+@keyframes dockin{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+.dockgrip{position:absolute;left:-6px;top:0;bottom:0;width:11px;cursor:col-resize;z-index:5;display:flex;align-items:center;justify-content:center;touch-action:none}
+.dockgrip i{width:5px;height:42px;border-radius:3px;background:color-mix(in srgb,var(--txt) 28%,transparent);transition:background .12s}
+.dockgrip:hover i,body.win-moving .dockgrip i{background:var(--acc)}
+.dockgrip::before{content:"";position:absolute;top:0;bottom:0;left:5px;border-left:1px solid transparent;transition:border-color .12s}.dockgrip:hover::before{border-color:var(--acc)}
+@media (min-width:1400px){html.docked .app{padding-right:calc(var(--dockw) + 28px)!important}
+  html.docked .topactions{right:calc(var(--dockw) + 24px)}}
+@media (min-width:1400px) and (max-width:1799px){html.docked .ditem .dcatcol,html.docked .ditem .dactions,html.docked .invrow .invacts,html.docked .ctrow .ctacts{display:none!important}
+  html.docked .ditem .grow,html.docked .invrow .invmain{min-width:0}}
 /* v1.0.10: Seitenleiste – Anzahlen (Dokumente) und Kontostände in einer Flucht unter den Gruppen-Pfeilen, Anzahlen als Plakette */
 .subnav .acctree .accitem .ab{font-variant-numeric:tabular-nums}
 .subnav .doctree .accitem .ab{background:color-mix(in srgb,var(--txt) 11%,transparent);border-radius:999px;padding:1px 8px;font-size:12px;line-height:1.5;min-width:22px;text-align:center;box-sizing:border-box}

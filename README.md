@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.11 – Details als Spalte rechts neben der Liste
+- Ab 1400 px Fensterbreite öffnen sich Buchungen (Konten), Dokumente, Rechnungen, Kunden & Kontakte, Verträge, Artikel, Besitz & Garantie und Kassabuch-Einträge rechts neben der Liste statt als Popup; die Liste bleibt bedienbar, ein Klick auf eine andere Zeile wechselt nur den Inhalt
+- Trennung mit feiner Linie und Schatten, in der Mitte ein Griff zum Breiterziehen (Breite pro Fensterart gemerkt, Doppelklick = Standard)
+- Bei ungespeicherten Änderungen erscheint vor dem Wechsel die Leiste „Speichern / Verwerfen / Weiter bearbeiten“ (Klick auf die Liste wird bis dahin zurückgehalten)
+- Einstellungen → Darstellung: Schalter „Details in rechter Spalte öffnen“ (standardmäßig an); in kleineren Fenstern bleibt alles als Popup
+- Konten: Privat/Firma (und eigene Bereiche) als gleich breite Plakette direkt vor dem Betrag, alle in einer Flucht; Beträge rechtsbündig; die offene Buchung ist markiert
+
 ## v1.0.10 – Seitenleiste: Zahlen in einer Flucht
 - Anzahlen bei „Dokumente“ und Kontostände unter „Konten“ enden auf derselben Kante – genau unter den Gruppen-Pfeilen; Ziffern gleich breit
 - Anzahlen der Dokument-Kategorien als kleine graue Plakette, damit man sie von Beträgen unterscheidet
