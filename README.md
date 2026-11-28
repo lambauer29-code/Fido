@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.26 – Besitz: Beleg-Vorschau und Buchung, Journal-Vorschau passt sich an
+- Besitz & Garantie: „Vorschau“ neben Speichern – angedockt als eigenes Fenster in Dokumentgröße, als Popup rechts angehängt
+- Kaufbeleg hängt als 📎 an der Buchung: verknüpfte Kontobuchung wird angezeigt (Öffnen, lösen), passende Buchung (Betrag, Datum ± 5 Tage, Händler) wird zum Verknüpfen vorgeschlagen; der Beleg wird dabei auch an die Buchung gehängt
+- Journal: Der Beleg in der Mitte passt sich der Höhe an und wird nie abgeschnitten; kein scrollbarer Rand mehr unter dem Journal
+
 ## v1.0.25 – Vorschau als eigenes Fenster, Fahrtenbuch rechts, Mahnungen-Spalten
 - Dokumente und Verträge: Sind die Details rechts angedockt, öffnet „Vorschau“ ein eigenes Fenster (in Dokumentgröße, mittig im freien Bereich); als Popup hängt sie wie bisher rechts an
 - Fixkosten & Abos und Steuerberater (Prüfen, Kassabuch-Belege): 👁 öffnet die Beleg-Vorschau als eigenes Fenster statt der Details

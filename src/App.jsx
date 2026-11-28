@@ -3027,7 +3027,7 @@ function AppMain() {
         {tab === "invoices" && <InvoicesPage book={bizBook} req={bizReq} setTab={setTab} me={me} txs={txs} notify={notify} onArchive={async (blob, name) => { await onFiles([new File([blob], name, { type: "application/pdf" })]); }} />}
         {tab === "mahnungen" && <DunningPage book={bizBook} setTab={setTab} />}
         {tab === "artikel" && <ArticlesPage setTab={setTab} />}
-        {tab === "besitz" && <AssetsPage docs={active} onOpen={setOpenId} notify={notify} onScan={scanFor} calSync={calSync} setCalSync={setCalSync} token={token}
+        {tab === "besitz" && <AssetsPage docs={active} onOpen={setOpenId} notify={notify} onScan={scanFor} calSync={calSync} setCalSync={setCalSync} token={token} txs={txs} accounts={accounts} openTx={(t) => setStbTx(t)} onLinkTx={linkTx}
           onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true }))[0]} />}
         {tab === "inventur" && <InventoryPage setTab={setTab} notify={notify} docs={active} onOpen={setOpenId} onScan={scanFor} onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]} />}
         {tab === "kassa" && <KassaPage docs={active} onOpen={setOpenId} notify={notify} onScan={scanFor} onUpload={async (file, o) => (await onFiles([file], { ...(o || {}), stay: true, receipt: true }))[0]} />}
@@ -6321,6 +6321,11 @@ function JournalPreview({ d, compact = false, onSwipe, onOpen }) {
     </div>
   );
 }
+// v1.0.26: Platz, der unter dem Journal-Raster noch folgt (Abstände der umgebenden Bereiche + nachfolgende Elemente) – damit unten kein scrollbarer Rand entsteht
+const jBelow = (el) => { let h = 0; for (let n = el; n && !n.classList?.contains("app"); n = n.parentElement) { const cs = getComputedStyle(n); h += parseFloat(cs.marginBottom) || 0;
+  if (n !== el) h += (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+  for (let x = n.nextElementSibling; x; x = x.nextElementSibling) { const p = getComputedStyle(x).position; if (p !== "fixed" && p !== "absolute") h += x.getBoundingClientRect().height; } }
+  const app = el?.closest(".app"); if (app) h += parseFloat(getComputedStyle(app).paddingBottom) || 0; return Math.ceil(h) + 2; };
 function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFiles, busy }) {
   const [showDrop, setShowDrop] = useLsState("jDrop", true);
   const [jsPos] = useFlag("jStripPos", "c");   // v0.99.30: Leiste über dem Beleg – c = schwebend, b = eine Zeile
@@ -6374,7 +6379,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFi
   });
   // Höhe: Spalten füllen den Bildschirm bis unten
   const boxRef = useRef(null), [boxH, setBoxH] = useState(null);
-  useEffect(() => { if (mob) return; const f = () => { const r = boxRef.current?.getBoundingClientRect(); if (r) { setBoxH(Math.max(420, Math.round(innerHeight - r.top - 14))); setBoxW(Math.round(r.width)); } }; f(); addEventListener("resize", f); const t = setTimeout(f, 300);
+  useEffect(() => { if (mob) return; const f = () => { const r = boxRef.current?.getBoundingClientRect(); if (r) { setBoxH(Math.max(420, Math.round(innerHeight - r.top - Math.max(14, jBelow(boxRef.current))))); setBoxW(Math.round(r.width)); } }; f(); addEventListener("resize", f); const t = setTimeout(f, 300);
     const ro = boxRef.current ? new ResizeObserver(f) : null; ro?.observe(boxRef.current); return () => { removeEventListener("resize", f); clearTimeout(t); ro?.disconnect(); }; }, [mob, mode, showDrop]);
   const sum = list.reduce((s, d) => s + (jEur(d) || 0), 0);
   const senders = useMemo(() => { const m = {}; base.forEach((d) => { if (d.sender) m[d.sender] = (m[d.sender] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([s]) => s); }, [base]);
@@ -6426,6 +6431,10 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFi
   const jWide = useMedia("(min-width:1100px)");
   // v1.0.24: Höhe der Vorschau in der Mitte am unteren Rand ziehen (Doppelklick = volle Höhe), wird gemerkt
   const [jcH, setJcH] = useLsState("jCenterH", null), jcRef = useRef(null);
+  // v1.0.26: Beleg passt sich der Höhe der Mitte an (nie abgeschnitten)
+  useEffect(() => { const el = jcRef.current; if (!el) return; const f = () => { const pv = el.querySelector(".jprev"); const top = pv ? pv.getBoundingClientRect().top - el.getBoundingClientRect().top : 0;
+    el.style.setProperty("--jpvh", Math.max(160, Math.round(el.clientHeight - top - 24 - (el.querySelector(".jlegend") ? 34 : 0))) + "px"); };
+    f(); const ro = new ResizeObserver(f); ro.observe(el); const t = setTimeout(f, 400); return () => { ro.disconnect(); clearTimeout(t); }; });
   const jcDrag = (e) => { e.preventDefault(); const el = jcRef.current; if (!el) return; const y0 = e.clientY, h0 = el.getBoundingClientRect().height, max = el.parentElement.getBoundingClientRect().height;
     const mv = (ev) => { const h = Math.round(Math.max(220, Math.min(max, h0 + ev.clientY - y0))); setJcH(h >= max - 4 ? null : h); };
     const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); document.documentElement.classList.remove("rowresizing"); };
@@ -16094,7 +16103,7 @@ function assetDlDocs(list) {
 const AstIco = ({ a, size = 46 }) => a.photo ? <img className="artphoto" src={a.photo} alt="" style={{ width: size, height: size }} />
   : <span className="caticon" style={{ width: size, height: size, fontSize: size * 0.45 }}><Glyph e={astEmo(a)} /></span>;
 
-function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDelete, onClose, notify }) {
+function AssetEditor({ a: init, docs, txs = [], accounts = [], openTx, onLinkTx, onScan, onUpload, onOpenDoc, onSave, onDelete, onClose, notify }) {
   const [a, setA] = useState(init);
   const set = (p) => setA((x) => ({ ...x, ...p }));
   const [busy, setBusy] = useState(false), [touched, setTouched] = useState({});
@@ -16116,22 +16125,44 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
   }, [doc?.status, doc?.id]);
   const w = astWarr(a), e = astExtra(a), end = astEndAll(a);
   const cats = [...new Set([...Object.keys(ASSET_CATS), a.cat].filter(Boolean))];
+  // v1.0.26: Vorschau wie in den anderen Reitern (angedockt = eigenes Fenster, Popup = rechts angehängt) + verknüpfte Buchung mit Kaufbeleg (📎)
+  const wideDet = useMedia("(min-width:1000px)") && !IS_TABLET, dockedA = useDocked("besitz");
+  const [sideOpen, setSideOpen] = useState(() => !!ls.get("astSidePrev", false)), [prevOpen, setPrevOpen] = useState(false);
+  const side = wideDet && sideOpen && !!doc && !dockedA;
+  const toggleSide = () => setSideOpen((v) => { ls.set("astSidePrev", !v); return !v; });
+  const [sideW, setSideW] = useState(() => ls.get("astSidePrevW", 520));
+  useEffect(() => { const t = setTimeout(() => ls.set("astSidePrevW", sideW), 200); return () => clearTimeout(t); }, [sideW]);
+  const openPrev = () => (wideDet && !dockedA ? toggleSide() : setPrevOpen(true));
+  const priceN = Number(String(a.price ?? "").replace(",", ".")) || 0;
+  const linkedTx = (a.txId && txs.find((t) => t.id === a.txId)) || (a.docId && txs.find((t) => t.docId === a.docId)) || null;
+  const sugTx = useMemo(() => { if (linkedTx || !priceN || !a.date) return null; const dw = norm(a.dealer || "").split(/\s+/).filter((x) => x.length > 2);
+    const c = txs.filter((t) => t.amount < 0 && Math.abs(Math.abs(t.amount) - priceN) < 0.01 && Math.abs((new Date(t.date) - new Date(a.date)) / 864e5) <= 5)
+      .map((t) => ({ t, sc: dw.filter((w) => norm(`${t.counterparty} ${t.purpose}`).includes(w)).length * 10 - Math.abs((new Date(t.date) - new Date(a.date)) / 864e5) }));
+    return c.sort((x, y) => y.sc - x.sc)[0]?.t || null; }, [txs, priceN, a.date, a.dealer, !!linkedTx]);
+  const linkIt = async (t) => { set({ txId: t.id }); if (a.docId && !t.docId) await onLinkTx?.(t.id, a.docId); notify?.("Buchung verknüpft"); };
+  const accN = (id) => accounts.find((x) => x.id === id)?.name || "Konto";
+  const clip = doc ? <button type="button" className="iconbtn astclipb" title="Kaufbeleg ansehen" aria-label="Kaufbeleg ansehen" onClick={openPrev}><IcoClip /></button> : null;
   return (
-    <Win dock="besitz" tint={tintOf(a)} id="astedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
-      <div className="panelhead"><b>{init.name || "Neues Gerät"}</b><button className="btn primary" disabled={!a.name?.trim()} onClick={() => { onSave({ ...a, price: a.price === "" || a.price == null ? "" : Number(String(a.price).replace(",", ".")) || 0 }); onClose(); }}>Speichern</button><XBtn /></div>
+    <Win dock="besitz" tint={tintOf(a)} id="astedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)} className={side ? "detsplit" : ""} extraW={side ? sideW : 0} onExtraW={setSideW}>
+      <div className="detbody"><div className="detcol">
+      <div className="panelhead"><b>{init.name || "Neues Gerät"}</b>{doc && <button className={"btn detprevbtn" + (side ? " on" : "")} title="Kaufbeleg-Vorschau" aria-pressed={side} onClick={openPrev}><IcoEye /> <span>Vorschau</span></button>}<button className="btn primary" disabled={!a.name?.trim()} onClick={() => { onSave({ ...a, price: a.price === "" || a.price == null ? "" : Number(String(a.price).replace(",", ".")) || 0 }); onClose(); }}>Speichern</button><XBtn /></div>
       {init.name && <MHero icon="🛡️" sub={[a.brand, a.cat].filter(Boolean).join(" · ") || "Gerät"} title={a.name || init.name} value={a.price !== "" && a.price != null ? fmtMoney(Number(String(a.price).replace(",", ".")) || 0, a.currency || "EUR") : null}
         pills={[a.date && "gekauft " + fmtDate(a.date), astEndAll(a) && { label: (astEndAll(a) < todayISO() ? "Garantie abgelaufen " : "Garantie bis ") + fmtDate(astEndAll(a)), cls: astEndAll(a) < todayISO() ? "st-draft" : "st-paid" }]} />}
       <WinHero icon="🛡️" img={a.photo} title={a.name || "Neues Gerät"} scope={<ScopeSelect obj={a} onPick={(p) => set(p)} />}
         chip={[a.cat, a.brand].filter(Boolean).join(" · ") || null}
         hint={astEndAll(a) ? (astEndAll(a) < todayISO() ? "Garantie abgelaufen am " : "Garantie bis ") + fmtDate(astEndAll(a)) + (astEndAll(a) >= todayISO() ? " · noch " + daysUntil(astEndAll(a)) + " Tage" : "") : a.date ? "gekauft " + fmtDate(a.date) : null} />
-      {a.docId || busy ? (
-        <div className="expatt">
-          {doc?.thumb ? <img src={doc.thumb} alt="" /> : <span className="attpdf">📄</span>}
-          <div className="grow"><b>{busy ? "Beleg wird hochgeladen …" : doc?.status === "processing" ? "KI liest den Beleg …" : doc?.status === "error" ? "Auslesen fehlgeschlagen" : "Kaufbeleg angehängt"}</b>
-            <small className="muted block">{doc?.status === "processing" ? "Gerät, Preis und Datum werden gleich ausgefüllt" : doc?.status === "done" ? [doc.merchant || doc.sender, doc.amount?.total != null && fmtMoney(doc.amount.total)].filter(Boolean).join(" · ") : ""}</small></div>
-          {doc?.status === "processing" && <span className="spin" />}
-          {doc && onOpenDoc && <button className="btn sm" onClick={() => onOpenDoc(doc.id)}>Öffnen</button>}
-          <button className="iconbtn" title="Beleg entfernen" aria-label="Beleg entfernen" onClick={() => set({ docId: null })}>✕</button>
+      <div className="detform">
+      {(a.docId || busy) && (doc?.status === "processing" || busy) && <div className="expatt"><span className="attpdf">📄</span><div className="grow"><b>{busy ? "Beleg wird hochgeladen …" : "KI liest den Beleg …"}</b><small className="muted block">Gerät, Preis und Datum werden gleich ausgefüllt</small></div><span className="spin" /></div>}
+      {(a.docId || busy) ? (
+        <div className={"expatt asttx" + (linkedTx ? "" : sugTx ? " sug" : " none")}>
+          <span className="asttxic">{linkedTx ? "🏦" : sugTx ? "💡" : "🏦"}</span>
+          <div className="grow">{linkedTx ? <><b>Buchung verknüpft</b><small className="muted block">{[linkedTx.counterparty || linkedTx.purpose, fmtDate(linkedTx.date), accN(linkedTx.accountId), fmtMoney(linkedTx.amount)].filter(Boolean).join(" · ")}</small></>
+            : sugTx ? <><b>Passende Buchung gefunden</b><small className="muted block">{[sugTx.counterparty || sugTx.purpose, fmtDate(sugTx.date), accN(sugTx.accountId), fmtMoney(sugTx.amount)].filter(Boolean).join(" · ")}</small></>
+            : <><b>Keine Buchung verknüpft</b><small className="muted block">{doc?.status === "done" ? [doc.merchant || doc.sender, doc.amount?.total != null && fmtMoney(doc.amount.total)].filter(Boolean).join(" · ") + " · in den Konten noch nicht gefunden" : "Kaufbeleg angehängt"}</small></>}</div>
+          {clip}
+          {linkedTx ? <>{openTx && <button className="btn sm" onClick={() => openTx(linkedTx)}>Öffnen</button>}<button className="iconbtn" title="Verknüpfung lösen" aria-label="Verknüpfung lösen" onClick={() => set({ txId: null })}>✕</button></>
+            : sugTx ? <button className="btn sm primary" onClick={() => linkIt(sugTx)}>Verknüpfen</button> : null}
+          <MoreMenu items={[doc && { icon: "👁", title: "Kaufbeleg ansehen", run: openPrev }, doc && onOpenDoc && { icon: "✎", title: "Kaufbeleg bearbeiten", run: () => onOpenDoc(doc.id) }, { icon: "✕", title: "Kaufbeleg entfernen", run: () => set({ docId: null }) }]} />
         </div>
       ) : onUpload && (
         <div className="expscan two">
@@ -16176,11 +16207,19 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
         <label>Verkaufspreis €<input inputMode="decimal" value={a.soldPrice ?? ""} onChange={(ev) => set({ soldPrice: ev.target.value })} /></label>
       </div>}
       {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={async () => (await uiAsk(`„${a.name}“ wirklich löschen?`)) && (onDelete(a), onClose())}>Gerät löschen</button>}
+      </div></div>
+      {side && doc && <SidePreview key={doc.id} d={doc} onPrint={() => printDoc(doc)} />}
+      </div>
+      {!side && prevOpen && doc && createPortal(
+        <Win id="docprev" onClose={() => setPrevOpen(false)} dirty={false} className="docprevwin" fitDoc={doc}>
+          <div className="panelhead"><b className="clamp">{doc.title}</b><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(doc)}><IcoPrint /></button><XBtn /></div>
+          <SidePreview d={doc} noPrint />
+        </Win>, document.querySelector(".app") || document.body)}
     </Win>
   );
 }
 
-function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSync, token }) {
+function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSync, token, txs = [], accounts = [], openTx, onLinkTx }) {
   const mob = useMobileBeta();
   const [list, setList] = useLsState("besitz", []);
   const [scope, setScope] = useLsState("astScope", "alle");
@@ -16304,7 +16343,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
       </>)}
       
       </>)}
-      {edit && <AssetEditor key={edit.id || "neu"} a={edit} docs={docs} onScan={onScan} onUpload={onUpload} onOpenDoc={onOpen} notify={notify}
+      {edit && <AssetEditor key={edit.id || "neu"} a={edit} docs={docs} txs={txs} accounts={accounts} openTx={openTx} onLinkTx={onLinkTx} onScan={onScan} onUpload={onUpload} onOpenDoc={onOpen} notify={notify}
         onSave={save} onDelete={(a) => setList((l) => l.filter((x) => x.id !== a.id))} onClose={() => setEdit(null)} />}
       {syncOpen && <CalSyncSheet sync={calSync} setSync={setCalSync} items={calItems} token={token} notify={notify} onClose={() => setSyncOpen(false)} what="Fristen & Garantien" />}
     </div>
@@ -20323,6 +20362,7 @@ html.sty-graphit.sty-graphit nav.bottom>button.on,html.sty-sand.sty-sand nav.bot
 .ctab .kbfootrow,.ctab .kbopenrow{cursor:default}.ctab .kbfootrow{border-top:1px solid var(--line)}
 .ctab .cacts{display:inline-flex;justify-content:center}.ctab .invacts{width:auto!important;flex-wrap:nowrap;justify-content:center}
 .stbbeleg{cursor:pointer;border:0;display:inline-flex;align-items:center;gap:4px;font:inherit}.stbbeleg svg{width:13px;height:13px}
+.asttx .asttxic{font-size:22px;width:42px;text-align:center;flex:none}.asttx.sug{border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}.asttx .astclipb svg{width:19px;height:19px}
 .ctrlbl{text-transform:uppercase;letter-spacing:.05em;font-weight:600}.ccolreset{display:flex;justify-content:center;align-items:center;text-transform:none;letter-spacing:0;font-weight:500}
 .ctab .crow:not(.chead){padding:11px 14px;border-bottom:1px solid var(--line);border-radius:10px;cursor:pointer}.ctab .crow:not(.chead):last-child{border-bottom:0}.ctab .crow:not(.chead):hover{background:color-mix(in srgb,var(--txt) 5%,transparent)}
 .ctab .crow.ended,.ctab .crow.inactive{opacity:.55}
@@ -20717,6 +20757,7 @@ html.hasdetail .jphone{visibility:hidden}
 .jpage{position:relative;background:#fff;box-shadow:0 1px 6px #0002;border-radius:3px}
 .jpage+.jpage{margin-top:14px}.jpage+.jpage::before{content:"";position:absolute;left:0;right:0;top:-8px;border-top:2px dashed var(--mut);opacity:.5}
 .jpage img{display:block;width:100%;height:auto}
+.jgrid>.jcenter .jpage{width:fit-content;max-width:100%;margin-left:auto;margin-right:auto}.jgrid>.jcenter .jpage img{width:auto;max-width:100%;max-height:var(--jpvh,none)}
 .jmark{position:absolute;border-radius:3px;mix-blend-mode:multiply;pointer-events:none}
 .jm-total{background:#a78bfa66;box-shadow:0 0 0 1.5px #8b5cf6}.jm-date{background:#86efac88;box-shadow:0 0 0 1.5px #22c55e}.jm-vat{background:#fde04788;box-shadow:0 0 0 1.5px #eab308}.jm-net{background:#93c5fd88;box-shadow:0 0 0 1.5px #3b82f6}
 .jlegend{position:sticky;bottom:6px;align-self:center;display:flex;gap:12px;font-size:12px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin-top:10px}
