@@ -11,6 +11,13 @@ let httpFetch = null;
 export async function installPlatform() {
   if (!isTauri) return;
   document.documentElement.classList.add("tauri");
+  // macOS: Fenster ohne Titelleiste (Ampel-Knöpfe liegen über der App) – oben ein Streifen zum Verschieben des Fensters
+  if (/Mac/i.test(navigator.platform || navigator.userAgent) && !/iPhone|iPad/i.test(navigator.userAgent)) {
+    document.documentElement.classList.add("tmac");
+    const strip = document.createElement("div");
+    strip.className = "tdrag"; strip.setAttribute("data-tauri-drag-region", "");
+    document.body.appendChild(strip);
+  }
   const { fetch: tf } = await import("@tauri-apps/plugin-http");
   httpFetch = tf;
   const orig = window.fetch.bind(window);
@@ -29,6 +36,12 @@ export async function installPlatform() {
     }
     return aClick.call(this);
   };
+  // v1.0.0: Links zu Webseiten (target="_blank" oder fremde Adresse) im System-Browser öffnen – nicht im App-Fenster
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest?.("a[href]"); if (!a || e.defaultPrevented) return;
+    const href = a.getAttribute("href") || "";
+    if (/^(mailto:|tel:|sms:)/i.test(href) || (/^https?:/i.test(href) && (a.target === "_blank" || new URL(href, location.href).origin !== location.origin))) { e.preventDefault(); openExternal(href); }
+  }, true);
   // Neue Fenster: Webseiten im System-Browser, PDFs/Bilder mit dem Standardprogramm (Vorschau …)
   const dummy = { closed: false, close() {}, focus() {}, location: {}, document: null };
   window.open = (url) => {
@@ -60,38 +73,6 @@ export async function openBlob(blob, name) {
   const file = await join(dir, name || `FinDocu-${Date.now()}.${EXT[blob.type] || "bin"}`);
   await writeFile(file, new Uint8Array(await blob.arrayBuffer()));
   await openPath(file);
-}
-
-// Mac-App: PDF über den nativen macOS-Druckdialog drucken (PDFKit, Befehl print_pdf in lib.rs).
-// Grund: window.print() im WebView meldet beim Abbrechen „Drucken nicht möglich: PDF konnte nicht gedruckt werden“.
-// Rückgabe true = erledigt (gedruckt ODER abgebrochen), false = nicht verfügbar → Aufrufer druckt im WebView.
-// Windows (WebView2), iOS und Browser bleiben beim bisherigen Weg – dort kommt beim Abbrechen keine Meldung.
-const isMacApp = isTauri && /Macintosh/.test(navigator.userAgent) && !/iPhone|iPad/.test(navigator.userAgent) && !(navigator.maxTouchPoints > 1);
-export async function nativePrintPdf(blobs, title = "Dokument") {
-  if (!isMacApp || !blobs.length || blobs.some((b) => b?.type !== "application/pdf")) return false;
-  try {
-    let blob = blobs[0];
-    if (blobs.length > 1) {
-      const { PDFDocument } = await import("pdf-lib"), out = await PDFDocument.create();
-      for (const b of blobs) {
-        const src = await PDFDocument.load(await b.arrayBuffer(), { ignoreEncryption: true });
-        (await out.copyPages(src, src.getPageIndices())).forEach((pg) => out.addPage(pg));
-      }
-      blob = new Blob([await out.save()], { type: "application/pdf" });
-    }
-    const { tempDir, join } = await import("@tauri-apps/api/path");
-    const { writeFile, mkdir } = await import("@tauri-apps/plugin-fs");
-    const { invoke } = await import("@tauri-apps/api/core");
-    const dir = await join(await tempDir(), "findocu");
-    await mkdir(dir, { recursive: true }).catch(() => {});
-    const path = await join(dir, `Druck-${Date.now()}.pdf`);
-    await writeFile(path, new Uint8Array(await blob.arrayBuffer()));
-    await invoke("print_pdf", { path, title: String(title || "Dokument") });
-    return true;
-  } catch (e) {
-    console.warn("Nativer Druck nicht möglich – Druck im WebView:", e);
-    return false;
-  }
 }
 
 // externe Seite im System-Browser öffnen (Anmeldung bei Cloud-Anbietern)
@@ -131,4 +112,41 @@ export async function installUpdate(update, onProgress) {
   });
   const { relaunch } = await import("@tauri-apps/plugin-process");
   await relaunch();
+}
+
+// v0.99.94: eigene Befehle der App (Backups auf der Festplatte, Speicherverbrauch) – nur Mac/Windows
+export const hasDisk = isTauri && !/iPhone|iPad|Android/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "");
+export async function native(cmd, args) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke(cmd, args);
+}
+
+// v1.0.0: Plattform der App
+export const isMacApp = hasDisk && /Mac/i.test(navigator.platform || navigator.userAgent);
+export const isWinApp = hasDisk && /Win/i.test(navigator.platform || navigator.userAgent);
+// Dateien in einen Zwischenordner schreiben (ohne Nachfrage) → Pfade
+export async function tempFiles(files) {
+  const { tempDir, join } = await import("@tauri-apps/api/path");
+  const { writeFile, mkdir } = await import("@tauri-apps/plugin-fs");
+  const dir = await join(await tempDir(), "findocu", "teilen", String(Date.now()));
+  await mkdir(dir, { recursive: true });
+  const out = [];
+  for (const f of files) { const p = await join(dir, (f.name || "Datei").replace(/[\\/:*?"<>|]/g, "_")); await writeFile(p, new Uint8Array(await f.arrayBuffer())); out.push(p); }
+  return out;
+}
+// Mehrere Dateien: einmal einen Ordner wählen, alle dort speichern → Anzahl (0 = abgebrochen)
+export async function saveFilesToFolder(files) {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const dir = await open({ directory: true, recursive: true, title: `${files.length} Dateien speichern in …` });
+  if (!dir || Array.isArray(dir)) return 0;
+  const { join } = await import("@tauri-apps/api/path");
+  const { writeFile, exists } = await import("@tauri-apps/plugin-fs");
+  for (const f of files) {
+    const base = (f.name || "Datei").replace(/[\\/:*?"<>|]/g, "_"), dot = base.lastIndexOf(".");
+    let p = await join(dir, base), i = 2;
+    while (await exists(p).catch(() => false)) p = await join(dir, dot > 0 ? `${base.slice(0, dot)} (${i++})${base.slice(dot)}` : `${base} (${i++})`);
+    await writeFile(p, new Uint8Array(await f.arrayBuffer()));
+  }
+  native("reveal_file", { path: await join(dir, (files[0].name || "Datei").replace(/[\\/:*?"<>|]/g, "_")) }).catch(() => {});
+  return files.length;
 }

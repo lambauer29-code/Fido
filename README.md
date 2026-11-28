@@ -2,11 +2,68 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
-## v0.99.94 – Drucken in der Mac-App ohne Fehlermeldung beim Abbrechen
-- Mac-App: Drucken öffnet den normalen macOS-Druckdialog (PDFKit) – „Abbrechen“ schließt ihn ohne die Meldung „Drucken nicht möglich: PDF konnte nicht gedruckt werden“
-- Mac-App: gedruckt wird das echte PDF statt Seitenbildern (schärfere Schrift); mehrere Rechnungen/Belege gehen als ein Druckauftrag
-- Gilt für alle Druckknöpfe (Dokumente, Kontoauszüge, Rechnungen, Belege, Inventur, Zählprotokolle) – zentrale Funktion printPdf()
-- Windows-App, iPhone/iPad und Browser drucken wie bisher; schlägt der native Druck fehl, wird automatisch der bisherige Weg genommen
+## v1.0.5 – Mac: „Abbrechen“ beim Drucken ohne Fehlermeldung
+- Mac-App: Wer im Druckdialog auf „Abbrechen“ klickt, bekommt nicht mehr „Drucken nicht möglich: PDF konnte nicht gedruckt werden“ – Abbrechen gilt nicht mehr als Fehler (disk.rs, print_pdf)
+- Echte Startfehler (PDF nicht lesbar, Druckauftrag nicht erstellbar) werden weiterhin gemeldet, jetzt mit genauerem Text
+- Windows-App unverändert (Druck über den PDF-Betrachter von WebView2, Abbrechen ohne Meldung)
+
+## v1.0.4 – Mac: Titelleiste über die ganze Breite
+- Mac-App: Leiste mit den Ampel-Knöpfen geht über die ganze Fensterbreite (Farbe der Seitenleiste, feine Linie darunter), 28 px hoch. Seitenleiste, Knöpfe oben rechts und mitlaufende Bereiche beginnen darunter. Windows und Browser unverändert.
+
+## v1.0.3 – Windows druckt das Original-PDF, „⋯“-Menüs nicht mehr abgeschnitten
+- Windows-App: PDFs (auch mehrere zusammengefügt) werden im eingebauten PDF-Betrachter gedruckt statt als Bilder; schlägt das fehl, wird wie bisher über Bilder gedruckt.
+- „⋯“-Menüs in Listen (Verträge, Fixkosten, Kontoauszüge …) schweben über allem, öffnen bei wenig Platz nach oben und scrollen bei Bedarf – in Browser, Mac- und Windows-App.
+
+## v1.0.2 – Mac druckt das Original-PDF
+- Mac-App: PDFs werden unverändert (Originaldatei) an den Druckdialog gegeben – volle Qualität, echter Text. Mehrere Belege/Rechnungen werden zu einer PDF zusammengefügt, Fotos als PDF-Seite. Gilt für Dokumente, Rechnungen, Mahnungen, Kontoauszüge, Buchungsbelege, Inventur- und Zähllisten (`printBlobs`).
+- Browser und Windows: unverändert (Seiten als Bilder in den Druckdialog).
+
+## v1.0.1 – Drucken am Mac: Seite nicht mehr leer
+- Mac-App: Der Druckdialog zeigte eine leere Seite (WKWebView druckt seinen Inhalt dort nicht). Jetzt werden die Seiten als PDF gebaut und über den Mac-Druckdialog (PDFKit, `print_pdf`) gedruckt – mit Vorschau, Druckerwahl, Kopien. Windows und Browser unverändert.
+
+## v1.0.0 – Mac- und Windows-App rund
+- **Drucken** in der App: Seiten kommen in eine eigene Druckansicht, der System-Druckdialog öffnet sich (vorher passierte am Mac nichts).
+- **Teilen**: Mac-App öffnet das System-Teilen-Menü (AirDrop, Mail, Nachrichten, WhatsApp …) mit der Datei als Anhang (`share_files`, NSSharingServicePicker). Windows-App: E-Mail/WhatsApp/Telegram legen die Datei ohne Nachfrage in einen Zwischenordner, markieren sie im Explorer und öffnen das Programm; „Im Explorer zeigen“ und „Speichern unter …“.
+- **Links** zu Webseiten (Quellen der KI usw.) öffnen in der App im System-Browser.
+- **Mehrere Dateien speichern**: einmal Ordner wählen statt viele „Sichern unter“-Fenster.
+- **Fenstergröße und -position** werden gemerkt (tauri-plugin-window-state).
+- Hinweise zu Kamera, Standort und App-Sperre nennen in der App die passenden System-Einstellungen von macOS bzw. Windows.
+
+## v0.99.103 – Rückfragen in der Mac/Windows-App repariert
+- In der App war jede „Wirklich …?“-Rückfrage wirkungslos (das System-confirm lief nicht blockierend und galt immer als „OK“), Eingabefelder (prompt, z. B. neue Kategorie, Ansicht speichern, Tags) erschienen gar nicht.
+- Alle 96 Rückfragen/Eingaben laufen jetzt über `uiAsk`/`uiPrompt`: im Browser wie bisher, in der App eigener Dialog (OK/Abbrechen, Enter/Esc).
+
+## v0.99.102 – Keine Größen-Rückfrage mehr beim Import vom selben Gerätetyp
+- Backup-Import: Schrift- und Button-Größen vom selben Gerätetyp (z. B. Mac → Mac) werden still übernommen; gefragt wird nur bei einem anderen Gerätetyp (z. B. Mac → iPhone) und nur, wenn sich die Größen unterscheiden.
+
+## v0.99.101 – Mac: Seitenleiste nicht mehr unter den Ampel-Knöpfen
+- Die Seitenleiste beginnt unter dem Fensterrand; der Bereich der Ampel-Knöpfe ist abgedeckt, beim Scrollen läuft das Menü nicht mehr darunter durch.
+
+## v0.99.100 – Dateien überall ins Fenster ziehen
+- Wird eine Datei außerhalb eines Ablagefelds ins Fenster gezogen, öffnet die App (bzw. der Browser) sie nicht mehr anstelle von FinDocu – sie wird wie über die Universal-Ablage eingelesen. Ablagefelder und Beleg-Zeilen behalten ihr eigenes Verhalten.
+- Zahl beim Reiter „Übersicht“: Tooltip erklärt sie (offene Fristen, fällig in ≤ 7 Tagen oder überfällig).
+
+## v0.99.99 – Mac-Fenster ohne Titelleiste, Sortieren robuster
+- Mac-App: keine eigene Titelleiste mehr – die Ampel-Knöpfe liegen über der Seitenleiste, das Fenster wirkt aus einem Guss. Verschieben am oberen Rand, Doppelklick maximiert.
+- Sortieren per Griff ⠿ (Einstellungs-Bereiche, Reiter, Listen): Zeiger wird festgehalten, automatisches Scrollen am Rand auch in inneren Scrollbereichen.
+
+## v0.99.98 – Windows-App
+- GitHub baut jetzt neben der Mac-App auch einen Windows-Installer (`…_x64-setup.exe`), nacheinander, damit die gemeinsame `latest.json` für die Updates vollständig bleibt.
+
+## v0.99.97 – Drag & Drop in der Mac-App, Ablagefeld im Journal
+- Mac/Windows-App: Dateien und Ordner lassen sich wieder in alle Ablagefelder ziehen (`dragDropEnabled: false` in tauri.conf.json – Tauri hatte das Ablegen abgefangen).
+- Journal: eigenes Ablagefeld (ein-/ausblendbar über „📥 Ablagefeld“), liest alles wie die Universal-Ablage ein (Belege, Rechnungen, E-Rechnungen, Kontoauszüge).
+
+## v0.99.96 – Backup-Texte in der App
+- In der Mac/Windows-App heißt es bei Auto-Backups nicht mehr „im Browser“, sondern „in der App“ bzw. „in der App und im Backup-Ordner“ (Meldung, Hinweistext, Auto-Backup-Liste).
+
+## v0.99.95 – Persönliche Standard-Einstellungen
+- `src/defaults.json` enthält Rolis Design- und Struktur-Einstellungen (dunkles Design „Graphit/Gold“, Schrift Lora, Schrift- und Buttongrößen, Reiter mit Gruppen Privat/Firma/Sicherung, Dokumentgruppen, Unterkategorien, Spalten der Kontobuchungen, Startseiten-Layout). Greifen nur beim ersten Start auf einem neuen Gerät/Browser – bestehende Einstellungen bleiben unverändert. Keine persönlichen Daten enthalten.
+
+## v0.99.94 – Mac/Windows-App: Backups auf der Festplatte, echter Speicherverbrauch
+- Backup → **Backup-Ordner auf der Festplatte**: Auto-Backups werden zusätzlich als Datei gespeichert (Standard: Dokumente/FinDocu/Backups, Ordner frei wählbar, z. B. iCloud Drive). Wahlweise mit allen PDFs/Fotos, die letzten 3–30 werden aufgehoben. Liste mit Wiederherstellen/Löschen, „Im Finder zeigen“.
+- **Speicherverbrauch (Festplatte)**: was FinDocu und die Backups belegen und wie viel auf dem Laufwerk frei ist (Warnung unter 2 GB).
+- Neue Rust-Befehle in `src-tauri/src/disk.rs` (Crate fs2). Browser/iPhone unverändert.
 
 ## v0.99.93 – Überwachter Ordner
 - Einstellungen → Daten & Ablage → **Überwachter Ordner**: einen lokalen oder Cloud-Ordner (iCloud Drive, OneDrive, Dropbox, Google Drive für Desktop) festlegen – neue Dateien, auch in Unterordnern, werden erkannt.

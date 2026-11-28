@@ -176,9 +176,10 @@ pub fn print_pdf(window: tauri::WebviewWindow, path: String, title: String) -> R
     #[cfg(target_os = "macos")]
     {
         let (tx, rx) = std::sync::mpsc::channel();
-        window.run_on_main_thread(move || { let ok = unsafe { print_mac::print(&path, &title) }; let _ = tx.send(ok); }).map_err(|e| e.to_string())?;
-        // nicht auf das Ende des Drucks warten (der Dialog läuft modal im Haupt-Thread) – nur Startfehler melden
-        return match rx.recv_timeout(std::time::Duration::from_millis(300)) { Ok(false) => Err("PDF konnte nicht gedruckt werden".into()), _ => Ok(()) };
+        window.run_on_main_thread(move || { let r = unsafe { print_mac::print(&path, &title) }; let _ = tx.send(r); }).map_err(|e| e.to_string())?;
+        // nicht auf das Ende des Drucks warten (der Dialog läuft modal im Haupt-Thread) – nur Startfehler melden.
+        // v1.0.5: „Abbrechen“ im Druckdialog ist kein Fehler (runOperation = false) → keine Meldung mehr
+        return match rx.recv_timeout(std::time::Duration::from_millis(300)) { Ok(Err(e)) => Err(e), _ => Ok(()) };
     }
     #[allow(unreachable_code)]
     { let _ = (window, path, title); Err("Nur am Mac verfügbar".into()) }
@@ -190,15 +191,16 @@ mod print_mac {
     use objc2_app_kit::NSPrintInfo;
     use objc2_foundation::{NSString, NSURL};
     use objc2_pdf_kit::{PDFDocument, PDFPrintScalingMode};
-    pub unsafe fn print(path: &str, title: &str) -> bool {
-        let Some(mtm) = MainThreadMarker::new() else { return false };
+    /// Err = Druck konnte nicht starten; Ok(true) = gedruckt, Ok(false) = im Dialog abgebrochen
+    pub unsafe fn print(path: &str, title: &str) -> Result<bool, String> {
+        let Some(mtm) = MainThreadMarker::new() else { return Err("Drucken muss im Hauptthread laufen".into()) };
         let url = NSURL::fileURLWithPath(&NSString::from_str(path));
-        let Some(doc) = PDFDocument::initWithURL(PDFDocument::alloc(), &url) else { return false };
+        let Some(doc) = PDFDocument::initWithURL(PDFDocument::alloc(), &url) else { return Err("PDF konnte nicht geöffnet werden".into()) };
         let info = NSPrintInfo::sharedPrintInfo();
-        let Some(op) = doc.printOperationForPrintInfo_scalingMode_autoRotate(Some(&info), PDFPrintScalingMode::PageScaleDownToFit, true, mtm) else { return false };
+        let Some(op) = doc.printOperationForPrintInfo_scalingMode_autoRotate(Some(&info), PDFPrintScalingMode::PageScaleDownToFit, true, mtm) else { return Err("Druckauftrag konnte nicht erstellt werden".into()) };
         op.setJobTitle(Some(&NSString::from_str(title)));
         op.setShowsPrintPanel(true);
         op.setShowsProgressPanel(true);
-        op.runOperation()
+        Ok(op.runOperation())
     }
 }
