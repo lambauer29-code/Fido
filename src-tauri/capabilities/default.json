@@ -7,6 +7,8 @@
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-internal-toggle-maximize",
+    "core:window:allow-start-dragging",
     "deep-link:default",
     "opener:default",
     "dialog:default",

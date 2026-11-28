@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.99 – Mac-Fenster ohne Titelleiste, Sortieren robuster
+- Mac-App: keine eigene Titelleiste mehr – die Ampel-Knöpfe liegen über der Seitenleiste, das Fenster wirkt aus einem Guss. Verschieben am oberen Rand, Doppelklick maximiert.
+- Sortieren per Griff ⠿ (Einstellungs-Bereiche, Reiter, Listen): Zeiger wird festgehalten, automatisches Scrollen am Rand auch in inneren Scrollbereichen.
+
+## v0.99.98 – Windows-App
+- GitHub baut jetzt neben der Mac-App auch einen Windows-Installer (`…_x64-setup.exe`), nacheinander, damit die gemeinsame `latest.json` für die Updates vollständig bleibt.
+
 ## v0.99.97 – Drag & Drop in der Mac-App, Ablagefeld im Journal
 - Mac/Windows-App: Dateien und Ordner lassen sich wieder in alle Ablagefelder ziehen (`dragDropEnabled: false` in tauri.conf.json – Tauri hatte das Ablegen abgefangen).
 - Journal: eigenes Ablagefeld (ein-/ausblendbar über „📥 Ablagefeld“), liest alles wie die Universal-Ablage ein (Belege, Rechnungen, E-Rechnungen, Kontoauszüge).

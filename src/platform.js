@@ -11,6 +11,13 @@ let httpFetch = null;
 export async function installPlatform() {
   if (!isTauri) return;
   document.documentElement.classList.add("tauri");
+  // macOS: Fenster ohne Titelleiste (Ampel-Knöpfe liegen über der App) – oben ein Streifen zum Verschieben des Fensters
+  if (/Mac/i.test(navigator.platform || navigator.userAgent) && !/iPhone|iPad/i.test(navigator.userAgent)) {
+    document.documentElement.classList.add("tmac");
+    const strip = document.createElement("div");
+    strip.className = "tdrag"; strip.setAttribute("data-tauri-drag-region", "");
+    document.body.appendChild(strip);
+  }
   const { fetch: tf } = await import("@tauri-apps/plugin-http");
   httpFetch = tf;
   const orig = window.fetch.bind(window);

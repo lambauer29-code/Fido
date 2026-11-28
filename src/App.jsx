@@ -1025,6 +1025,9 @@ function useDnd(onDrop) {
     setDrag({ ...cur.current });
     document.body.classList.add("dnd-active");
     navigator.vibrate?.(8);
+    try { e.target.setPointerCapture?.(e.pointerId); } catch {}
+    // nächster scrollbarer Bereich (Fenster oder innerer Container) – für das automatische Scrollen am Rand
+    const sc = (() => { for (let n = e.target?.parentElement; n && n !== document.body; n = n.parentElement) { const o = getComputedStyle(n).overflowY; if (/(auto|scroll)/.test(o) && n.scrollHeight > n.clientHeight + 4) return n; } return null; })();
     let raf;
     const move = (ev) => {
       const d = cur.current; if (!d) return;
@@ -1042,7 +1045,8 @@ function useDnd(onDrop) {
     // automatisch scrollen, wenn man an den Rand zieht
     const tick = () => {
       const d = cur.current; if (!d) return;
-      if (d.y < 90) window.scrollBy(0, -12); else if (d.y > innerHeight - 90) window.scrollBy(0, 12);
+      const tgt = sc || window, top = sc ? Math.max(0, sc.getBoundingClientRect().top) : 0, bot = sc ? Math.min(innerHeight, sc.getBoundingClientRect().bottom) : innerHeight;
+      if (d.y < top + 90) tgt.scrollBy(0, -12); else if (d.y > bot - 90) tgt.scrollBy(0, 12);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -19134,6 +19138,8 @@ button.txmark.m-doc{cursor:pointer}button.txmark.m-doc:hover{background:var(--ca
 nav .doctree .accitem .an{color:inherit!important}
 .splitbtn{display:inline-flex;align-items:stretch;gap:0}.splitbtn .splitarrow.on,.splitbtn .splitarrow.open{background:color-mix(in srgb,var(--acc) 14%,transparent)!important}.splitbtn>.splitmain{border-top-right-radius:0!important;border-bottom-right-radius:0!important;margin-right:0}.splitbtn .splitarrow{border-top-left-radius:0!important;border-bottom-left-radius:0!important;border-left:1px solid color-mix(in srgb,currentColor 30%,transparent)!important;padding-left:8px!important;padding-right:10px!important;height:100%}.splitbtn>.vehpick{display:inline-flex}
 .dkbar{display:flex}.dkbar>i{border-radius:0}.dkbar>i:first-child{background:#8885!important}.dkbar>i.dk-app{background:var(--acc)}
+html.tmac .tdrag{position:fixed;left:0;right:0;top:0;height:26px;z-index:60;-webkit-app-region:drag}
+html.tmac nav.bottom:not(.mtabbar){padding-top:46px}html.tmac .app{padding-top:max(52px,calc(env(safe-area-inset-top) + 40px))!important}
 .fwfolder{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;margin:8px 0}.fwico{font-size:26px}
 .fwmode{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 2px}.fwevery{display:flex;align-items:center;gap:10px;margin:8px 0}.fwevery>.vehpick{width:auto}
 .fwqueue{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.fwqrow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}
