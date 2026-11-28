@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.24 – Journal: Höhe der Vorschau verstellbar
+- Journal: Die Vorschau in der Mitte lässt sich am unteren Rand in der Höhe ziehen (Doppelklick = wieder volle Höhe); die Höhe wird gemerkt
+
 ## v1.0.23 – Verschiebbare Spalten in allen Listen
 - Artikel, Lager (Bestand und Bewegungen), Besitz & Garantie, Rechnungen, Mahnungen (zu mahnen und Verlauf), Kunden, Verträge, Fixkosten & Abos, Dokumente, Kassabuch und Fahrtenbuch zeigen am Computer Spalten mit Überschriften
 - Wie bei Konten: Überschrift ziehen = Spalte verschieben, Rand ziehen = Breite ändern (Doppelklick = Standard), „↺ Spalten“ setzt zurück; wird je Reiter gemerkt

@@ -6405,6 +6405,12 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFi
   const pos = curDoc && (mode === "pruefen" ? `${idx + 1} von ${list.length} unbestätigt` : `${idx + 1} von ${list.length}`);
   const [jColsRaw, setJCols] = useLsState("jCols", JCOL_DEF), jCols = jColNorm(jColsRaw);
   const jWide = useMedia("(min-width:1100px)");
+  // v1.0.24: Höhe der Vorschau in der Mitte am unteren Rand ziehen (Doppelklick = volle Höhe), wird gemerkt
+  const [jcH, setJcH] = useLsState("jCenterH", null), jcRef = useRef(null);
+  const jcDrag = (e) => { e.preventDefault(); const el = jcRef.current; if (!el) return; const y0 = e.clientY, h0 = el.getBoundingClientRect().height, max = el.parentElement.getBoundingClientRect().height;
+    const mv = (ev) => { const h = Math.round(Math.max(220, Math.min(max, h0 + ev.clientY - y0))); setJcH(h >= max - 4 ? null : h); };
+    const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); document.documentElement.classList.remove("rowresizing"); };
+    document.documentElement.classList.add("rowresizing"); addEventListener("pointermove", mv); addEventListener("pointerup", up); };
   const jKeys = jCols.order.filter((k) => (k === "side" ? mode !== "pruefen" : k === "insp" ? detOn : true)), jColsOn = jWide && !narrow && !mob;
   const fields = curDoc && <JournalCard key={curDoc.id} d={curDoc} tx={txByDoc.get(curDoc.id)} onConfirm={confirm} onEdit={() => onOpen(curDoc.id)} pos={pos}
     onPrev={idx > 0 ? () => go(-1) : null} onNext={idx < list.length - 1 ? () => go(1) : null} />;
@@ -6465,7 +6471,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFi
             <b className={"jlsumtop " + (sum >= 0 ? "pos" : "neg")} title="Summe">{fmtMoney(sum)}</b></div>
           <div className="jlscroll">{listV.map(row)}{!list.length && <MEmpty>{mode === "pruefen" ? "Alles geprüft ✓" : "Keine Belege."}</MEmpty>}</div>
         </div>
-        <div className={"jcenter" + (curDoc && !detOn && !sheetOn ? " js-" + jsPos : "") + (sheetOn ? " jsheet-on" : "")}>
+        <div ref={jcRef} className={"jcenter" + (curDoc && !detOn && !sheetOn ? " js-" + jsPos : "") + (sheetOn ? " jsheet-on" : "") + (jcH && !narrow ? " jcsized" : "")} style={jcH && !narrow ? { height: jcH } : undefined}>
           {curDoc && !detOn && !sheetOn && <div className={"jstrip jstop js" + jsPos} title={curDoc.title || curDoc.fileName}>
             <div className="grow jstxt"><b className="one">{curDoc.title || curDoc.fileName}</b><small className="muted one">{[jDate(curDoc) && fmtDate(jDate(curDoc)), curDoc.sender, curDoc.category].filter(Boolean).join(" · ")}</small></div>
             {jSigned(curDoc) != null && <b className={"jsamt " + (jSigned(curDoc) >= 0 ? "pos" : "neg")}>{jFmt(curDoc)}{jEurHint(curDoc)}</b>}
@@ -6477,7 +6483,8 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFi
             </span>
           </div>}
           {curDoc ? <JournalPreview d={curDoc} onOpen={onOriginal} /> : <MEmpty>Kein Beleg ausgewählt.</MEmpty>}
-          {sheetOn && curDoc && <div className="jdsheet"><JPhoneSheet>{fields}</JPhoneSheet></div>}</div>
+          {sheetOn && curDoc && <div className="jdsheet"><JPhoneSheet>{fields}</JPhoneSheet></div>}
+          {!narrow && <i className="jcgrip" onPointerDown={jcDrag} onDoubleClick={() => setJcH(null)} title="Höhe ändern (Doppelklick = volle Höhe)" />}</div>
         {detOn && <div className="jinsp">{fields}</div>}
       </div>
       {mode === "pruefen" && <small className="muted block jhint">Tastatur: ↑/↓ wechseln · Enter = Bestätigen &amp; weiter</small>}
@@ -20643,7 +20650,9 @@ html.dark .scpick.sc-firma .scpickbtn,:root[data-theme=dark] .scpick.sc-firma .s
 .jgrid.narrow{grid-template-columns:210px 250px minmax(0,1fr)}
 .jgrid.narrow.pruef{grid-template-columns:260px minmax(0,1fr)}
 .jgrid.narrow.det>.jcenter{display:none}
-.jgrid>.jcenter{display:flex;flex-direction:column}
+.jgrid>.jcenter{display:flex;flex-direction:column;position:relative}.jgrid>.jcenter.jcsized{align-self:start}
+.jcgrip{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:120px;height:14px;cursor:row-resize;z-index:6;display:flex;align-items:center;justify-content:center}.jcgrip::after{content:"";width:48px;height:4px;border-radius:3px;background:var(--line);transition:background .15s}.jcgrip:hover::after{background:var(--acc)}
+html.rowresizing,html.rowresizing *{cursor:row-resize!important;user-select:none!important}
 .jstrip{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:auto;padding:10px 12px;background:var(--card);border-top:1px solid var(--line)}
 .jstrip .jstxt{min-width:140px;display:flex;flex-direction:column}.jstrip .jsamt{font-size:16px;white-space:nowrap}
 html.hasdetail .jphone{visibility:hidden}
