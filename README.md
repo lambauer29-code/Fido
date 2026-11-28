@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.21 – Kassabuch: Abstand unter dem Kopf
+- Kassabuch-Buchung: Betrag sitzt 10 px weiter unter dem farbigen Kopf
+
 ## v1.0.20 – Vorschau mit Lupe, Hand und Maus
 - Alle Vorschaufenster (Dokumente, Journal, Fahrtenbuch, Steuerberater, Dokument-Fenster) und die Vorschau neben dem Dokument: Werkzeugleiste 🔍 Lupe · ✋ Hand · ↖︎ Maus plus Zoom (−/+, 100 %, Breite, Ganze Seite)
 - Lupe folgt der Maus (Mausrad = stärker/schwächer), Hand verschiebt die gezoomte Seite mit Übersicht unten rechts, Strg/⌘ + Mausrad zoomt genau zum Mauszeiger, Doppelklick = 100 % bzw. zurück auf ganze Seite; gewähltes Werkzeug wird gemerkt

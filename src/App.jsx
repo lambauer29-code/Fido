@@ -17686,6 +17686,8 @@ html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon .gll{widt
 .pvlupe{position:fixed;display:none;width:170px;height:170px;border-radius:50%;border:3px solid var(--acc);box-shadow:0 10px 30px rgba(0,0,0,.5);background-color:#fff;background-repeat:no-repeat;pointer-events:none;z-index:99999}
 .sideprev{position:relative}.pvmini{position:absolute;right:14px;bottom:14px;width:64px;overflow:hidden;background:rgba(255,255,255,.85);border:1px solid var(--line);border-radius:4px;pointer-events:none;z-index:3;box-shadow:0 4px 12px #0006}
 .pvmini i{position:absolute;border:2px solid var(--acc);border-radius:2px;box-sizing:border-box}
+/* v1.0.21: Kassabuch – Betrag 10 px weiter unter dem Kopf */
+.win .kbhero{margin-top:10px}
 .docksetting .dockminw{display:flex;flex-direction:column;gap:6px;padding:4px 0 10px}.docksetting .dockminw.off{opacity:.45}
 .docksetting .dockminw input[type=range]{width:100%;accent-color:var(--acc)}.docksetting .dockminchips{gap:6px;flex-wrap:wrap}
 /* v1.0.10: Seitenleiste – Anzahlen (Dokumente) und Kontostände in einer Flucht unter den Gruppen-Pfeilen, Anzahlen als Plakette */
