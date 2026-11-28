@@ -371,7 +371,6 @@ function DocPreview({ d, onOpen, getBlob, onPrint, onOriginal }) {
             <small>{total > 1 ? `${pages.length} von ${total} Seiten` : "1 Seite"}</small>
             {total > pages.length && pages.length >= want && <button className="btn sm" onClick={() => setWant(want + 5)}>Weitere Seiten</button>}
             <button className="btn sm" onClick={() => (onPrint ? onPrint() : printDoc(d))} title="Drucken"><IcoPrint /></button>
-            <button className="btn sm" onClick={() => (onOriginal ? onOriginal() : openOriginal(d))}>Original öffnen</button>
           </div>
           {pages.map((src, i) => <img key={i} src={src} alt={`Seite ${i + 1}`} loading="lazy" />)}
           {(!pages.length || pages.length < Math.min(want, total || 1)) && <div className="dpload">Seite wird geladen …</div>}
@@ -381,7 +380,77 @@ function DocPreview({ d, onOpen, getBlob, onPrint, onOriginal }) {
   );
 }
 
-/* Schwebeleiste auf der Kachel (Seitenzahl + Original öffnen) */
+/* v1.0.6: Vorschau direkt neben dem Dokument-Dialog – mit Zoom (−/+, 100 %, Breite, Ganze Seite, Strg/⌘ + Mausrad) */
+const SP_A4 = 794, SP_MAXPAGES = 30, SP_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
+function SidePreview({ d, blob, onPrint }) {
+  const [pages, setPages] = useState([]), [total, setTotal] = useState(0), [err, setErr] = useState(""), [ratio, setRatio] = useState(1.414);
+  const [zoom, setZoom] = useState(() => ls.get("spZoom", "page"));   // "page" | "width" | Faktor (1 = 100 % = A4-Breite)
+  const boxRef = useRef(null), [box, setBox] = useState({ w: 600, h: 700 });
+  useEffect(() => { ls.set("spZoom", zoom); }, [zoom]);
+  useLayoutEffect(() => {
+    const el = boxRef.current; if (!el) return;
+    const f = () => setBox((o) => (o.w === el.clientWidth && o.h === el.clientHeight ? o : { w: el.clientWidth, h: el.clientHeight }));
+    f(); const ro = new ResizeObserver(f); ro.observe(el); return () => ro.disconnect();
+  }, []);
+  useEffect(() => {
+    let dead = false, url, pdf;
+    setPages([]); setTotal(0); setErr("");
+    (async () => {
+      try {
+        const b = blob || await db.getFile(d.id); if (!b) throw new Error("Originaldatei nicht gefunden");
+        if (b.type !== "application/pdf") {
+          url = URL.createObjectURL(b); const im = new Image(); im.onload = () => !dead && im.naturalWidth && setRatio(im.naturalHeight / im.naturalWidth); im.src = url;
+          if (!dead) { setPages([url]); setTotal(1); } return;
+        }
+        pdf = await (await loadPdfjs()).getDocument({ data: await b.arrayBuffer() }).promise; if (dead) return;
+        setTotal(pdf.numPages);
+        const W = Math.min(2000, Math.round(1100 * (window.devicePixelRatio || 1)));
+        for (let i = 1; i <= Math.min(pdf.numPages, SP_MAXPAGES); i++) {
+          const page = await pdf.getPage(i), v1 = page.getViewport({ scale: 1 }); if (i === 1 && !dead) setRatio(v1.height / v1.width);
+          const vp = page.getViewport({ scale: W / v1.width }), c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+          await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise; if (dead) return;
+          const src = c.toDataURL("image/jpeg", 0.85); setPages((p) => [...p, src]);
+        }
+      } catch (e) { if (!dead) setErr(e.message || String(e)); }
+    })();
+    return () => { dead = true; if (url) URL.revokeObjectURL(url); pdf?.destroy(); };
+  }, [d.id, blob]);
+  const fitW = Math.max(120, box.w - 36), fitPage = Math.max(120, Math.min(fitW, (box.h - 28) / ratio));
+  const pw = Math.round(zoom === "width" ? fitW : zoom === "page" ? fitPage : SP_A4 * zoom), cur = pw / SP_A4;
+  const zin = () => setZoom(SP_STEPS.find((x) => x > cur + 0.01) ?? 4);
+  const zout = () => setZoom([...SP_STEPS].reverse().find((x) => x < cur - 0.01) ?? 0.25);
+  const curRef = useRef(cur); curRef.current = cur;
+  useEffect(() => {   // Strg/⌘ + Mausrad bzw. Trackpad-Zoom (nur über der Vorschau)
+    const el = boxRef.current; if (!el) return;
+    const wheel = (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); setZoom(Math.min(4, Math.max(0.25, Math.round(curRef.current * Math.exp(-e.deltaY / 300) * 100) / 100))); };
+    el.addEventListener("wheel", wheel, { passive: false }); return () => el.removeEventListener("wheel", wheel);
+  }, []);
+  return (
+    <div className="sideprev">
+      <div className="spbar">
+        <small>{total > 1 ? `${total} Seiten` : total ? "1 Seite" : ""}</small>
+        <span className="grow" />
+        <button className="btn sm" title="Verkleinern" aria-label="Verkleinern" onClick={zout}>−</button>
+        <button className="btn sm sppct" title="Auf 100 % setzen" onClick={() => setZoom(1)}>{Math.round(cur * 100)} %</button>
+        <button className="btn sm" title="Vergrößern" aria-label="Vergrößern" onClick={zin}>+</button>
+        <span className="spsep" />
+        <button className={"btn sm" + (zoom === "width" ? " on" : "")} onClick={() => setZoom("width")}>Breite</button>
+        <button className={"btn sm" + (zoom === "page" ? " on" : "")} onClick={() => setZoom("page")}>Ganze Seite</button>
+        <span className="spsep" />
+        <button className="btn sm" title="Drucken" aria-label="Drucken" onClick={onPrint}><IcoPrint /></button>
+      </div>
+      <div className="spbox" ref={boxRef}>
+        {err ? <p className="muted small">Vorschau nicht möglich: {err}</p> : <>
+          {pages.map((src, i) => <img key={i} src={src} alt={`Seite ${i + 1}`} style={{ width: pw }} />)}
+          {pages.length < Math.min(total || 1, SP_MAXPAGES) && <div className="dpload">Seite wird geladen …</div>}
+          {total > SP_MAXPAGES && pages.length >= SP_MAXPAGES && <p className="muted small">Die Vorschau zeigt die ersten {SP_MAXPAGES} von {total} Seiten.</p>}
+        </>}
+      </div>
+    </div>
+  );
+}
+
+/* Schwebeleiste auf der Kachel (Seitenzahl + Drucken) – v1.0.6: „Original öffnen“ entfernt */
 const pageCountCache = new Map();
 function CardBar({ d }) {
   const [n, setN] = useState(() => (d.mimeType === "application/pdf" ? pageCountCache.get(d.id) || d.pageCount || 0 : 1));
@@ -404,7 +473,6 @@ function CardBar({ d }) {
     <div ref={ref} className="dprevbar float gbar" onClick={(e) => e.stopPropagation()}>
       {n > 0 && <small style={{ paddingLeft: 6 }}>{n === 1 ? "1 Seite" : `${n} Seiten`}</small>}
       <button className="btn sm" onClick={() => printDoc(d)} title="Drucken" aria-label="Drucken"><IcoPrint /></button>
-      <button className="btn sm orig" onClick={() => openOriginal(d)}>Original öffnen</button>
     </div>
   );
 }
@@ -1520,6 +1588,12 @@ function useMedia(q) {
   return m;
 }
 let winZ = 60; // zuletzt angeklicktes Fenster liegt oben
+// v1.0.6: Fenster vorübergehend breiter (z. B. Dokument + Vorschau daneben), ohne die gemerkte Größe zu ändern
+function winBox(r, minW) {
+  if (!minW || r.w >= minW) return { left: r.x, top: r.y, width: r.w };
+  const w = Math.min(minW, innerWidth - 24);
+  return { left: Math.max(12, Math.min(r.x - Math.round((w - r.w) / 2), innerWidth - w - 12)), top: r.y, width: w };
+}
 function clampRect(r) {
   const W = window.innerWidth, H = window.innerHeight;
   const w = Math.min(Math.max(320, r.w), W - 16), h = Math.min(Math.max(240, r.h), H - 16);
@@ -1566,7 +1640,7 @@ function MHero({ icon, title, sub, value, valueCls = "", pills = [] }) {
    dirty: true/false erzwingt, undefined = automatisch (sobald im Fenster etwas eingegeben wurde) */
 let detailOpen = 0, sheetDepth = 0, sheetScrollY = 0, lastListY = 0;
 if (typeof window !== "undefined") addEventListener("scroll", () => { if (!sheetDepth) lastListY = scrollY; }, { passive: true });
-function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false }) {
+function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false, minW = 0 }) {
   // v0.99.8: iPad bekommt dieselben Popups wie das iPhone (Karte von unten)
   const wide = useMedia("(min-width:768px)") && !IS_TABLET;
   useEdgeBack(() => reqRef.current?.(), !wide);
@@ -1721,7 +1795,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   };
   return (
     <WinCtx.Provider value={requestClose}>
-    <div ref={rootRef} className={"win " + className + (small ? " small" : "") + (center ? " center" : "")} style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: z }} onPointerDown={onHead} {...touchProps}>
+    <div ref={rootRef} className={"win " + className + (small ? " small" : "") + (center ? " center" : "")} style={{ ...winBox(rect, minW), height: rect.h, zIndex: z }} onPointerDown={onHead} {...touchProps}>
       <div className="wininner">{guard}{children}</div>
       {["n", "e", "s", "w", "ne", "se", "sw", "nw"].map((d) => <span key={d} className={"rz rz-" + d} onPointerDown={edge(d)} />)}
       <span className="rzgrip" aria-hidden="true" />
@@ -5932,7 +6006,7 @@ function JournalPreview({ d, compact = false, onSwipe, onOpen }) {
       {!pages && <div className="dpload">Beleg wird geladen …</div>}
       {err && <p className="muted small center-text">{err}</p>}
       {pages?.map((src, p) => (
-        <div key={p} className={"jpage" + (onOpen ? " jpclick" : "")} onClick={onOpen} title={onOpen ? "Original öffnen" : undefined}>
+        <div key={p} className={"jpage" + (onOpen ? " jpclick" : "")} onClick={onOpen} title={onOpen ? "Groß anzeigen" : undefined}>
           <img src={src} alt={`Seite ${p + 1}`} />
           {marks.filter((m) => m.p === p).map((m, i) => <span key={i} className={"jmark jm-" + m.kind} title={m.label} style={{ left: m.l * 100 + "%", width: (m.r - m.l) * 100 + "%", top: m.t * 100 + "%", height: (m.b - m.t) * 100 + "%" }} />)}
         </div>
@@ -11218,6 +11292,11 @@ function PayQR({ doc, notify }) {
 }
 function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash, txs = [], accounts = [], linkTx }) {
   const [linkOpen, setLinkOpen] = useState(false), [prevOpen, setPrevOpen] = useState(false);
+  // v1.0.6: am Computer öffnet die Vorschau direkt neben dem Dialog (Zustand wird gemerkt), am Handy/iPad wie bisher als eigenes Fenster
+  const wideDet = useMedia("(min-width:1000px)") && !IS_TABLET;
+  const [sideOpen, setSideOpen] = useState(() => !!ls.get("detSidePrev", false));
+  const side = wideDet && sideOpen;
+  const toggleSide = () => setSideOpen((v) => { ls.set("detSidePrev", !v); return !v; });
   const [newCat, setNewCat] = useState(false);
   const [lq, setLq] = useState("");
   const [url, setUrl] = useState(null);
@@ -11242,13 +11321,16 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
   const numIn = (v) => { const s = String(v).replace(",", "."); return s === "" ? null : Number(s); };
 
   return (
-    <Win id="detail" onClose={onClose} center dirty={dirty}>
+    <Win id="detail" onClose={onClose} center dirty={dirty} className={side ? "detsplit" : ""} minW={side ? 1180 : 0}>
         <div className="panelhead">
           <b>Dokument</b>
-          <button className="btn detprevbtn" title="Vorschau öffnen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>
+          {wideDet
+            ? <button className={"btn detprevbtn" + (side ? " on" : "")} title={side ? "Vorschau ausblenden" : "Vorschau daneben anzeigen"} aria-pressed={side} onClick={toggleSide}><IcoEye /> <span>Vorschau</span></button>
+            : <button className="btn detprevbtn" title="Vorschau öffnen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>}
           <button className="btn primary" disabled={!dirty} onClick={() => saveDoc(d)}>Speichern</button>
           <XBtn />
         </div>
+        <div className="detbody"><div className="detform">
 
         {url && (doc.mimeType.startsWith("image/")
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
@@ -11428,7 +11510,10 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
           <button className="btn danger" onClick={() => trashDoc(doc)}>🗑 Papierkorb</button>
         </div>
         <p className="muted small">{doc.fileName} · {(doc.size / 1024).toFixed(0)} KB · hinzugefügt {new Date(doc.createdAt).toLocaleString("de-AT")}</p>
-        {prevOpen && createPortal(
+        </div>
+        {side && <SidePreview d={doc} blob={blob} onPrint={() => (blob ? printBlobs([blob], d.title || doc.title) : printDoc(doc))} />}
+        </div>
+        {!side && prevOpen && createPortal(
           <Win id="docprev" onClose={() => setPrevOpen(false)} dirty={false} className="docprevwin">
             <div className="panelhead"><b className="clamp">{doc.title}</b><XBtn /></div>
             <DocPreview d={doc} onOpen={() => setPrevOpen(false)} />
@@ -19446,6 +19531,21 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
 @media (max-width:700px){.deyem{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;border-radius:50%;border:0;background:var(--card2);color:var(--acc);padding:0;margin-left:4px;cursor:pointer}.deyem svg{width:19px;height:19px}}
 .dactions button.on{color:var(--acc)}
 .detprevbtn{display:inline-flex;align-items:center;gap:6px}.detprevbtn svg{width:18px;height:18px}
+/* v1.0.6: Dokument-Dialog mit Vorschau daneben */
+.detbody,.detform{display:contents}
+.win.detsplit .wininner{display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
+.win.detsplit .detbody{display:flex;flex:1;min-height:0;gap:18px;margin:0 -20px;border-top:1px solid var(--line)}
+.win.detsplit .detform{display:block;flex:0 0 min(520px,44%);overflow:auto;padding:8px 6px 24px 20px;overscroll-behavior:contain}
+.detprevbtn.on{border-color:var(--acc,currentColor);box-shadow:inset 0 0 0 1px var(--acc,currentColor)}
+.sideprev{flex:1;min-width:0;display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--card2)}
+.spbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
+.spbar small{color:var(--mut);font-size:12px;white-space:nowrap}
+.spbar .btn{margin:0;white-space:nowrap;display:inline-flex;align-items:center}.spbar .btn svg{width:16px;height:16px}
+.spbar .btn.on{box-shadow:inset 0 0 0 1.5px var(--acc,currentColor)}
+.spbar .sppct{min-width:64px;justify-content:center;font-variant-numeric:tabular-nums}
+.spsep{width:1px;height:20px;background:var(--line);margin:0 2px}
+.spbox{flex:1;min-height:0;overflow:auto;padding:14px 12px 24px;overscroll-behavior:contain}
+.spbox img{display:block;margin:0 auto 12px;max-width:none;height:auto;background:#fff;border-radius:4px;box-shadow:0 2px 10px #0004}
 @media (max-width:420px){.detprevbtn span{display:none}}
 .dtitle{cursor:pointer}
 

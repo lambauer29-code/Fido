@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.6 – Dokument-Vorschau direkt daneben, mit Zoom
+- Dokument-Dialog (Computer): „Vorschau“ öffnet das Dokument direkt rechts neben dem Formular statt in einem eigenen Fenster; der Dialog wird dafür breiter, ein zweiter Klick blendet die Vorschau wieder aus (wird gemerkt)
+- Zoom in der Vorschau: − / + (25 – 400 %), Klick auf die Prozentanzeige = 100 %, „Breite“, „Ganze Seite“, Strg/⌘ + Mausrad bzw. Trackpad; der Zoom wird gemerkt
+- Drucken direkt aus der Vorschau-Leiste; mehrseitige PDFs zeigen bis zu 30 Seiten
+- Handy und iPad: Vorschau wie bisher als eigenes Fenster
+- „Original öffnen“ entfernt (Vorschau in der Dokumentliste und Leiste auf den Dokument-Kacheln); im Journal heißt der Hinweis beim Klick auf die Seite jetzt „Groß anzeigen“
+
 ## v1.0.5 – Mac: „Abbrechen“ beim Drucken ohne Fehlermeldung
 - Mac-App: Wer im Druckdialog auf „Abbrechen“ klickt, bekommt nicht mehr „Drucken nicht möglich: PDF konnte nicht gedruckt werden“ – Abbrechen gilt nicht mehr als Fehler (disk.rs, print_pdf)
 - Echte Startfehler (PDF nicht lesbar, Druckauftrag nicht erstellbar) werden weiterhin gemeldet, jetzt mit genauerem Text
