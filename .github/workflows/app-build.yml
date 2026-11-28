@@ -1,0 +1,89 @@
+# Baut die FinDocu-App für macOS (Apple Silicon + Intel) und veröffentlicht sie als GitHub-Release.
+# Die installierte App findet das Release selbst (latest.json) und bietet das Update an.
+#
+# Läuft automatisch, wenn eine NEUE Version (package.json → "version") hochgeladen wird.
+# Gibt es das Release zur Version schon, wird nichts gebaut. Manuell: Actions → „FinDocu App bauen“ → Run workflow.
+#
+# Einmalig nötig (GitHub → Settings → Secrets and variables → Actions → New repository secret):
+#   TAURI_SIGNING_PRIVATE_KEY  = Inhalt der Datei findocu-updater.key
+name: FinDocu App bauen
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: app-build
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.v.outputs.build }}
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v$V gibt es schon – kein neuer Build."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Neue Version v$V – App wird gebaut."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --target universal-apple-darwin
+          # Windows bei Bedarf wieder einschalten:
+          # - os: windows-latest
+          #   args: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: App bauen und als Release veröffentlichen
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          tagName: v__VERSION__
+          releaseName: FinDocu v__VERSION__
+          releaseBody: "Neue FinDocu-Version für den Mac. Erstinstallation: .dmg – bestehende Apps aktualisieren sich selbst."
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}
