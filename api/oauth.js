@@ -1,4 +1,5 @@
-// Vercel Function: Anmeldung bei OneDrive / Google Drive für die Cloud-Synchronisierung.
+// Vercel Function: Anmeldung bei OneDrive / Google Drive für die Cloud-Synchronisierung
+// sowie (v1.0.8) bei Outlook/Microsoft 365 und Google zum Lesen der Kontakte.
 // Tauscht den Anmelde-Code gegen Tokens – das Client-Secret bleibt am Server.
 // Dropbox braucht kein Secret (läuft direkt im Browser), hier wird nur der App-Key ausgeliefert.
 //
@@ -10,7 +11,10 @@
 
 const EP = {
   onedrive: { url: "https://login.microsoftonline.com/common/oauth2/v2.0/token", id: "MS_CLIENT_ID", secret: "MS_CLIENT_SECRET", scope: "offline_access Files.ReadWrite.AppFolder" },
-  gdrive: { url: "https://oauth2.googleapis.com/token", id: "GOOGLE_CLIENT_ID", secret: "GOOGLE_CLIENT_SECRET" }
+  gdrive: { url: "https://oauth2.googleapis.com/token", id: "GOOGLE_CLIENT_ID", secret: "GOOGLE_CLIENT_SECRET" },
+  // v1.0.8: Kontakte lesen – dieselben App-Registrierungen, eigene Berechtigung
+  mscontacts: { url: "https://login.microsoftonline.com/common/oauth2/v2.0/token", id: "MS_CLIENT_ID", secret: "MS_CLIENT_SECRET", scope: "offline_access Contacts.Read" },
+  gcontacts: { url: "https://oauth2.googleapis.com/token", id: "GOOGLE_CLIENT_ID", secret: "GOOGLE_CLIENT_SECRET" }
 };
 
 export default async function handler(req, res) {

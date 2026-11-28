@@ -105,7 +105,7 @@ function oauthProvider(id, def) {
   return {
     id, ...def,
     async startLogin() {
-      const cfg = await oauthConfig(); const cid = cfg[id];
+      const cfg = await oauthConfig(); const cid = cfg[def.cfgId || id];   // v1.0.8: Kontakte nutzen die App-Registrierung von OneDrive/Google Drive
       if (!cid) throw new Error(`${def.name} ist noch nicht eingerichtet (${def.env} fehlt in Vercel)`);
       const verifier = rnd(48), state = (isTauri ? "app." : "") + id + "." + rnd(12);
       localStorage.setItem("oauthPending", JSON.stringify({ id, verifier, state, at: Date.now() }));
@@ -266,6 +266,76 @@ const test = {
   async del(n) { await fetch(testBase() + "/f/" + n, { method: "DELETE" }); },
   async logout() {}
 };
+/* ---------- v1.0.8: Kontakte aus Outlook / Microsoft 365 und Google (eigene Anmeldung, nur Lesen) ----------
+   Nutzt dieselbe App-Registrierung wie OneDrive bzw. Google Drive, braucht dort aber die Berechtigung
+   „Contacts.Read“ (Microsoft) bzw. die „People API“ mit „contacts.readonly“ (Google). Der Sync bleibt davon unberührt. */
+const mscontacts = oauthProvider("mscontacts", {
+  name: "Outlook / Microsoft 365", cfgId: "onedrive", contacts: true, env: "MS_CLIENT_ID / MS_CLIENT_SECRET",
+  authUrl: (cid, ch, state) => "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" + new URLSearchParams({ client_id: cid, response_type: "code", redirect_uri: redirectUri(), response_mode: "query", scope: "offline_access Contacts.Read", code_challenge: ch, code_challenge_method: "S256", state, prompt: "select_account" }),
+  exchange: (code, verifier) => serverToken({ provider: "mscontacts", grant: "code", code, verifier, redirect_uri: redirectUri() }),
+  refresh: (rt) => serverToken({ provider: "mscontacts", grant: "refresh", refresh_token: rt })
+});
+const gcontacts = oauthProvider("gcontacts", {
+  name: "Google Kontakte", cfgId: "gdrive", contacts: true, env: "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET",
+  authUrl: (cid, ch, state) => "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({ client_id: cid, response_type: "code", redirect_uri: redirectUri(), scope: "https://www.googleapis.com/auth/contacts.readonly", access_type: "offline", prompt: "consent", code_challenge: ch, code_challenge_method: "S256", state }),
+  exchange: (code, verifier) => serverToken({ provider: "gcontacts", grant: "code", code, verifier, redirect_uri: redirectUri() }),
+  refresh: (rt) => serverToken({ provider: "gcontacts", grant: "refresh", refresh_token: rt })
+});
+const CT_AUTH = { mscontacts, gcontacts };
+export const isContactsAuth = (id) => !!CT_AUTH[id];
+const authOf = (id) => PROVIDERS[id] || CT_AUTH[id];
+const firstOf = (a) => (Array.isArray(a) && a.length ? a[0] : null);
+const lines = (...l) => l.map((x) => String(x || "").trim()).filter(Boolean).join("\n");
+const ctOf = (company, person) => (company && person && company !== person ? { name: company, contact: person } : { name: company || person || "", contact: "" });
+async function readMsContacts() {
+  const h = { authorization: "Bearer " + (await mscontacts.token()) }, out = [];
+  let url = "https://graph.microsoft.com/v1.0/me/contacts?$top=500&$select=displayName,givenName,surname,companyName,emailAddresses,businessPhones,homePhones,mobilePhone,businessAddress,homeAddress,businessHomePage,birthday,personalNotes";
+  while (url) {
+    const j = await (await jfetch(url, { headers: h }, "Outlook-Kontakte")).json();
+    for (const c of j.value || []) {
+      const person = (c.displayName || [c.givenName, c.surname].filter(Boolean).join(" ")).trim(), a = [c.businessAddress, c.homeAddress].find((x) => x && (x.street || x.city)) || {};
+      const ct = ctOf((c.companyName || "").trim(), person); if (!ct.name) continue;
+      out.push({ ...ct, email: firstOf(c.emailAddresses)?.address || "", phone: firstOf(c.businessPhones) || firstOf(c.homePhones) || "", mobile: c.mobilePhone || "",
+        address: lines(a.street, [a.postalCode, a.city].filter(Boolean).join(" "), a.countryOrRegion), web: c.businessHomePage || "", note: c.personalNotes || "", birthday: c.birthday ? String(c.birthday).slice(0, 10) : "" });
+    }
+    url = j["@odata.nextLink"];
+  }
+  return out;
+}
+async function readGoogleContacts() {
+  const h = { authorization: "Bearer " + (await gcontacts.token()) }, out = [];
+  let pt = "";
+  do {
+    const q = new URLSearchParams({ personFields: "names,emailAddresses,phoneNumbers,addresses,organizations,urls,birthdays,biographies", pageSize: "1000", sortOrder: "LAST_NAME_ASCENDING", ...(pt ? { pageToken: pt } : {}) });
+    const j = await (await jfetch("https://people.googleapis.com/v1/people/me/connections?" + q, { headers: h }, "Google Kontakte")).json();
+    for (const p of j.connections || []) {
+      const ct = ctOf((firstOf(p.organizations)?.name || "").trim(), (firstOf(p.names)?.displayName || "").trim()); if (!ct.name) continue;
+      const tels = p.phoneNumbers || [], mob = tels.find((t) => /mobile/i.test(t.type || "")), tel = tels.find((t) => t !== mob);
+      const a = firstOf(p.addresses) || {}, b = firstOf(p.birthdays)?.date;
+      out.push({ ...ct, email: firstOf(p.emailAddresses)?.value || "", phone: tel?.value || "", mobile: mob?.value || "",
+        address: lines(a.streetAddress, [a.postalCode, a.city].filter(Boolean).join(" "), a.country), web: firstOf(p.urls)?.value || "", note: firstOf(p.biographies)?.value || "",
+        birthday: b?.month && b?.day ? (b.year ? `${b.year}-${String(b.month).padStart(2, "0")}-${String(b.day).padStart(2, "0")}` : `--${String(b.month).padStart(2, "0")}-${String(b.day).padStart(2, "0")}`) : "" });
+    }
+    pt = j.nextPageToken;
+  } while (pt);
+  return out;
+}
+const CT_READ = { mscontacts: readMsContacts, gcontacts: readGoogleContacts };
+// Ist der Anbieter in Vercel eingerichtet? (dieselben Schlüssel wie OneDrive / Google Drive)
+export async function contactsAvailable() { const c = await oauthConfig(); return { mscontacts: !!c.onedrive, gcontacts: !!c.gdrive }; }
+// Kontakte lesen – meldet bei Bedarf an (einmalig), bei abgelaufener Anmeldung oder fehlender Berechtigung neu
+export async function readCloudContacts(id, { login = true } = {}) {
+  const P = CT_AUTH[id]; if (!P) throw new Error("Unbekannte Kontaktquelle");
+  try { return await CT_READ[id](); }
+  catch (e) {
+    const denied = e.auth || /\b(401|403)\b/.test(e.message || "");
+    if (!denied || !login) throw /\b403\b/.test(e.message || "") ? new Error(`${P.name}: Zugriff verweigert – ist die Berechtigung für Kontakte in der App-Registrierung freigegeben?`) : e;
+    await P.logout(); await oauthLogin(id);
+    return CT_READ[id]();
+  }
+}
+export async function logoutContacts(id) { await CT_AUTH[id]?.logout(); }
+
 export const PROVIDERS = { onedrive, gdrive, dropbox, mega, ...(typeof localStorage !== "undefined" && testBase() ? { test } : {}) };
 export const PROVIDER_LIST = [
   ["onedrive", "OneDrive", "Microsoft-Konto · eigener App-Ordner"],
@@ -281,8 +351,8 @@ export async function completeOAuth(query) {
   localStorage.removeItem("oauthPending"); localStorage.removeItem("oauthReturn");
   if (p.get("error")) throw new Error(p.get("error_description") || p.get("error"));
   if (!pend || p.get("state") !== pend.state) throw new Error("Anmeldung abgebrochen oder abgelaufen – bitte nochmal verbinden");
-  await PROVIDERS[pend.id].finishLogin(p.get("code"), pend.verifier);
-  setSyncCfg({ provider: pend.id, ready: false });
+  await authOf(pend.id).finishLogin(p.get("code"), pend.verifier);
+  if (!isContactsAuth(pend.id)) setSyncCfg({ provider: pend.id, ready: false });   // Kontakt-Anmeldung ändert den Sync nicht
   return pend.id;
 }
 let appWait = null;
@@ -291,11 +361,11 @@ export async function handleDeepLink(url) {
   let u; try { u = new URL(url); } catch { return; }
   if (!/oauth/.test(u.host + u.pathname)) return;
   const w = appWait; appWait = null;
-  try { const id = await completeOAuth(u.search); w ? w.res(id) : (localStorage.setItem("syncNext", "password"), dispatchEvent(new Event("findocu-sync"))); }
+  try { const id = await completeOAuth(u.search); w ? w.res(id) : isContactsAuth(id) ? (localStorage.setItem("ctNext", id), dispatchEvent(new Event("findocu-contacts"))) : (localStorage.setItem("syncNext", "password"), dispatchEvent(new Event("findocu-sync"))); }
   catch (e) { w ? w.rej(e) : localStorage.setItem("syncNext", "error:" + e.message); }
 }
 export async function oauthLogin(id) {
-  const url = await PROVIDERS[id].startLogin();
+  const url = await authOf(id).startLogin();
   if (isTauri) { await openExternal(url); return new Promise((res, rej) => { appWait = { res, rej }; }); }
   const coarse = matchMedia("(pointer:coarse)").matches || navigator.standalone;
   const w = coarse ? null : window.open(url, "findocu-oauth", "width=520,height=720");

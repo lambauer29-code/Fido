@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.8 – Kontakte direkt importieren: Apple, Outlook, Google
+- Neues Fenster „Kontakte importieren“ (Kunden → ⋯ bzw. „📥 Importieren“, oder ＋-Menü) mit allen Quellen, die auf dem Gerät gehen:
+  - **Apple Kontakte** (nur Mac-App): direkt aus der Kontakte-App, inkl. iCloud-, Exchange- und Google-Konten am Mac; macOS fragt beim ersten Mal um Erlaubnis (contacts.rs, NSContactsUsageDescription)
+  - **Handy-Kontakte** (Android/Chrome): wie bisher die Kontaktauswahl des Handys
+  - **Outlook / Microsoft 365** und **Google Kontakte** (überall – Mac, Windows, Browser, Handy): Anmeldung mit dem eigenen Konto, nur Lesen; nutzt die App-Registrierungen von OneDrive bzw. Google Drive, braucht dort zusätzlich „Contacts.Read“ bzw. die „People API“ (Anleitung im Fenster); die Cloud-Synchronisierung bleibt davon unberührt
+  - **vCard-Datei (.vcf)** wie bisher
+- Danach wie gewohnt Auswahl mit Suche, „Alle/Keine“ und Erkennung vorhandener Kontakte; Firma und Ansprechperson werden getrennt übernommen
+
 ## v1.0.7 – Vorschau hängt rechts an, Knöpfe bleiben stehen
 - Dokument-Dialog: Die Vorschau wird rechts angehängt – „Vorschau“, „Speichern“ und ✕ bleiben genau dort, wo sie ohne Vorschau sind (der Dialog selbst wird nicht mehr verbreitert oder verschoben); reicht der Platz rechts nicht, wird zuerst die Vorschau schmäler (mind. 360 px)
 - Rechter Rand ziehen ändert die Breite der Vorschau (wird gemerkt) – vorher hat sich das Fenster beim Ziehen nur verschoben; die anderen Ränder ändern den Dialog wie gewohnt

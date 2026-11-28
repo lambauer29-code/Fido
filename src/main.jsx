@@ -2,7 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/outfit/index.css";
 import App, { db } from "./App.jsx";
-import { startupSync, syncOn, completeOAuth, handleDeepLink } from "./sync.js";
+import { startupSync, syncOn, completeOAuth, handleDeepLink, isContactsAuth } from "./sync.js";
 import { isTauri, installPlatform, onDeepLink } from "./platform.js";
 
 const root = createRoot(document.getElementById("root"));
@@ -19,7 +19,7 @@ async function boot() {
   const ret = localStorage.getItem("oauthReturn");
   if (ret) {
     root.render(<Splash text="Anmeldung wird abgeschlossen …" />);
-    try { await completeOAuth(ret); localStorage.setItem("syncNext", "password"); }
+    try { const id = await completeOAuth(ret); if (isContactsAuth(id)) localStorage.setItem("ctNext", id); else localStorage.setItem("syncNext", "password"); }
     catch (e) { localStorage.setItem("syncNext", "error:" + e.message); }
   }
   // Änderungen anderer Geräte übernehmen, bevor die App ihre Daten lädt

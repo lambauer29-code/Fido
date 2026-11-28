@@ -4,6 +4,8 @@
 <dict>
   <key>NSCameraUsageDescription</key>
   <string>FinDocu nutzt die Kamera zum Scannen von Belegen, Dokumenten und Barcodes.</string>
+  <key>NSContactsUsageDescription</key>
+  <string>FinDocu liest deine Kontakte nur, wenn du sie als Kunden oder Lieferanten übernehmen möchtest.</string>
   <key>NSLocationWhenInUseUsageDescription</key>
   <string>FinDocu nutzt den Standort für Fahrtenbuch und Geschäfte in der Nähe.</string>
 </dict>

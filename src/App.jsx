@@ -19,7 +19,7 @@ import QRCode from "qrcode";
 import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrinkPdf } from "./scan.js";
 import { parseReceiptQR, pastOrToday } from "./receipt.js";
 import { saveBlob, downloadCsv, downloadXlsx, tablePdf, zipBlob, vcardText, csvBlob, xlsxBlob, setPdfBrand } from "./exports.js";
-import { PROVIDERS, PROVIDER_LIST, syncCfg, setSyncCfg, syncOn, syncNow, oauthLogin, oauthConfig, setupKey, cloudState, disconnect, remoteDevices, defaultDeviceName, deviceId, kvGet, changePassword } from "./sync.js";
+import { PROVIDERS, PROVIDER_LIST, syncCfg, setSyncCfg, syncOn, syncNow, oauthLogin, oauthConfig, setupKey, cloudState, disconnect, remoteDevices, defaultDeviceName, deviceId, kvGet, changePassword, readCloudContacts, contactsAvailable, logoutContacts } from "./sync.js";
 import { canUpdate, appVersion, checkUpdate, installUpdate, hasDisk, native, isTauri, isMacApp, isWinApp, tempFiles, saveFilesToFolder } from "./platform.js";
 /* v0.99.103: Rückfragen & Eingaben. Im Browser die gewohnten Fenster; in der Mac/Windows-App eigene Dialoge –
    dort ist das System-confirm() nicht blockierend (lieferte immer „ja“) und prompt() gar nicht verfügbar. */
@@ -2207,6 +2207,10 @@ function AppMain() {
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
   }, []);
   const [bizReq, setBizReq] = useState(0);
+  useEffect(() => {   // v1.0.8: zurück von der Outlook/Google-Anmeldung → Kontaktseite, dort werden die Kontakte geladen
+    const go = () => { if (localStorage.getItem("ctNext")) { setTab("kunden"); setBizReq((n) => n + 1); } };
+    go(); addEventListener("findocu-contacts", go); return () => removeEventListener("findocu-contacts", go);
+  }, []);
   const [upl, setUpl] = useState(null), [accBusy, setAccBusy] = useState(null), [ctBusy, setCtBusy] = useState(null);
   const docPeak = useRef(0);
   const [uniLast, setUniLast] = useState("");
@@ -2788,12 +2792,7 @@ function AppMain() {
           <button role="menuitem" onClick={() => { setFabOpen(false); fileInput.current.click(); }}><span>📄</span><div><b>Datei / Foto</b><small>PDF oder Bild hochladen</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); setManualTx(tab === "accounts" && selAcc ? { accountId: selAcc } : {}); }}><span>💶</span><div><b>Buchung</b><small>Barausgabe oder Buchung erfassen</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); ls.set("pendingInvoice", { kind: "rechnung" }); setTab("invoices"); setBizReq((n) => n + 1); }}><span>🧾</span><div><b>Neue Rechnung</b><small>Rechnung für deine Firma schreiben</small></div></button>
-          <button role="menuitem" onClick={async () => {
-            setFabOpen(false);
-            const out = await pickPhoneContacts();
-            if (out === null) return vcfApp.current.click();
-            if (out.length) { ls.set("pendingContactImport", out); setTab("kunden"); setBizReq((n) => n + 1); }
-          }}><span>📱</span><div><b>Kunden importieren</b><small>Aus Handy-Kontakten oder vCard-Datei (.vcf)</small></div></button>
+          <button role="menuitem" onClick={() => { setFabOpen(false); ls.set("pendingContactSources", true); setTab("kunden"); setBizReq((n) => n + 1); }}><span>📥</span><div><b>Kontakte importieren</b><small>{isMacApp ? "Apple-Kontakte, Outlook, Google oder vCard" : "Handy, Outlook, Google oder vCard-Datei"}</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); ls.set("pendingContact", "new"); setTab("kunden"); setBizReq((n) => n + 1); }}><span>👥</span><div><b>Neuer Kunde</b><small>Kontakt anlegen oder aus dem Handy übernehmen</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); impRef.current.click(); }}><span>⬆️</span><div><b>Umsätze importieren</b><small>Kontoauszug: CSV, Excel, CAMT, PDF …</small></div></button>
           <button role="menuitem" onClick={() => { setFabOpen(false); setTab("accounts"); setNewAccReq(true); }}><span>🏦</span><div><b>Konto anlegen</b><small>Girokonto, Karte, Sparkonto, Bargeld …</small></div></button>
@@ -14421,6 +14420,62 @@ function parseVcf(text) {
   }
   return out;
 }
+/* ---------- v1.0.8: Kontakte importieren – alle Quellen an einem Ort ----------
+   Mac-App: Apple-Kontakte (inkl. iCloud) direkt · Android/Chrome: Kontaktauswahl des Handys ·
+   überall: Outlook / Microsoft 365 und Google Kontakte (Anmeldung, nur Lesen) · vCard-Datei */
+const CT_HELP = {
+  mscontacts: ["Microsoft Entra / Azure → App-Registrierungen → deine FinDocu-App (dieselbe wie für OneDrive)", "API-Berechtigungen → Berechtigung hinzufügen → Microsoft Graph → Delegierte Berechtigungen → „Contacts.Read“ → Hinzufügen", "Keine Administrator-Zustimmung nötig – beim ersten Import fragt Microsoft dich selbst"],
+  gcontacts: ["Google Cloud Console → dasselbe Projekt wie für Google Drive", "APIs & Dienste → Bibliothek → „People API“ → Aktivieren", "OAuth-Zustimmungsbildschirm → Bereiche → „…/auth/contacts.readonly“ hinzufügen (im Testmodus: dich als Testnutzer eintragen)"]
+};
+function ContactSourcesWin({ onPicked, onVcf, onClose }) {
+  const [avail, setAvail] = useState({}), [conn, setConn] = useState({}), [busy, setBusy] = useState(""), [err, setErr] = useState(""), [help, setHelp] = useState("");
+  const refresh = () => Promise.all(["mscontacts", "gcontacts"].map(async (id) => [id, !!(await kvGet("tok:" + id).catch(() => null))])).then((l) => setConn(Object.fromEntries(l)));
+  useEffect(() => { contactsAvailable().then(setAvail).catch(() => {}); refresh(); }, []);
+  const phoneOk = typeof navigator !== "undefined" && "contacts" in navigator && "select" in (navigator.contacts || {});
+  const run = async (id, label, fn) => {
+    setErr(""); setHelp(""); setBusy(id);
+    try {
+      const list = await fn();
+      if (list === null) return;
+      if (!list.length) { setErr(`${label}: keine Kontakte gefunden.`); return; }
+      onPicked(list);
+    } catch (e) { setErr(`${label}: ${e.message || e}`); if (/Berechtigung|verweigert|403/.test(e.message || "")) setHelp(id); }
+    finally { setBusy(""); refresh(); }
+  };
+  const cloud = (id, icon, title, who) => {
+    const on = avail[id];
+    return (
+      <div key={id} className="ctsrc">
+        <button className="ctsrcbtn" disabled={!!busy} onClick={() => (on ? run(id, title, () => readCloudContacts(id)) : setHelp(help === id ? "" : id))}>
+          <span className="ctsrcico" aria-hidden="true">{icon}</span>
+          <span className="grow"><b>{title}</b><small className="muted block">{busy === id ? "Kontakte werden geladen …" : !on ? "Noch nicht eingerichtet – Anleitung anzeigen" : conn[id] ? `Verbunden · ${who}` : `Mit deinem ${who} anmelden · nur Lesen`}</small></span>
+        </button>
+        {on && conn[id] && !busy && <button className="link small" onClick={async () => { await logoutContacts(id); refresh(); }}>Abmelden</button>}
+        {help === id && <ol className="small ctsrchelp">{(on ? [`Die Anmeldung funktioniert, aber ${title} gibt die Kontakte nicht frei:`, ...CT_HELP[id]] : [`${title} nutzt dieselbe App-Anmeldung wie die Cloud-Synchronisierung (${id === "mscontacts" ? "OneDrive" : "Google Drive"}) – diese ist in Vercel noch nicht hinterlegt.`, ...CT_HELP[id]]).map((t, i) => <li key={i}>{t}</li>)}</ol>}
+      </div>
+    );
+  };
+  return (
+    <Win id="ctsources" onClose={onClose} dirty={false} small>
+      <div className="panelhead"><b>Kontakte importieren</b><XBtn /></div>
+      <p className="muted small">Woher sollen die Kontakte kommen? Danach wählst du aus, welche übernommen werden – vorhandene werden erkannt.</p>
+      <div className="ctsrclist">
+        {isMacApp && <div className="ctsrc"><button className="ctsrcbtn" disabled={!!busy} onClick={() => run("apple", "Apple Kontakte", () => native("contacts_list"))}>
+          <span className="ctsrcico" aria-hidden="true">📇</span>
+          <span className="grow"><b>Apple Kontakte</b><small className="muted block">{busy === "apple" ? "Kontakte werden geladen … (beim ersten Mal fragt macOS um Erlaubnis)" : "Kontakte-App am Mac – inkl. iCloud, Exchange & Google-Konten"}</small></span></button></div>}
+        {phoneOk && <div className="ctsrc"><button className="ctsrcbtn" disabled={!!busy} onClick={() => run("phone", "Handy-Kontakte", async () => (await pickPhoneContacts()) || [])}>
+          <span className="ctsrcico" aria-hidden="true">📱</span>
+          <span className="grow"><b>Handy-Kontakte</b><small className="muted block">Kontakte direkt am Handy auswählen</small></span></button></div>}
+        {cloud("mscontacts", "✉️", "Outlook / Microsoft 365", "Microsoft-Konto")}
+        {cloud("gcontacts", "🟦", "Google Kontakte", "Google-Konto")}
+        <div className="ctsrc"><button className="ctsrcbtn" disabled={!!busy} onClick={onVcf}>
+          <span className="ctsrcico" aria-hidden="true">📄</span>
+          <span className="grow"><b>vCard-Datei (.vcf)</b><small className="muted block">Export aus jeder Kontakte-App – iPhone, Android, Outlook, Thunderbird …</small></span></button></div>
+      </div>
+      {err && <p className="warn small">{err}</p>}
+    </Win>
+  );
+}
 function ContactImportWin({ items: init, existing, onImport, onClose }) {
   const [items, setItems] = useState(() => init.map((c) => ({ ...c, on: !existing.some((x) => norm(x.name) === norm(c.name) || (c.email && norm(x.email) === norm(c.email))) })));
   const [q, setQ] = useState("");
@@ -14470,6 +14525,14 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
     if (out === null) return vcfRef.current.click();
     if (out.length) setPicked(out.map((c) => ({ ...c, on: true })));
   };
+  // v1.0.8: alle Kontaktquellen (Apple, Handy, Outlook, Google, vCard)
+  const [sources, setSources] = useState(false);
+  useEffect(() => { if (ls.get("pendingContactSources", null)) { ls.set("pendingContactSources", null); setSources(true); } }, [req]);
+  useEffect(() => {   // Rückkehr von der Anmeldung (Outlook/Google) per Umleitung oder Deep-Link → Kontakte gleich laden
+    const go = () => { const id = localStorage.getItem("ctNext"); if (!id) return; localStorage.removeItem("ctNext");
+      readCloudContacts(id, { login: false }).then((l) => (l.length ? setPicked(l.map((c) => ({ ...c, on: true }))) : alert("Keine Kontakte gefunden."))).catch((e) => alert(e.message)); };
+    go(); addEventListener("findocu-contacts", go); return () => removeEventListener("findocu-contacts", go);
+  }, [req]);
   const [invoices, setInvoices] = useLsState("invoices", []);
   const [edit, setEdit] = useState(null), [q, setQ] = useState(""), [type, setType] = useState("alle");
   const [selId, setSelId] = useState(null), [assignOpen, setAssignOpen] = useState(false);
@@ -14496,7 +14559,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
     <div className="ctpage">
       {mob && selC ? <div className="mpage custpage">{detail}</div> : mob ? (
       <div className="mpage">
-        <MActs items={[{ label: "＋ Kontakt", primary: true, run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) }, unmatched.length > 0 && { label: `🔗 Zuordnen (${unmatched.length})`, run: () => setAssignOpen(true) }, { label: "📱 Aus Handy", run: fromPhone }, { label: "📇 .vcf", run: () => vcfRef.current?.click() }]} />
+        <MActs items={[{ label: "＋ Kontakt", primary: true, run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) }, unmatched.length > 0 && { label: `🔗 Zuordnen (${unmatched.length})`, run: () => setAssignOpen(true) }, { label: "📥 Importieren", run: () => setSources(true) }, { label: "📇 .vcf", run: () => vcfRef.current?.click() }]} />
         <input ref={vcfRef} type="file" accept=".vcf,text/vcard,text/x-vcard" multiple hidden onChange={async (e) => {
           const files = [...e.target.files]; e.target.value = ""; let all = [];
           for (const f of files) all = all.concat(parseVcf(await f.text()));
@@ -14535,7 +14598,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       <ListBar q={q} setQ={setQ} placeholder="Name, E-Mail, Telefon, Ort suchen" id="kunden" hits={shown.length} lk={{ sortBy: ctSort, setSortBy: setCtSort, dir: ctDir, sorts: CT_SORTS }}
         tabs={[["alle", "Alle", list.length], ...types.map((t) => [t.name, t.name, list.filter((c) => (c.type || "Kunde") === t.name).length])]} tab={type} setTab={setType}
         actions={[{ k: "new", icon: "＋", title: "Neuer Kontakt", run: () => setEdit({ id: uid(), type: "Kunde", name: "", number: nextNo() }) },
-          unmatched.length > 0 && { k: "assign", icon: "🔗", title: `Rechnungen zuordnen (${unmatched.length})`, sub: "Rechnungen ohne passenden Kunden", run: () => setAssignOpen(true) }, { k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }, { k: "phone", icon: "📱", title: "Aus Handy-Kontakten", run: fromPhone },
+          unmatched.length > 0 && { k: "assign", icon: "🔗", title: `Rechnungen zuordnen (${unmatched.length})`, sub: "Rechnungen ohne passenden Kunden", run: () => setAssignOpen(true) }, { k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }, { k: "phone", icon: "📥", title: "Kontakte importieren", sub: "Apple, Handy, Outlook, Google, vCard", run: () => setSources(true) },
           setTab && { k: "set", icon: "⚙︎", title: "Kontaktarten bearbeiten", run: () => { ls.set("openSettingsSec", "kontaktarten"); setTab("settings"); } }, { head: "Export" }, ...exp2pick([{ head: `${shown.length} Kontakte (aktueller Filter)` },
           { label: "📇 vCard (.vcf)", sub: "für Handy, Outlook, iCloud", run: () => saveBlob(new Blob([vcardText(shown)], { type: "text/vcard" }), `kontakte-${isoToday()}.vcf`) },
           { label: "📊 Excel (.xlsx)", run: () => downloadXlsx(`kontakte-${isoToday()}.xlsx`, [{ name: "Kontakte", head: ["Nr.", "Art", "Name", "Ansprechperson", "Anschrift", "E-Mail", "Telefon", "Mobil", "Web", "UID", "Notiz"], rows: shown.map((c) => [c.number || "", c.type || "Kunde", c.name || "", c.contact || "", String(c.address || "").replace(/\n/g, ", "), c.email || "", c.phone || "", c.mobile || "", c.web || "", c.uid || "", c.note || ""]) }]) },
@@ -14550,7 +14613,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       {busy && <ImportBar {...busy} />}
       <FitScroll card cols={["Name", "Art · Ort", "Offen"]}>
       <section className="tile ctlist">
-        {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📱 Aus Handy-Kontakten“ übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
+        {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📥 Kontakte importieren“ (Apple, Handy, Outlook, Google, vCard) übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
         {shownV.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
           <div key={c.id} className={"frow click contactrow" + (selId === c.id && !mob ? " sel" : "")} onClick={() => setSelId(c.id)}>
             {c.logo ? <span className="caticon logo custlogo" style={{ width: 42, height: 42 }}><img src={c.logo} alt="" /></span> : <span className="caticon avatar" style={{ width: 42, height: 42 }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>}
@@ -14574,6 +14637,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
         <div className="custwinbody">{detail}</div>
       </Win>, document.querySelector(".app") || document.body)}
       {assignOpen && <AssignWin items={unmatched} customers={list} onAssign={assign} onNew={(i) => { const c = { id: uid(), type: "Kunde", number: nextNo(), ...i.customer }; c.id = c.id && !list.some((x) => x.id === c.id) ? c.id : uid(); setList((l) => [...l, c]); assign(i.id, c); }} onClose={() => setAssignOpen(false)} />}
+      {sources && <ContactSourcesWin onClose={() => setSources(false)} onVcf={() => { setSources(false); vcfRef.current?.click(); }} onPicked={(l) => { setSources(false); setPicked(l.map((c) => ({ ...c, on: true }))); }} />}
       {picked && <ContactImportWin items={picked} existing={list} onClose={() => setPicked(null)} onImport={(sel) => {
         let n = list.reduce((m, c) => Math.max(m, parseInt(String(c.number || "").replace(/\D/g, ""), 10) || 0), 0);
         setList((l) => [...l, ...sel.map((c) => { const { on, ...rest } = c; return { id: uid(), type: "Kunde", number: "K-" + String(++n).padStart(3, "0"), ...rest }; })]);
@@ -19544,6 +19608,14 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
 @media (max-width:700px){.deyem{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;border-radius:50%;border:0;background:var(--card2);color:var(--acc);padding:0;margin-left:4px;cursor:pointer}.deyem svg{width:19px;height:19px}}
 .dactions button.on{color:var(--acc)}
 .detprevbtn{display:inline-flex;align-items:center;gap:6px}.detprevbtn svg{width:18px;height:18px}
+/* v1.0.8: Kontaktquellen */
+.ctsrclist{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.ctsrc{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.ctsrcbtn{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:inherit;font:inherit;cursor:pointer;min-height:56px}
+.ctsrcbtn:hover:not(:disabled){border-color:var(--acc)}.ctsrcbtn:disabled{opacity:.6;cursor:default}
+.ctsrcico{font-size:24px;width:32px;text-align:center;flex-shrink:0}
+.ctsrc>.link{margin-left:58px}
+.ctsrchelp{margin:2px 0 6px 58px;padding-left:18px;color:var(--mut);line-height:1.5}
 /* v1.0.6: Dokument-Dialog mit Vorschau daneben */
 .detbody,.detcol,.detform{display:contents}
 .win.detsplit .wininner{display:flex;overflow:hidden;padding:0}
