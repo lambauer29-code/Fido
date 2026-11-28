@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.19 – Kundendatei wieder mit eigener Kopfzeile
+- Kundendatei: ohne neuen großen Kopf – die bisherige Zeile mit Logo, Name, Art/Nummer und den Aktionen bleibt und sitzt im farbigen Band
+
 ## v1.0.18 – Einheitlicher Kopf, Journal-Spalten, Vorschau in Dokumentgröße
 - Besitz & Garantie, Rechnungen, Kunden (Kundendatei und Kontakt), Verträge, Artikel / Lager: Kopf wie bei Buchungen – großes Symbol bzw. Logo, Name, Privat/Firma, Kategorie/Status, Hinweis; Inhalte darunter unverändert
 - Symbol/Logo im Kopf 1 px kleiner (75 px)

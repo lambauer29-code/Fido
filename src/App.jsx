@@ -15052,7 +15052,6 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       </div></div>)}
       {!mob && selC && createPortal(<Win dock="kunde" tint={tintOf("firma")} id="custdet" onClose={() => setSelId(null)} dirty={false} className="custwin" defW={720}>
         <div className="panelhead"><b>Kundendatei</b><XBtn /></div>
-        <WinHero icon={initials(selC.name)} img={selC.logo} title={selC.name || "Kunde"} scope={<FirmaPill />} chip={[selC.type, selC.number].filter(Boolean).join(" · ") || null} hint={[selC.email, selC.phone || selC.mobile].filter(Boolean).join(" · ") || null} />
         <div className="custwinbody">{detail}</div>
       </Win>, document.querySelector(".app") || document.body)}
       {assignOpen && <AssignWin items={unmatched} customers={list} onAssign={assign} onNew={(i) => { const c = { id: uid(), type: "Kunde", number: nextNo(), ...i.customer }; c.id = c.id && !list.some((x) => x.id === c.id) ? c.id : uid(); setList((l) => [...l, c]); assign(i.id, c); }} onClose={() => setAssignOpen(false)} />}
@@ -15328,7 +15327,7 @@ function CustomerDetail({ c, customers = [], invoices, typeOf, back, onBack, onE
   const tabs = [["uebersicht", "Übersicht"], ["rechnungen", "Rechnungen", rech.length], ["angebote", "Angebote", ang.length], ["mahnungen", "Mahnungen", rems.length], ["konto", "Konto"]];
   return (<div className="custdet">
     {back && <div className="docsubbar"><button className="navback" data-fback="1" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>Kunden</span></button></div>}
-    <div className="cdhead">
+    <div className="cdhead" data-dockhead="">
       {c.logo ? <span className="caticon logo custlogo cdav"><img src={c.logo} alt="" /></span> : <span className="caticon avatar cdav" style={{ color: tp.color }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>}
       <div className="grow"><b className="cdname">{c.name}</b><small className="muted block"><span style={{ color: tp.color }}><TypeGlyph t={tp} /> {tp.name}</span>{c.number ? " · " + c.number : ""}{cityOf(c.address) ? " · " + cityOf(c.address) : ""}</small></div>
       <div className="cdacts">
@@ -17640,6 +17639,8 @@ html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon .gll{widt
 .jgrid.jcustom:hover .jcolrz i,body.win-moving .jcolrz i{opacity:1}.jcolrz:hover i{background:var(--acc)}
 .jcolline{position:absolute;top:0;bottom:0;width:3px;margin-left:-1.5px;background:var(--acc);border-radius:2px}
 .jcolreset{position:absolute;right:4px;top:-26px;pointer-events:auto}
+/* v1.0.19: Kundendatei – 3 px Luft unter „Kunde · Nummer · Ort“ im farbigen Band */
+.custwin .cdhead{padding-bottom:3px}
 .docksetting .dockminw{display:flex;flex-direction:column;gap:6px;padding:4px 0 10px}.docksetting .dockminw.off{opacity:.45}
 .docksetting .dockminw input[type=range]{width:100%;accent-color:var(--acc)}.docksetting .dockminchips{gap:6px;flex-wrap:wrap}
 /* v1.0.10: Seitenleiste – Anzahlen (Dokumente) und Kontostände in einer Flucht unter den Gruppen-Pfeilen, Anzahlen als Plakette */
