@@ -1,6 +1,6 @@
 [package]
 name = "findocu"
-version = "0.99.93"
+version = "0.99.94"
 description = "FinDocu – Finanzen & Dokumente"
 authors = ["Roli"]
 license = ""
@@ -32,6 +32,7 @@ tauri-plugin-notification = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+fs2 = "0.4"
 
 [profile.release]
 codegen-units = 1

@@ -2,6 +2,11 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.94 – Mac/Windows-App: Backups auf der Festplatte, echter Speicherverbrauch
+- Backup → **Backup-Ordner auf der Festplatte**: Auto-Backups werden zusätzlich als Datei gespeichert (Standard: Dokumente/FinDocu/Backups, Ordner frei wählbar, z. B. iCloud Drive). Wahlweise mit allen PDFs/Fotos, die letzten 3–30 werden aufgehoben. Liste mit Wiederherstellen/Löschen, „Im Finder zeigen“.
+- **Speicherverbrauch (Festplatte)**: was FinDocu und die Backups belegen und wie viel auf dem Laufwerk frei ist (Warnung unter 2 GB).
+- Neue Rust-Befehle in `src-tauri/src/disk.rs` (Crate fs2). Browser/iPhone unverändert.
+
 ## v0.99.93 – Überwachter Ordner
 - Einstellungen → Daten & Ablage → **Überwachter Ordner**: einen lokalen oder Cloud-Ordner (iCloud Drive, OneDrive, Dropbox, Google Drive für Desktop) festlegen – neue Dateien, auch in Unterordnern, werden erkannt.
 - Wählbar: **Automatisch einlesen** (KI sortiert sofort ein) oder **Erst prüfen** (Liste mit Einlesen / Ignorieren / Alle einlesen). Hinweis-Leiste in Dokumente, wenn Dateien warten.

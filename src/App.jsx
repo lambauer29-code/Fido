@@ -20,7 +20,7 @@ import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrink
 import { parseReceiptQR, pastOrToday } from "./receipt.js";
 import { saveBlob, downloadCsv, downloadXlsx, tablePdf, zipBlob, vcardText, csvBlob, xlsxBlob, setPdfBrand } from "./exports.js";
 import { PROVIDERS, PROVIDER_LIST, syncCfg, setSyncCfg, syncOn, syncNow, oauthLogin, oauthConfig, setupKey, cloudState, disconnect, remoteDevices, defaultDeviceName, deviceId, kvGet, changePassword } from "./sync.js";
-import { canUpdate, appVersion, checkUpdate, installUpdate } from "./platform.js";
+import { canUpdate, appVersion, checkUpdate, installUpdate, hasDisk, native } from "./platform.js";
 import { latestBalance, parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS, counterpartyKey } from "./importers.js";
 import { Glyph } from "./icons.jsx";
 
@@ -473,7 +473,7 @@ const IS_TABLET = typeof navigator !== "undefined" && (/iPad/.test(navigator.use
 // v0.99.76: Schrift-/Button-Größen sind pro Gerät – im Backup separat (devSizes), beim Wiederherstellen wird gefragt
 const DEV_SIZE_KEYS = ["dev:fontSizes", "dev:fontSizesSty", "dev:uiScale"];
 const devLabel = () => { const u = navigator.userAgent || ""; return /iPad|Macintosh.*Mobile/.test(u) || (/Macintosh/.test(u) && navigator.maxTouchPoints > 1) ? "iPad" : /iPhone/.test(u) ? "iPhone" : /Android/.test(u) ? "Android" : /Macintosh|Mac OS/.test(u) ? "Mac" : /Windows/.test(u) ? "Windows" : "anderes Gerät"; };
-const BACKUP_SKIP = /^(dev:|appToken|appLock|rtPw|srch:|pending|openSettingsSec|win:|scanFilter)/;
+const BACKUP_SKIP = /^(dev:|appToken|appLock|rtPw|srch:|pending|openSettingsSec|win:|scanFilter|bkDisk)/;
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -11992,6 +11992,67 @@ async function abRun(mode, fn) { const d = await abDb(); return new Promise((res
 const abList = async () => ((await abRun("readonly", (st) => st.getAll())) || []).sort((a, b) => b.at.localeCompare(a.at));
 const AB_META = /^(lastAutoBackup|lastAutoCheck|lastAutoHash|lastExtBackup)$/;
 const abHash = (str) => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(36) + ":" + str.length; };
+/* ---------- v0.99.94: Backups als Dateien auf der Festplatte (Mac/Windows-App) ---------- */
+const DK_DEF = { on: true, files: true, keep: 10 };
+const dkCfg = () => ({ ...DK_DEF, ...ls.get("bkDiskCfg", {}) });
+async function dkDir() { const d = ls.get("bkDiskDir", ""); if (d) return d; const def = await native("bk_default_dir"); ls.set("bkDiskDir", def); return def; }
+async function diskBackup(reason, { store, txs, docs, at }) {
+  const c = dkCfg(), dir = await dkDir(), items = [];
+  for (const d of docs) { let file = null; if (c.files) { const b = await db.getFile(d.id).catch(() => null); if (b) file = await blobToBase64(b); } items.push({ doc: d, file }); }
+  const data = JSON.stringify({ version: 5, exported: at, auto: true, disk: true, withFiles: !!c.files, store, txs, items });
+  const l = new Date(at), p2 = (n) => String(n).padStart(2, "0");
+  const name = `findocu-auto-${l.getFullYear()}-${p2(l.getMonth() + 1)}-${p2(l.getDate())}_${p2(l.getHours())}-${p2(l.getMinutes())}-${p2(l.getSeconds())}${reason === "manuell" ? "-manuell" : ""}.json`;
+  await native("bk_write", { dir, name, data, keep: Math.max(1, +c.keep || 10) });
+  ls.set("bkDiskLast", at); localStorage.removeItem("bkDiskErr");
+  return name;
+}
+function DiskBackupCard({ notify, onRestore, ver }) {
+  const [cfg, setCfg0] = useLsState("bkDiskCfg", DK_DEF), c = { ...DK_DEF, ...cfg }, setCfg = (p) => setCfg0({ ...c, ...p });
+  const [dir, setDir] = useState(ls.get("bkDiskDir", "")), [list, setList] = useState(null), [busy, setBusy] = useState(""), [v, setV] = useState(0);
+  const load = async () => { try { const d = await dkDir(); setDir(d); setList(await native("bk_list", { dir: d })); } catch (e) { setList([]); } };
+  useEffect(() => { load(); }, [ver, v]);
+  const pick = async () => { try { const { open } = await import("@tauri-apps/plugin-dialog"); const p = await open({ directory: true, defaultPath: dir || undefined, title: "Ordner für FinDocu-Backups" }); if (!p || Array.isArray(p)) return; ls.set("bkDiskDir", p); localStorage.removeItem("bkDiskLast"); setV((x) => x + 1); notify("Backup-Ordner geändert – das nächste Backup landet dort"); } catch (e) { alert(e.message || e); } };
+  const now = async () => { setBusy("now"); try { await createAutoBackup("manuell"); setV((x) => x + 1); notify("Backup auf der Festplatte gespeichert"); } catch (e) { notify("Sicherung fehlgeschlagen: " + (e.message || e)); } finally { setBusy(""); } };
+  const restore = async (f) => { if (!confirm(`Stand vom ${fmtStamp(new Date(f.mtime).toISOString())} wiederherstellen?\nAktuelle Daten werden mit diesem Stand überschrieben.`)) return; setBusy(f.name);
+    try { await createAutoBackup("manuell").catch(() => {}); const txt = await native("bk_read", { dir, name: f.name }); onRestore(new File([txt], f.name, { type: "application/json" })); } catch (e) { notify("Wiederherstellen fehlgeschlagen: " + (e.message || e)); } finally { setBusy(""); } };
+  const err = ls.get("bkDiskErr", "");
+  return (<section className="bkcard">
+    <h4>💽 Backup-Ordner auf der Festplatte</h4>
+    <label className="switchrow"><span><b>Auto-Backups auch als Datei speichern</b></span><input type="checkbox" className="switch" checked={!!c.on} onChange={(e) => setCfg({ on: e.target.checked })} /></label>
+    {c.on && <>
+      <div className="fwfolder"><span className="fwico">📁</span><div className="grow" style={{ minWidth: 0 }}><b className="block one" title={dir}>{dir ? dir.split(/[\\/]/).filter(Boolean).slice(-2).join(" › ") : "…"}</b><small className="muted block one" title={dir}>{dir}</small></div>
+        <button className="btn sm" onClick={() => native("bk_reveal", { dir }).catch((e) => alert(e))}>{/Win/i.test(navigator.userAgent) ? "Im Explorer zeigen" : "Im Finder zeigen"}</button><button className="btn sm" onClick={pick}>Ändern …</button></div>
+      <label className="switchrow"><span><b>Original-Dateien mitsichern</b><small className="muted block">PDFs und Fotos – vollständiges Backup, braucht mehr Platz</small></span><input type="checkbox" className="switch" checked={!!c.files} onChange={(e) => setCfg({ files: e.target.checked })} /></label>
+      <label className="fwevery">Aufheben<PSelect value={String(c.keep)} onChange={(e) => setCfg({ keep: +e.target.value })}>{[3, 5, 10, 20, 30].map((n) => <option key={n} value={String(n)}>die letzten {n}</option>)}</PSelect></label>
+      <p className="muted small bkline">Gespeichert wird im Takt der automatischen Backups (oben) – nur wenn sich etwas geändert hat. Letztes: <b>{fmtStamp(ls.get("bkDiskLast", ""))}</b></p>
+      {err && <p className="red small">✕ Letzter Versuch fehlgeschlagen: {err}</p>}
+      <div className="actions"><button className={"btn bkpress" + (busy === "now" ? " on" : "")} disabled={!!busy} onClick={now}>{busy === "now" ? "⏳ Sichere …" : "💾 Jetzt auf Festplatte sichern"}</button></div>
+      {list && list.length > 0 && <div className="fwqueue">{list.map((f) => (<div key={f.name} className="fwqrow" style={{ cursor: "default" }}>
+        <span className="fwqn one"><b>{fmtStamp(new Date(f.mtime).toISOString())}</b><small className="muted block">{/manuell/.test(f.name) ? "manuell" : "automatisch"} · {fmtSize(f.size)}</small></span>
+        <button className="btn sm" disabled={!!busy} onClick={() => restore(f)}>{busy === f.name ? "…" : "Wiederherstellen"}</button>
+        <button className="iconbtn" title="Löschen" aria-label="Löschen" onClick={async () => { if (!confirm("Diese Sicherung von der Festplatte löschen?")) return; await native("bk_delete", { dir, name: f.name }).catch((e) => alert(e)); setV((x) => x + 1); }}>🗑</button></div>))}</div>}
+      {list && !list.length && <p className="muted small">Noch keine Sicherung in diesem Ordner.</p>}
+      <p className="muted small">Die Dateien sind <b>nicht verschlüsselt</b> – wähle einen Ordner auf deinem Mac oder in deiner eigenen Cloud (z. B. iCloud Drive, dann liegt die Sicherung auch außerhalb des Macs). Für Weitergabe nutze das verschlüsselte Backup.</p>
+    </>}
+  </section>);
+}
+function DiskUsageCard({ docs, txs, ver }) {
+  const [info, setInfo] = useState(null), [err, setErr] = useState("");
+  useEffect(() => { (async () => { try { const dir = dkCfg().on ? await dkDir() : null; setInfo(await native("disk_info", { dir })); } catch (e) { setErr(e.message || String(e)); } })(); }, [docs, txs, ver]);
+  const gb = (n) => (n >= 1073741824 ? (n / 1073741824).toLocaleString("de-AT", { maximumFractionDigits: 1 }) + " GB" : fmtSize(n));
+  const used = info ? info.total - info.free : 0;
+  return (<section className="bkcard">
+    <h4>Speicherverbrauch (Festplatte)</h4>
+    {info ? <>
+      <div className="bkbar dkbar"><i style={{ width: Math.max(0.5, Math.min(100, ((used - info.data - info.backups) / info.total) * 100)) + "%" }} /><i className="dk-app" style={{ width: Math.max(0.5, ((info.data + info.backups) / info.total) * 100) + "%" }} /></div>
+      <p className="muted small bkline">FinDocu-Daten: <b>{gb(info.data)}</b>{dkCfg().on ? <> · Backups: <b>{gb(info.backups)}</b></> : null}</p>
+      <p className="muted small bkline">Laufwerk: <b>{gb(info.free)} frei</b> von {gb(info.total)}</p>
+      {info.free < 2147483648 && <p className="red small">Wenig freier Speicher – Backups und neue Dokumente könnten fehlschlagen.</p>}
+    </> : err ? <p className="red small">✕ {err}</p> : <p className="muted small">Lade …</p>}
+    <p className="muted small bkline">{docs} Dokumente · {txs} Umsätze</p>
+    <p className="muted small">Die Daten liegen auf dieser Festplatte im Benutzerordner (Library) und werden von Time Machine mitgesichert. Die App löscht sie nicht von selbst.</p>
+  </section>);
+}
 async function createAutoBackup(reason = "auto") {
   const docs = await db.allDocs(), txs = await db.allTx();
   const store = {}, cmp = {};
@@ -11999,12 +12060,13 @@ async function createAutoBackup(reason = "auto") {
   const at = new Date().toISOString();
   const body = JSON.stringify({ store: cmp, txs, docs }), hash = abHash(body);
   // automatische Sicherungen nur, wenn sich seit der letzten etwas geändert hat (sonst verdrängen 10 gleiche Kopien die älteren)
-  if (reason !== "manuell" && hash === ls.get("lastAutoHash", "") && (await abList()).length) { ls.set("lastAutoCheck", at); return null; }
+  if (reason !== "manuell" && hash === ls.get("lastAutoHash", "") && (await abList()).length) { ls.set("lastAutoCheck", at); if (hasDisk && dkCfg().on && !ls.get("bkDiskLast", "")) await diskBackup(reason, { store, txs, docs, at }).catch(() => {}); return null; }
   const data = JSON.stringify({ version: 5, exported: at, auto: true, store, txs, items: docs.map((d) => ({ doc: d, file: null })) });
   await abRun("readwrite", (st) => st.put({ id: uid(), at, reason, size: data.length, docs: docs.length, txs: txs.length, data }));
   const all = await abList();
   for (const x of all.slice(AB_MAX)) await abRun("readwrite", (st) => st.delete(x.id));
   ls.set("lastAutoBackup", at); ls.set("lastAutoCheck", at); ls.set("lastAutoHash", hash);
+  if (hasDisk && dkCfg().on) { try { await diskBackup(reason, { store, txs, docs, at }); } catch (e) { ls.set("bkDiskErr", e?.message || String(e)); } }
   dispatchEvent(new Event("findocu-autobak"));
   return at;
 }
@@ -12267,9 +12329,10 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
             <button className={"btn bkpress" + (abBusy ? " on" : "")} disabled={abBusy} onClick={async () => { setAbBusy(true); try { await createAutoBackup("manuell"); notify("Sicherung im Browser erstellt"); } catch (e) { notify("Sicherung fehlgeschlagen: " + e.message); } finally { setAbBusy(false); } }}>{abBusy ? "⏳ Sichere …" : "💾 Jetzt sichern"}</button>
             <button className="btn" onClick={() => setAbOpen(true)}>📋 Auto-Backups verwalten</button>
           </div>
-          <p className="muted small">Auto-Backups werden im Browser gespeichert (rotierend max. {AB_MAX} Stück). Das schützt vor versehentlichem Datenverlust in FinDocu, aber nicht vor dem Löschen der Website-Daten oder einem Geräteverlust – erstelle daher zusätzlich regelmäßig externe Backups. Die Original-Dateien (PDFs, Fotos) sind nur im externen Backup enthalten.</p>
+          <p className="muted small">{hasDisk ? "Auto-Backups werden in der App gespeichert" : "Auto-Backups werden im Browser gespeichert"} (rotierend max. {AB_MAX} Stück). Das schützt vor versehentlichem Datenverlust in FinDocu, aber nicht vor dem Löschen der Website-Daten oder einem Geräteverlust – erstelle daher zusätzlich regelmäßig externe Backups. Die Original-Dateien (PDFs, Fotos) sind nur im externen Backup enthalten.</p>
         </section>
-        <section className="bkcard">
+        {hasDisk && <DiskBackupCard notify={notify} ver={abVer} onRestore={(f) => importBackup(f)} />}
+        {hasDisk ? <DiskUsageCard docs={docs.length} txs={txs.length} ver={abVer} /> : <section className="bkcard">
           <h4>Speicherverbrauch (Browser)</h4>
           {quota ? <>
             <div className="bkbar"><i style={{ width: Math.max(1, Math.min(100, (quota.usage / quota.quota) * 100)) + "%" }} /></div>
@@ -12278,7 +12341,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
           <p className="muted small bkline">{docs.length} Dokumente · {txs.length} Umsätze</p>
           <p className="muted small bkline">Dauerhafter Speicher: {persist ? <b className="ok">✓ aktiv – der Browser löscht die Daten nicht von selbst</b> : <><b>nicht aktiv</b> <button className="link" onClick={async () => { const ok = await navigator.storage?.persist?.(); setPersist(!!ok); notify(ok ? "Dauerhafter Speicher aktiviert" : "Der Browser hat dauerhaften Speicher abgelehnt – am iPhone hilft „Zum Home-Bildschirm“"); }}>aktivieren</button></>}</p>
           <p className="muted small">Dokumente, Dateien und Umsätze liegen in IndexedDB, Einstellungen und Listen (Rechnungen, Kunden, Kassabuch …) im localStorage – beides nur in diesem Browser auf diesem Gerät.</p>
-        </section>
+        </section>}
         <SettingsTransfer notify={notify} />
         <WipeAll docs={docs.length} txs={txs.length} />
         {bkOpen && <Win id="bksave" onClose={() => setBkOpen(false)} small dirty={!!(bkPw || bkPw2)}>
@@ -19067,6 +19130,7 @@ button.txmark.m-doc{cursor:pointer}button.txmark.m-doc:hover{background:var(--ca
 .txrow.sc-firma:hover{background:color-mix(in srgb,var(--stc-firma) 12%,transparent)}
 nav .doctree .accitem .an{color:inherit!important}
 .splitbtn{display:inline-flex;align-items:stretch;gap:0}.splitbtn .splitarrow.on,.splitbtn .splitarrow.open{background:color-mix(in srgb,var(--acc) 14%,transparent)!important}.splitbtn>.splitmain{border-top-right-radius:0!important;border-bottom-right-radius:0!important;margin-right:0}.splitbtn .splitarrow{border-top-left-radius:0!important;border-bottom-left-radius:0!important;border-left:1px solid color-mix(in srgb,currentColor 30%,transparent)!important;padding-left:8px!important;padding-right:10px!important;height:100%}.splitbtn>.vehpick{display:inline-flex}
+.dkbar{display:flex}.dkbar>i{border-radius:0}.dkbar>i:first-child{background:#8885!important}.dkbar>i.dk-app{background:var(--acc)}
 .fwfolder{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;margin:8px 0}.fwico{font-size:26px}
 .fwmode{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 2px}.fwevery{display:flex;align-items:center;gap:10px;margin:8px 0}.fwevery>.vehpick{width:auto}
 .fwqueue{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.fwqrow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}

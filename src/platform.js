@@ -100,3 +100,10 @@ export async function installUpdate(update, onProgress) {
   const { relaunch } = await import("@tauri-apps/plugin-process");
   await relaunch();
 }
+
+// v0.99.94: eigene Befehle der App (Backups auf der Festplatte, Speicherverbrauch) – nur Mac/Windows
+export const hasDisk = isTauri && !/iPhone|iPad|Android/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "");
+export async function native(cmd, args) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke(cmd, args);
+}

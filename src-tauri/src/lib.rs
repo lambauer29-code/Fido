@@ -6,6 +6,9 @@
 //  - dialog + fs: Exporte/Backups über „Sichern unter …“ speichern, PDFs im Standardprogramm öffnen
 //  - updater + process (Desktop): neue Versionen von GitHub laden, installieren, neu starten
 //  - single-instance (Desktop): Deep-Link landet im bereits offenen Fenster
+#[cfg(desktop)]
+mod disk;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -22,7 +25,9 @@ pub fn run() {
         // Selbst-Update (nur Mac/Windows/Linux): prüft GitHub-Releases, Pakete sind mit dem Update-Schlüssel signiert
         builder = builder
             .plugin(tauri_plugin_updater::Builder::new().build())
-            .plugin(tauri_plugin_process::init());
+            .plugin(tauri_plugin_process::init())
+            // Backups als Dateien + Speicherverbrauch (disk.rs)
+            .invoke_handler(tauri::generate_handler![disk::bk_default_dir, disk::bk_write, disk::bk_list, disk::bk_read, disk::bk_delete, disk::bk_reveal, disk::disk_info]);
     }
 
     builder
