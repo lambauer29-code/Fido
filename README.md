@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.95 – Persönliche Standard-Einstellungen
+- `src/defaults.json` enthält Rolis Design- und Struktur-Einstellungen (dunkles Design „Graphit/Gold“, Schrift Lora, Schrift- und Buttongrößen, Reiter mit Gruppen Privat/Firma/Sicherung, Dokumentgruppen, Unterkategorien, Spalten der Kontobuchungen, Startseiten-Layout). Greifen nur beim ersten Start auf einem neuen Gerät/Browser – bestehende Einstellungen bleiben unverändert. Keine persönlichen Daten enthalten.
+
 ## v0.99.94 – Mac/Windows-App: Backups auf der Festplatte, echter Speicherverbrauch
 - Backup → **Backup-Ordner auf der Festplatte**: Auto-Backups werden zusätzlich als Datei gespeichert (Standard: Dokumente/FinDocu/Backups, Ordner frei wählbar, z. B. iCloud Drive). Wahlweise mit allen PDFs/Fotos, die letzten 3–30 werden aufgehoben. Liste mit Wiederherstellen/Löschen, „Im Finder zeigen“.
 - **Speicherverbrauch (Festplatte)**: was FinDocu und die Backups belegen und wie viel auf dem Laufwerk frei ist (Warnung unter 2 GB).
