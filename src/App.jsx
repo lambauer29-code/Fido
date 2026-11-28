@@ -1774,7 +1774,7 @@ const DOCK_MIN_W = 1400, dockReg = new Map();
 // v1.0.15: pro Bereich einstellbar, ob die Details rechts aufgehen
 const DOCK_TABS = [["tx", "🏦", "Konten", "Buchungen – auch aus Journal und Steuerberater"], ["doc", "📄", "Dokumente", "Dokument bearbeiten, auch aus Fristen"], ["inv", "🧾", "Rechnungen", "Rechnung bearbeiten und neu anlegen"], ["kunde", "👥", "Kunden", "Kundendetail und Kontakt bearbeiten"], ["vertrag", "📑", "Verträge", "Vertrag bearbeiten"], ["artikel", "📦", "Artikel", "auch Lager & Inventur"], ["besitz", "🛡️", "Besitz & Garantie", "Gegenstand bearbeiten"], ["kassa", "📒", "Kassabuch", "Eintrag im Kassabuch"]];
 // Pfeil zur angeklickten Zeile: zuletzt angeklickte Listenzeile merken (vor allen Fenster-Handlern, daher hier beim Laden registriert)
-const DOCK_ROW_SEL = ".txrow,.ditem,.frow,.kbr,.invrow,.ctrow,.astrow,.jrow,.subrow,.contactrow,.stmtrow,.ctcard,[data-dockrow]";
+const DOCK_ROW_SEL = ".crow:not(.chead),.txrow,.ditem,.frow,.kbr,.invrow,.ctrow,.astrow,.jrow,.subrow,.contactrow,.stmtrow,.ctcard,[data-dockrow]";
 let dockAnchor = null, dockAnchorPrev = null;
 if (typeof document !== "undefined") document.addEventListener("pointerdown", (e) => {
   const r = e.target.closest?.(DOCK_ROW_SEL); if (!r || r.closest(".win")) return; dockAnchorPrev = dockAnchor; dockAnchor = r;
@@ -4124,7 +4124,9 @@ function VehPicker({ vehicles, v, onPick, onEdit, onAdd }) {
   );
 }
 
+const FB_COLS = { lead: 44, flex: "desc", trail: 190, trailLbl: "Aktionen", cols: [["date", "Datum", 104], ["type", "Art", 100], ["desc", "Beschreibung"], ["km", "Kilometer", 110], ["amt", "Betrag", 120]] };
 function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, onUpload, onOpen, onLink }) {
+  const [fbCols, setFbCols] = useCols("fahrtenbuch", FB_COLS);
   const [fb, setFb] = useLsState("fbook", FB_EMPTY);
   const vehicles = fb.vehicles || [], entries = fb.entries || [], reminders = fb.reminders || [];
   const [vid, setVid] = useLsState("fbVid", "");
@@ -4326,9 +4328,17 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
           {view === "trip" && trips.length > 0 && <div className="tilehead"><b>Fahrten {year}</b><button className="link" onClick={exportCsv}>⬇︎ CSV fürs Finanzamt</button></div>}
           {view === "verlauf" && myRem.length > 0 && <FbRemStrip rems={myRem} remState={remState} onOpen={(r) => setRemEdit(r)} />}
           <div className="fbsort"><SortCtl sorts={FB_SORTS} sortBy={fbS} setSortBy={setFbS} dir={fbDir} /></div>
-          <FbTimeline flat={!(fbS === "datum" && fbDir === 1)} list={mine.filter((x) => view === "verlauf" || x.type === view)} all={st.e} st={st} kmRate={kmRate} prevId={prevId} docOf={docOf}
+          <ColTable DEF={FB_COLS} cfg={fbCols} setCfg={setFbCols} list={() => <FbTimeline flat={!(fbS === "datum" && fbDir === 1)} list={mine.filter((x) => view === "verlauf" || x.type === view)} all={st.e} st={st} kmRate={kmRate} prevId={prevId} docOf={docOf}
             onClick={(x) => openEdit(x)} onPrev={setWinPrev} Acts={FbActs}
-            preview={(x) => <div className="txprev"><DocPreview d={docOf(x)} onOpen={() => onOpen(docOf(x).id)} /></div>} />
+            preview={(x) => <div className="txprev"><DocPreview d={docOf(x)} onOpen={() => onOpen(docOf(x).id)} /></div>} />}
+            table={() => mine.filter((x) => view === "verlauf" || x.type === view).map((x) => { const icon = x.type === "expense" ? (FB_EXP.find((c) => c[0] === x.cat)?.[1] || "🧾") : FB_ICON[x.type]; return (
+              <ColRow key={x.id} DEF={FB_COLS} cfg={fbCols} onClick={() => openEdit(x)} lead={<span className={"fbic " + x.type}>{x.type === "fuel" && isElec(x.fuel) ? "⚡" : icon}</span>}
+                cells={{ date: <>{fmtDate(x.date)}{x.time && <small className="muted block">{x.time}</small>}</>, type: x.type === "fuel" ? (isElec(x.fuel) ? "Laden" : "Tanken") : x.type === "trip" ? "Fahrt" : "Ausgabe",
+                  desc: <><b className="invname">{x.type === "fuel" ? `${amtStr(x.liters).replace(",00", "")} ${unitOf(x.fuel)}${x.station ? " · " + x.station : ""}` : x.type === "trip" ? `${x.from || "?"} → ${x.to}` : x.cat}</b>
+                    <small className="muted block">{x.type === "trip" ? [{ business: "geschäftlich", private: "privat", commute: "Arbeitsweg" }[x.purpose], x.note].filter(Boolean).join(" · ") : [x.type === "fuel" && x.price ? `${String(x.price).replace(".", ",")} €/${unitOf(x.fuel)}` : "", x.note, x.txId && "🏦", x.docId && "📎"].filter(Boolean).join(" · ")}</small></>,
+                  km: x.type === "trip" ? kmFmt(x.endKm - x.startKm) : x.km ? kmFmt(x.km) : <span className="muted">–</span>,
+                  amt: x.type === "trip" ? (x.purpose === "business" ? <b className="invamt pos">{fmtMoney((x.endKm - x.startKm) * kmRate)}</b> : <span className="muted">–</span>) : <b className="invamt neg">{fmtMoney(-x.total)}</b> }}
+                trail={<FbActs x={x} />} />); })} />
           {!mine.filter((x) => view === "verlauf" || x.type === view).length && <p className="muted small">Noch keine Einträge – oben über ⛽ Tanken, 🛣️ Fahrt oder 🧾 Ausgabe erfassen.</p>}
         </section>
       )}
@@ -6640,8 +6650,21 @@ const DocListRow = React.memo(function DocListRow({ d, pickMode, picked, prevOpe
     </div></SwipeRow>
     </div>);
 }, (a, b) => a.d === b.d && a.pickMode === b.pickMode && a.picked === b.picked && a.prevOpen === b.prevOpen && a.cats === b.cats && a.isNew === b.isNew);
+// v1.0.23: Dokumentenliste als Tabelle mit verschiebbaren Spalten (breite Fenster)
+const DOC_COLS = { lead: 44, flex: "title", trail: 190, trailLbl: "Aktionen", cols: [["title", "Titel"], ["sender", "Absender", 150], ["date", "Datum", 104], ["cat", "Kategorie", 150], ["amt", "Betrag", 110], ["stat", "Status", 110]] };
+const DocTableRow = React.memo(function DocTableRow({ d, pickMode, picked, prevOpen, h, isNew = false, DEF, cfg }) {
+  const H = h.current;
+  return <ColRow DEF={DEF} cfg={cfg} className={"ditemt" + (picked ? " picked" : "") + (isNew ? " isnew" : "")} onClick={() => (pickMode ? h.current.togglePick(d.id) : h.current.onOpen(d.id))}
+    lead={<>{isNew && <i className="newdot abs" aria-label="neu" />}{pickMode && <span className={"pickbox inline" + (picked ? " on" : "")}>✓</span>}<Thumb d={d} /></>}
+    cells={{ title: <><b className="invname">{d.title}{isNew && <span className="newpill">NEU</span>}</b>{((d.tags || []).length > 0 || d.taxRelevant || d.contract) && <small className="muted block">{[d.taxRelevant && "Steuer", d.contract && "Vertrag", ...(d.tags || []).slice(0, 3).map((t) => "#" + t)].filter(Boolean).join(" · ")}</small>}</>,
+      sender: d.sender || <span className="muted">–</span>, date: fmtDate(d.documentDate) || <span className="muted">–</span>, cat: <Label c={d.category} sub={d.subcategory} />,
+      amt: <span className="invamt">{H.amt(d)}</span>, stat: H.status(d) || <span className="muted">–</span> }}
+    trail={<span className="invacts">
+      <DocActions d={d} prevOpen={prevOpen} onPreview={() => h.current.setWinPrev(d)} onEdit={() => h.current.onOpen(d.id)} onTrash={(x) => h.current.trashDoc(x)} /></span>} />;
+}, (a, b) => a.d === b.d && a.pickMode === b.pickMode && a.picked === b.picked && a.prevOpen === b.prevOpen && a.isNew === b.isNew && a.cfg === b.cfg && a.DEF === b.DEF);
 function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, journalTab, onFiles, docBusy }) {
   const isNewDoc = useNewMarks("doc");
+  const [docCols, setDocCols] = useCols("dokumente", DOC_COLS);
   const [showDrop, setShowDrop] = useLsState("docDrop", true);
   const [chipCfg, setChipCfg] = useLsState("docChips", { order: [], hidden: [] });
   const [q, setQ] = useState("");
@@ -6654,6 +6677,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
     title: ["Titel", "A–Z", (a, b) => (a.title || "").localeCompare(b.title || "", "de")],
     sender: ["Absender", "A–Z", (a, b) => (a.sender || "~").localeCompare(b.sender || "~", "de")] } });
   const { pick, setPick, togglePick, yr: year, setYr: setYear, tagF: tag, setTagF: setTag, sortBy: sort } = kit;
+  const docDef = useMemo(() => (pick ? { ...DOC_COLS, lead: 84 } : DOC_COLS), [!!pick]);
   const [month, setMonth] = useState("");
   const [taxOnly, setTaxOnly] = useState(false);
   const [scope, setScope] = useState(() => ls.get("docScope", "alle"));
@@ -6793,10 +6817,10 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
           {docSent}
         </div>
       ) : (
-        <div className="dlist">
+        <ColTable DEF={docDef} cfg={docCols} setCfg={setDocCols} list={() => <div className="dlist">
           {visList.map((d) => <DocListRow key={d.id} d={d} pickMode={!!pick} picked={!!pick?.has(d.id)} prevOpen={winPrev?.id === d.id} cats={categories} h={rowH} isNew={isNewDoc(d)} />)}
           {docSent}
-        </div>
+        </div>} table={() => visList.length ? <>{visList.map((d) => <DocTableRow key={d.id} d={d} DEF={docDef} cfg={docCols} pickMode={!!pick} picked={!!pick?.has(d.id)} prevOpen={winPrev?.id === d.id} h={rowH} isNew={isNewDoc(d)} />)}{docSent}</> : null} />
       )}
       </FitScroll>
       {akteEdit && <AkteWin akte={akteEdit} categories={categories} years={years} onClose={() => setAkteEdit(null)}
@@ -7371,6 +7395,7 @@ function TxFold({ list, accounts }) {
 }
 
 function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = [], accounts = [], saveDoc, goTab }) {
+  const [fkCols, setFkCols] = useCols("fixkosten", FK_COLS);
   const [open, setOpen] = useState({});
   const toggleOpen = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const txById = useMemo(() => Object.fromEntries(txs.map((t) => [t.id, t])), [txs]);
@@ -7451,6 +7476,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
       <FitScroll card>
         <section className="tile invlist ctlist ltlist">
           {!shown.length && <p className="muted small">{items.length ? "Keine Einträge für diesen Filter." : "Noch keine Verträge oder Abos. Lade einen Vertrag, eine Polizze oder eine Abo-Rechnung hoch – oder importiere Kontoumsätze, dann werden wiederkehrende Zahlungen erkannt."}</p>}
+          <ColTable DEF={pick ? { ...FK_COLS, lead: 76 } : FK_COLS} cfg={fkCols} setCfg={setFkCols} list={() => <>
           {shown.map((x) => (
             <React.Fragment key={x.key}>
               <div className={"invrow" + (x.stale ? " stale" : "") + (open[x.key] ? " prevopen" : "") + (pick?.has(x.key) ? " picked" : "")} onClick={() => (pick ? togglePick(x.key) : x.doc ? onOpen(x.doc.id) : toggleOpen(x.key))}>
@@ -7490,6 +7516,39 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
               {open[x.key] && <TxFold list={x.txs} accounts={accounts} />}
             </React.Fragment>
           ))}
+          </>} table={() => shown.map((x) => (
+            <React.Fragment key={x.key}>
+              <ColRow DEF={pick ? { ...FK_COLS, lead: 76 } : FK_COLS} cfg={fkCols} className={(x.stale ? "stale" : "") + (open[x.key] ? " prevopen" : "") + (pick?.has(x.key) ? " picked" : "")} onClick={() => (pick ? togglePick(x.key) : x.doc ? onOpen(x.doc.id) : toggleOpen(x.key))}
+                lead={<>{pick && <KitPickBox on={pick.has(x.key)} />}<span className="abodotwrap"><CatIcon c={x.category || "Sonstiges"} size={34} />{aboStyle === "punkt" && <span className={"abodot " + (x.doc ? (x.cls === "st-paid" ? "ok" : x.cls === "st-over" ? "over" : "chk") : stKey(x))} title={x.label} />}</span></>}
+                cells={{ name: <><b className="invname">{x.name}</b>{fkTags(x)?.length > 0 && <small className="muted block">{fkTags(x).map((t) => "#" + t).join(" ")}</small>}</>, cat: x.category || "Sonstiges", sub: <span className="muted" title={x.sub}>{x.sub}</span>,
+                  iv: x.int || <span className="muted">–</span>, amt: <b className="invamt">{x.amount ? fmtMoney(x.amount) : "–"}</b>, stat: <span className={"stpill invst " + x.cls}>{x.label}</span> }}
+                trail={<span className="invacts">
+                  {!x.doc && aboStyle !== "pill" && stCtl(x)}
+                  {x.doc ? <button className="iconbtn" title="Vertrag ansehen" onClick={() => onOpen(x.doc.id)}><IcoEye /></button>
+                    : aboStyle === "pill" && <button className={"iconbtn ok" + (isOk(x.r) ? " on" : "")} title={isOk(x.r) ? "Bestätigung aufheben" : "Bestätigen: läuft noch, zählt zu den Fixkosten"} aria-pressed={isOk(x.r)} onClick={() => verify(x.r)}>✓</button>}
+                  {x.doc ? <button className="iconbtn" title="Kündigungsschreiben" onClick={() => setLetterFor(x.doc)}>✉︎</button>
+                    : aboStyle === "pill" && <button className={"iconbtn no" + (isEnded(x.r) ? " on" : "")} title={isEnded(x.r) ? "Wieder aktivieren" : "Deaktivieren: Vertrag beendet, zählt nicht mehr"} aria-pressed={isEnded(x.r)} onClick={() => endIt(x.r)}>✕</button>}
+                  <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
+                    <div className="moremenu">{(() => {   // v1.0.9: ein Menü für Verträge und Abos – feste Reihenfolge, nicht Verfügbares ausgegraut
+                      const mi = (k, label, on, why, run, cls = "") => <button key={k} className={"fkmi " + cls} disabled={!on} title={on ? undefined : why} onClick={(e) => { e.currentTarget.closest("details").open = false; run(); }}>{label}{!on && why && <small className="muted block">{why}</small>}</button>;
+                      return [
+                        mi("tx", open[x.key] ? "Buchungen ausblenden" : `Buchungen anzeigen (${x.txs.length})`, true, "", () => toggleOpen(x.key)),
+                        mi("view", "👁 Vertrag ansehen", !!x.doc, "kein Dokument – „Als Vertrag anlegen“", () => onOpen(x.doc.id)),
+                        mi("ok", !x.doc && isOk(x.r) ? "Bestätigung aufheben" : "✓ Bestätigen", !x.doc, "Vertrag gilt immer als bestätigt", () => verify(x.r)),
+                        mi("end", !x.doc && isEnded(x.r) ? "Wieder aktivieren" : "✕ Als beendet markieren", x.doc ? !!saveDoc : true, "hier nicht möglich", async () => x.doc ? (await uiAsk(`Vertrag „${x.name}“ als beendet markieren? Er zählt dann nicht mehr zu den Fixkosten.`)) && saveDoc({ ...x.doc, contract: { ...x.doc.contract, active: false } }) : endIt(x.r)),
+                        mi("letter", "✉︎ Kündigungsschreiben", true, "", () => setLetterFor(x.doc || { contract: { provider: x.name } })),
+                        mi("print", "🖨 Vertrag drucken", !!x.doc, "kein Dokument vorhanden", () => printDoc(x.doc)),
+                        setSubs && mi("tags", "# Tags bearbeiten", true, "", () => tagFk([x])),
+                        mi("asct", "📄 Als Vertrag anlegen", !x.doc && !!goTab, "ist schon ein Vertrag", () => { ls.set("pendingContractNew", { name: x.name, provider: x.name, amount: x.amount || "", interval: x.r?.interval || "monatlich" }); goTab("vertraege"); }),
+                        setSubs && mi("rm", "Aus der Liste entfernen", !x.doc, "Vertrag löschen im Dokument", async () => (await uiAsk(`„${x.name}“ aus der Liste entfernen?`)) && remove(x.r), "red")
+                      ];
+                    })()}
+                    <MenuCancel /></div>
+                  </details>
+                </span>} />
+              {open[x.key] && <TxFold list={x.txs} accounts={accounts} />}
+            </React.Fragment>
+          ))} />
           {!!ended.length && cf === "alle" && <p className="muted small" style={{ padding: "10px 16px" }}>{ended.length} beendete Verträge (im Dokument unter „Vertrag / Abo“ abgewählt)</p>}
         </section>
       </FitScroll>
@@ -7557,6 +7616,55 @@ function TxHead({ cfg, setCfg, withAcc }) {
     <span className="txcolreset">{changed && <button type="button" className="link small" onClick={() => setCfg(TX_COL_DEF)} title="Spaltenbreite und Reihenfolge zurücksetzen">↺ Spalten</button>}</span>
   </div>);
 }
+/* v1.0.23: verschiebbare Spalten für alle Listen – gleiche Bedienung wie bei Konten (Überschrift ziehen = verschieben, Rand ziehen = Breite) */
+// DEF = { cols: [[key, Überschrift, Breite px, "r"|"c"|""]], flex: Hauptspalte (füllt den Rest), lead: Breite Symbol links, trail: Breite rechts (Aktionen) }
+const colNorm = (DEF, c) => { const keys = DEF.cols.map((x) => x[0]), o = (c?.order || []).filter((k) => keys.includes(k));
+  for (const k of keys) if (!o.includes(k)) { const nx = keys.slice(keys.indexOf(k) + 1).find((x) => o.includes(x)); o.splice(nx ? o.indexOf(nx) : o.length, 0, k); }
+  return { order: [...new Set(o)], w: { ...Object.fromEntries(DEF.cols.filter((x) => x[0] !== DEF.flex).map((x) => [x[0], x[2]])), ...(c?.w || {}) } }; };
+function useCols(id, DEF) { const [raw, set] = useLsState("cols:" + id, null); const cfg = useMemo(() => colNorm(DEF, raw), [raw]); return [cfg, set]; }
+const colAlign = (DEF, k) => (k === DEF.flex ? "cflex" : "c");   // v1.0.23: alle Spalten zentriert, nur die Hauptspalte links
+const colTpl = (DEF, cfg) => [DEF.lead && DEF.lead + "px", ...cfg.order.map((k) => (k === DEF.flex ? "minmax(150px,1fr)" : "minmax(" + Math.min(64, Math.round(cfg.w[k])) + "px," + Math.round(cfg.w[k]) + "px)")), (DEF.trail || 64) + "px"].filter(Boolean).join(" ");
+function ColHead({ DEF, cfg, setCfg }) {
+  const ref = useRef(null), [drag, setDrag] = useState(null), keys = cfg.order, lbl = Object.fromEntries(DEF.cols.map((x) => [x[0], x[1]]));
+  const def = colNorm(DEF, null), changed = JSON.stringify(cfg) !== JSON.stringify(def);
+  const leftOf = (k) => keys.indexOf(k) > keys.indexOf(DEF.flex);
+  const startResize = (e, k) => { e.preventDefault(); e.stopPropagation(); const x0 = e.clientX, w0 = cfg.w[k], dir = leftOf(k) ? -1 : 1;
+    const mv = (ev) => setCfg({ ...cfg, w: { ...cfg.w, [k]: Math.max(48, Math.min(560, w0 + (ev.clientX - x0) * dir)) } });
+    const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); document.documentElement.classList.remove("colresizing"); };
+    document.documentElement.classList.add("colresizing"); addEventListener("pointermove", mv); addEventListener("pointerup", up); };
+  const startMove = (e, k) => { if (e.button) return; const x0 = e.clientX; let on = false, over = k;
+    const cells = () => [...(ref.current?.querySelectorAll("[data-col]") || [])].map((el) => ({ k: el.dataset.col, r: el.getBoundingClientRect() }));
+    const mv = (ev) => { if (!on && Math.abs(ev.clientX - x0) < 6) return; on = true; const c = cells().find((x) => ev.clientX >= x.r.left && ev.clientX <= x.r.right); if (c) over = c.k; setDrag({ k, over, side: c && ev.clientX > c.r.left + c.r.width / 2 ? "r" : "l" }); };
+    const up = (ev) => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); setDrag(null); if (!on || over === k) return;
+      const c = cells().find((x) => x.k === over), right = c && ev.clientX > c.r.left + c.r.width / 2;
+      const o = cfg.order.filter((x) => x !== k); o.splice(o.indexOf(over) + (right ? 1 : 0), 0, k); setCfg({ ...cfg, order: o }); };
+    addEventListener("pointermove", mv); addEventListener("pointerup", up); };
+  return (<div className="crow chead" ref={ref}>
+    {DEF.lead ? <span /> : null}
+    {keys.map((k) => <span key={k} data-col={k} className={"txcolh ccolh " + colAlign(DEF, k) + (drag?.k === k ? " dragging" : "") + (drag && drag.over === k && drag.k !== k ? " over-" + drag.side : "")}
+      onPointerDown={(e) => startMove(e, k)} title={lbl[k] + " – ziehen zum Verschieben · Rand ziehen für die Breite"}><span className="ccl">{lbl[k]}</span>
+      {k !== DEF.flex && <i className={"colgrip" + (leftOf(k) ? " lft" : "")} onPointerDown={(e) => startResize(e, k)} onDoubleClick={(e) => { e.stopPropagation(); setCfg({ ...cfg, w: { ...cfg.w, [k]: def.w[k] } }); }} title="Breite ändern (Doppelklick = Standard)" />}</span>)}
+    <span className="ccolreset">{changed ? <button type="button" className="link small" onClick={() => setCfg(null)} title="Spaltenbreite und Reihenfolge zurücksetzen">↺ Spalten</button> : <span className="ctrlbl">{DEF.trailLbl || ""}</span>}</span>
+  </div>);
+}
+// eine Tabellenzeile: cells = { key: Inhalt }, lead = Symbol links, trail = Aktionen rechts
+function ColRow({ DEF, cfg, cells, lead, trail, className = "", ...rest }) {
+  return <div className={"crow " + className} {...rest}>
+    {DEF.lead ? <div className="ccell clead">{lead}</div> : null}
+    {cfg.order.map((k) => <div key={k} className={"ccell c-" + k + " " + colAlign(DEF, k)}>{cells[k] ?? null}</div>)}
+    <div className="ccell ctrail" onClick={trail ? (e) => e.stopPropagation() : undefined}>{trail}</div>
+  </div>;
+}
+// breit genug → Tabelle mit Spalten, sonst die bisherige Liste (Handy, schmale Fenster, Liste neben der rechten Spalte)
+function ColTable({ DEF, cfg, setCfg, min = 820, table, list, className = "" }) {
+  const ref = useRef(null), [w, setW] = useState(() => innerWidth - 400), phone = useMedia("(max-width:700px)");
+  useLayoutEffect(() => { const el = ref.current; if (!el) return; const f = () => el.clientWidth && setW(el.clientWidth); f(); const ro = new ResizeObserver(f); ro.observe(el); return () => ro.disconnect(); }, []);
+  const wide = !phone && !IS_TABLET && w >= min;
+  return <div ref={ref} className={"ctabwrap" + (wide ? " ctab " : " ") + className} style={wide ? { "--ctpl": colTpl(DEF, cfg) } : undefined}>
+    {wide ? (() => { const rows = table(); return (Array.isArray(rows) ? rows.length : rows) ? <><ColHead DEF={DEF} cfg={cfg} setCfg={setCfg} />{rows}</> : null; })() : list()}
+  </div>;
+}
+
 function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = () => {}, addCategory, linkTx, attachNew, txs, accounts, setAccounts, importTxs, updateTx, deleteAccount, categories, docs, onOpen, token, notify, recurring, subs, setSubs, onManual, deleteTx, acc: accProp, setAcc, sel: selProp = [], allSel = true, setSel, accActions = {}, hiddenAccs = [], visAccounts = [], groups, toggleGroup, newAccReq, clearNewAccReq }) {
   const [txColsRaw, setTxCols] = useLsState("txCols", TX_COL_DEF), txColCfg = useMemo(() => txColNorm(txColsRaw), [txColsRaw]);
   const [accVis, setAccVis] = useState(false);
@@ -14268,6 +14376,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
     .filter((x) => !lt || ((!yr || (x.date || "").startsWith(yr)) && (!tagF || (x.tags || []).includes(tagF))))
     .sort(lt ? SORTS[sortBy] || SORTS.datum : SORTS.datum);
   const shownV = useProgressiveAuto(shown);
+  const [invCols, setInvCols] = useCols("rechnungen", INV_COLS), invDef = pick ? { ...INV_COLS, lead: 30 } : INV_COLS;
   const expItems = [
           { head: `${inv.length} Rechnungen · ${list.length - inv.length} Angebote` },
           { label: "📒 Rechnungsausgangsbuch Excel", sub: "alle Rechnungen und Angebote mit Status", run: () => downloadXlsx(`Rechnungsausgangsbuch-${isoToday()}.xlsx`, [{ name: "Rechnungen", head: INV_HEAD, rows: list.filter((x) => x.kind === "rechnung").map(invRow) }, { name: "Angebote", head: INV_HEAD, rows: list.filter((x) => x.kind === "angebot").map(invRow) }]) },
@@ -14386,47 +14495,78 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
         </section>
       ) : (
         <section className={"tile invlist" + (lt ? " ltlist" : "")}>
-          {lt && !!shown.length && <div className={"lthead" + (pick ? " pk" : "")}>{pick && <span />}<span>Kunde · Nummer · Datum</span><span className="r">Betrag</span><span className="c">Status · Aktionen</span></div>}
           {!shown.length && <p className="muted small">{list.length ? "Keine Einträge für diesen Filter." : "Noch keine Rechnungen. Mit „＋ Rechnung“ legst du die erste an – die Nummer wird beim Ausstellen fortlaufend vergeben."}</p>}
-          {shownV.map((x) => {
+          <ColTable DEF={invDef} cfg={invCols} setCfg={setInvCols} list={() => <>
+          {lt && !!shown.length && <div className={"lthead" + (pick ? " pk" : "")}>{pick && <span />}<span>Kunde · Nummer · Datum</span><span className="r">Betrag</span><span className="c">Status · Aktionen</span></div>}
+            {shownV.map((x) => {
+              const s = st(x), [label, cls] = STATE_UI[s] || [s, ""], pay = payFor(x);
+              return (<React.Fragment key={x.id}>
+                <div className={"invrow" + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setEdit(x))}>
+                  {pick && <span className={"pickbox inline" + (pick.has(x.id) ? " on" : "")}>✓</span>}
+                  <div className="invmain">
+                    <div className="row1"><b className="invname">{x.customer?.name || "Ohne Kunde"}</b>{lt && (x.tags || []).map((t) => <span key={t} className="label tag lttag">#{t}</span>)}</div>
+                    <small className="muted block">
+                      {x.kind === "angebot" ? "Angebot " : ""}{x.number || "Entwurf"} · {fmtDate(x.date)}
+                      {x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) && ` · fällig ${fmtDate(invDueEff(x))}`}
+                      {s === "bezahlt" && x.paidAt && ` · bezahlt ${fmtDate(x.paidAt)}${x.payMethod ? " (" + x.payMethod + ")" : ""}${x.paidAccount && book ? " → " + (book.accounts.find((a) => a.id === x.paidAccount)?.name || "Konto") : ""}`}
+                      {(x.reminders || []).length > 0 && ` · ${remindName(lastReminder(x).level)} ${fmtDate(lastReminder(x).date)}`}
+                      {x.fromOffer && ` · aus ${x.fromOffer}`}{x.fromTemplate && " · 🔁"}
+                    </small>
+                    {pay && <button className="link pos small" onClick={async (e) => { e.stopPropagation(); if (book) await book.link(pay.id, x); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id, paidAccount: pay.accountId, payMethod: "Überweisung" }); }}>💡 Zahlungseingang vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}
+                  </div>
+                  <b className="invamt">{fmtInv(x)}</b>
+                  <div className="invacts" onClick={(e) => e.stopPropagation()}>
+                    {s === "überfällig" && (lt ? <button className="iconbtn ltremind" title={remindName((x.reminders || []).length)} aria-label={remindName((x.reminders || []).length)} onClick={() => setRemind(x)}>📮</button> : <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>)}
+                    {x.kind === "angebot" && s === "offen" && <button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button>}
+                    {x.kind === "rechnung" && s !== "entwurf" ? <StatusMenu x={x} s={s} book={book} onPay={setPayFor2} onUnpay={unpay} onPatch={patch} /> : <span className={"stpill invst " + cls}>{label}</span>}
+                    {s !== "entwurf" ? <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button> : <span className="iconbtn invph" aria-hidden="true" />}
+                    {lt && (s !== "entwurf" ? <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printInv([x])}><IcoPrint /></button> : <span className="iconbtn invph" aria-hidden="true" />)}
+                    {s !== "entwurf" ? <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button> : <span className="iconbtn invph" aria-hidden="true" />}
+                    <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
+                      <div className="moremenu">
+                        {x.kind === "angebot" && s === "offen" && <button onClick={(e) => { e.currentTarget.closest("details").open = false; patch(x.id, { status: "abgelehnt" }); }}>✕ Als abgelehnt markieren</button>}
+                        {lt && <button onClick={(e) => { e.currentTarget.closest("details").open = false; editTags([x.id]); }}># Tags bearbeiten</button>}
+                        <button onClick={() => copyAsNew(x)}>Als neue {x.kind === "angebot" ? "Angebot" : "Rechnung"} kopieren</button>
+                        {s !== "entwurf" && onArchive && <button onClick={async () => { await onArchive(await buildInvoicePdf(x, co), invFileName(x), x); }}>In Dokumente ablegen</button>}
+                        {s !== "entwurf" && x.kind === "rechnung" && x.number && <button onClick={(e) => { e.currentTarget.closest("details").open = false; downloadEInvoice(x, co, "xr"); }}>⬇︎ E-Rechnung XRechnung (XML)</button>}
+                        {s !== "entwurf" && x.kind === "rechnung" && x.number && <button onClick={(e) => { e.currentTarget.closest("details").open = false; downloadEInvoice(x, co, "ebi"); }}>⬇︎ E-Rechnung ebInterface (XML)</button>}
+                        {s === "entwurf" && <button className="red" onClick={async () => (await uiAsk("Entwurf löschen?")) && setList((l) => l.filter((y) => y.id !== x.id))}>Entwurf löschen</button>}
+                      <MenuCancel /></div>
+                    </details>
+                  </div>
+                </div>
+              </React.Fragment>);
+            })}
+            </>} table={() => shownV.map((x) => {
             const s = st(x), [label, cls] = STATE_UI[s] || [s, ""], pay = payFor(x);
-            return (<React.Fragment key={x.id}>
-              <div className={"invrow" + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setEdit(x))}>
-                {pick && <span className={"pickbox inline" + (pick.has(x.id) ? " on" : "")}>✓</span>}
-                <div className="invmain">
-                  <div className="row1"><b className="invname">{x.customer?.name || "Ohne Kunde"}</b>{lt && (x.tags || []).map((t) => <span key={t} className="label tag lttag">#{t}</span>)}</div>
-                  <small className="muted block">
-                    {x.kind === "angebot" ? "Angebot " : ""}{x.number || "Entwurf"} · {fmtDate(x.date)}
-                    {x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) && ` · fällig ${fmtDate(invDueEff(x))}`}
-                    {s === "bezahlt" && x.paidAt && ` · bezahlt ${fmtDate(x.paidAt)}${x.payMethod ? " (" + x.payMethod + ")" : ""}${x.paidAccount && book ? " → " + (book.accounts.find((a) => a.id === x.paidAccount)?.name || "Konto") : ""}`}
-                    {(x.reminders || []).length > 0 && ` · ${remindName(lastReminder(x).level)} ${fmtDate(lastReminder(x).date)}`}
-                    {x.fromOffer && ` · aus ${x.fromOffer}`}{x.fromTemplate && " · 🔁"}
-                  </small>
-                  {pay && <button className="link pos small" onClick={async (e) => { e.stopPropagation(); if (book) await book.link(pay.id, x); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id, paidAccount: pay.accountId, payMethod: "Überweisung" }); }}>💡 Zahlungseingang vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}
-                </div>
-                <b className="invamt">{fmtInv(x)}</b>
-                <div className="invacts" onClick={(e) => e.stopPropagation()}>
-                  {s === "überfällig" && (lt ? <button className="iconbtn ltremind" title={remindName((x.reminders || []).length)} aria-label={remindName((x.reminders || []).length)} onClick={() => setRemind(x)}>📮</button> : <button className="btn sm danger" onClick={() => setRemind(x)}>{remindName((x.reminders || []).length)}</button>)}
+            return <ColRow key={x.id} DEF={invDef} cfg={invCols} className={pick?.has(x.id) ? "picked" : ""} onClick={() => (pick ? togglePick(x.id) : setEdit(x))}
+              lead={pick && <span className={"pickbox inline" + (pick.has(x.id) ? " on" : "")}>✓</span>}
+              cells={{ cust: <><b className="invname">{x.customer?.name || "Ohne Kunde"}</b>{(x.tags || []).length > 0 && <small className="muted block">{x.tags.map((t) => "#" + t).join(" ")}</small>}
+                  {pay && <button className="link pos small" onClick={async (e) => { e.stopPropagation(); if (book) await book.link(pay.id, x); patch(x.id, { status: "bezahlt", paidAt: pay.date, paidTx: pay.id, paidAccount: pay.accountId, payMethod: "Überweisung" }); }}>💡 Zahlung vom {fmtDate(pay.date)} gefunden – als bezahlt markieren</button>}</>,
+                nr: <>{x.kind === "angebot" ? "Angebot " : ""}{x.number || <span className="muted">Entwurf</span>}{x.fromTemplate && " 🔁"}</>,
+                date: fmtDate(x.date),
+                due: x.kind === "rechnung" && !["entwurf", "bezahlt", "storniert"].includes(s) ? fmtDate(invDueEff(x)) : s === "bezahlt" && x.paidAt ? <span className="muted">bezahlt {fmtDate(x.paidAt)}</span> : <span className="muted">–</span>,
+                amt: <b className="invamt">{fmtInv(x)}</b>,
+                stat: <span className="invstcell" onClick={(e) => e.stopPropagation()}>{s === "überfällig" && <button className="iconbtn ltremind" title={remindName((x.reminders || []).length)} aria-label={remindName((x.reminders || []).length)} onClick={() => setRemind(x)}>📮</button>}
                   {x.kind === "angebot" && s === "offen" && <button className="btn sm" onClick={() => toInvoice(x)}>→ Rechnung</button>}
-                  {x.kind === "rechnung" && s !== "entwurf" ? <StatusMenu x={x} s={s} book={book} onPay={setPayFor2} onUnpay={unpay} onPatch={patch} /> : <span className={"stpill invst " + cls}>{label}</span>}
-                  {s !== "entwurf" ? <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button> : <span className="iconbtn invph" aria-hidden="true" />}
-                  {lt && (s !== "entwurf" ? <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printInv([x])}><IcoPrint /></button> : <span className="iconbtn invph" aria-hidden="true" />)}
-                  {s !== "entwurf" ? <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button> : <span className="iconbtn invph" aria-hidden="true" />}
-                  <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
-                    <div className="moremenu">
-                      {x.kind === "angebot" && s === "offen" && <button onClick={(e) => { e.currentTarget.closest("details").open = false; patch(x.id, { status: "abgelehnt" }); }}>✕ Als abgelehnt markieren</button>}
-                      {lt && <button onClick={(e) => { e.currentTarget.closest("details").open = false; editTags([x.id]); }}># Tags bearbeiten</button>}
-                      <button onClick={() => copyAsNew(x)}>Als neue {x.kind === "angebot" ? "Angebot" : "Rechnung"} kopieren</button>
-                      {s !== "entwurf" && onArchive && <button onClick={async () => { await onArchive(await buildInvoicePdf(x, co), invFileName(x), x); }}>In Dokumente ablegen</button>}
-                      {s !== "entwurf" && x.kind === "rechnung" && x.number && <button onClick={(e) => { e.currentTarget.closest("details").open = false; downloadEInvoice(x, co, "xr"); }}>⬇︎ E-Rechnung XRechnung (XML)</button>}
-                      {s !== "entwurf" && x.kind === "rechnung" && x.number && <button onClick={(e) => { e.currentTarget.closest("details").open = false; downloadEInvoice(x, co, "ebi"); }}>⬇︎ E-Rechnung ebInterface (XML)</button>}
-                      {s === "entwurf" && <button className="red" onClick={async () => (await uiAsk("Entwurf löschen?")) && setList((l) => l.filter((y) => y.id !== x.id))}>Entwurf löschen</button>}
-                    <MenuCancel /></div>
-                  </details>
-                </div>
-              </div>
-            </React.Fragment>);
-          })}
+                  {x.kind === "rechnung" && s !== "entwurf" ? <StatusMenu x={x} s={s} book={book} onPay={setPayFor2} onUnpay={unpay} onPatch={patch} /> : <span className={"stpill invst " + cls}>{label}</span>}</span> }}
+              trail={<span className="invacts">
+                {s !== "entwurf" ? <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await buildInvoicePdf(x, co), invFileName(x), "", x.customer?.email)}><IcoEye /></button> : <span className="iconbtn invph" aria-hidden="true" />}
+                {s !== "entwurf" ? <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printInv([x])}><IcoPrint /></button> : <span className="iconbtn invph" aria-hidden="true" />}
+                {s !== "entwurf" ? <button className="iconbtn" title="Teilen (Mail, WhatsApp …)" onClick={async () => sharePdf(await buildInvoicePdf(x, co), invFileName(x), `${x.kind === "angebot" ? "Angebot" : "Rechnung"} ${x.number}`, x.customer?.email)}><IcoShare /></button> : <span className="iconbtn invph" aria-hidden="true" />}
+                <details className="more"><summary className="iconbtn morebtn" title="Mehr"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></summary>
+                  <div className="moremenu">
+                    {x.kind === "angebot" && s === "offen" && <button onClick={(e) => { e.currentTarget.closest("details").open = false; patch(x.id, { status: "abgelehnt" }); }}>✕ Als abgelehnt markieren</button>}
+                    {lt && <button onClick={(e) => { e.currentTarget.closest("details").open = false; editTags([x.id]); }}># Tags bearbeiten</button>}
+                    <button onClick={() => copyAsNew(x)}>Als neue {x.kind === "angebot" ? "Angebot" : "Rechnung"} kopieren</button>
+                    {s !== "entwurf" && onArchive && <button onClick={async () => { await onArchive(await buildInvoicePdf(x, co), invFileName(x), x); }}>In Dokumente ablegen</button>}
+                    {s !== "entwurf" && x.kind === "rechnung" && x.number && <button onClick={(e) => { e.currentTarget.closest("details").open = false; downloadEInvoice(x, co, "xr"); }}>⬇︎ E-Rechnung XRechnung (XML)</button>}
+                    {s !== "entwurf" && x.kind === "rechnung" && x.number && <button onClick={(e) => { e.currentTarget.closest("details").open = false; downloadEInvoice(x, co, "ebi"); }}>⬇︎ E-Rechnung ebInterface (XML)</button>}
+                    {s === "entwurf" && <button className="red" onClick={async () => (await uiAsk("Entwurf löschen?")) && setList((l) => l.filter((y) => y.id !== x.id))}>Entwurf löschen</button>}
+                  <MenuCancel /></div>
+                </details>
+              </span>} />;
+          })} />
         </section>
       )}
       </FitScroll>
@@ -14441,6 +14581,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
   );
 }
 
+const INV_COLS = { flex: "cust", trail: 150, trailLbl: "Aktionen", cols: [["cust", "Kunde"], ["nr", "Nummer", 130], ["date", "Datum", 104], ["due", "Fällig", 130], ["amt", "Betrag", 120], ["stat", "Status", 170]] };
 /* ======================= Verträge (hinterlegt, Privat & Firma) ======================= */
 const CT_CATS = { Internet: "🌐", Handy: "📱", "Strom & Gas": "⚡", Versicherung: "🛡️", Miete: "🏠", "Leasing & Kredit": "🚗", "Streaming & Abos": "🎬", Software: "💻", Fitness: "🏋️", Sonstiges: "📄" };
 const ctCats = () => ({ ...CT_CATS, ...ls.get("ctCats", {}) });
@@ -14584,6 +14725,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
   const [showDrop, setShowDrop] = useLsState("ctrDrop", true);
   const [waitIds, setWaitIds] = useLsState("ctrWait", []);
   const [prevCt, setPrevCt] = useState(null);
+  const [ctCols, setCtCols] = useCols("vertraege", CT_COLS);
   const [scope, setScope] = useState(() => ls.get("ctScope", "alle"));
   useEffect(() => ls.set("ctScope", scope), [scope]);
   const [edit, setEdit] = useState(null), [showOld, setShowOld] = useState(false), [imp, setImp] = useState(false);
@@ -14706,28 +14848,44 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
       <section className="tile ctlist ltlist">
         {!shown.length && list.length > 0 && <p className="muted small">Keine Verträge für diesen Filter.</p>}
         {!list.length && <p className="muted small">Noch keine Verträge hinterlegt. Mit „＋ Vertrag“ z. B. Internet, Handy, Strom, Versicherungen oder Miete eintragen – FinDocu rechnet den letzten Kündigungstag aus. Erkannte Abos aus deinen Kontobuchungen findest du weiterhin unter „Fixkosten & Abos“.</p>}
+        <ColTable DEF={pick ? { ...CT_COLS, lead: 72 } : CT_COLS} cfg={ctCols} setCfg={setCtCols} list={() => <>
         {shown.map(({ c, d }) => { const cdocs = (c.docIds || []).map((id) => docs.find((x) => x.id === id)).filter(Boolean); const open = prevCt === c.id && cdocs.length; return (
-          <div key={c.id} className="dwrap ctwrap">
-          <div className={"frow click ctrow" + (c.cancelledAt ? " ended" : "") + (c.inactive ? " inactive" : "") + (pick?.has(c.id) ? " picked" : "")} onClick={() => (pick ? togglePick(c.id) : setEdit(c))}>
-            {pick && <KitPickBox on={pick.has(c.id)} />}
-            {cdocs[0] ? <span><Thumb d={cdocs[0]} /></span>
-              : <span className="caticon" style={{ width: 42, height: 42, fontSize: 20 }}><Glyph e={ctCats()[c.cat] || "📄"} /></span>}
-            <div className="grow">
-              <b>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small> <KitTags tags={c.tags} />
-              <small className="muted block ctsub">{[c.provider, c.customerNo && "Nr. " + c.customerNo, c.interval || "monatlich", cdocs.length ? `📎 ${cdocs.length}` : ""].filter(Boolean).join(" · ")}{" · "}{c.cancelledAt ? <span className="muted">Gekündigt{c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}</span>
-                : d.open ? <span className="muted">unbefristet · jederzeit kündbar</span>
-                : d.cancelBy ? <span className={daysUntil(d.cancelBy) <= 30 ? "neg" : daysUntil(d.cancelBy) <= 60 ? "warnc" : "muted"}>kündigen bis {fmtDate(d.cancelBy)} · Ende {fmtDate(d.end)}</span>
-                : d.end ? <span className="muted">Ende {fmtDate(d.end)}</span> : <span className="muted">Laufzeit nicht eingetragen</span>}</small>
+            <div key={c.id} className="dwrap ctwrap">
+            <div className={"frow click ctrow" + (c.cancelledAt ? " ended" : "") + (c.inactive ? " inactive" : "") + (pick?.has(c.id) ? " picked" : "")} onClick={() => (pick ? togglePick(c.id) : setEdit(c))}>
+              {pick && <KitPickBox on={pick.has(c.id)} />}
+              {cdocs[0] ? <span><Thumb d={cdocs[0]} /></span>
+                : <span className="caticon" style={{ width: 42, height: 42, fontSize: 20 }}><Glyph e={ctCats()[c.cat] || "📄"} /></span>}
+              <div className="grow">
+                <b>{c.name}</b> <small className="muted">{(c.scope || "privat") === "firma" ? "🏢" : "👤"}</small> <KitTags tags={c.tags} />
+                <small className="muted block ctsub">{[c.provider, c.customerNo && "Nr. " + c.customerNo, c.interval || "monatlich", cdocs.length ? `📎 ${cdocs.length}` : ""].filter(Boolean).join(" · ")}{" · "}{c.cancelledAt ? <span className="muted">Gekündigt{c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}</span>
+                  : d.open ? <span className="muted">unbefristet · jederzeit kündbar</span>
+                  : d.cancelBy ? <span className={daysUntil(d.cancelBy) <= 30 ? "neg" : daysUntil(d.cancelBy) <= 60 ? "warnc" : "muted"}>kündigen bis {fmtDate(d.cancelBy)} · Ende {fmtDate(d.end)}</span>
+                  : d.end ? <span className="muted">Ende {fmtDate(d.end)}</span> : <span className="muted">Laufzeit nicht eingetragen</span>}</small>
+              </div>
+              <b className="invamt ctamt">{c.amount ? fmtMoney(Number(c.amount), c.currency || "EUR") : "—"}{c.currency && c.currency !== "EUR" && c.amount ? <small className="fxeur">≈ {fmtMoney(ctEur(c))}</small> : null}</b>
+              <div className="ctacts" onClick={(e) => e.stopPropagation()}>
+                {c.cancelledAt ? <span className="stpill ctstate st-void">Gekündigt</span> : <span className={"ctstatepick " + (c.inactive ? "off" : "on")}><PickMenu btnClass={"stpill ctstate " + (c.inactive ? "st-draft" : "st-paid")} label={c.inactive ? "Inaktiv" : "Aktiv"} title="Status ändern"
+                  items={[{ head: "Status" }, { k: "a", icon: "●", title: "Aktiv", sub: "zählt zu den laufenden Kosten", on: !c.inactive, run: () => save({ ...c, inactive: false }) }, { k: "i", icon: "⏸", title: "Inaktiv", sub: "pausiert – zählt nicht zu den Kosten", on: !!c.inactive, run: () => save({ ...c, inactive: true }) }]} /></span>}
+                <button className={"iconbtn" + (open ? " on" : "")} disabled={!cdocs.length} title={cdocs.length ? "Vorschau öffnen" : "Kein Dokument verknüpft"} onClick={() => setPrevCt(open ? null : c.id)}>{open ? <IcoEyeOff /> : <IcoEye />}</button>
+                <MoreMenu items={[{ icon: "✎", title: "Bearbeiten", run: () => setEdit(c) }, cdocs[0] && { icon: <IcoPrint />, title: "Dokument drucken", run: () => printDoc(cdocs[0]) }, cdocs[0] && { icon: <IcoShare />, title: "Dokument teilen", run: () => shareDocs(cdocs) }, { icon: "#", title: "Tags bearbeiten", run: () => tagCts([c]) }]} />
+              </div>
             </div>
-            <b className="invamt ctamt">{c.amount ? fmtMoney(Number(c.amount), c.currency || "EUR") : "—"}{c.currency && c.currency !== "EUR" && c.amount ? <small className="fxeur">≈ {fmtMoney(ctEur(c))}</small> : null}</b>
-            <div className="ctacts" onClick={(e) => e.stopPropagation()}>
-              {c.cancelledAt ? <span className="stpill ctstate st-void">Gekündigt</span> : <span className={"ctstatepick " + (c.inactive ? "off" : "on")}><PickMenu btnClass={"stpill ctstate " + (c.inactive ? "st-draft" : "st-paid")} label={c.inactive ? "Inaktiv" : "Aktiv"} title="Status ändern"
-                items={[{ head: "Status" }, { k: "a", icon: "●", title: "Aktiv", sub: "zählt zu den laufenden Kosten", on: !c.inactive, run: () => save({ ...c, inactive: false }) }, { k: "i", icon: "⏸", title: "Inaktiv", sub: "pausiert – zählt nicht zu den Kosten", on: !!c.inactive, run: () => save({ ...c, inactive: true }) }]} /></span>}
+            </div>); })}
+          </>} table={() => shown.map(({ c, d }) => { const cdocs = (c.docIds || []).map((id) => docs.find((x) => x.id === id)).filter(Boolean); const open = prevCt === c.id && cdocs.length; return (
+          <ColRow key={c.id} DEF={pick ? { ...CT_COLS, lead: 72 } : CT_COLS} cfg={ctCols} className={(c.cancelledAt ? " ended" : "") + (c.inactive ? " inactive" : "") + (pick?.has(c.id) ? " picked" : "")} onClick={() => (pick ? togglePick(c.id) : setEdit(c))}
+            lead={<>{pick && <KitPickBox on={pick.has(c.id)} />}<span className="caticon" style={{ width: 34, height: 34, fontSize: 17 }}><Glyph e={ctCats()[c.cat] || "📄"} /></span></>}
+            cells={{ name: <><b className="invname">{c.name}</b><small className="muted block">{[(c.scope || "privat") === "firma" ? "🏢 Firma" : "👤 Privat", cdocs.length ? `📎 ${cdocs.length}` : "", ...(c.tags || []).map((t) => "#" + t)].filter(Boolean).join(" · ")}</small></>,
+              prov: <>{c.provider || <span className="muted">–</span>}{c.customerNo && <small className="muted block">Nr. {c.customerNo}</small>}</>, cat: c.cat || "Sonstiges", iv: c.interval || "monatlich",
+              cancel: c.cancelledAt ? <span className="muted">gekündigt{c.cancelledEnd ? " zum " + fmtDate(c.cancelledEnd) : ""}</span> : d.open ? <span className="muted">jederzeit</span>
+                : d.cancelBy ? <span className={daysUntil(d.cancelBy) <= 30 ? "neg" : daysUntil(d.cancelBy) <= 60 ? "warnc" : ""}>{fmtDate(d.cancelBy)}<small className="muted block">Ende {fmtDate(d.end)}</small></span>
+                : d.end ? <span className="muted">Ende {fmtDate(d.end)}</span> : <span className="muted">–</span>,
+              amt: <b className="invamt ctamt">{c.amount ? fmtMoney(Number(c.amount), c.currency || "EUR") : "—"}{c.currency && c.currency !== "EUR" && c.amount ? <small className="fxeur">≈ {fmtMoney(ctEur(c))}</small> : null}</b>,
+              stat: <span onClick={(e) => e.stopPropagation()}>{c.cancelledAt ? <span className="stpill ctstate st-void">Gekündigt</span> : <span className={"ctstatepick " + (c.inactive ? "off" : "on")}><PickMenu btnClass={"stpill ctstate " + (c.inactive ? "st-draft" : "st-paid")} label={c.inactive ? "Inaktiv" : "Aktiv"} title="Status ändern"
+                items={[{ head: "Status" }, { k: "a", icon: "●", title: "Aktiv", sub: "zählt zu den laufenden Kosten", on: !c.inactive, run: () => save({ ...c, inactive: false }) }, { k: "i", icon: "⏸", title: "Inaktiv", sub: "pausiert – zählt nicht zu den Kosten", on: !!c.inactive, run: () => save({ ...c, inactive: true }) }]} /></span>}</span> }}
+            trail={<span className="invacts">
               <button className={"iconbtn" + (open ? " on" : "")} disabled={!cdocs.length} title={cdocs.length ? "Vorschau öffnen" : "Kein Dokument verknüpft"} onClick={() => setPrevCt(open ? null : c.id)}>{open ? <IcoEyeOff /> : <IcoEye />}</button>
               <MoreMenu items={[{ icon: "✎", title: "Bearbeiten", run: () => setEdit(c) }, cdocs[0] && { icon: <IcoPrint />, title: "Dokument drucken", run: () => printDoc(cdocs[0]) }, cdocs[0] && { icon: <IcoShare />, title: "Dokument teilen", run: () => shareDocs(cdocs) }, { icon: "#", title: "Tags bearbeiten", run: () => tagCts([c]) }]} />
-            </div>
-          </div>
-          </div>); })}
+            </span>} />); })} />
       </section>
       </FitScroll>
       </>)}
@@ -15023,6 +15181,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
     .filter((c) => !q || norm(`${c.name} ${c.contact} ${c.email} ${c.phone} ${c.address} ${c.number}`).includes(norm(q)))
     .sort((a, b) => ctDir * (CT_SORTS[ctSort] || CT_SORTS.name)[2](a, b));
   const shownV = useProgressiveAuto(shown);
+  const [custCols, setCustCols] = useCols("kunden", CUST_COLS);
   const vcard = (c) => {
     const v = ["BEGIN:VCARD", "VERSION:3.0", `FN:${c.name}`, c.contact && `NOTE:Ansprechperson ${c.contact}`, c.email && `EMAIL:${c.email}`, c.phone && `TEL;TYPE=WORK:${c.phone}`, c.mobile && `TEL;TYPE=CELL:${c.mobile}`,
       c.address && `ADR;TYPE=WORK:;;${c.address.replace(/\n/g, ";")};;;;`, c.web && `URL:${c.web}`, "END:VCARD"].filter(Boolean).join("\r\n");
@@ -15092,21 +15251,30 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       <FitScroll card cols={["Name", "Art · Ort", "Offen"]}>
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Kontakte. Mit „＋ Kontakt“ anlegen, mit „📥 Kontakte importieren“ (Apple, Handy, Outlook, Google, vCard) übernehmen – Kunden aus Rechnungen werden hier automatisch gespeichert („Kunde merken“)."}</p>}
+        <ColTable DEF={CUST_COLS} cfg={custCols} setCfg={setCustCols} list={() => <>
         {shownV.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
-          <div key={c.id} className={"frow click contactrow" + (selId === c.id && !mob ? " sel" : "")} onClick={() => setSelId(c.id)}>
-            {c.logo ? <span className="caticon logo custlogo" style={{ width: 42, height: 42 }}><img src={c.logo} alt="" /></span> : <span className="caticon avatar" style={{ width: 42, height: 42 }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>}
-            <div className="grow">
-              <b>{c.name}</b> <small style={{ color: typeOf(c).color }}><TypeGlyph t={typeOf(c)} /> {typeOf(c).name}</small> <small className="muted">{c.number || ""}</small>
-              <small className="muted block">{[c.contact, cityOf(c.address)].filter(Boolean).join(" · ")}</small>
-              <div className="cactions" onClick={(e) => e.stopPropagation()}>
-                {c.email && <a className="chip" href={`mailto:${c.email}`}>✉️ {c.email}</a>}
-                {(c.phone || c.mobile) && <a className="chip" href={`tel:${(c.mobile || c.phone).replace(/\s/g, "")}`}>📞 {c.mobile || c.phone}</a>}
-                {setTab && <button className="chip" onClick={() => { ls.set("pendingInvoice", { kind: "rechnung", customer: c }); setTab("invoices"); }}>🧾 Rechnung</button>}
-                <button className="chip" onClick={() => vcard(c)}>📇 vCard</button>
+            <div key={c.id} className={"frow click contactrow" + (selId === c.id && !mob ? " sel" : "")} onClick={() => setSelId(c.id)}>
+              {c.logo ? <span className="caticon logo custlogo" style={{ width: 42, height: 42 }}><img src={c.logo} alt="" /></span> : <span className="caticon avatar" style={{ width: 42, height: 42 }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>}
+              <div className="grow">
+                <b>{c.name}</b> <small style={{ color: typeOf(c).color }}><TypeGlyph t={typeOf(c)} /> {typeOf(c).name}</small> <small className="muted">{c.number || ""}</small>
+                <small className="muted block">{[c.contact, cityOf(c.address)].filter(Boolean).join(" · ")}</small>
+                <div className="cactions" onClick={(e) => e.stopPropagation()}>
+                  {c.email && <a className="chip" href={`mailto:${c.email}`}>✉️ {c.email}</a>}
+                  {(c.phone || c.mobile) && <a className="chip" href={`tel:${(c.mobile || c.phone).replace(/\s/g, "")}`}>📞 {c.mobile || c.phone}</a>}
+                  {setTab && <button className="chip" onClick={() => { ls.set("pendingInvoice", { kind: "rechnung", customer: c }); setTab("invoices"); }}>🧾 Rechnung</button>}
+                  <button className="chip" onClick={() => vcard(c)}>📇 vCard</button>
+                </div>
               </div>
-            </div>
-            {!!inv.length && <div className="right"><b>{fmtMoney(inv.reduce((s, i) => s + invEur(i), 0))}</b><small className={"block " + (open.length ? "warnc" : "muted")}>{inv.length} Rechnung{inv.length === 1 ? "" : "en"}{open.length ? ` · ${open.length} offen` : ""}</small></div>}
-          </div>); })}
+              {!!inv.length && <div className="right"><b>{fmtMoney(inv.reduce((s, i) => s + invEur(i), 0))}</b><small className={"block " + (open.length ? "warnc" : "muted")}>{inv.length} Rechnung{inv.length === 1 ? "" : "en"}{open.length ? ` · ${open.length} offen` : ""}</small></div>}
+            </div>); })}
+          </>} table={() => shownV.map((c) => { const inv = invOf(c), open = inv.filter((i) => i.status !== "bezahlt"); return (
+          <ColRow key={c.id} DEF={CUST_COLS} cfg={custCols} className={"contactrow" + (selId === c.id ? " sel" : "")} onClick={() => setSelId(c.id)}
+            lead={c.logo ? <span className="caticon logo custlogo" style={{ width: 34, height: 34 }}><img src={c.logo} alt="" /></span> : <span className="caticon avatar" style={{ width: 34, height: 34 }}>{(c.name || "?").trim().slice(0, 1).toUpperCase()}</span>}
+            cells={{ name: <><b className="invname">{c.name}</b>{c.contact && <small className="muted block">{c.contact}</small>}</>, type: <span style={{ color: typeOf(c).color }}><TypeGlyph t={typeOf(c)} /> {typeOf(c).name}</span>,
+              nr: c.number || <span className="muted">–</span>, city: cityOf(c.address) || <span className="muted">–</span>,
+              contact: <span className="ccontact" onClick={(e) => e.stopPropagation()}>{c.email && <a className="iconbtn" title={c.email} href={`mailto:${c.email}`}>✉️</a>}{(c.phone || c.mobile) && <a className="iconbtn" title={c.mobile || c.phone} href={`tel:${(c.mobile || c.phone).replace(/\s/g, "")}`}>📞</a>}{!c.email && !c.phone && !c.mobile && <span className="muted">–</span>}</span>,
+              open: inv.length ? <><b className="invamt">{fmtMoney(inv.reduce((s, i) => s + invEur(i), 0))}</b><small className={"block " + (open.length ? "warnc" : "muted")}>{inv.length} Rechnung{inv.length === 1 ? "" : "en"}{open.length ? ` · ${open.length} offen` : ""}</small></> : <span className="muted">–</span> }}
+            trail={<span className="invacts">{setTab && <button className="iconbtn" title="Neue Rechnung" onClick={() => { ls.set("pendingInvoice", { kind: "rechnung", customer: c }); setTab("invoices"); }}>🧾</button>}<button className="iconbtn" title="vCard" onClick={() => vcard(c)}>📇</button></span>} />); })} />
       </section>
       </FitScroll>
       </div></div>)}
@@ -15768,6 +15936,7 @@ function ArticlesPage({ setTab }) {
   const usage = (a) => { let n = 0, sum = 0; for (const i of invoices) if (i.kind === "rechnung" && !["entwurf", "storniert"].includes(i.status)) for (const it of i.items || []) if (it.text === a.text) { n++; sum += (Number(it.qty) || 0) * (Number(it.price) || 0); } return { n, sum }; };
   const save = (a, mv) => { setList((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a])); if (mv?.length) ls.set("stockMoves", [...ls.get("stockMoves", []), ...mv]); };
   const allMoves = [...ls.get("stockMoves", []), ...stockSales(list, invoices)];
+  const [artCols, setArtCols] = useCols("artikel", ART_COLS);
   const stInfo = (a) => { if (!a.stock) return null; const s = stockAt(a, allMoves); return { s, low: a.min !== "" && a.min != null && s <= Number(a.min), txt: `Bestand ${fmtQty(s)} ${a.unit || ""}` }; };
   const groups = [...new Set([...C.groups, ...list.map((a) => a.group).filter(Boolean)])];
   const shown = list.filter((a) => grp === "alle" || (grp === "ohne" ? !a.group : a.group === grp))
@@ -15815,14 +15984,22 @@ function ArticlesPage({ setTab }) {
       <FitScroll card cols={["Bezeichnung", "Nummer · Gruppe", "Preis"]}>
       <section className="tile ctlist">
         {!shown.length && <p className="muted small">{list.length ? "Keine Treffer." : "Noch keine Artikel. Mit „＋ Artikel“ anlegen oder beim Schreiben einer Rechnung mit ☆ merken – beim Tippen der Bezeichnung werden sie vorgeschlagen."}</p>}
+        <ColTable DEF={ART_COLS} cfg={artCols} setCfg={setArtCols} list={() => <>
         {shown.map(({ a, u }) => (
-          <div key={a.id} className={"frow click" + (a.inactive ? " ended" : "")} onClick={() => setEdit(a)}>
-            <ArtIco a={a} size={42} />
-            <div className="grow"><b>{a.text || "Ohne Bezeichnung"}</b>{stInfo(a) && <span className={"stpill " + (stInfo(a).low ? "st-over" : "st-open")} style={{ marginLeft: 8 }}>{stInfo(a).txt}</span>}
-              <small className="muted block">{[a.number, a.group, a.loc && "📍 " + a.loc, a.inactive && "inaktiv", u.n ? `${u.n}× verrechnet · ${fmtMoney(u.sum)}` : "noch nicht verrechnet"].filter(Boolean).join(" · ")}</small></div>
-            <div className="right"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"}</b><small className="muted block">pro {a.unit || C.defUnit}</small></div>
-          </div>
-        ))}
+            <div key={a.id} className={"frow click" + (a.inactive ? " ended" : "")} onClick={() => setEdit(a)}>
+              <ArtIco a={a} size={42} />
+              <div className="grow"><b>{a.text || "Ohne Bezeichnung"}</b>{stInfo(a) && <span className={"stpill " + (stInfo(a).low ? "st-over" : "st-open")} style={{ marginLeft: 8 }}>{stInfo(a).txt}</span>}
+                <small className="muted block">{[a.number, a.group, a.loc && "📍 " + a.loc, a.inactive && "inaktiv", u.n ? `${u.n}× verrechnet · ${fmtMoney(u.sum)}` : "noch nicht verrechnet"].filter(Boolean).join(" · ")}</small></div>
+              <div className="right"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"}</b><small className="muted block">pro {a.unit || C.defUnit}</small></div>
+            </div>
+          ))}
+        </>} table={() => shown.map(({ a, u }) => { const si = stInfo(a); return (
+          <ColRow key={a.id} DEF={ART_COLS} cfg={artCols} className={a.inactive ? "ended" : ""} onClick={() => setEdit(a)} lead={<ArtIco a={a} size={34} />}
+            cells={{ text: <><b className="invname">{a.text || "Ohne Bezeichnung"}</b><small className="muted block">{[a.inactive && "inaktiv", u.n ? `${u.n}× verrechnet · ${fmtMoney(u.sum)}` : "noch nicht verrechnet"].filter(Boolean).join(" · ")}</small></>,
+              nr: <span className="muted">{a.number || "–"}</span>, grp: a.group || <span className="muted">–</span>,
+              stock: si ? <span className={"stpill " + (si.low ? "st-over" : "st-open")}>{fmtQty(si.s)} {a.unit || ""}</span> : <span className="muted">–</span>,
+              loc: a.loc ? "📍 " + a.loc : <span className="muted">–</span>,
+              price: <><b className="invamt">{a.price !== "" && a.price != null ? fmtMoney(Number(a.price)) : "—"}</b><small className="muted block">pro {a.unit || C.defUnit}</small></> }} />); })} />
       </section>
       </FitScroll>
       </>)}
@@ -15836,7 +16013,12 @@ function ArticlesPage({ setTab }) {
   );
 }
 
+const FK_COLS = { lead: 44, flex: "name", trail: 150, trailLbl: "Aktionen", cols: [["name", "Anbieter"], ["cat", "Kategorie", 150], ["sub", "Details", 260], ["iv", "Intervall", 100], ["amt", "Kosten", 110], ["stat", "Status", 160]] };
+const CT_COLS = { lead: 40, flex: "name", trail: 84, trailLbl: "", cols: [["name", "Vertrag"], ["prov", "Anbieter", 170], ["cat", "Art", 120], ["iv", "Intervall", 110], ["cancel", "Kündigen bis", 130], ["amt", "Kosten", 110], ["stat", "Status", 100]] };
+const CUST_COLS = { lead: 40, flex: "name", trail: 90, trailLbl: "", cols: [["name", "Name"], ["type", "Art", 120], ["nr", "Nummer", 100], ["city", "Ort", 150], ["contact", "Kontakt", 100], ["open", "Rechnungen", 170]] };
+const ART_COLS = { lead: 40, flex: "text", cols: [["text", "Bezeichnung"], ["nr", "Nummer", 100], ["grp", "Gruppe", 130], ["stock", "Bestand", 110, "r"], ["loc", "Lagerort", 140], ["price", "Preis", 120, "r"]] };
 /* ======================= Besitz & Garantie (Privat + Firma) ======================= */
+const AST_COLS = { lead: 40, flex: "name", trail: 120, trailLbl: "Aktionen", cols: [["name", "Gerät"], ["brand", "Marke", 130], ["date", "Gekauft", 104], ["warr", "Garantie", 170], ["dealer", "Händler", 150], ["price", "Kaufpreis", 116, "r"], ["stat", "Status", 120], ["scope", "Bereich", 100]] };
 const ASSET_CATS = { Elektronik: "💻", Haushalt: "🍳", Werkzeug: "🔧", "Möbel": "🛋️", Fahrzeug: "🚗", "Sport & Freizeit": "⚽", Garten: "🌿", "Schmuck & Wertsachen": "💍", Sonstiges: "📦" };
 const ASSET_DEF_WARR = 24; // Gewährleistung in Österreich: 2 Jahre ab Übergabe
 const astEmo = (a) => ASSET_CATS[a.cat] || "📦";
@@ -15973,6 +16155,7 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
     .filter((a) => !q || norm(`${a.name} ${a.brand} ${a.serial} ${a.dealer} ${a.cat} ${a.note}`).includes(norm(q)))
     .sort((x, y) => astDir * (AST_SORTS[astSort] || AST_SORTS.ablauf)[2](x, y));
   const shownV = useProgressiveAuto(shown);
+  const [astCols, setAstCols] = useCols("besitz", AST_COLS);
   const value = inScope.filter((a) => !astOut(a)).reduce((s, a) => s + astEur(a), 0);
   const dlDocsA = useMemo(() => assetDlDocs(inScope), [inScope]);
   const calItems = dlDocsA.flatMap((d) => d.deadlines.map((dl) => [dl, d]));
@@ -16040,24 +16223,39 @@ function AssetsPage({ docs, onOpen, onScan, onUpload, notify, calSync, setCalSyn
         <FitScroll card cols={["Gerät", "Marke · Kauf · Garantie", "Kaufpreis"]}>
           <section className="tile ctlist">
             {!shown.length && empty}
+            <ColTable DEF={AST_COLS} cfg={astCols} setCfg={setAstCols} list={() => <>
             {shown.length > 0 && <div className="astrow asthead" aria-hidden="true"><span /><span>Gerät</span><span className="r">Kaufpreis</span><span className="r">Status · Aktionen</span></div>}
-            {shownV.map((a) => { const d = a.docId && docs.find((x) => x.id === a.docId), st = astState(a), end = astEndAll(a);
+              {shownV.map((a) => { const d = a.docId && docs.find((x) => x.id === a.docId), st = astState(a), end = astEndAll(a);
+                const stp = astOut(a) ? <span className="stpill st-void">ausgeschieden</span> : st === "bald" ? <span className="stpill st-over" title={"Garantie bis " + fmtDate(end)}>in {daysUntil(end)} T.</span> : st === "aktiv" ? <span className="stpill st-paid" title={"Garantie bis " + fmtDate(end)}>Garantie</span> : st === "abgelaufen" ? <span className="stpill astexp" title={"abgelaufen " + fmtDate(end)}>abgelaufen</span> : <span className="stpill st-draft">ohne Garantie</span>;
+                const stop = (f) => (e) => { e.stopPropagation(); f(); };
+                return (
+                <div key={a.id} className={"astrow click" + (astOut(a) ? " ended" : "")} onClick={() => setEdit(a)}>
+                  <AstIco a={a} size={42} />
+                  <div className="astmain"><b className="one">{a.name}</b>
+                    <small className="muted block one">{[sub(a), a.serial && "Nr. " + a.serial, a.dealer].filter(Boolean).join(" · ")}</small></div>
+                  <div className="r astamt"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price), a.currency || "EUR") : "—"}</b><small className="muted block">{a.date ? fmtDate(a.date) : ""}</small></div>
+                  <div className="aststat" onClick={(e) => e.stopPropagation()}>
+                    <span className="astslot astslot1">{stp}</span><span className="astslot astslot2">{(a.scope || "privat") === "firma" && <span className="stpill st-draft astfirma" title="Firma">🏢 Firma</span>}</span>
+                    <span className="astacts dactions">
+                      <button type="button" className={d ? "" : "astnone"} disabled={!d} title={d ? "Kaufbeleg ansehen" : "Kein Kaufbeleg"} aria-label="Kaufbeleg ansehen" onClick={stop(() => d && onOpen(d.id))}><IcoEye /></button>
+                      <button type="button" title="Bearbeiten" aria-label="Bearbeiten" onClick={stop(() => setEdit(a))}><IcoEdit /></button>
+                      <MoreMenu items={[{ icon: "✎", title: "Bearbeiten", run: () => setEdit(a) }, d && { icon: "🖨", title: "Kaufbeleg drucken", run: () => printDoc(d) }, d && { icon: "⤴", title: "Kaufbeleg teilen", run: () => shareDocs([d]) }, !d && { icon: "📎", title: "Kaufbeleg hinzufügen", sub: "im Gerät unter „Kaufbeleg“", run: () => setEdit(a) }, end && { icon: "📅", title: "Im Kalender zeigen", sub: "Garantie bis " + fmtDate(end), run: () => setMode("cal") }]} />
+                    </span></div>
+                </div>); })}
+              </>} table={() => shownV.map((a) => { const d = a.docId && docs.find((x) => x.id === a.docId), st = astState(a), end = astEndAll(a);
               const stp = astOut(a) ? <span className="stpill st-void">ausgeschieden</span> : st === "bald" ? <span className="stpill st-over" title={"Garantie bis " + fmtDate(end)}>in {daysUntil(end)} T.</span> : st === "aktiv" ? <span className="stpill st-paid" title={"Garantie bis " + fmtDate(end)}>Garantie</span> : st === "abgelaufen" ? <span className="stpill astexp" title={"abgelaufen " + fmtDate(end)}>abgelaufen</span> : <span className="stpill st-draft">ohne Garantie</span>;
               const stop = (f) => (e) => { e.stopPropagation(); f(); };
-              return (
-              <div key={a.id} className={"astrow click" + (astOut(a) ? " ended" : "")} onClick={() => setEdit(a)}>
-                <AstIco a={a} size={42} />
-                <div className="astmain"><b className="one">{a.name}</b>
-                  <small className="muted block one">{[sub(a), a.serial && "Nr. " + a.serial, a.dealer].filter(Boolean).join(" · ")}</small></div>
-                <div className="r astamt"><b>{a.price !== "" && a.price != null ? fmtMoney(Number(a.price), a.currency || "EUR") : "—"}</b><small className="muted block">{a.date ? fmtDate(a.date) : ""}</small></div>
-                <div className="aststat" onClick={(e) => e.stopPropagation()}>
-                  <span className="astslot astslot1">{stp}</span><span className="astslot astslot2">{(a.scope || "privat") === "firma" && <span className="stpill st-draft astfirma" title="Firma">🏢 Firma</span>}</span>
-                  <span className="astacts dactions">
-                    <button type="button" className={d ? "" : "astnone"} disabled={!d} title={d ? "Kaufbeleg ansehen" : "Kein Kaufbeleg"} aria-label="Kaufbeleg ansehen" onClick={stop(() => d && onOpen(d.id))}><IcoEye /></button>
-                    <button type="button" title="Bearbeiten" aria-label="Bearbeiten" onClick={stop(() => setEdit(a))}><IcoEdit /></button>
-                    <MoreMenu items={[{ icon: "✎", title: "Bearbeiten", run: () => setEdit(a) }, d && { icon: "🖨", title: "Kaufbeleg drucken", run: () => printDoc(d) }, d && { icon: "⤴", title: "Kaufbeleg teilen", run: () => shareDocs([d]) }, !d && { icon: "📎", title: "Kaufbeleg hinzufügen", sub: "im Gerät unter „Kaufbeleg“", run: () => setEdit(a) }, end && { icon: "📅", title: "Im Kalender zeigen", sub: "Garantie bis " + fmtDate(end), run: () => setMode("cal") }]} />
-                  </span></div>
-              </div>); })}
+              return <ColRow key={a.id} DEF={AST_COLS} cfg={astCols} className={astOut(a) ? "ended" : ""} onClick={() => setEdit(a)} lead={<AstIco a={a} size={34} />}
+                cells={{ name: <><b className="invname">{a.name}</b>{a.serial && <small className="muted block">Nr. {a.serial}</small>}</>, brand: a.brand || <span className="muted">–</span>,
+                  date: a.date ? fmtDate(a.date) : <span className="muted">–</span>,
+                  warr: astOut(a) ? (a.soldAt ? "ausgeschieden " + fmtDate(a.soldAt) : "ausgeschieden") : end ? (st === "abgelaufen" ? "abgelaufen " + fmtDate(end) : "bis " + fmtDate(end)) : <span className="muted">–</span>,
+                  dealer: a.dealer || <span className="muted">–</span>, price: <b className="invamt">{a.price !== "" && a.price != null ? fmtMoney(Number(a.price), a.currency || "EUR") : "—"}</b>,
+                  stat: stp, scope: (a.scope || "privat") === "firma" ? <span className="stpill st-draft astfirma">🏢 Firma</span> : <span className="stpill st-draft">👤 Privat</span> }}
+                trail={<span className="astacts dactions">
+                  <button type="button" className={d ? "" : "astnone"} disabled={!d} title={d ? "Kaufbeleg ansehen" : "Kein Kaufbeleg"} aria-label="Kaufbeleg ansehen" onClick={stop(() => d && onOpen(d.id))}><IcoEye /></button>
+                  <button type="button" title="Bearbeiten" aria-label="Bearbeiten" onClick={stop(() => setEdit(a))}><IcoEdit /></button>
+                  <MoreMenu items={[{ icon: "✎", title: "Bearbeiten", run: () => setEdit(a) }, d && { icon: "🖨", title: "Kaufbeleg drucken", run: () => printDoc(d) }, d && { icon: "⤴", title: "Kaufbeleg teilen", run: () => shareDocs([d]) }, !d && { icon: "📎", title: "Kaufbeleg hinzufügen", sub: "im Gerät unter „Kaufbeleg“", run: () => setEdit(a) }, end && { icon: "📅", title: "Im Kalender zeigen", sub: "Garantie bis " + fmtDate(end), run: () => setMode("cal") }]} />
+                </span>} />; })} />
           </section>
           <p className="muted small fsnote">Gewährleistung in Österreich: 2 Jahre ab Übergabe; eine Herstellergarantie kann länger laufen. Garantie-Enden erscheinen automatisch im Reiter „Umtauschfrist“ und im Kalender-Abo.</p>
         </FitScroll>
@@ -16076,6 +16274,7 @@ const KB_CATS = {
   ein: ["Barverkauf / Erlös", "Privateinlage", "Bankabhebung (Geldtransit)", "Sonstige Einnahme"],
   aus: ["Wareneinkauf", "Büromaterial", "Porto & Versand", "Bewirtung", "Reise & Fahrt", "Kfz", "Sonstiger Aufwand", "Privatentnahme", "Bankeinzahlung (Geldtransit)", "Kassendifferenz"]
 };
+const KB_COLS = { flex: "text", trail: 110, trailLbl: "Beleg", cols: [["no", "Nr.", 96], ["date", "Datum", 104], ["text", "Text"], ["cat", "Kategorie", 170], ["in", "Einnahme", 110], ["out", "Ausgabe", 110], ["saldo", "Saldo", 120]] };
 const KB_DENOMS = [500, 200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01];
 const kbSigned = (e) => (e.kind === "ein" ? 1 : -1) * (Number(e.amount) || 0);
 const kbSort = (a, b) => (a.date || "").localeCompare(b.date || "") || (a.created || "").localeCompare(b.created || "");
@@ -16408,6 +16607,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
   const kbEigen = async (e) => { const g = (await uiPrompt(`Eigenbeleg für ${kbNo(e)} („${e.text}“, ${fmtMoney(e.amount)})\nGrund, warum der Originalbeleg fehlt:`, e.kind === "ein" ? "Barverkauf ohne Rechnung" : "Beleg verloren / nicht ausgestellt")); if (g == null) return;
     const blob = await kbEigenbelegPdf(e, kasse, g); const id = await onUpload?.(new File([blob], `Eigenbeleg-${kbNo(e).replace("/", "-")}.pdf`, { type: "application/pdf" }), {});
     if (id) { setEntries((l) => l.map((x) => (x.id === e.id ? { ...x, docId: id, eigen: true } : x))); notify?.(`Eigenbeleg für ${kbNo(e)} erstellt`); } };
+  const [kbCols, setKbCols] = useCols("kassabuch", KB_COLS);
   const kbActs = (e) => { const d = e.docId && docs.find((x) => x.id === e.docId), sug = d ? [] : kbMatches(e, docs);
     return <KbActs e={e} d={d} style={kbStyle} n={sug.length} a={{ open: (id) => onOpen?.(id), attach: () => kbFileFor(e), cam: () => setKbCam(e), suggest: () => setKbPick({ e, sug }), pick: () => setKbPick({ e, sug }), paste: () => setKbPaste(e), eigen: () => kbEigen(e),
       ref: async () => { const v = (await uiPrompt(`Belegnummer oder Ablageort für ${kbNo(e)}:`, e.beleg || "")); if (v != null) setEntries((l) => l.map((x) => (x.id === e.id ? { ...x, beleg: v.trim() } : x))); },
@@ -16532,9 +16732,10 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
       {showCounts && countsList}
       <FitScroll card>
       <section className="tile kbtable">
+        {!shown.length && <p className="muted small" style={{ padding: 12 }}>{mine.length ? "Keine Buchungen in diesem Zeitraum." : "Noch keine Buchungen. Jede Bareinnahme und -ausgabe einzeln mit Beleg erfassen."}</p>}
+        <ColTable DEF={KB_COLS} cfg={kbCols} setCfg={setKbCols} min={760} list={() => <>
         <div className="kbr kbh"><span>Nr.</span><span>Datum</span><span>Text</span><span>Kategorie</span><span className="r">Einnahme</span><span className="r">Ausgabe</span><span className="r">Saldo</span><span className="kbacth">Beleg</span></div>
         {per !== "alle" && <div className="kbr kbopen"><span /><span>{fmtDate(first)}</span><span>Anfangsbestand</span><span /><span /><span /><span className="r">{fmtMoney(opening)}</span><span /></div>}
-        {!shown.length && <p className="muted small" style={{ padding: 12 }}>{mine.length ? "Keine Buchungen in diesem Zeitraum." : "Noch keine Buchungen. Jede Bareinnahme und -ausgabe einzeln mit Beleg erfassen."}</p>}
         {shown.map((e) => (
           <div key={e.id} className={"kbr click" + rowCls(e) + (kbDrop === e.id ? " kbdrop" : "")} onClick={() => setDet(e.id)} {...kbDnD(e)}>
             <span className="muted kbcno">{kbNo(e)}</span><span className="kbcdate">{fmtDate(e.date)}<small className="muted kbsub">{kbNo(e)}</small></span>
@@ -16545,6 +16746,17 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
           </div>
         ))}
         {!!shown.length && <div className="kbr kbh kbfoot"><span /><span /><span>Summe {perLabel}</span><span /><span className="r pos">{fmtMoney(sumIn)}</span><span className="r neg">{fmtMoney(sumOut)}</span><span className="r">{fmtMoney(kbR2(opening + sumIn - sumOut))}</span><span /></div>}
+        </>} table={() => shown.length ? <>
+          {per !== "alle" && <ColRow DEF={KB_COLS} cfg={kbCols} className="kbopenrow" cells={{ date: fmtDate(first), text: <span className="muted">Anfangsbestand</span>, saldo: <b>{fmtMoney(opening)}</b> }} />}
+          {shown.map((e) => (
+            <ColRow key={e.id} DEF={KB_COLS} cfg={kbCols} className={"kbrt" + rowCls(e) + (kbDrop === e.id ? " kbdrop" : "")} onClick={() => setDet(e.id)} {...kbDnD(e)}
+              cells={{ no: <span className="muted">{kbNo(e)}</span>, date: fmtDate(e.date),
+                text: <><b className="invname">{e.text}</b>{e.fxCur && e.fxAmt ? <small className="muted"> ({fmtMoney(e.fxAmt, e.fxCur)})</small> : null}{e.docId && " 📎"}{e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}</>,
+                cat: <span className="muted">{e.cat}</span>, in: <span className="pos">{e.kind === "ein" ? fmtMoney(e.amount) : ""}</span>, out: <span className="neg">{e.kind === "aus" ? fmtMoney(e.amount) : ""}</span>, saldo: <b className="invamt">{fmtMoney(saldo[e.id])}</b> }}
+              trail={kbActs(e)} />
+          ))}
+          <ColRow DEF={KB_COLS} cfg={kbCols} className="kbfootrow" cells={{ text: <b>Summe {perLabel}</b>, in: <b className="pos">{fmtMoney(sumIn)}</b>, out: <b className="neg">{fmtMoney(sumOut)}</b>, saldo: <b>{fmtMoney(kbR2(opening + sumIn - sumOut))}</b> }} />
+        </> : null} />
       </section>
       <p className="muted small fsnote">🔒 Unveränderbare Einzelaufzeichnung mit fortlaufender Nummer je Jahr, Storno statt Löschen, Kassenminus wird verhindert. Ersetzt keine Registrierkasse (RKSV).</p>
       </FitScroll>
@@ -16818,6 +17030,7 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
   const VIEWS = [["bestand", "Bestand", stockArts.length], ["nachbestellen", "Nachbestellen", low.length], ["bewegungen", "Bewegungen"], ["inventur", "Inventuren", openCounts.length || null]];
   const stats = [{ label: "Lagerwert (EK)", value: fmtMoney(value), sub: `${stockArts.length} Lagerartikel` }, { label: "Nachbestellen", value: low.length, vcls: low.length ? "neg" : "", alert: !!low.length, sub: "auf/unter Mindestbestand", onClick: () => setView("nachbestellen") },
     { label: "Letzte Inventur", value: lastInv ? fmtDate(lastInv.date) : "noch keine", sub: openCounts.length ? `${openCounts.length} offen` : "Stichtag", onClick: () => setView("inventur") }];
+  const [lgCols, setLgCols] = useCols("lager", LAGER_COLS), [mvCols, setMvCols] = useCols("lagerbew", LGMV_COLS);
   const artRow = (a) => { const s = st(a), isLow = a.min !== "" && a.min != null && s <= Number(a.min); return mob ? (
     <MItem key={a.id} icon={<ArtIco a={a} />} title={a.text} tags={[isLow && { label: "nachbestellen", color: "var(--red)" }]} sub={[a.number, a.loc, a.min != null && a.min !== "" && "min " + fmtQty(a.min)].filter(Boolean).join(" · ")}
       amount={fmtQty(s)} amountCls={isLow ? "neg" : ""} amountSub={a.unit || ""} onClick={() => setMv({ a })}
@@ -16837,11 +17050,14 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
     mob ? mGroup(moveList, (m) => m.date).map(([d, l]) => <React.Fragment key={d}><MHead>{fmtDate(d)}</MHead>{l.map((m) => { const a = arts.find((x) => x.id === m.art); return (
       <MItem key={m.id} icon={<MIco e={MV_TYPES[m.type]?.[1] || "•"} />} title={a.text} sub={[MV_TYPES[m.type]?.[0], m.note].filter(Boolean).join(" · ")} amount={(m.qty > 0 ? "+" : "") + fmtQty(m.qty)} amountCls={m.qty < 0 ? "neg" : "pos"} amountSub={a.unit || ""}
         swipe={!m.derived ? { right: [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: async () => (await uiAsk("Bewegung löschen?")) && setMoves((x) => x.filter((y) => y.id !== m.id)) }] } : undefined} />); })}</React.Fragment>)
-    : moveList.map((m) => { const a = arts.find((x) => x.id === m.art); return (
+    : <ColTable DEF={LGMV_COLS} cfg={mvCols} setCfg={setMvCols} list={() => moveList.map((m) => { const a = arts.find((x) => x.id === m.art); return (
       <div key={m.id} className="frow"><span className="caticon" style={{ width: 36, height: 36 }}><Glyph e={MV_TYPES[m.type]?.[1]} /></span>
         <div className="grow"><b>{a.text}</b><small className="muted block">{fmtDate(m.date)} · {MV_TYPES[m.type]?.[0]}{m.note ? " · " + m.note : ""}</small></div>
         <b className={m.qty < 0 ? "neg" : "pos"}>{m.qty > 0 ? "+" : ""}{fmtQty(m.qty)} <small>{a.unit || ""}</small></b>
-        {!m.derived ? <button className="chip" title="Löschen" onClick={async () => (await uiAsk("Bewegung löschen?")) && setMoves((x) => x.filter((y) => y.id !== m.id))}>✕</button> : <span style={{ width: 34 }} />}</div>); })
+        {!m.derived ? <button className="chip" title="Löschen" onClick={async () => (await uiAsk("Bewegung löschen?")) && setMoves((x) => x.filter((y) => y.id !== m.id))}>✕</button> : <span style={{ width: 34 }} />}</div>); })} table={() => moveList.map((m) => { const a = arts.find((x) => x.id === m.art); return (
+      <ColRow key={m.id} DEF={LGMV_COLS} cfg={mvCols} lead={<span className="caticon" style={{ width: 32, height: 32 }}><Glyph e={MV_TYPES[m.type]?.[1]} /></span>}
+        cells={{ art: <b className="invname">{a.text}</b>, date: fmtDate(m.date), type: MV_TYPES[m.type]?.[0] || "", note: m.note || <span className="muted">–</span>, qty: <b className={"invamt " + (m.qty < 0 ? "neg" : "pos")}>{m.qty > 0 ? "+" : ""}{fmtQty(m.qty)} <small>{a.unit || ""}</small></b> }}
+        trail={!m.derived ? <button className="chip" title="Löschen" onClick={async () => (await uiAsk("Bewegung löschen?")) && setMoves((x) => x.filter((y) => y.id !== m.id))}>✕</button> : null} />); })} />
   ) : view === "inventur" ? (<>
     <div className="row"><button className="btn primary" onClick={() => setNewCnt({ loc: "", group: "" })}>＋ Neue Inventur</button><span className="muted small grow invhint">Stichtagsinventur oder permanente Teil-Inventur je Lagerort/Gruppe</span></div>
     {!counts.length && <MEmpty>Noch keine Inventur. Starte eine Zählung – am Handy auch per Strichcode-Scan.</MEmpty>}
@@ -16855,7 +17071,13 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
   </>) : (() => { const l = sortList(filt(view === "nachbestellen" ? low : stockArts), INV_SORTS2, ivS, ivDir);
     if (!stockArts.length) return <MEmpty>Noch keine Lagerartikel. Öffne einen Artikel und aktiviere „Lagerartikel“ – oder lege direkt einen neuen an.</MEmpty>;
     if (!l.length) return <MEmpty>{view === "nachbestellen" ? "Alles ausreichend auf Lager 👍" : "Keine Treffer."}</MEmpty>;
-    return mob && loc === "alle" && ivS === "name" && ivDir === 1 ? mGroup([...l].sort((x, y) => (x.loc || "~").localeCompare(y.loc || "~", "de")), (a) => a.loc || "Ohne Lagerort").map(([g, x]) => <React.Fragment key={g}><MHead right={x.length}>{g}</MHead>{x.map(artRow)}</React.Fragment>) : l.map(artRow); })();
+    return mob && loc === "alle" && ivS === "name" && ivDir === 1 ? mGroup([...l].sort((x, y) => (x.loc || "~").localeCompare(y.loc || "~", "de")), (a) => a.loc || "Ohne Lagerort").map(([g, x]) => <React.Fragment key={g}><MHead right={x.length}>{g}</MHead>{x.map(artRow)}</React.Fragment>) : mob ? l.map(artRow) : <ColTable DEF={LAGER_COLS} cfg={lgCols} setCfg={setLgCols} list={() => l.map(artRow)} table={() => l.map((a) => { const s = st(a), isLow = a.min !== "" && a.min != null && s <= Number(a.min); return (
+      <ColRow key={a.id} DEF={LAGER_COLS} cfg={lgCols} onClick={() => setEdit(a)} lead={<ArtIco a={a} size={34} />}
+        cells={{ text: <b className="invname">{a.text}</b>, nr: a.number || <span className="muted">–</span>, loc: a.loc ? "📍 " + a.loc : <span className="muted">–</span>, sup: a.supplier || <span className="muted">–</span>,
+          ek: a.ek ? fmtMoney(Number(a.ek)) : <span className="muted">–</span>, stock: <b className={"invamt " + (isLow ? "neg" : "")}>{fmtQty(s)} <small>{a.unit || ""}</small></b>,
+          min: a.min != null && a.min !== "" ? fmtQty(a.min) : <span className="muted">–</span>, order: isLow ? <b className="neg">{fmtQty(reorderQty(a, s))}</b> : <span className="muted">–</span>,
+          val: a.ek ? fmtMoney(kbR2(s * Number(a.ek))) : <span className="muted">–</span> }}
+        trail={<span className="invacts"><button className="chip" title="Zugang" onClick={() => setMv({ a, type: "eingang" })}>＋</button><button className="chip" title="Abgang" onClick={() => setMv({ a, type: "entnahme" })}>−</button></span>} />); })} />; })();
   const newArt = () => setEdit({ id: uid(), text: "", unit: "Stk", price: "", number: "", group: "", stock: true, autoSales: true, initQty: "" });
   const scanHit = (code) => { setScan(false); const a = arts.find((x) => x.ean === code); if (a?.stock) setMv({ a }); else if (a) setEdit({ ...a, stock: true }); else setEdit({ id: uid(), text: "", unit: "Stk", price: "", number: "", group: "", ean: code, stock: true, autoSales: true, initQty: "", autoLookup: true }); };
   const locChips = locs.length ? [["alle", "Alle Orte"], ...locs.map((l) => [l, l]), ["ohne", "Ohne Ort"]] : [];
@@ -16903,6 +17125,8 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
   );
 }
 
+const LAGER_COLS = { lead: 40, flex: "text", trail: 90, cols: [["text", "Artikel"], ["nr", "Nummer", 100], ["loc", "Lagerort", 140], ["sup", "Lieferant", 140], ["ek", "EK", 96], ["stock", "Bestand", 100], ["min", "Mindest", 84], ["order", "Bestellen", 90], ["val", "Lagerwert", 110]] };
+const LGMV_COLS = { lead: 40, flex: "art", trail: 56, cols: [["art", "Artikel"], ["date", "Datum", 104], ["type", "Art", 140], ["note", "Notiz", 220], ["qty", "Menge", 110]] };
 /* ======================= Mahnungen (Reiter) ======================= */
 function DunningPage({ setTab, book }) {
   const mob = useMobileBeta();
@@ -16934,6 +17158,7 @@ function DunningPage({ setTab, book }) {
   const overS = mf === "verlauf" ? [] : kit.apply(over.filter((o) => mqHit(o.x) && (mf === "jetzt" ? o.ready : mf === "warten" ? !o.ready : true)));
   const histS = mf === "alle" || mf === "verlauf" ? kit.apply(history.filter(({ x, r }) => mqHit(x, r))) : [];
   const overV = useProgressiveAuto(overS.map((o) => ({ ...o, id: o.x.id }))), histV = useProgressiveAuto(histS.map((h) => ({ ...h, id: h.x.id + ":" + h.i })));
+  const [dunCols, setDunCols] = useCols("mahnungen", DUN_COLS), dunDef = pick ? { ...DUN_COLS, lead: 30 } : DUN_COLS, [dunhCols, setDunhCols] = useCols("mahnverlauf", DUNH_COLS);
   const tagInv = async (xs) => { const f = await kitTagPrompt(xs); if (!f) return; const ids = new Set(xs.map((x) => x.id)); setList((l) => l.map((y) => (ids.has(y.id) ? { ...y, tags: f(y) } : y))); };
   const printInvs = async (items) => { const bl = []; for (const [x, i] of items) bl.push(await (i == null ? buildInvoicePdf(x, co) : pdfOf(x, i))); if (bl.length) await printBlobs(bl, items.length === 1 ? invFileName(items[0][0], items[0][1] == null ? undefined : items[0][0].reminders[items[0][1]]) : `${items.length} Belege`); };
   const mnHead = ["Kunde", "Rechnung", "Fällig", "Tage überfällig", "Letzte Stufe", "Betrag €", "Tags"];
@@ -17004,46 +17229,72 @@ function DunningPage({ setTab, book }) {
       {mf !== "verlauf" && <section className="tile invlist ltlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Zu mahnen</b><small>{overS.length}</small></div>
         {!overS.length && <p className="muted small" style={{ padding: "0 14px" }}>{over.length ? "Keine Treffer." : "Keine überfälligen Rechnungen 🎉"}</p>}
+        <ColTable DEF={dunDef} cfg={dunCols} setCfg={setDunCols} list={() => <>
         {overV.map(({ x, last, since, ready, next }) => (<React.Fragment key={x.id}>
-          <div className={"invrow" + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setRemind(x))}>
-            {pick && <KitPickBox on={pick.has(x.id)} />}
-            <div className="invmain">
-              <div className="row1"><b className="invname">{x.customer?.name || "Ohne Kunde"}</b><KitTags tags={x.tags} /></div>
-              <small className="muted block">{x.number} · fällig {fmtDate(invDueEff(x))} · {since} Tage überfällig{last ? ` · zuletzt ${remindName(last.level)} am ${fmtDate(last.date)}` : " · noch nicht gemahnt"}</small>
+            <div className={"invrow" + (pick?.has(x.id) ? " picked" : "")} onClick={() => (pick ? togglePick(x.id) : setRemind(x))}>
+              {pick && <KitPickBox on={pick.has(x.id)} />}
+              <div className="invmain">
+                <div className="row1"><b className="invname">{x.customer?.name || "Ohne Kunde"}</b><KitTags tags={x.tags} /></div>
+                <small className="muted block">{x.number} · fällig {fmtDate(invDueEff(x))} · {since} Tage überfällig{last ? ` · zuletzt ${remindName(last.level)} am ${fmtDate(last.date)}` : " · noch nicht gemahnt"}</small>
+              </div>
+              <b className="invamt neg">{fmtInv(x)}</b>
+              <span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? "fällig" : `in ${(dn.waitDays || 0) - since} T.`}</span>
+              <div className="invacts" onClick={(e) => e.stopPropagation()}>
+                <button className={"btn sm" + (ready ? " danger" : "")} onClick={() => setRemind(x)}>{remindName(next)} erstellen</button>
+                <StatusMenu x={x} s={invState(x)} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />
+                <button className="iconbtn" title="Rechnung ansehen" aria-label="Vorschau" onClick={async () => openPdf(await buildInvoicePdf({ ...x, reminders: [] }, co), invFileName(x))}><IcoEye /></button>
+                <button className="iconbtn" title="Rechnung drucken" aria-label="Drucken" onClick={() => printInvs([[x, null]])}><IcoPrint /></button>
+                <button className="iconbtn" title="Tags bearbeiten" aria-label="Tags bearbeiten" onClick={() => tagInv([x])}>#</button>
+              </div>
             </div>
-            <b className="invamt neg">{fmtInv(x)}</b>
-            <span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? "fällig" : `in ${(dn.waitDays || 0) - since} T.`}</span>
-            <div className="invacts" onClick={(e) => e.stopPropagation()}>
+          </React.Fragment>))}
+          </>} table={() => overV.map(({ x, last, since, ready, next }) => (
+          <ColRow key={x.id} DEF={dunDef} cfg={dunCols} className={pick?.has(x.id) ? "picked" : ""} onClick={() => (pick ? togglePick(x.id) : setRemind(x))} lead={pick && <KitPickBox on={pick.has(x.id)} />}
+            cells={{ cust: <><b className="invname">{x.customer?.name || "Ohne Kunde"}</b>{(x.tags || []).length > 0 && <small className="muted block">{x.tags.map((t) => "#" + t).join(" ")}</small>}</>,
+              nr: x.number, due: fmtDate(invDueEff(x)), since: <span className="neg">{since} Tage</span>,
+              last: last ? <>{remindName(last.level)}<small className="muted block">{fmtDate(last.date)}</small></> : <span className="muted">noch nicht</span>,
+              amt: <b className="invamt neg">{fmtInv(x)}</b>, stage: <span className={"stpill " + (ready ? "st-over" : "st-draft")}>{ready ? "fällig" : `in ${(dn.waitDays || 0) - since} T.`}</span> }}
+            trail={<span className="invacts">
               <button className={"btn sm" + (ready ? " danger" : "")} onClick={() => setRemind(x)}>{remindName(next)} erstellen</button>
               <StatusMenu x={x} s={invState(x)} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />
               <button className="iconbtn" title="Rechnung ansehen" aria-label="Vorschau" onClick={async () => openPdf(await buildInvoicePdf({ ...x, reminders: [] }, co), invFileName(x))}><IcoEye /></button>
               <button className="iconbtn" title="Rechnung drucken" aria-label="Drucken" onClick={() => printInvs([[x, null]])}><IcoPrint /></button>
               <button className="iconbtn" title="Tags bearbeiten" aria-label="Tags bearbeiten" onClick={() => tagInv([x])}>#</button>
-            </div>
-          </div>
-        </React.Fragment>))}
+            </span>} />))} />
       </section>}
       {(mf === "alle" || mf === "verlauf") && <section className="tile invlist">
         <div className="tilehead" style={{ padding: "8px 14px 0" }}><b>Mahnverlauf</b><small>{histS.length}</small></div>
         {!histS.length && <p className="muted small" style={{ padding: "0 14px" }}>{history.length ? "Keine Treffer." : "Noch keine Mahnungen erstellt."}</p>}
+        <ColTable DEF={DUNH_COLS} cfg={dunhCols} setCfg={setDunhCols} list={() => <>
         {histV.map(({ x, r, i }) => { const s = invState(x); return (
-          <React.Fragment key={x.id + i}>
-          <div className={"invrow"}>
-            <div className="invmain">
-              <div className="row1"><b className="invname">{remindName(r.level)} · {x.customer?.name}</b></div>
-              <small className="muted block">{fmtDate(r.date)} · {x.number} · Frist {fmtDate(r.due)}{Number(r.fee) ? ` · Spesen ${fmtMoney(Number(r.fee))}` : ""}</small>
+            <React.Fragment key={x.id + i}>
+            <div className={"invrow"}>
+              <div className="invmain">
+                <div className="row1"><b className="invname">{remindName(r.level)} · {x.customer?.name}</b></div>
+                <small className="muted block">{fmtDate(r.date)} · {x.number} · Frist {fmtDate(r.due)}{Number(r.fee) ? ` · Spesen ${fmtMoney(Number(r.fee))}` : ""}</small>
+              </div>
+              <b className="invamt">{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }), invCur(x))}</b>
+              {i !== x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
+              <div className="invacts" onClick={(e) => e.stopPropagation()}>
+                <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}><IcoEye /></button>
+                <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printInvs([[x, i]])}><IcoPrint /></button>
+                <button className="iconbtn" title="Teilen" onClick={async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email)}><IcoShare /></button>
+                {i === x.reminders.length - 1 && s !== "bezahlt" && <button className="link small red" onClick={async () => (await uiAsk("Diese Mahnung aus dem Verlauf entfernen?")) && patch(x.id, { reminders: x.reminders.slice(0, -1) })}>Zurücknehmen</button>}
+                {i === x.reminders.length - 1 && <StatusMenu x={x} s={s} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />}
+              </div>
             </div>
-            <b className="invamt">{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }), invCur(x))}</b>
-            {i !== x.reminders.length - 1 && <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span>}
-            <div className="invacts" onClick={(e) => e.stopPropagation()}>
+            </React.Fragment>); })}
+          </>} table={() => histV.map(({ x, r, i }) => { const s = invState(x); return (
+          <ColRow key={x.id + i} DEF={DUNH_COLS} cfg={dunhCols} onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}
+            cells={{ cust: <b className="invname">{x.customer?.name || "Ohne Kunde"}</b>, stage: remindName(r.level), nr: x.number, date: fmtDate(r.date), due: fmtDate(r.due),
+              fee: Number(r.fee) ? fmtMoney(Number(r.fee)) : <span className="muted">–</span>, amt: <b className="invamt">{fmtMoney(invTotal({ ...x, reminders: x.reminders.slice(0, i + 1) }), invCur(x))}</b>,
+              stat: i === x.reminders.length - 1 ? <span onClick={(e) => e.stopPropagation()}><StatusMenu x={x} s={s} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} /></span> : <span className={"stpill " + (STATE_UI[s]?.[1] || "")}>{STATE_UI[s]?.[0] || s}</span> }}
+            trail={<span className="invacts">
               <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}><IcoEye /></button>
               <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printInvs([[x, i]])}><IcoPrint /></button>
               <button className="iconbtn" title="Teilen" onClick={async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email)}><IcoShare /></button>
               {i === x.reminders.length - 1 && s !== "bezahlt" && <button className="link small red" onClick={async () => (await uiAsk("Diese Mahnung aus dem Verlauf entfernen?")) && patch(x.id, { reminders: x.reminders.slice(0, -1) })}>Zurücknehmen</button>}
-              {i === x.reminders.length - 1 && <StatusMenu x={x} s={s} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />}
-            </div>
-          </div>
-          </React.Fragment>); })}
+            </span>} />); })} />
       </section>}
       </FitScroll>
       </>)}
@@ -17054,6 +17305,8 @@ function DunningPage({ setTab, book }) {
   );
 }
 
+const DUN_COLS = { flex: "cust", trail: 380, trailLbl: "Aktionen", cols: [["cust", "Kunde"], ["nr", "Rechnung", 120], ["due", "Fällig", 104], ["since", "Überfällig", 100], ["last", "Gemahnt", 120], ["amt", "Betrag", 110], ["stage", "Mahnen", 90]] };
+const DUNH_COLS = { flex: "cust", trail: 190, trailLbl: "Aktionen", cols: [["cust", "Kunde"], ["stage", "Stufe", 130], ["nr", "Rechnung", 120], ["date", "Datum", 104], ["due", "Frist", 104], ["fee", "Spesen", 90], ["amt", "Betrag", 110], ["stat", "Status", 120]] };
 const CSS = `
 :root{color-scheme:light;--bg:#f3f5f9;--card:#ffffff;--card2:#f6f8fb;--line:#e6e9ef;--txt:#0f1b2d;--mut:#6b7686;--acc:#0b63f6;--acc2:#00b3a4;--red:#e5484d;--warn:#e88a00;--ok:#16a34a;
   --shadow:0 1px 2px #0f1b2d0d,0 4px 14px #0f1b2d0f;--hero:linear-gradient(135deg,#0b3d91 0%,#0b63f6 55%,#00b3a4 100%)}
@@ -20019,6 +20272,22 @@ html.sty-graphit.sty-graphit nav.bottom>button.on,html.sty-sand.sty-sand nav.bot
 .txtable.txcustom .txrow>.c-date,.txtable.txcustom .txrow>.c-cat,.txtable.txcustom .txrow>.c-acc,.txtable.txcustom .txrow>.c-amt{text-align:center;justify-self:stretch}.txcolh.dragging{opacity:.45;cursor:grabbing}
 .txcolh.over-l{box-shadow:inset 3px 0 0 var(--acc)}.txcolh.over-r{box-shadow:inset -3px 0 0 var(--acc)}
 .colgrip.lft{right:auto;left:-9px}.colgrip{position:absolute;top:8px;bottom:8px;right:-9px;width:10px;cursor:col-resize;z-index:2;display:flex;justify-content:center}.colgrip::after{content:"";width:2px;border-radius:2px;background:var(--line)}.txcolh:hover .colgrip::after,.colgrip:hover::after{background:var(--acc)}
+.ctab .crow{display:grid;grid-template-columns:var(--ctpl);align-items:center;column-gap:14px}
+.ctab .chead{position:sticky;top:0;z-index:3;background:var(--card);min-height:40px;border-bottom:1px solid var(--line);font-size:11.5px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;padding:0 14px;margin:0 -2px}
+.ctab .ccolh{justify-content:center;text-align:center}.ctab .ccolh.cflex{justify-content:flex-start;text-align:left}
+.ctab .invstcell{display:inline-flex;align-items:center;gap:6px;justify-content:center}.ctab .invacts{display:flex;gap:0;align-items:center}
+.ctab .ccontact{display:inline-flex;gap:2px}.ctab .crow.sel{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.ctab .ditemt .clead{position:relative;gap:6px}.ctab .ditemt .clead .thumb{width:34px;height:44px;flex:none}.ctab .ditemt .c-amt .amt{font-size:16px!important;font-weight:500!important}.ctab .ditemt .c-amt{font-size:16px}.ctab .ditemt .clead .newdot.abs{left:-10px}.ctab .ditemt.isnew{box-shadow:inset 3px 0 0 var(--newc,#9aa0a6)}
+.ctab .kbfootrow,.ctab .kbopenrow{cursor:default}.ctab .kbfootrow{border-top:1px solid var(--line)}
+.ctrlbl{text-transform:uppercase;letter-spacing:.05em;font-weight:600}.ccolreset{display:flex;justify-content:flex-end;align-items:center;text-transform:none;letter-spacing:0;font-weight:500}
+.ctab .crow:not(.chead){padding:11px 14px;border-bottom:1px solid var(--line);border-radius:10px;cursor:pointer}.ctab .crow:not(.chead):last-child{border-bottom:0}.ctab .crow:not(.chead):hover{background:color-mix(in srgb,var(--txt) 5%,transparent)}
+.ctab .crow.ended,.ctab .crow.inactive{opacity:.55}
+.ctab .ccell{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ctab .ccell.c{text-align:center}.ctab .ccell.c>*{margin-left:auto;margin-right:auto}
+.ctab .ccell>small,.ctab .ccell .sub{display:block;overflow:hidden;text-overflow:ellipsis}
+.ctab .ctrail{display:flex;justify-content:flex-end;align-items:center;gap:2px;overflow:visible}.ctab .ctrail>*{flex-wrap:nowrap;white-space:nowrap}.ctab .ccolh{min-width:0}.ctab .ccl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ctab .clead{display:flex;align-items:center;overflow:visible}
+.ctab .invname:hover{text-decoration:none}.ctab .invamt{min-width:0}
+.ctab .ccell .stpill,.ctab .ccell .label{white-space:nowrap}
 html.colresizing,html.colresizing *{cursor:col-resize!important;user-select:none!important}.txcolreset{display:flex;justify-content:flex-end;align-items:center}
 .catrow .subtog,button.subtog{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:44px;height:28px;padding:0 10px!important;margin:0;border-radius:999px!important;border:1px solid var(--line)!important;background:transparent!important;color:var(--txt);font:inherit;font-size:13px!important;font-variant-numeric:tabular-nums;line-height:1;cursor:pointer;box-shadow:none!important;white-space:nowrap;zoom:1}
 button.subtog:hover{border-color:var(--acc)!important}button.subtog.on{background:color-mix(in srgb,var(--acc) 14%,transparent)!important;border-color:var(--acc)!important;color:var(--acc)}button.subtog.empty{color:var(--mut)}.subchev{font-size:10px;opacity:.8}

@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.23 – Verschiebbare Spalten in allen Listen
+- Artikel, Lager (Bestand und Bewegungen), Besitz & Garantie, Rechnungen, Mahnungen (zu mahnen und Verlauf), Kunden, Verträge, Fixkosten & Abos, Dokumente, Kassabuch und Fahrtenbuch zeigen am Computer Spalten mit Überschriften
+- Wie bei Konten: Überschrift ziehen = Spalte verschieben, Rand ziehen = Breite ändern (Doppelklick = Standard), „↺ Spalten“ setzt zurück; wird je Reiter gemerkt
+- Artikel: Bestand als eigene Spalte; Besitz & Garantie: Überschriften stehen jetzt genau über ihrem Inhalt
+- Alle Spalten zentriert, nur die Hauptspalte (Bezeichnung, Kunde, Titel …) links
+- Am Handy, am iPad und in schmalen Fenstern (z. B. wenn rechts die Details offen sind) bleibt die bisherige Listenansicht
+
 ## v1.0.22 – Verträge-Vorschau wie bei Dokumenten, einheitliche Listenschrift
 - Verträge: „Vorschau“ hängt die verknüpften Dokumente rechts an die Details an – in der rechten Spalte bzw. neben dem Popup; mehrere Dokumente als Reiter, mit Lupe/Hand/Maus-Zoom
 - Popups öffnen immer mittig; beim Ein-/Ausblenden der Vorschau wird das Fenster neu zentriert (auch bei Dokumenten)
