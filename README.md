@@ -2,6 +2,28 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.0 – Mac- und Windows-App rund
+- **Drucken** in der App: Seiten kommen in eine eigene Druckansicht, der System-Druckdialog öffnet sich (vorher passierte am Mac nichts).
+- **Teilen**: Mac-App öffnet das System-Teilen-Menü (AirDrop, Mail, Nachrichten, WhatsApp …) mit der Datei als Anhang (`share_files`, NSSharingServicePicker). Windows-App: E-Mail/WhatsApp/Telegram legen die Datei ohne Nachfrage in einen Zwischenordner, markieren sie im Explorer und öffnen das Programm; „Im Explorer zeigen“ und „Speichern unter …“.
+- **Links** zu Webseiten (Quellen der KI usw.) öffnen in der App im System-Browser.
+- **Mehrere Dateien speichern**: einmal Ordner wählen statt viele „Sichern unter“-Fenster.
+- **Fenstergröße und -position** werden gemerkt (tauri-plugin-window-state).
+- Hinweise zu Kamera, Standort und App-Sperre nennen in der App die passenden System-Einstellungen von macOS bzw. Windows.
+
+## v0.99.103 – Rückfragen in der Mac/Windows-App repariert
+- In der App war jede „Wirklich …?“-Rückfrage wirkungslos (das System-confirm lief nicht blockierend und galt immer als „OK“), Eingabefelder (prompt, z. B. neue Kategorie, Ansicht speichern, Tags) erschienen gar nicht.
+- Alle 96 Rückfragen/Eingaben laufen jetzt über `uiAsk`/`uiPrompt`: im Browser wie bisher, in der App eigener Dialog (OK/Abbrechen, Enter/Esc).
+
+## v0.99.102 – Keine Größen-Rückfrage mehr beim Import vom selben Gerätetyp
+- Backup-Import: Schrift- und Button-Größen vom selben Gerätetyp (z. B. Mac → Mac) werden still übernommen; gefragt wird nur bei einem anderen Gerätetyp (z. B. Mac → iPhone) und nur, wenn sich die Größen unterscheiden.
+
+## v0.99.101 – Mac: Seitenleiste nicht mehr unter den Ampel-Knöpfen
+- Die Seitenleiste beginnt unter dem Fensterrand; der Bereich der Ampel-Knöpfe ist abgedeckt, beim Scrollen läuft das Menü nicht mehr darunter durch.
+
+## v0.99.100 – Dateien überall ins Fenster ziehen
+- Wird eine Datei außerhalb eines Ablagefelds ins Fenster gezogen, öffnet die App (bzw. der Browser) sie nicht mehr anstelle von FinDocu – sie wird wie über die Universal-Ablage eingelesen. Ablagefelder und Beleg-Zeilen behalten ihr eigenes Verhalten.
+- Zahl beim Reiter „Übersicht“: Tooltip erklärt sie (offene Fristen, fällig in ≤ 7 Tagen oder überfällig).
+
 ## v0.99.99 – Mac-Fenster ohne Titelleiste, Sortieren robuster
 - Mac-App: keine eigene Titelleiste mehr – die Ampel-Knöpfe liegen über der Seitenleiste, das Fenster wirkt aus einem Guss. Verschieben am oberen Rand, Doppelklick maximiert.
 - Sortieren per Griff ⠿ (Einstellungs-Bereiche, Reiter, Listen): Zeiger wird festgehalten, automatisches Scrollen am Rand auch in inneren Scrollbereichen.

@@ -27,7 +27,11 @@ pub fn run() {
             .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_process::init())
             // Backups als Dateien + Speicherverbrauch (disk.rs)
-            .invoke_handler(tauri::generate_handler![disk::bk_default_dir, disk::bk_write, disk::bk_list, disk::bk_read, disk::bk_delete, disk::bk_reveal, disk::disk_info]);
+            // Fenstergröße und -position merken
+            .plugin(tauri_plugin_window_state::Builder::default()
+                .with_state_flags(tauri_plugin_window_state::StateFlags::SIZE | tauri_plugin_window_state::StateFlags::POSITION | tauri_plugin_window_state::StateFlags::MAXIMIZED)
+                .build())
+            .invoke_handler(tauri::generate_handler![disk::bk_default_dir, disk::bk_write, disk::bk_list, disk::bk_read, disk::bk_delete, disk::bk_reveal, disk::disk_info, disk::reveal_file, disk::share_files]);
     }
 
     builder

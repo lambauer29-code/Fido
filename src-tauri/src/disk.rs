@@ -121,3 +121,51 @@ mod tests {
         assert!(fs2::available_space(&d).unwrap() > 0);
     }
 }
+
+// ---------- v1.0.0: Teilen & im Finder/Explorer zeigen ----------
+/// Datei im Finder / Explorer markiert anzeigen
+#[tauri::command]
+pub fn reveal_file(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg("-R").arg(&path).spawn();
+    #[cfg(windows)]
+    let r = std::process::Command::new("explorer").arg(format!("/select,{}", path)).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let r = std::process::Command::new("xdg-open").arg(Path::new(&path).parent().unwrap_or(Path::new("/"))).spawn();
+    r.map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// macOS: System-Teilen-Menü (AirDrop, Mail, Nachrichten, WhatsApp …) an der Klickposition
+#[tauri::command]
+pub fn share_files(window: tauri::WebviewWindow, paths: Vec<String>, x: f64, y: f64) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let w = window.clone();
+        return window.run_on_main_thread(move || {
+            if let Ok(v) = w.ns_view() { unsafe { share_mac::show(v, &paths, x, y) } }
+        }).map_err(|e| e.to_string());
+    }
+    #[allow(unreachable_code)]
+    { let _ = (window, paths, x, y); Err("Nur am Mac verfügbar".into()) }
+}
+
+#[cfg(target_os = "macos")]
+mod share_mac {
+    use objc2::AllocAnyThread;
+    use objc2_app_kit::{NSSharingServicePicker, NSView};
+    use objc2_foundation::{NSArray, NSPoint, NSRect, NSRectEdge, NSSize, NSString, NSURL};
+    /// view_ptr = Inhaltsansicht des Fensters (nicht gespiegelt: y von unten); x/y = Klickposition in CSS-Pixeln von oben links
+    pub unsafe fn show(view_ptr: *mut std::ffi::c_void, paths: &[String], x: f64, y: f64) {
+        if view_ptr.is_null() || paths.is_empty() { return; }
+        let urls: Vec<_> = paths.iter().map(|p| NSURL::fileURLWithPath(&NSString::from_str(p))).collect();
+        let arr = NSArray::from_retained_slice(&urls);
+        let items: &NSArray = &*((&*arr) as *const NSArray<NSURL> as *const NSArray);
+        let picker = NSSharingServicePicker::initWithItems(NSSharingServicePicker::alloc(), items);
+        let view: &NSView = &*(view_ptr as *const NSView);
+        let b = view.bounds();
+        let yy = if view.isFlipped() { y } else { b.size.height - y };
+        let rect = NSRect::new(NSPoint::new(x.max(0.0), yy.max(0.0)), NSSize::new(1.0, 1.0));
+        picker.showRelativeToRect_ofView_preferredEdge(rect, view, NSRectEdge::MinY);
+        std::mem::forget(picker); // bleibt geöffnet, solange das Menü sichtbar ist
+    }
+}

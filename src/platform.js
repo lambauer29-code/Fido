@@ -36,6 +36,12 @@ export async function installPlatform() {
     }
     return aClick.call(this);
   };
+  // v1.0.0: Links zu Webseiten (target="_blank" oder fremde Adresse) im System-Browser öffnen – nicht im App-Fenster
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest?.("a[href]"); if (!a || e.defaultPrevented) return;
+    const href = a.getAttribute("href") || "";
+    if (/^(mailto:|tel:|sms:)/i.test(href) || (/^https?:/i.test(href) && (a.target === "_blank" || new URL(href, location.href).origin !== location.origin))) { e.preventDefault(); openExternal(href); }
+  }, true);
   // Neue Fenster: Webseiten im System-Browser, PDFs/Bilder mit dem Standardprogramm (Vorschau …)
   const dummy = { closed: false, close() {}, focus() {}, location: {}, document: null };
   window.open = (url) => {
@@ -113,4 +119,34 @@ export const hasDisk = isTauri && !/iPhone|iPad|Android/i.test(typeof navigator 
 export async function native(cmd, args) {
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke(cmd, args);
+}
+
+// v1.0.0: Plattform der App
+export const isMacApp = hasDisk && /Mac/i.test(navigator.platform || navigator.userAgent);
+export const isWinApp = hasDisk && /Win/i.test(navigator.platform || navigator.userAgent);
+// Dateien in einen Zwischenordner schreiben (ohne Nachfrage) → Pfade
+export async function tempFiles(files) {
+  const { tempDir, join } = await import("@tauri-apps/api/path");
+  const { writeFile, mkdir } = await import("@tauri-apps/plugin-fs");
+  const dir = await join(await tempDir(), "findocu", "teilen", String(Date.now()));
+  await mkdir(dir, { recursive: true });
+  const out = [];
+  for (const f of files) { const p = await join(dir, (f.name || "Datei").replace(/[\\/:*?"<>|]/g, "_")); await writeFile(p, new Uint8Array(await f.arrayBuffer())); out.push(p); }
+  return out;
+}
+// Mehrere Dateien: einmal einen Ordner wählen, alle dort speichern → Anzahl (0 = abgebrochen)
+export async function saveFilesToFolder(files) {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const dir = await open({ directory: true, recursive: true, title: `${files.length} Dateien speichern in …` });
+  if (!dir || Array.isArray(dir)) return 0;
+  const { join } = await import("@tauri-apps/api/path");
+  const { writeFile, exists } = await import("@tauri-apps/plugin-fs");
+  for (const f of files) {
+    const base = (f.name || "Datei").replace(/[\\/:*?"<>|]/g, "_"), dot = base.lastIndexOf(".");
+    let p = await join(dir, base), i = 2;
+    while (await exists(p).catch(() => false)) p = await join(dir, dot > 0 ? `${base.slice(0, dot)} (${i++})${base.slice(dot)}` : `${base} (${i++})`);
+    await writeFile(p, new Uint8Array(await f.arrayBuffer()));
+  }
+  native("reveal_file", { path: await join(dir, (files[0].name || "Datei").replace(/[\\/:*?"<>|]/g, "_")) }).catch(() => {});
+  return files.length;
 }
