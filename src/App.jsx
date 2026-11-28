@@ -6466,17 +6466,18 @@ function JPhoneSheet({ children }) {
 }
 
 /* Zeile der Dokumentenliste – nur neu zeichnen, wenn sich das Dokument selbst ändert (v0.98.1) */
-const DocListRow = React.memo(function DocListRow({ d, pickMode, picked, prevOpen, h }) {
+const DocListRow = React.memo(function DocListRow({ d, pickMode, picked, prevOpen, h, isNew = false }) {
   const H = h.current;
   return (
     <div className="dwrap">
     <SwipeRow left={pickMode ? [] : [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => h.current.setWinPrev(d) }, { icon: "📤", label: "Teilen", bg: "#8b5cf6", run: () => shareDocs([d]) }]}
       right={pickMode ? [] : [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: async () => (await uiAsk(`„${d.title}“ in den Papierkorb verschieben?`)) && h.current.trashDoc(d) }, { icon: "✎", label: "Bearbeiten", bg: "#3b82f6", run: () => h.current.onOpen(d.id) }]}>
-    <div className={"ditem" + (picked ? " picked" : "")} onClick={() => (pickMode ? h.current.togglePick(d.id) : h.current.onOpen(d.id))}>
+    <div className={"ditem" + (picked ? " picked" : "") + (isNew ? " isnew" : "")} onClick={() => (pickMode ? h.current.togglePick(d.id) : h.current.onOpen(d.id))}>
+      {isNew && <i className="newdot abs" aria-label="neu" />}
       {pickMode && <span className={"pickbox inline" + (picked ? " on" : "")}>✓</span>}
       <Thumb d={d} />
       <div className="grow">
-        <div className="row1"><b className="clamp dtitle">{d.title}</b><span className="damtin">{H.amt(d)}</span></div>
+        <div className="row1"><b className="clamp dtitle">{d.title}{isNew && <span className="newpill">NEU</span>}</b><span className="damtin">{H.amt(d)}</span></div>
         <small className="muted block">{d.sender ? d.sender + " · " : ""}{fmtDate(d.documentDate)}</small>
         <div className="labels">
           <Label c={d.category} sub={d.subcategory} />
@@ -6492,8 +6493,9 @@ const DocListRow = React.memo(function DocListRow({ d, pickMode, picked, prevOpe
       <DocActions d={d} prevOpen={prevOpen} onPreview={() => h.current.setWinPrev(d)} onEdit={() => h.current.onOpen(d.id)} onTrash={(x) => h.current.trashDoc(x)} />
     </div></SwipeRow>
     </div>);
-}, (a, b) => a.d === b.d && a.pickMode === b.pickMode && a.picked === b.picked && a.prevOpen === b.prevOpen && a.cats === b.cats);
+}, (a, b) => a.d === b.d && a.pickMode === b.pickMode && a.picked === b.picked && a.prevOpen === b.prevOpen && a.cats === b.cats && a.isNew === b.isNew);
 function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area = "alle", setArea, cat, setCat, docGroups, toggleDocGroup, deadlineTab, journalTab, onFiles, docBusy }) {
+  const isNewDoc = useNewMarks("doc");
   const [showDrop, setShowDrop] = useLsState("docDrop", true);
   const [chipCfg, setChipCfg] = useLsState("docChips", { order: [], hidden: [] });
   const [q, setQ] = useState("");
@@ -6542,6 +6544,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
 
   const rowH = useRef({});
   const [visList, docSent] = useProgressive(list);
+  const newDocN = useMemo(() => list.filter(isNewDoc).length, [list, isNewDoc]);
   const counts = useMemo(() => Object.fromEntries(categories.map((c) => [c, docs.filter((d) => d.category === c).length])), [docs, categories]);
   const amt = (d) => d.amount?.total != null && (
     <span className={"amt" + (d.direction === "einnahme" ? " pos" : d.paid ? " paid" : "")} title={[payAmt(d) !== d.amount.total ? `Brutto ${fmtMoney(d.amount.total, docCur(d))} · ausbezahlt ${fmtMoney(payAmt(d), docCur(d))}` : "", docCur(d) !== "EUR" && canEur(d) ? `≈ ${fmtMoney(payEur(d))} (1 EUR = ${fmtFx(docFx(d))} ${docCur(d)})` : ""].filter(Boolean).join(" · ") || undefined}>{d.direction === "einnahme" ? "+" : ""}{fmtMoney(payAmt(d), d.amount.currency)}{docCur(d) !== "EUR" && canEur(d) && <small className="fxeur">≈ {fmtMoney(payEur(d))}</small>}</span>);
@@ -6603,6 +6606,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
       {onFiles && showDrop && !overview && !subOpen && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={!!docBusy} what="PDF, Fotos & E-Rechnungen (XML)" accept="application/pdf,image/*,.xml,application/xml,text/xml" isOk={(x) => isDocFile(x) || isXmlFile(x)} />}
       {docBusy && <ImportBar {...docBusy} />}
       {!overview && <div className="sumbar">{list.length} Dokument{list.length === 1 ? "" : "e"}</div>}
+      {newDocN > 0 && <div className="newbar"><i className="newdot" /><span className="grow">{newDocN === 1 ? "1 neues Dokument" : newDocN + " neue Dokumente"}</span><button type="button" className="btn sm" onClick={() => markAllSeen("doc")}>✓ Alle als gesehen markieren</button></div>}
       <FitScroll card={view !== "grid" && !overview} className="docbox">
 
       {!docs.length && (
@@ -6644,7 +6648,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
         </div>
       ) : (
         <div className="dlist">
-          {visList.map((d) => <DocListRow key={d.id} d={d} pickMode={!!pick} picked={!!pick?.has(d.id)} prevOpen={winPrev?.id === d.id} cats={categories} h={rowH} />)}
+          {visList.map((d) => <DocListRow key={d.id} d={d} pickMode={!!pick} picked={!!pick?.has(d.id)} prevOpen={winPrev?.id === d.id} cats={categories} h={rowH} isNew={isNewDoc(d)} />)}
           {docSent}
         </div>
       )}
@@ -7448,6 +7452,8 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       .sort((a, b) => txDir * (TX_SORTS[txS] || TX_SORTS.datum)[2](a, b));
   }, [scoped, q, month, coll, txS, txDir]);
   const txFlat = !(txS === "datum" && txDir === 1);
+  const isNewTx = useNewMarks("tx"), newTxN = useMemo(() => list.filter(isNewTx).length, [list, isNewTx]);
+  useEffect(() => { if (txOpen?.id) markSeen(txOpen.id); }, [txOpen?.id]);
   // v1.0.13: Kontowechsel – war die Spalte rechts offen, bleibt sie offen und zeigt die neueste Buchung des neuen Kontos
   const txOpenRef = useRef(null); txOpenRef.current = txOpen;
   const prevSelKey = useRef(selKey);
@@ -7762,6 +7768,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       )}
 
       {!!txs.length && <div className="row expsearch"><span className="grow"><SearchBox placeholder="Umsätze durchsuchen" value={q} onChange={setQ} /></span>{txSort}</div>}
+      {newTxN > 0 && <div className="newbar"><i className="newdot" /><span className="grow">{newTxN === 1 ? "1 neue Buchung" : newTxN + " neue Buchungen"}</span><button type="button" className="btn sm" onClick={() => markAllSeen("tx")}>✓ Alle als gesehen markieren</button></div>}
 
       {wideTx ? (
         <div className={"txtable txcustom" + (!acc && sel.length > 1 ? " withacc" : "")} style={{ "--txcols": txColTpl(txColCfg, !acc && sel.length > 1), "--txcolsm": txColTplM(txColCfg), "--txcolsn": txColTplN(txColCfg) }}>
@@ -7769,11 +7776,12 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           <TxHead cfg={txColCfg} setCfg={setTxCols} withAcc={!acc && sel.length > 1} />
           {list.slice(0, limit).map((t) => (
             <React.Fragment key={t.id}>
-            <SwipeRow {...txSwipe(t)}><div className={"txrow" + (prevTx === t.id ? " open" : "") + (txOpen?.id === t.id ? " cur" : "") + (txScOf(t) === "firma" ? " sc-firma" : txScOf(t) === "unklar" ? " sc-unklar" : "")} onClick={() => openTx(t)}>
+            <SwipeRow {...txSwipe(t)}><div className={"txrow" + (prevTx === t.id ? " open" : "") + (txOpen?.id === t.id ? " cur" : "") + (isNewTx(t) ? " isnew" : "") + (txScOf(t) === "firma" ? " sc-firma" : txScOf(t) === "unklar" ? " sc-unklar" : "")} onClick={() => openTx(t)}>
+              {isNewTx(t) && <i className="newdot abs" aria-label="neu" />}
               {txColKeys(txColCfg, !acc && sel.length > 1).map((k) => k === "date" ? <span key={k} className="muted c-date">{fmtDate(t.date)}</span>
               : k === "desc" ? <span key={k} className="txdesc c-desc">
                 <TxIcon t={t} size={30} />
-                <span className="grow"><b className="one">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
+                <span className="grow"><b className="one">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}{isNewTx(t) && <span className="newpill">NEU</span>}</b>
                   {t.kind !== "broker" && t.counterparty && t.purpose && <small className="muted one block">{t.purpose}</small>}</span>
               </span>
               : k === "cat" ? <span key={k} className="one muted c-cat" title={catLabel(t.category, t.subcategory)}>{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : <>{t.category}{t.subcategory && <small className="block subcl">{t.subcategory}</small>}</>}</span>
@@ -7795,10 +7803,11 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
           <div className="dlist">
             {g.items.map((t) => (
               <React.Fragment key={t.id}>
-              <SwipeRow {...txSwipe(t)}><div className={"ditem center" + (prevTx === t.id ? " open" : "")} onClick={() => openTx(t)}>
+              <SwipeRow {...txSwipe(t)}><div className={"ditem center" + (prevTx === t.id ? " open" : "") + (isNewTx(t) ? " isnew" : "")} onClick={() => openTx(t)}>
+                {isNewTx(t) && <i className="newdot abs" aria-label="neu" />}
                 <TxIcon t={t} />
                 <div className="grow">
-                  <b className="clamp">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}</b>
+                  <b className="clamp">{t.kind === "broker" ? (t.isin ? `${t.type} · ${t.security || t.isin}` : t.type) : t.counterparty || t.purpose || t.bookingText || "Buchung"}{isNewTx(t) && <span className="newpill">NEU</span>}</b>
                   <small className="muted block one">{t.kind === "broker" ? (t.shares ? `${Math.abs(t.shares).toLocaleString("de-AT")} Stk.` : "Depot") : catLabel(t.category, t.subcategory)}{t.docId ? " · 📎 Beleg" : ""}{!acc && sel.length > 1 ? " · " + accName(t.accountId) : ""}</small>
                 </div>
                 <b className={"amt " + (t.amount > 0 ? "pos" : "out")}>{t.amount > 0 ? "+" : ""}{fmtMoney(t.amount, t.currency)}</b>
@@ -7987,6 +7996,34 @@ function ImportSheet({ imp, accounts, setAccounts, importTxs, token, notify, onC
 const exp2pick = (items) => (items || []).filter(Boolean).map((e, i) => e.head ? { head: e.head } : { k: "e" + i, icon: e.icon, title: e.label, sub: e.sub, run: e.run, disabled: e.disabled });
 /* v0.99.54: Sortierung in allen Reitern – Darstellung in Einstellungen → Design wählbar (Dropdown · Segment · Spaltenkopf) */
 const idTs = (id) => { const s = String(id || ""); if (s.length >= 14) { const n = parseInt(s.slice(-8), 36); if (n > 1.5e12 && n < 4e12) return n; } return 0; };
+// v1.0.14: neue (noch nicht geöffnete) Buchungen und Dokumente markieren – Punkt, fetter Name, „NEU“ und Balken in wählbarer Farbe
+const NEW_COL_DEF = "#a3a9b1", NEW_COLS = [["#a3a9b1", "Grau"], ["#4ea3ff", "Blau"], ["#e8c766", "Gold"], ["#3fbf8a", "Grün"], ["#b68cf0", "Lila"], ["#ef6b6b", "Rot"]];
+function newBase(kind) { const k = "seenBase:" + kind; let b = ls.get(k, 0); if (!b) { b = Date.now(); ls.set(k, b); } return b; }
+function markSeen(id) { if (!id) return; const l = ls.get("seenIds", []); if (l.includes(id)) return; const n = [...l, id].slice(-4000); ls.set("seenIds", n); window.dispatchEvent(new CustomEvent("findocu-ls", { detail: { key: "seenIds" } })); }
+function markAllSeen(kind) { const key = "seenBase:" + kind; ls.set(key, Date.now()); window.dispatchEvent(new CustomEvent("findocu-ls", { detail: { key } })); }
+function useNewMarks(kind) {
+  const [on] = useLsState("newMarks", true), [base] = useLsState("seenBase:" + kind, 0), [ids] = useLsState("seenIds", []), [col] = useLsState("newMarkColor", NEW_COL_DEF);
+  useEffect(() => { document.documentElement.style.setProperty("--newc", col || NEW_COL_DEF); }, [col]);
+  const b = base || newBase(kind), set = useMemo(() => new Set(ids || []), [ids]);
+  return useMemo(() => (x) => !!(on !== false && x && !x.deletedAt && addedOf(x) > b && !set.has(x.id)), [on, b, set]);
+}
+function NewMarkSetting() {
+  const [on, setOn] = useLsState("newMarks", true), [col, setCol] = useLsState("newMarkColor", NEW_COL_DEF);
+  const c = col || NEW_COL_DEF;
+  return <div className="newmarkset">
+    <label className="switchrow"><span><b>Neue Buchungen und Dokumente markieren</b><small className="muted block">Punkt, fetter Name, „NEU“ und Balken links – bis du den Eintrag öffnest oder „Alle als gesehen“ wählst</small></span><input type="checkbox" className="switch" checked={on !== false} onChange={(e) => setOn(e.target.checked)} /></label>
+    <div className={"newmarkcols" + (on === false ? " off" : "")}>
+      <small className="muted">Farbe</small>
+      <div className="row">{NEW_COLS.map(([v, n]) => <button key={v} type="button" className={"nmsw" + (c.toLowerCase() === v ? " on" : "")} style={{ "--sw": v }} title={n} aria-label={n} disabled={on === false} onClick={() => setCol(v)} />)}
+        <label className="nmsw nmcustom" title="Eigene Farbe" style={{ "--sw": c }}><input type="color" value={c} disabled={on === false} onChange={(e) => setCol(e.target.value)} />🎨</label></div>
+      <div className="nmprev" style={{ "--newc": c }} aria-label="Vorschau">
+        <div className="nmrow isnew"><i className="newdot" /><span className="nmic">⛽</span><span className="grow"><b>OMV Linz Hafen</b><span className="newpill">NEU</span><small className="muted block">Mobilität · heute</small></span><b className="nmamt">-€ 68,90</b></div>
+        <div className="nmrow isnew"><i className="newdot" /><span className="nmic">🧾</span><span className="grow"><b>Rechnung Adobe</b><span className="newpill">NEU</span><small className="muted block">Software · heute</small></span><b className="nmamt">-€ 24,59</b></div>
+        <div className="nmrow"><i /><span className="nmic">🛒</span><span className="grow">BILLA AG<small className="muted block">Lebensmittel · gestern</small></span><b className="nmamt">-€ 42,18</b></div>
+      </div>
+    </div>
+  </div>;
+}
 const addedOf = (x) => { if (!x) return 0; const v = x.createdAt || x.created || x.importedAt || x.addedAt; const t = v ? Date.parse(v) : NaN; return isNaN(t) ? idTs(x.id) : t; };
 const SORT_NEW = ["Zuletzt hinzugefügt", "neueste zuerst", (a, b) => addedOf(b) - addedOf(a)];
 function useSortState(key, def) {
@@ -11545,6 +11582,7 @@ function PayQR({ doc, notify }) {
   );
 }
 function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveDoc, trashDoc, reanalyze, notify, bookCash, txs = [], accounts = [], linkTx }) {
+  useEffect(() => { markSeen(doc?.id); }, [doc?.id]);
   const [linkOpen, setLinkOpen] = useState(false), [prevOpen, setPrevOpen] = useState(false);
   // v1.0.6: am Computer öffnet die Vorschau direkt neben dem Dialog (Zustand wird gemerkt), am Handy/iPad wie bisher als eigenes Fenster
   const wideDet = useMedia("(min-width:1000px)") && !IS_TABLET;
@@ -12677,6 +12715,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
         <JStripSetting />
         <NavBadgeSetting />
         <DockSetting />
+        <NewMarkSetting />
         <small className="muted block tbsethead">Tag- und Nachtmodus</small>
         <div className="themeopts" role="radiogroup" aria-label="Tag- und Nachtmodus">
           {[["auto", "💻", "Automatisch", "wie das Gerät"], ["zeit", "🕖", "Nach Uhrzeit", `Tag ${DAY_FROM}–${DAY_TO} Uhr`], ["light", "☀️", "Tag", "immer hell"], ["dark", "🌙", "Nacht", "immer dunkel"]].map(([k, i, t, sub]) => (
@@ -17418,6 +17457,23 @@ html.docked .topactions{right:calc(var(--dockw) + 50px)}
 html .txheroico .caticon.caticon.caticon,html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon{width:76px!important;height:76px!important;font-size:38px!important;border-radius:22px!important}
 html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon .gll{width:60%;height:60%}
 .txheroico .txpen{transform:scale(1.15)}
+/* v1.0.14: neue Einträge – Punkt, fetter Name, NEU, Balken in wählbarer Farbe (--newc) */
+.newdot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--newc,#a3a9b1);box-shadow:0 0 0 3px color-mix(in srgb,var(--newc,#a3a9b1) 22%,transparent);flex:none}
+.newdot.abs{position:absolute;left:6px;top:50%;margin-top:-4.5px;z-index:2}
+.txrow.isnew,.ditem.isnew{position:relative;box-shadow:inset 3px 0 0 var(--newc,#a3a9b1)!important;background:color-mix(in srgb,var(--newc,#a3a9b1) 7%,transparent)}
+.txrow.isnew.cur{box-shadow:inset 4px 0 0 var(--acc)!important}
+.txrow.isnew .c-desc b,.ditem.isnew .dtitle,.ditem.isnew>.grow>b{font-weight:700!important;color:var(--txt)}
+.newpill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;line-height:1.5;color:#141414;background:var(--newc,#a3a9b1);border-radius:999px;padding:0 6px;margin-left:7px;vertical-align:2px;font-family:system-ui,sans-serif}
+.newbar{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--mut);margin:2px 0 8px}.newbar>.btn{position:relative;top:3px}
+.newmarkset .newmarkcols{display:flex;flex-direction:column;gap:8px;padding:2px 0 12px}.newmarkset .newmarkcols.off{opacity:.45}
+.newmarkcols .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.nmsw{width:30px;height:30px;border-radius:50%;border:2px solid transparent;background:var(--sw);cursor:pointer;padding:0;box-shadow:inset 0 0 0 2px var(--bg)}.nmsw.on{border-color:var(--txt)}
+.nmcustom{position:relative;display:inline-flex;align-items:center;justify-content:center;font-size:13px;background:conic-gradient(#ef6b6b,#e8c766,#3fbf8a,#4ea3ff,#b68cf0,#ef6b6b)}.nmcustom input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.nmprev{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.nmrow{position:relative;display:flex;align-items:center;gap:10px;padding:9px 14px 9px 22px;border-bottom:1px solid var(--line);font-size:14px}.nmrow:last-child{border:0}
+.nmrow>i:first-child{position:absolute;left:7px;top:50%;margin-top:-4.5px}
+.nmrow.isnew{box-shadow:inset 3px 0 0 var(--newc);background:color-mix(in srgb,var(--newc) 7%,transparent)}.nmrow.isnew b{font-weight:700}
+.nmic{width:30px;height:30px;border-radius:8px;background:var(--card2);display:flex;align-items:center;justify-content:center}.nmamt{font-weight:500!important;font-variant-numeric:tabular-nums}
 .docksetting .dockminw{display:flex;flex-direction:column;gap:6px;padding:4px 0 10px}.docksetting .dockminw.off{opacity:.45}
 .docksetting .dockminw input[type=range]{width:100%;accent-color:var(--acc)}.docksetting .dockminchips{gap:6px;flex-wrap:wrap}
 /* v1.0.10: Seitenleiste – Anzahlen (Dokumente) und Kontostände in einer Flucht unter den Gruppen-Pfeilen, Anzahlen als Plakette */

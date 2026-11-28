@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.14 – Neue Buchungen und Dokumente markiert
+- Neu importierte bzw. hinzugefügte Buchungen (Konten) und Dokumente: Punkt vorne, Name fett, Plakette „NEU“ und Balken links – bis man den Eintrag öffnet
+- Über der Liste „X neue Buchungen / Dokumente“ mit „✓ Alle als gesehen markieren“
+- Einstellungen → Darstellung: Ein/Aus und Farbe (Grau als Standard, Blau, Gold, Grün, Lila, Rot oder eigene Farbe) mit Live-Vorschau
+- Bestehende Einträge gelten beim ersten Start als gesehen
+
 ## v1.0.13 – Spalte rechts bleibt beim Kontowechsel, Kopf über der Vorschau, größeres Symbol
 - Kontowechsel in der Seitenleiste: war die Spalte rechts offen, bleibt sie offen und zeigt die neueste Buchung des neuen Kontos (Pfeil zeigt auf deren Zeile); war sie zu, bleibt sie zu
 - Dokument mit geöffneter Vorschau: der farbige Kopf läuft über die Vorschau weiter, die Werkzeugleiste sitzt darin; ohne Vorschau wie bisher
