@@ -2,6 +2,14 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.3 – Windows druckt das Original-PDF, „⋯“-Menüs nicht mehr abgeschnitten
+- Windows-App: PDFs (auch mehrere zusammengefügt) werden im eingebauten PDF-Betrachter gedruckt statt als Bilder; schlägt das fehl, wird wie bisher über Bilder gedruckt.
+- „⋯“-Menüs in Listen (Verträge, Fixkosten, Kontoauszüge …) schweben über allem, öffnen bei wenig Platz nach oben und scrollen bei Bedarf – in Browser, Mac- und Windows-App.
+
+## v1.0.2 – Mac druckt das Original-PDF
+- Mac-App: PDFs werden unverändert (Originaldatei) an den Druckdialog gegeben – volle Qualität, echter Text. Mehrere Belege/Rechnungen werden zu einer PDF zusammengefügt, Fotos als PDF-Seite. Gilt für Dokumente, Rechnungen, Mahnungen, Kontoauszüge, Buchungsbelege, Inventur- und Zähllisten (`printBlobs`).
+- Browser und Windows: unverändert (Seiten als Bilder in den Druckdialog).
+
 ## v1.0.1 – Drucken am Mac: Seite nicht mehr leer
 - Mac-App: Der Druckdialog zeigte eine leere Seite (WKWebView druckt seinen Inhalt dort nicht). Jetzt werden die Seiten als PDF gebaut und über den Mac-Druckdialog (PDFKit, `print_pdf`) gedruckt – mit Vorschau, Druckerwahl, Kopien. Windows und Browser unverändert.
 

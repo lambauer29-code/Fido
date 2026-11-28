@@ -235,25 +235,6 @@ async function blobToImages(b, width = 1700, max = 60) {
 }
 async function printImages(srcs, title = "Dokument") {
   // v1.0.0 Mac/Windows-App: der Druck aus einem unsichtbaren Rahmen wird dort ignoriert → Seiten in eine eigene Druckansicht der App legen
-  // v1.0.1 Mac-App: WKWebView druckt leere Seiten → Seiten als PDF bauen und über den Mac-Druckdialog (PDFKit) drucken
-  if (isMacApp) {
-    try {
-      const { PDFDocument } = await import("pdf-lib"), pdf = await PDFDocument.create();
-      for (const u of srcs) {
-        const im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error("Bild nicht lesbar")); i.src = u; });
-        const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
-        const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0);
-        const jpg = await pdf.embedJpg(await (await fetch(c.toDataURL("image/jpeg", 0.92))).arrayBuffer());
-        const W = 595.28, H = 841.89, m = 0, sc = Math.min((W - 2 * m) / jpg.width, (H - 2 * m) / jpg.height);
-        const pg = pdf.addPage([W, H]); pg.drawImage(jpg, { x: (W - jpg.width * sc) / 2, y: H - m - jpg.height * sc, width: jpg.width * sc, height: jpg.height * sc });
-      }
-      const name = String(title || "Dokument").replace(/\.(pdf|png|jpe?g|heic|heif|webp|gif|tiff?)$/i, "").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80) + ".pdf";
-      const [path] = await tempFiles([new File([await pdf.save()], name, { type: "application/pdf" })]);
-      await native("print_pdf", { path, title: String(title || "Dokument") });
-    } catch (e) { alert("Drucken nicht möglich: " + (e.message || e)); }
-    srcs.forEach((u) => u.startsWith("blob:") && setTimeout(() => URL.revokeObjectURL(u), 60000));
-    return;
-  }
   if (isTauri) {
     document.getElementById("tprint")?.remove();
     const root = document.createElement("div"); root.id = "tprint";
@@ -277,12 +258,52 @@ async function printImages(srcs, title = "Dokument") {
   w.focus(); w.print();
   setTimeout(() => { f.remove(); srcs.forEach((u) => u.startsWith("blob:") && URL.revokeObjectURL(u)); }, 60000);
 }
-if (import.meta.env.VITE_E2E) window.__fd = { shareDocs: (...a) => shareDocs(...a), printDoc: (...a) => printDoc(...a), downloadFiles: (...a) => downloadFiles(...a) };
+if (import.meta.env.VITE_E2E) window.__fd = { shareDocs: (...a) => shareDocs(...a), printDoc: (...a) => printDoc(...a), downloadFiles: (...a) => downloadFiles(...a), printBlobs: (...a) => printBlobs(...a) };
+/* v1.0.2: Drucken von Dateien (PDF/Bild). Mac-App: das ORIGINAL wird gedruckt (PDFs unverändert, mehrere zusammengefügt,
+   Bilder als PDF-Seite) über den Mac-Druckdialog – WKWebView druckt dort leere Seiten. Sonst: Seiten als Bilder drucken. */
+async function printBlobs(blobs, title = "Dokument") {
+  blobs = blobs.filter(Boolean); if (!blobs.length) return;
+  const viaImages = async () => { const imgs = []; for (const b of blobs) imgs.push(...(await blobToImages(b, 1700, 200))); return printImages(imgs, title); };
+  if (!isMacApp && !isWinApp) return viaImages();
+  try {
+    let out;
+    if (blobs.length === 1 && blobs[0].type === "application/pdf") out = blobs[0];   // Original unverändert
+    else {
+      const { PDFDocument } = await import("pdf-lib"), pdf = await PDFDocument.create();
+      for (const b of blobs) {
+        if (b.type === "application/pdf") { const src = await PDFDocument.load(await b.arrayBuffer(), { ignoreEncryption: true }); (await pdf.copyPages(src, src.getPageIndices())).forEach((pg) => pdf.addPage(pg)); continue; }
+        const u = URL.createObjectURL(b);
+        try {
+          const im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error("Bild nicht lesbar")); i.src = u; });
+          const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+          const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0);
+          const jpg = await pdf.embedJpg(await (await fetch(c.toDataURL("image/jpeg", 0.92))).arrayBuffer());
+          const W = 595.28, H = 841.89, sc = Math.min(W / jpg.width, H / jpg.height);
+          pdf.addPage([W, H]).drawImage(jpg, { x: (W - jpg.width * sc) / 2, y: H - jpg.height * sc, width: jpg.width * sc, height: jpg.height * sc });
+        } finally { URL.revokeObjectURL(u); }
+      }
+      out = new Blob([await pdf.save()], { type: "application/pdf" });
+    }
+    if (isWinApp) {   // v1.0.3 Windows: Original-PDF im eingebauten PDF-Betrachter von WebView2 drucken
+      document.getElementById("tpdfprint")?.remove();
+      const f = document.createElement("iframe"), u = URL.createObjectURL(out); f.id = "tpdfprint";
+      f.style.cssText = "position:fixed;right:0;bottom:0;width:2px;height:2px;border:0;opacity:0;pointer-events:none";
+      await new Promise((ok, no) => { f.onload = ok; f.onerror = () => no(new Error("PDF nicht ladbar")); setTimeout(ok, 4000); f.src = u; document.body.appendChild(f); });
+      await new Promise((r) => setTimeout(r, 600));
+      try { f.contentWindow.focus(); f.contentWindow.print(); } catch { f.remove(); return viaImages(); }
+      setTimeout(() => { f.remove(); URL.revokeObjectURL(u); }, 120000);
+      return;
+    }
+    const name = String(title || "Dokument").replace(/\.(pdf|png|jpe?g|heic|heif|webp|gif|tiff?)$/i, "").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80) + ".pdf";
+    const [path] = await tempFiles([new File([out], name, { type: "application/pdf" })]);
+    await native("print_pdf", { path, title: String(title || "Dokument") });
+  } catch (e) { if (isWinApp) return viaImages(); alert("Drucken nicht möglich: " + (e.message || e)); }
+}
 async function printDoc(d, notify) {
   const b = await db.getFile(d.id);
   if (!b) return notify?.("Originaldatei nicht gefunden");
   notify?.("Druck wird vorbereitet …");
-  await printImages(await blobToImages(b), d.title);
+  await printBlobs([b], d.title);
 }
 /* PDF in der App anzeigen (statt neuem Fenster – am iPhone kommt man sonst nicht zurück) */
 let pdfUi = null;
@@ -292,7 +313,7 @@ function PdfViewWin({ data, onClose }) {
   return (
     <Win id="pdfview" defW={760} onClose={onClose} dirty={false} className="pdfviewwin" stay={!!data.stay}>
       <div className="panelhead"><b className="clamp">{data.title || data.name}</b>
-        <button className="btn" title="Drucken" onClick={() => pages && printImages(pages, data.title)}><IcoPrint /></button>
+        <button className="btn" title="Drucken" onClick={() => (hasDisk ? printBlobs([data.blob], data.title) : pages && printImages(pages, data.title))}><IcoPrint /></button>
         <button className="btn" title="Teilen / Sichern" onClick={() => sharePdf(data.blob, data.name, data.title, data.to)}><IcoShare /></button>
         <XBtn /></div>
       <div className="dpages">
@@ -4145,6 +4166,22 @@ if (typeof window !== "undefined" && !window.__fdMenus) {
   document.addEventListener("pointerdown", (e) => { const d = e.target.closest?.("details.more"); closeAll(d); }, true);
   window.addEventListener("keydown", (e) => { if (e.key === "Escape" && document.querySelector("details.more[open]")) { e.stopPropagation(); closeAll(null); } }, true);
   document.addEventListener("click", (e) => { const b = e.target.closest?.("details.more .moremenu button"); if (b && !b.disabled) { const d = b.closest("details"); setTimeout(() => { if (d) d.open = false; }, 0); } });
+  // v1.0.3: „⋯“-Menüs schweben (fixed) über allem – werden nicht von Karten/Listen abgeschnitten; wenig Platz unten → nach oben öffnen
+  const placeMore = (d) => {
+    const m = d.querySelector(":scope > .moremenu"), s = d.querySelector(":scope > summary"); if (!m || !s) return;
+    if (m.style.position === "fixed" && !m.dataset.fdpos) return;   // Menü positioniert sich selbst
+    m.dataset.fdpos = "1"; Object.assign(m.style, { position: "fixed", right: "auto", bottom: "auto", top: "0px", left: "-9999px", maxHeight: "", overflowY: "auto", zIndex: "1000" });
+    const r = s.getBoundingClientRect(), mw = m.offsetWidth, mh = m.offsetHeight;
+    let cb = { left: 0, top: 0 };   // Vorfahre mit transform/filter verschiebt den Bezug von „fixed“
+    for (let n = d.parentElement; n && n !== document.body; n = n.parentElement) { const c = getComputedStyle(n); if (c.transform !== "none" || c.filter !== "none" || c.perspective !== "none" || /paint|layout|strict|content/.test(c.contain || "")) { const q = n.getBoundingClientRect(); cb = { left: q.left, top: q.top }; break; } }
+    const below = innerHeight - r.bottom - 10, above = r.top - 10;
+    let top, maxH; if (mh <= below || below >= above) { top = r.bottom + 6; maxH = below - 6; } else { const h = Math.min(mh, above - 6); top = r.top - 6 - h; maxH = above - 6; }
+    const left = Math.max(8, Math.min(r.right - mw, innerWidth - mw - 8));
+    Object.assign(m.style, { top: Math.round(top - cb.top) + "px", left: Math.round(left - cb.left) + "px", maxHeight: Math.max(120, Math.round(maxH)) + "px" });
+  };
+  document.addEventListener("toggle", (e) => { const d = e.target; if (d?.matches?.("details.more") && d.open) placeMore(d); }, true);
+  addEventListener("resize", () => closeAll(null));
+  addEventListener("scroll", (e) => { if (e.target?.closest?.(".moremenu")) return; document.querySelectorAll("details.more[open]").forEach(placeMore); }, true);
 }
 function ExportMenu({ items, label = "⬇︎ Export", className = "chip", title = "Exportieren" }) {
   const [busy, setBusy] = useState(false), [pos, setPos] = useState(null);
@@ -7126,7 +7163,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
         {d ? <button className="txmark m-doc" title={`Beleg: ${d.title || "öffnen"}`} aria-label="Beleg öffnen" onClick={st(() => onOpen(d.id))}>📎</button> : <span className="txmark" />}
       </span>}
       <button title="Buchung bearbeiten" aria-label="Bearbeiten" onClick={st(() => setTxOpen(t))}><IcoEdit /></button>
-      <button title={d ? "Beleg drucken" : "Buchungsbeleg drucken (kein Beleg angehängt)"} aria-label="Drucken" onClick={st(async () => d ? printDoc(d) : printImages(await blobToImages(await txBelegPdf(t, accounts)), txBelegName(t)))}><IcoPrint /></button>
+      <button title={d ? "Beleg drucken" : "Buchungsbeleg drucken (kein Beleg angehängt)"} aria-label="Drucken" onClick={st(async () => d ? printDoc(d) : printBlobs([await txBelegPdf(t, accounts)], txBelegName(t)))}><IcoPrint /></button>
       <button title={d ? "Beleg teilen" : "Buchungsbeleg teilen (kein Beleg angehängt)"} aria-label="Teilen" onClick={st(async () => d ? shareDocs([d]) : sharePdf(await txBelegPdf(t, accounts), txBelegName(t) + ".pdf", txBelegName(t)))}><IcoShare /></button>
       <button title="Buchung löschen" aria-label="Löschen" className="del" onClick={st(async () => (await uiAsk(`Buchung „${t.counterparty || t.purpose || "Buchung"}“ (${fmtMoney(t.amount, t.currency)}) löschen?`)) && deleteTx(t))}><IcoTrash /></button>
     </div>); };
@@ -8695,7 +8732,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
   async function exportPdf(share) {
     setBusy(true);
     try { const b = await stmtMarkedPdf(doc, blobRef.current, txs, accounts, docs); const name = (doc.title || "Kontoauszug").replace(/[\\/:*?"<>|]/g, "-") + " markiert.pdf";
-      if (share === "print") { notify?.("Druck wird vorbereitet …"); await printImages(await blobToImages(b, 1700, 200), doc.title); } else share ? sharePdf(b, name, doc.title) : saveBlob(b, name); }
+      if (share === "print") { notify?.("Druck wird vorbereitet …"); await printBlobs([b], doc.title); } else share ? sharePdf(b, name, doc.title) : saveBlob(b, name); }
     catch (e) { notify?.("Export fehlgeschlagen: " + e.message); } finally { setBusy(false); }
   }
   async function withBelege() {
@@ -10536,7 +10573,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
   const markedOf = async (d, o) => { const b = await db.getFile(d.id); if (!b) throw new Error("Originaldatei nicht gefunden"); return stmtMarkedPdf(d, b, txs, accounts, docs, o); };
   const stmtName = (d) => (d.title || "Kontoauszug").replace(/[\\/:*?"<>|]/g, "-") + " markiert.pdf";
   const prevStmt = async (d) => { setStmBusy(d.id + "v"); try { await openPdf(await markedOf(d), stmtName(d), (d.title || "Kontoauszug") + " · markiert", "", { stay: true }); } catch (e) { notify(e.message); } finally { setStmBusy(""); } };
-  const printStmt = async (d) => { setStmBusy(d.id + "p"); try { notify("Druck wird vorbereitet …"); await printImages(await blobToImages(await markedOf(d), 1700, 200), d.title); } catch (e) { notify(e.message); } finally { setStmBusy(""); } };
+  const printStmt = async (d) => { setStmBusy(d.id + "p"); try { notify("Druck wird vorbereitet …"); await printBlobs([await markedOf(d)], d.title); } catch (e) { notify(e.message); } finally { setStmBusy(""); } };
   async function printAll() {
     if (!stmtsF.length) return;
     setStmBusy("all");
@@ -13693,7 +13730,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
     const v = (await uiPrompt(one ? "Tags (mit Komma getrennt):" : `Tag zu ${ids.length} Einträgen hinzufügen:`, one ? (one.tags || []).join(", ") : "")); if (v == null) return;
     const t = v.split(",").map((x) => x.trim()).filter(Boolean);
     setList((l) => l.map((x) => (ids.includes(x.id) ? { ...x, tags: one ? t : [...new Set([...(x.tags || []), ...t])] } : x))); };
-  const printInv = async (xs) => { notify?.("Druck wird vorbereitet …"); const imgs = []; for (const x of xs) imgs.push(...(await blobToImages(await buildInvoicePdf(x, co)))); await printImages(imgs, xs.length === 1 ? invFileName(xs[0]) : `${xs.length} Rechnungen`); };
+  const printInv = async (xs) => { notify?.("Druck wird vorbereitet …"); const bl = []; for (const x of xs) bl.push(await buildInvoicePdf(x, co)); await printBlobs(bl, xs.length === 1 ? invFileName(xs[0]) : `${xs.length} Rechnungen`); };
   const picked = () => list.filter((x) => pick?.has(x.id));
   const saveView = async () => { const n = (await uiPrompt("Name der Ansicht:", [FILTERS.find(([k]) => k === filter)?.[1], yr, tagF && "#" + tagF, q && "„" + q + "“"].filter((x) => x && x !== "Alle").join(" "))); if (!n) return; setViews((v) => [...v, { id: uid(), n, filter, q, yr, tagF, sortBy }]); };
   const applyView = (v) => { setFilter(v.filter); setQ(v.q || ""); setYr(v.yr || ""); setTagF(v.tagF || ""); setSortBy(v.sortBy || "datum", true); };
@@ -15778,7 +15815,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
     note: (c.note ? "Anmerkung: " + c.note + "\n" : "") + "\n\n______________________________   Unterschrift" }));
   const countName = (c) => `Kassensturz ${kasse.name} ${fmtDate(c.date)}`;
   const countShow = async (c) => openPdf(await countBlob(c), `kassensturz-${c.date}.pdf`, countName(c));
-  const countPrint = async (c) => { notify?.("Druck wird vorbereitet …"); await printImages(await blobToImages(await countBlob(c)), countName(c)); };
+  const countPrint = async (c) => { notify?.("Druck wird vorbereitet …"); await printBlobs([await countBlob(c)], countName(c)); };
   const perStat = (pre) => { const l = mine.filter((e) => pre === "alle" || e.date.startsWith(pre)); const i = l.filter((e) => e.kind === "ein").reduce((t, e) => t + e.amount, 0), o = l.filter((e) => e.kind === "aus").reduce((t, e) => t + e.amount, 0);
     return l.length ? `${l.length} Buchung${l.length === 1 ? "" : "en"} · +${fmtMoney(i)} / −${fmtMoney(o)}` : "keine Buchungen"; };
   const perSel = <PickMenu icon="📅" label={per === "alle" ? "Alle" : per.length === 4 ? "Jahr " + per : perLabel} title="Zeitraum" wide items={[{ head: "Monat" }, ...months.map((m) => ({ k: m, title: monthLabel(m), sub: perStat(m), on: per === m, run: () => setPer(m) })),
@@ -16105,7 +16142,7 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
     setCnt(null); setView("inventur"); notify?.(`Inventur abgeschlossen · ${mvNew.length} Differenzen gebucht`);
   };
   const invPdf = async (c) => saveBlob(await invBlob(c), `inventur-${c.date}.pdf`);
-  const invPrint = async (c) => { notify?.("Druck wird vorbereitet …"); await printImages(await blobToImages(await invBlob(c)), `Inventurliste – ${c.name}`); };
+  const invPrint = async (c) => { notify?.("Druck wird vorbereitet …"); await printBlobs([await invBlob(c)], `Inventurliste – ${c.name}`); };
   const invShow = async (c) => openPdf(await invBlob(c), `inventur-${c.date}.pdf`, `Inventurliste – ${c.name}`);
   const invBlob = async (c) => { const L = c.snapshot || []; const tot = kbR2(L.reduce((s, l) => s + l.ist * l.ek, 0));
     return await tablePdf({ title: `Inventurliste – ${c.name}`, subtitle: `Stichtag ${fmtDate(c.date)} · ${({ ...CO_DEFAULT, ...ls.get("company", {}) }).name || ""} · Bewertung zu Einstandspreisen (netto)`, landscape: true,
@@ -16247,7 +16284,7 @@ function DunningPage({ setTab, book }) {
   const histS = mf === "alle" || mf === "verlauf" ? kit.apply(history.filter(({ x, r }) => mqHit(x, r))) : [];
   const overV = useProgressiveAuto(overS.map((o) => ({ ...o, id: o.x.id }))), histV = useProgressiveAuto(histS.map((h) => ({ ...h, id: h.x.id + ":" + h.i })));
   const tagInv = async (xs) => { const f = await kitTagPrompt(xs); if (!f) return; const ids = new Set(xs.map((x) => x.id)); setList((l) => l.map((y) => (ids.has(y.id) ? { ...y, tags: f(y) } : y))); };
-  const printInvs = async (items) => { const imgs = []; for (const [x, i] of items) imgs.push(...(await blobToImages(await (i == null ? buildInvoicePdf(x, co) : pdfOf(x, i))))); if (imgs.length) await printImages(imgs, items.length === 1 ? invFileName(items[0][0], items[0][1] == null ? undefined : items[0][0].reminders[items[0][1]]) : `${items.length} Belege`); };
+  const printInvs = async (items) => { const bl = []; for (const [x, i] of items) bl.push(await (i == null ? buildInvoicePdf(x, co) : pdfOf(x, i))); if (bl.length) await printBlobs(bl, items.length === 1 ? invFileName(items[0][0], items[0][1] == null ? undefined : items[0][0].reminders[items[0][1]]) : `${items.length} Belege`); };
   const mnHead = ["Kunde", "Rechnung", "Fällig", "Tage überfällig", "Letzte Stufe", "Betrag €", "Tags"];
   const mnRow = ({ x, last, since }) => [x.customer?.name || "", x.number, invDueEff(x), since, last ? remindName(last.level) : "", r2e(invEur(x)), (x.tags || []).join(", ")];
   const mnExp = [{ label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) },
