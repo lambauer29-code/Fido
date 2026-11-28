@@ -20,29 +20,7 @@ import { loadImage, detectCorners, warp, applyFilter, toJpeg, pagesToPdf, shrink
 import { parseReceiptQR, pastOrToday } from "./receipt.js";
 import { saveBlob, downloadCsv, downloadXlsx, tablePdf, zipBlob, vcardText, csvBlob, xlsxBlob, setPdfBrand } from "./exports.js";
 import { PROVIDERS, PROVIDER_LIST, syncCfg, setSyncCfg, syncOn, syncNow, oauthLogin, oauthConfig, setupKey, cloudState, disconnect, remoteDevices, defaultDeviceName, deviceId, kvGet, changePassword } from "./sync.js";
-import { canUpdate, appVersion, checkUpdate, installUpdate, hasDisk, native, isTauri, isMacApp, isWinApp, tempFiles, saveFilesToFolder } from "./platform.js";
-/* v0.99.103: Rückfragen & Eingaben. Im Browser die gewohnten Fenster; in der Mac/Windows-App eigene Dialoge –
-   dort ist das System-confirm() nicht blockierend (lieferte immer „ja“) und prompt() gar nicht verfügbar. */
-function uiDialog(msg, { input = false, value = "", ok = "OK", cancel = "Abbrechen" } = {}) {
-  return new Promise((resolve) => {
-    const prev = document.activeElement, bg = document.createElement("div"); bg.className = "uidlg-bg";
-    bg.innerHTML = `<div class="uidlg" role="dialog" aria-modal="true"><div class="uidlg-msg"></div>${input ? '<input class="uidlg-in" type="text" />' : ""}<div class="uidlg-btns"><button type="button" class="btn uidlg-no"></button><button type="button" class="btn primary uidlg-ok"></button></div></div>`;
-    bg.querySelector(".uidlg-msg").textContent = String(msg ?? "");
-    bg.querySelector(".uidlg-ok").textContent = ok; bg.querySelector(".uidlg-no").textContent = cancel;
-    const inp = bg.querySelector(".uidlg-in"); if (inp) inp.value = value ?? "";
-    const done = (v) => { removeEventListener("keydown", key, true); bg.remove(); try { prev?.focus?.(); } catch {} resolve(v); };
-    const yes = () => done(input ? inp.value : true), no = () => done(input ? null : false);
-    const key = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); no(); } else if (e.key === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); yes(); } };
-    bg.querySelector(".uidlg-ok").onclick = yes; bg.querySelector(".uidlg-no").onclick = no;
-    bg.addEventListener("pointerdown", (e) => { if (e.target === bg) no(); });
-    addEventListener("keydown", key, true); document.body.appendChild(bg);
-    setTimeout(() => (inp ? (inp.focus(), inp.select()) : bg.querySelector(".uidlg-ok").focus()), 0);
-  });
-}
-// v1.0.0: wo man in diesem System Rechte erteilt
-const permWhere = (what) => (isMacApp ? `in den Systemeinstellungen → Datenschutz & Sicherheit → ${what} für FinDocu erlauben` : isWinApp ? `in Windows unter Einstellungen → Datenschutz → ${what} erlauben` : "in den Browser-Einstellungen erlauben");
-const uiAsk = async (msg) => (isTauri ? uiDialog(msg) : window.confirm(msg));
-const uiPrompt = async (msg, value = "") => (isTauri ? uiDialog(msg, { input: true, value }) : window.prompt(msg, value));
+import { canUpdate, appVersion, checkUpdate, installUpdate, nativePrintPdf } from "./platform.js";
 import { latestBalance, parseFile, withIds, categorize, detectRecurring, matchInvoices, portfolio, rowsToTransactions, FIELD_LABELS, counterpartyKey } from "./importers.js";
 import { Glyph } from "./icons.jsx";
 
@@ -163,8 +141,6 @@ async function shareDocs(list) {
   if (navigator.canShare?.({ files })) { try { await navigator.share({ files, title }); } catch {} } else downloadFiles(files);
 }
 function downloadFiles(files) {
-  // v1.0.0: in der Mac/Windows-App mehrere Dateien → einmal Ordner wählen statt x „Sichern unter“-Fenster
-  if (hasDisk && files.length > 1) { saveFilesToFolder(files).catch((e) => alert("Speichern fehlgeschlagen: " + (e.message || e))); return; }
   files.forEach((f, i) => setTimeout(() => {
     const a = document.createElement("a"), u = URL.createObjectURL(f);
     a.href = u; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
@@ -174,12 +150,6 @@ function downloadFiles(files) {
 // letzte Klickposition – das Teilen-Menü erscheint dort (wie das macOS-Menü)
 let lastPtr = { x: innerWidth / 2, y: 120 };
 if (typeof window !== "undefined") window.addEventListener("pointerdown", (e) => { lastPtr = { x: e.clientX, y: e.clientY }; }, true);
-// v1.0.0 Mac-App: System-Teilen-Menü (AirDrop, Mail, Nachrichten, WhatsApp …) mit der Datei als Anhang
-async function macShare(files, notify) {
-  let paths = [];
-  try { paths = await tempFiles(files); await native("share_files", { paths, x: lastPtr.x, y: lastPtr.y }); }
-  catch (e) { if (paths[0]) { native("reveal_file", { path: paths[0] }).catch(() => {}); notify?.("Teilen-Menü nicht verfügbar – Datei im Finder markiert"); } else notify?.("Teilen fehlgeschlagen: " + (e.message || e)); }
-}
 function ShareWin({ data, onClose }) {
   const { files, title, docs, to = "" } = data;
   const summary = docs.map((d) => `• ${d.title}${d.documentDate ? " (" + fmtDate(d.documentDate) + ")" : ""}`).join("\n");
@@ -194,12 +164,7 @@ function ShareWin({ data, onClose }) {
     setTimeout(() => document.addEventListener("pointerdown", down, true), 0); window.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key); };
   }, []);
-  const fm = isWinApp ? "Explorer" : "Finder";
-  // in der App: Datei ohne Nachfrage in einen Zwischenordner, im Finder/Explorer markieren, dann das Programm öffnen
-  const via = async (url, app) => {
-    if (hasDisk) { try { const p = await tempFiles(files); await native("reveal_file", { path: p[0] }); setMsg(`Datei im ${fm} markiert – in ${app} hineinziehen.`); } catch (e) { setMsg("Fehlgeschlagen: " + (e.message || e)); return; } }
-    else { downloadFiles(files); setMsg(`Heruntergeladen – in ${app} anhängen.`); }
-    setTimeout(() => window.open(url, "_blank"), 400); };
+  const via = (url, app) => { downloadFiles(files); setMsg(`Heruntergeladen – in ${app} anhängen.`); setTimeout(() => window.open(url, "_blank"), 400); };
   const system = async () => { try { await navigator.share({ files, title }); onClose(); } catch (e) { if (e.name !== "AbortError") setMsg("Nicht verfügbar: " + e.message); } };
   const kb = size < 1048576 ? Math.max(1, Math.round(size / 1024)) + " KB" : (size / 1048576).toFixed(1).replace(".", ",") + " MB";
   const kind = files.length > 1 ? `${files.length} Dateien` : files[0]?.type === "application/pdf" ? "PDF-Dokument" : files[0]?.type?.startsWith("image/") ? "Bild" : "Datei";
@@ -209,13 +174,12 @@ function ShareWin({ data, onClose }) {
         <div><b className="clamp">{title}</b><small>{kind} · {kb}</small></div></div>
       <div className="spsep" />
       <button role="menuitem" onClick={() => via(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(title)}&body=${encodeURIComponent("Guten Tag,\n\nim Anhang:\n" + summary + "\n\nMit freundlichen Grüßen")}`, "der Mail")}><span>✉️</span>E-Mail</button>
-      {!isWinApp && <button role="menuitem" onClick={() => (sys ? system() : via(`sms:&body=${encodeURIComponent(title)}`, "Nachrichten"))}><span>🗨️</span>Nachrichten</button>}
+      <button role="menuitem" onClick={() => (sys ? system() : via(`sms:&body=${encodeURIComponent(title)}`, "Nachrichten"))}><span>🗨️</span>Nachrichten</button>
       <button role="menuitem" onClick={() => via(`https://wa.me/?text=${encodeURIComponent(title)}`, "WhatsApp")}><span>💬</span>WhatsApp</button>
-      {!isWinApp && <button role="menuitem" onClick={() => (sys ? system() : (downloadFiles(files), setMsg("Heruntergeladen – im Finder mit AirDrop senden.")))}><span>📡</span>AirDrop</button>}
-      {hasDisk && <button role="menuitem" onClick={async () => { try { const p = await tempFiles(files); await native("reveal_file", { path: p[0] }); setMsg(`Im ${fm} markiert.`); } catch (e) { setMsg("Fehlgeschlagen: " + (e.message || e)); } }}><span>📂</span>Im {fm} zeigen</button>}
+      <button role="menuitem" onClick={() => (sys ? system() : (downloadFiles(files), setMsg("Heruntergeladen – im Finder mit AirDrop senden.")))}><span>📡</span>AirDrop</button>
       <button role="menuitem" onClick={() => via(`https://t.me/share/url?url=${encodeURIComponent(" ")}&text=${encodeURIComponent(title)}`, "Telegram")}><span>✈️</span>Telegram</button>
       <div className="spsep" />
-      <button role="menuitem" onClick={() => { downloadFiles(files); if (!hasDisk) setMsg("Im Ordner „Downloads“ gespeichert."); }}><span>⬇️</span>{hasDisk ? "Speichern unter …" : "Herunterladen"}</button>
+      <button role="menuitem" onClick={() => { downloadFiles(files); setMsg("Im Ordner „Downloads“ gespeichert."); }}><span>⬇️</span>Herunterladen</button>
       {msg && <div className="spmsg">{msg}</div>}
       <MenuCancel onClick={onClose} />
     </div>, document.body);
@@ -234,19 +198,6 @@ async function blobToImages(b, width = 1700, max = 60) {
   return srcs;
 }
 async function printImages(srcs, title = "Dokument") {
-  // v1.0.0 Mac/Windows-App: der Druck aus einem unsichtbaren Rahmen wird dort ignoriert → Seiten in eine eigene Druckansicht der App legen
-  if (isTauri) {
-    document.getElementById("tprint")?.remove();
-    const root = document.createElement("div"); root.id = "tprint";
-    root.innerHTML = srcs.map((u) => `<img src="${u}">`).join("");
-    document.body.appendChild(root);
-    await Promise.all([...root.querySelectorAll("img")].map((im) => (im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; }))));
-    const t0 = document.title; document.title = String(title || "Dokument");
-    document.documentElement.classList.add("tprinting");
-    try { await window.print(); } catch (e) { alert("Drucken nicht möglich: " + (e.message || e)); }
-    setTimeout(() => { document.title = t0; }, 3000);
-    return;  // Druckansicht bleibt bis zum nächsten Druck liegen (macOS zeigt den Dialog ohne zu warten)
-  }
   const f = document.createElement("iframe");
   f.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
   document.body.appendChild(f);
@@ -258,52 +209,21 @@ async function printImages(srcs, title = "Dokument") {
   w.focus(); w.print();
   setTimeout(() => { f.remove(); srcs.forEach((u) => u.startsWith("blob:") && URL.revokeObjectURL(u)); }, 60000);
 }
-if (import.meta.env.VITE_E2E) window.__fd = { shareDocs: (...a) => shareDocs(...a), printDoc: (...a) => printDoc(...a), downloadFiles: (...a) => downloadFiles(...a), printBlobs: (...a) => printBlobs(...a) };
-/* v1.0.2: Drucken von Dateien (PDF/Bild). Mac-App: das ORIGINAL wird gedruckt (PDFs unverändert, mehrere zusammengefügt,
-   Bilder als PDF-Seite) über den Mac-Druckdialog – WKWebView druckt dort leere Seiten. Sonst: Seiten als Bilder drucken. */
-async function printBlobs(blobs, title = "Dokument") {
-  blobs = blobs.filter(Boolean); if (!blobs.length) return;
-  const viaImages = async () => { const imgs = []; for (const b of blobs) imgs.push(...(await blobToImages(b, 1700, 200))); return printImages(imgs, title); };
-  if (!isMacApp && !isWinApp) return viaImages();
-  try {
-    let out;
-    if (blobs.length === 1 && blobs[0].type === "application/pdf") out = blobs[0];   // Original unverändert
-    else {
-      const { PDFDocument } = await import("pdf-lib"), pdf = await PDFDocument.create();
-      for (const b of blobs) {
-        if (b.type === "application/pdf") { const src = await PDFDocument.load(await b.arrayBuffer(), { ignoreEncryption: true }); (await pdf.copyPages(src, src.getPageIndices())).forEach((pg) => pdf.addPage(pg)); continue; }
-        const u = URL.createObjectURL(b);
-        try {
-          const im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error("Bild nicht lesbar")); i.src = u; });
-          const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
-          const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0);
-          const jpg = await pdf.embedJpg(await (await fetch(c.toDataURL("image/jpeg", 0.92))).arrayBuffer());
-          const W = 595.28, H = 841.89, sc = Math.min(W / jpg.width, H / jpg.height);
-          pdf.addPage([W, H]).drawImage(jpg, { x: (W - jpg.width * sc) / 2, y: H - jpg.height * sc, width: jpg.width * sc, height: jpg.height * sc });
-        } finally { URL.revokeObjectURL(u); }
-      }
-      out = new Blob([await pdf.save()], { type: "application/pdf" });
-    }
-    if (isWinApp) {   // v1.0.3 Windows: Original-PDF im eingebauten PDF-Betrachter von WebView2 drucken
-      document.getElementById("tpdfprint")?.remove();
-      const f = document.createElement("iframe"), u = URL.createObjectURL(out); f.id = "tpdfprint";
-      f.style.cssText = "position:fixed;right:0;bottom:0;width:2px;height:2px;border:0;opacity:0;pointer-events:none";
-      await new Promise((ok, no) => { f.onload = ok; f.onerror = () => no(new Error("PDF nicht ladbar")); setTimeout(ok, 4000); f.src = u; document.body.appendChild(f); });
-      await new Promise((r) => setTimeout(r, 600));
-      try { f.contentWindow.focus(); f.contentWindow.print(); } catch { f.remove(); return viaImages(); }
-      setTimeout(() => { f.remove(); URL.revokeObjectURL(u); }, 120000);
-      return;
-    }
-    const name = String(title || "Dokument").replace(/\.(pdf|png|jpe?g|heic|heif|webp|gif|tiff?)$/i, "").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80) + ".pdf";
-    const [path] = await tempFiles([new File([out], name, { type: "application/pdf" })]);
-    await native("print_pdf", { path, title: String(title || "Dokument") });
-  } catch (e) { if (isWinApp) return viaImages(); alert("Drucken nicht möglich: " + (e.message || e)); }
+/* Drucken: in der Mac-App über den nativen macOS-Druckdialog (Abbrechen ohne Fehlermeldung),
+   sonst (Browser, Windows, iOS) wie bisher als Bilder im unsichtbaren iframe */
+async function printPdf(blobs, title = "Dokument", width, max) {
+  const list = (Array.isArray(blobs) ? blobs : [blobs]).filter(Boolean);
+  if (!list.length) return;
+  if (await nativePrintPdf(list, title)) return;
+  const imgs = [];
+  for (const b of list) imgs.push(...(await blobToImages(b, width, max)));
+  if (imgs.length) await printImages(imgs, title);
 }
 async function printDoc(d, notify) {
   const b = await db.getFile(d.id);
   if (!b) return notify?.("Originaldatei nicht gefunden");
   notify?.("Druck wird vorbereitet …");
-  await printBlobs([b], d.title);
+  await printPdf(b, d.title);
 }
 /* PDF in der App anzeigen (statt neuem Fenster – am iPhone kommt man sonst nicht zurück) */
 let pdfUi = null;
@@ -313,7 +233,7 @@ function PdfViewWin({ data, onClose }) {
   return (
     <Win id="pdfview" defW={760} onClose={onClose} dirty={false} className="pdfviewwin" stay={!!data.stay}>
       <div className="panelhead"><b className="clamp">{data.title || data.name}</b>
-        <button className="btn" title="Drucken" onClick={() => (hasDisk ? printBlobs([data.blob], data.title) : pages && printImages(pages, data.title))}><IcoPrint /></button>
+        <button className="btn" title="Drucken" onClick={() => printPdf(data.blob, data.title)}><IcoPrint /></button>
         <button className="btn" title="Teilen / Sichern" onClick={() => sharePdf(data.blob, data.name, data.title, data.to)}><IcoShare /></button>
         <XBtn /></div>
       <div className="dpages">
@@ -332,7 +252,7 @@ function DocActions({ d, prevOpen, onPreview, onEdit, onTrash }) {
       <button title="Details bearbeiten" aria-label="Bearbeiten" onClick={stop(onEdit)}><IcoEdit /></button>
       <button title="Drucken" aria-label="Drucken" onClick={stop(() => printDoc(d))}><IcoPrint /></button>
       <button title="Teilen (Nachrichten, WhatsApp, Mail …)" aria-label="Teilen" onClick={stop(() => shareDocs([d]))}><IcoShare /></button>
-      <button title="In den Papierkorb" aria-label="Löschen" className="del" onClick={stop(async () => (await uiAsk(`„${d.title}“ in den Papierkorb verschieben?`)) && onTrash(d))}><IcoTrash /></button>
+      <button title="In den Papierkorb" aria-label="Löschen" className="del" onClick={stop(() => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && onTrash(d))}><IcoTrash /></button>
     </div>
   );
 }
@@ -563,7 +483,7 @@ const IS_TABLET = typeof navigator !== "undefined" && (/iPad/.test(navigator.use
 // v0.99.76: Schrift-/Button-Größen sind pro Gerät – im Backup separat (devSizes), beim Wiederherstellen wird gefragt
 const DEV_SIZE_KEYS = ["dev:fontSizes", "dev:fontSizesSty", "dev:uiScale"];
 const devLabel = () => { const u = navigator.userAgent || ""; return /iPad|Macintosh.*Mobile/.test(u) || (/Macintosh/.test(u) && navigator.maxTouchPoints > 1) ? "iPad" : /iPhone/.test(u) ? "iPhone" : /Android/.test(u) ? "Android" : /Macintosh|Mac OS/.test(u) ? "Mac" : /Windows/.test(u) ? "Windows" : "anderes Gerät"; };
-const BACKUP_SKIP = /^(dev:|appToken|appLock|rtPw|srch:|pending|openSettingsSec|win:|scanFilter|bkDisk)/;
+const BACKUP_SKIP = /^(dev:|appToken|appLock|rtPw|srch:|pending|openSettingsSec|win:|scanFilter)/;
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -814,7 +734,7 @@ function AccStyleEditor({ a, onChange, onClose, lib = [], setLib }) {
   const [txt, setTxt] = useState("");
   const set = (patch) => onChange({ ...a, ...patch });
   const addLib = (it) => setLib?.([...lib.filter((x) => (it.src ? x.src !== it.src : x.emoji !== it.emoji)), { id: uid(), ...it }]);
-  const delLib = async (it) => { if (!(await uiAsk("Dieses eigene Symbol aus der Sammlung löschen?"))) return; setLib?.(lib.filter((x) => x.id !== it.id)); };
+  const delLib = (it) => { if (!confirm("Dieses eigene Symbol aus der Sammlung löschen?")) return; setLib?.(lib.filter((x) => x.id !== it.id)); };
   return (
     <div className="accstyle">
       <div className="asrow"><small className="muted">Textfarbe</small>
@@ -1115,9 +1035,6 @@ function useDnd(onDrop) {
     setDrag({ ...cur.current });
     document.body.classList.add("dnd-active");
     navigator.vibrate?.(8);
-    try { e.target.setPointerCapture?.(e.pointerId); } catch {}
-    // nächster scrollbarer Bereich (Fenster oder innerer Container) – für das automatische Scrollen am Rand
-    const sc = (() => { for (let n = e.target?.parentElement; n && n !== document.body; n = n.parentElement) { const o = getComputedStyle(n).overflowY; if (/(auto|scroll)/.test(o) && n.scrollHeight > n.clientHeight + 4) return n; } return null; })();
     let raf;
     const move = (ev) => {
       const d = cur.current; if (!d) return;
@@ -1135,8 +1052,7 @@ function useDnd(onDrop) {
     // automatisch scrollen, wenn man an den Rand zieht
     const tick = () => {
       const d = cur.current; if (!d) return;
-      const tgt = sc || window, top = sc ? Math.max(0, sc.getBoundingClientRect().top) : 0, bot = sc ? Math.min(innerHeight, sc.getBoundingClientRect().bottom) : innerHeight;
-      if (d.y < top + 90) tgt.scrollBy(0, -12); else if (d.y > bot - 90) tgt.scrollBy(0, 12);
+      if (d.y < 90) window.scrollBy(0, -12); else if (d.y > innerHeight - 90) window.scrollBy(0, 12);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -1214,7 +1130,7 @@ function CatStylePicker({ icon, color, img, onChange }) {
           {lib.map((it) => (
             <span key={it.id} className="libwrap">
               <button type="button" className={(it.src ? img === it.src : icon === it.emoji && !img) ? "on" : ""} onClick={() => set(it.src ? { img: it.src } : { icon: it.emoji, img: undefined })}>{it.src ? <img src={it.src} alt="" /> : it.emoji}</button>
-              <button type="button" className="libdel" title="Aus Sammlung löschen" onClick={async () => (await uiAsk("Dieses eigene Symbol aus der Sammlung löschen?")) && setLib?.(lib.filter((x) => x.id !== it.id))}>×</button>
+              <button type="button" className="libdel" title="Aus Sammlung löschen" onClick={() => confirm("Dieses eigene Symbol aus der Sammlung löschen?") && setLib?.(lib.filter((x) => x.id !== it.id))}>×</button>
             </span>
           ))}
           {img && !lib.some((x) => x.src === img) && <button type="button" className="on"><img src={img} alt="" /></button>}
@@ -1274,12 +1190,12 @@ function DocNavSettings({ part = "groups", nav, setNav, docs, renameCategory, de
       save(groups.map((g) => ({ ...g, cats: m[g.id] })));
     } else if (d.kind === "dgrp") save(moveBetween({ g: groups }, "g", d.index, "g", over.index).g);
   });
-  const delGroup = async (gi) => {
+  const delGroup = (gi) => {
     if (groups.length <= 1) return notify("Mindestens eine Gruppe wird gebraucht");
     const gone = groups[gi];
     const rest = groups.filter((_, k) => k !== gi).map((g) => (g.parent === gone.id ? { ...g, parent: undefined } : g)), moved = gone.cats;
     const tgtName = gone.parent ? groups.find((g) => g.id === gone.parent)?.title : rest[0].title;
-    if (moved.length && !(await uiAsk(`Gruppe löschen? Die ${moved.length} Kategorien wandern in „${tgtName || "erste Gruppe"}“.`))) return;
+    if (moved.length && !confirm(`Gruppe löschen? Die ${moved.length} Kategorien wandern in „${tgtName || "erste Gruppe"}“.`)) return;
     const tgt = gone.parent ? rest.findIndex((g) => g.id === gone.parent) : 0;
     rest[tgt] = { ...rest[tgt], cats: [...rest[tgt].cats, ...moved] }; save(rest);
   };
@@ -1331,14 +1247,14 @@ function DocNavSettings({ part = "groups", nav, setNav, docs, renameCategory, de
                   <small className="muted cnt" title="Dokumente">{count(c)}</small>
                   {c !== "Sonstiges"
                     ? <button className="iconbtn" aria-label="Kategorie löschen" title="Kategorie löschen"
-                        onClick={async () => (await uiAsk(`Kategorie „${c}“ löschen?${count(c) ? ` ${count(c)} Dokument(e) wandern nach „Sonstiges“.` : ""}`)) && deleteCategory(c)}>🗑</button>
+                        onClick={() => confirm(`Kategorie „${c}“ löschen?${count(c) ? ` ${count(c)} Dokument(e) wandern nach „Sonstiges“.` : ""}`) && deleteCategory(c)}>🗑</button>
                     : <span className="iconbtn-spacer" />}
                 </div>
                 {subOpen === c && <div className="subcatbox">
                   {subs(c).map((x) => <div key={x} className="subcatrow"><span className="subarrow" aria-hidden="true">↳</span>
                     <EditText className="grow" inputClass="catname" value={x} validate={(t) => (!t ? "leer" : t !== x && subs(c).includes(t) ? "doppelt" : undefined)} onSave={(t) => t && t !== x && SUBCAT_OPS?.edit(c, x, t)} />
                     <small className="muted cnt" title="Dokumente und Buchungen">{SUBCAT_OPS?.count(c, x) || 0}</small>
-                    <button className="iconbtn" title="Unterkategorie löschen" aria-label={`${x} löschen`} onClick={async () => { const n = SUBCAT_OPS?.count(c, x) || 0; if (!n || (await uiAsk(`Unterkategorie „${x}“ löschen? ${n} Einträge behalten „${c}“ ohne Unterkategorie.`))) SUBCAT_OPS ? SUBCAT_OPS.edit(c, x, null) : setSubs(c, subs(c).filter((y) => y !== x)); }}>🗑</button></div>)}
+                    <button className="iconbtn" title="Unterkategorie löschen" aria-label={`${x} löschen`} onClick={() => { const n = SUBCAT_OPS?.count(c, x) || 0; if (!n || confirm(`Unterkategorie „${x}“ löschen? ${n} Einträge behalten „${c}“ ohne Unterkategorie.`)) SUBCAT_OPS ? SUBCAT_OPS.edit(c, x, null) : setSubs(c, subs(c).filter((y) => y !== x)); }}>🗑</button></div>)}
                   <div className="subcatrow addsub"><span className="subarrow">＋</span><EditText className="grow" value="" resetOnSave placeholder={`Unterkategorie für „${c}“, z. B. ${(SUBCAT_DEF[c] || ["Tanken", "Laden"]).slice(0, 2).join(", ")}`} validate={(t) => (!t ? "leer" : subs(c).includes(t) ? "doppelt" : undefined)} onSave={(t) => setSubs(c, [...subs(c), t])} /></div>
                   {!subs(c).length && SUBCAT_DEF[c] && <button className="link small" onClick={() => setSubs(c, SUBCAT_DEF[c])}>Vorschläge übernehmen: {SUBCAT_DEF[c].join(", ")}</button>}
                 </div>}
@@ -1363,7 +1279,7 @@ function DocNavSettings({ part = "groups", nav, setNav, docs, renameCategory, de
       {isG && dnd.lineAt("dgrp", "g", groups.length) && <div className="dropline" />}
       {isG && <div className="actions" data-dgrp-list={`g|${groups.length}`}>
         <button className="btn" onClick={addGroup}>＋ Gruppe</button>
-        <button className="link" onClick={async () => (await uiAsk("Dokument-Gruppen auf Standard zurücksetzen? (Kategorien bleiben erhalten)")) && save(buildDocGroups(all))}>Zurücksetzen</button>
+        <button className="link" onClick={() => confirm("Dokument-Gruppen auf Standard zurücksetzen? (Kategorien bleiben erhalten)") && save(buildDocGroups(all))}>Zurücksetzen</button>
       </div>}
       {dnd.ghost}
     </SetSec>
@@ -1380,7 +1296,7 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
   const [tabStyle, setTabStyle] = useState(null);
   const patchTab = (i, p) => setNav((n) => ({ ...n, tabs: n.tabs.map((t, k) => (k === i ? { ...t, ...p } : t)) }));
   const patchGroup = (gi, p) => saveGroups(explicit().map((g, k) => (k === gi ? { ...g, ...p } : g)));
-  const delGroup = async (gi) => { const g = explicit(); if (g[gi].accounts.length && !(await uiAsk("Gruppe löschen? Die Konten werden automatisch neu einsortiert."))) return; saveGroups(g.filter((_, k) => k !== gi)); };
+  const delGroup = (gi) => { const g = explicit(); if (g[gi].accounts.length && !confirm("Gruppe löschen? Die Konten werden automatisch neu einsortiert.")) return; saveGroups(g.filter((_, k) => k !== gi)); };
   const addGroup = () => saveGroups([...explicit(), { id: "g-" + uid(), title: "Neue Gruppe", kinds: [], ids: [] }]);
   const dnd = useDnd((d, over) => {
     if (d.kind === "tab") setNav((n) => ({ ...n, tabs: moveBetween({ t: n.tabs }, "t", d.index, "t", over.index).t }));
@@ -1495,7 +1411,7 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
         <div className="actions" data-agrp-list={`g|${real.length}`}>
           <button className="btn" onClick={addGroup}>＋ Gruppe / Überschrift</button>
           <button className="btn" onClick={() => setEdit("new")}>＋ Konto anlegen</button>
-          <button className="link" onClick={async () => (await uiAsk("Seitenleiste auf Standard zurücksetzen?")) && setNav((n) => ({ ...DEFAULT_NAV, docGroups: n.docGroups }))}>Zurücksetzen</button>
+          <button className="link" onClick={() => confirm("Seitenleiste auf Standard zurücksetzen?") && setNav((n) => ({ ...DEFAULT_NAV, docGroups: n.docGroups }))}>Zurücksetzen</button>
         </div>
         {dnd.ghost}
       </SetSec>}
@@ -1503,7 +1419,7 @@ function NavSettings({ part, nav, setNav, accounts, setAccounts, txs, deleteAcco
       {part !== "tabs" && edit && (
         <AccountSheet init={edit === "new" ? null : edit} hasAtmAccount={accounts.some((a) => a.atm && a.id !== edit?.id)} txs={txs}
           onClose={() => setEdit(null)}
-          onDelete={edit !== "new" ? async () => { if ((await uiAsk(`Konto „${edit.name}“ samt Umsätzen löschen?`))) { deleteAccount(edit.id); setEdit(null); } } : null}
+          onDelete={edit !== "new" ? () => { if (confirm(`Konto „${edit.name}“ samt Umsätzen löschen?`)) { deleteAccount(edit.id); setEdit(null); } } : null}
           onSave={(a) => {
             setAccounts((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]));
             setEdit(null); notify(edit === "new" ? `Konto „${a.name}“ angelegt` : "Konto gespeichert");
@@ -2145,16 +2061,6 @@ function AppMain() {
     const c = q.contacts; appQ.current = { files: [], i: 0, contacts: null, running: false };
     if (c?.length) { ls.set("pendingContactImport", c); setTab("kunden"); setBizReq((n) => n + 1); }
   };
-  // v0.99.100: Dateien irgendwo ins Fenster gezogen (außerhalb eines Ablagefelds) → nicht die Datei anzeigen, sondern wie die Universal-Ablage einlesen
-  const dropRef = useRef(null); dropRef.current = smartImport;
-  useEffect(() => {
-    const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
-    const over = (e) => { if (!hasFiles(e)) return; e.preventDefault(); if (!e.target.closest?.(".docdrop")) e.dataTransfer.dropEffect = "copy"; };
-    const drop = async (e) => { if (!hasFiles(e) || e.defaultPrevented) return; e.preventDefault();
-      const files = (await filesFromDrop(e.dataTransfer)).filter((f) => !f.name.startsWith(".")); if (files.length) dropRef.current?.(files); };
-    addEventListener("dragover", over); addEventListener("drop", drop);
-    return () => { removeEventListener("dragover", over); removeEventListener("drop", drop); };
-  }, []);
   // v0.99.93: Überwachter Ordner – im Hintergrund prüfen, solange die App offen ist
   FW.importer = (files) => smartImport(files); FW.notify = notify; FW.goSettings = () => { ls.set("openSettingsSec", "watch"); setTab("settings"); };
   const [fwc] = useLsState("watchCfg", FW_DEF);
@@ -2188,7 +2094,7 @@ function AppMain() {
     if ((stmts.length || contacts.length) && !q.running) { q.running = true; setTimeout(nextAppImp, docs.length ? 300 : 0); }
   }
   const [imp, setImp] = useState(null);
-  shareUi = isMacApp ? (d) => macShare(d.files, notify) : setShareData;
+  shareUi = setShareData;
   // bestehende Rechnungsbelege einmalig in „Ausgangsrechnung“ verschieben
   useEffect(() => {
     if (ls.get("migAusg", false) || !docs.length || !categories.includes("Ausgangsrechnung")) return;
@@ -2314,18 +2220,18 @@ function AppMain() {
     return tx;
   }
   // Verweise auf gelöschte Buchungen lösen: Rechnung (Zahlung) und Fahrtenbuch
-  async function unlinkTxRefs(ids, ask = true) {
+  function unlinkTxRefs(ids, ask = true) {
     const set = new Set(ids); if (!set.size) return;
     const inv = ls.get("invoices", []), hit = inv.filter((x) => x.paidTx && set.has(x.paidTx));
     if (hit.length) {
-      const reopen = !ask || (await uiAsk(hit.length === 1 ? `Diese Buchung ist die Zahlung zu Rechnung ${hit[0].number}.\n\nRechnung wieder auf „offen“ setzen?` : `${hit.length} Buchungen sind Zahlungen zu Rechnungen.\n\nDiese Rechnungen wieder auf „offen“ setzen?`));
+      const reopen = !ask || confirm(hit.length === 1 ? `Diese Buchung ist die Zahlung zu Rechnung ${hit[0].number}.\n\nRechnung wieder auf „offen“ setzen?` : `${hit.length} Buchungen sind Zahlungen zu Rechnungen.\n\nDiese Rechnungen wieder auf „offen“ setzen?`);
       ls.set("invoices", inv.map((x) => (x.paidTx && set.has(x.paidTx) ? { ...x, paidTx: undefined, paidTxCreated: undefined, ...(reopen ? { status: "offen", paidAt: undefined, paidAccount: undefined, payMethod: undefined } : {}) } : x)));
     }
     const fb = ls.get("fbook", null); if (fb?.entries?.some((e) => e.txId && set.has(e.txId))) ls.set("fbook", { ...fb, entries: fb.entries.map((e) => (e.txId && set.has(e.txId) ? { ...e, txId: null } : e)) });
   }
   async function deleteTx(t, o = {}) {
     if (!o.force && !(await retainGuard([{ title: `Buchung ${fmtDate(t.date)} · ${t.counterparty || t.purpose || ""} · ${fmtMoney(t.amount)}`, end: rtTxEnd(t, accounts) }], "data"))) return false;
-    await unlinkTxRefs([t.id]);
+    unlinkTxRefs([t.id]);
     await db.delTxs([t.id]); setTxs((p) => p.filter((x) => x.id !== t.id));
     if (t.docId) { const d = docs.find((x) => x.id === t.docId); if (d && !d.invoiceId) await saveDoc({ ...d, paid: false, paidCash: false }); }
   }
@@ -2344,7 +2250,7 @@ function AppMain() {
     const prot = txs.filter((t) => t.accountId === id && (rtTxEnd(t, accounts) || "") >= todayISO());
     if (prot.length && !(await retainGuard(prot.map((t) => ({ title: `Buchung ${fmtDate(t.date)} · ${t.counterparty || t.purpose || ""}`, end: rtTxEnd(t, accounts) })), "data"))) return false;
     const ids = txs.filter((t) => t.accountId === id).map((t) => t.id);
-    await unlinkTxRefs(ids);
+    unlinkTxRefs(ids);
     ls.set("invoices", ls.get("invoices", []).map((x) => (x.paidAccount === id ? { ...x, paidAccount: undefined } : x)));
     await db.delTxs(ids); setTxs((p) => p.filter((t) => t.accountId !== id)); setAccounts((a) => a.filter((x) => x.id !== id));
   }
@@ -2648,7 +2554,7 @@ function AppMain() {
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup}
           deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null}
           journalTab={{ label: tabLabel(nav, "journal") || "Journal", open: () => setTab("journal") }} />}
-        {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify} onFiles={smartImport} busy={!!(docBusy || accBusy)} />}
+        {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify} />}
         {dupQ[0] && <DupWin key={dupQ[0].name + (dupQ[0].existing?.id || "")} req={dupQ[0]} onDone={(v) => { dupQ[0].res(v); setDupQ((q) => q.slice(1)); }} />}
         {dlPop?.kind === "virt" && (() => { const d = fixDocs.find((x) => x.id === dlPop.id); return d ? <DlVirtWin d={d} onClose={() => setDlPop(null)} onGo={dlGo} onToggle={(x) => saveDl({ ...d, deadlines: d.deadlines.map((y) => (y.id === x.id ? { ...y, done: !y.done } : y)) })} /> : null; })()}
         {dlPop?.kind === "ct" && <ContractEditor c={dlPop.c} docs={active} me={me} onSave={(c) => upList("contractList", c)} onDelete={(c) => upList("contractList", c, true)} onClose={() => setDlPop(null)} />}
@@ -2840,7 +2746,7 @@ function DeadlineBadge({ docs }) {
 }
 function Badge({ docs }) {
   const n = docs.flatMap((d) => d.deadlines || []).filter((x) => !x.done && daysUntil(x.date) <= 7).length;
-  return n ? <b className="badge" title={`${n} offene Frist${n > 1 ? "en" : ""} – fällig in den nächsten 7 Tagen oder überfällig`}>{n}</b> : null;
+  return n ? <b className="badge">{n}</b> : null;
 }
 
 /* ---------- Übersicht (Finanz-Look) ---------- */
@@ -3001,7 +2907,7 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
       filled.current = null; setF(blank());
     } finally { setBusy(false); }
   };
-  const newItemCat = async () => { const n = ((await uiPrompt("Neue Positions-Kategorie:")) || "").trim(); if (!n) return null; const l = [...new Set([...icats, n])]; ls.set("itemCats", l); setIcats(l); return n; };
+  const newItemCat = () => { const n = (prompt("Neue Positions-Kategorie:") || "").trim(); if (!n) return null; const l = [...new Set([...icats, n])]; ls.set("itemCats", l); setIcats(l); return n; };
 
   return (
     <div className="expform">
@@ -3055,7 +2961,7 @@ function ExpenseForm({ accounts, txs, docs, categories, onSave, onScan, onUpload
       </div>
       <div className="grid2">
         <label>Konto<PickMenu click icon={curAcc?.icon} label={curAcc?.title || "Konto wählen"} title="Konto" items={accOpt.map((o) => ({ ...o, on: o.k === f.accountId, run: () => set({ accountId: o.k }, true) }))} /></label>
-        <label>Kategorie<PickMenu click icon={<CatGlyph c={cat} />} label={cat} title="Kategorie" items={[{ k: "__new", icon: "＋", title: "Kategorie", sub: "neue Kategorie anlegen", run: async () => { const n = ((await uiPrompt("Name der neuen Kategorie:")) || "").trim(); if (!n) return; addCategory?.(n); setExtraCats((x) => [...x, n]); set({ category: n }, true); } },
+        <label>Kategorie<PickMenu click icon={<CatGlyph c={cat} />} label={cat} title="Kategorie" items={[{ k: "__new", icon: "＋", title: "Kategorie", sub: "neue Kategorie anlegen", run: () => { const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return; addCategory?.(n); setExtraCats((x) => [...x, n]); set({ category: n }, true); } },
             ...cats.map((c) => ({ k: c, icon: <CatGlyph c={c} />, title: c, on: c === cat, run: () => set({ category: c, ...(c !== cat ? { sub: null } : {}) }, true) }))]} /></label>
       </div>
       {f.dir !== "in" && <SubSelect cat={cat} value={f.sub} onChange={(v) => set({ sub: v }, true)} />}
@@ -3339,7 +3245,7 @@ function fbStats(v, entries) {
 function getPos() {
   return new Promise((ok, fail) => {
     if (!navigator.geolocation) return fail(new Error("Standort wird von diesem Gerät nicht unterstützt"));
-    navigator.geolocation.getCurrentPosition((p) => ok(p.coords), (e) => fail(new Error(e.code === 1 ? "Standortzugriff verweigert – " + permWhere(isMacApp ? "Ortungsdienste" : "Standort") + (hasDisk ? ". Alternativ den Ort eintippen." : "") : "Standort nicht verfügbar" + (hasDisk ? " – bitte den Ort eintippen" : ""))), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+    navigator.geolocation.getCurrentPosition((p) => ok(p.coords), (e) => fail(new Error(e.code === 1 ? "Standortzugriff verweigert – in den Browser-Einstellungen erlauben" : "Standort nicht verfügbar")), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
   });
 }
 async function nearby(kind, extra = {}) {
@@ -3538,7 +3444,7 @@ function FbEntryWin({ init, vehicles, accounts, txs = [], docs = [], onSave, onD
       </>)}
       <div className="row gap fbbtns">
         <button className="btn primary" disabled={!ok} onClick={save}>Speichern</button>
-        {!isNew && <button className="btn danger" onClick={async () => { if ((await uiAsk("Eintrag löschen?"))) onDelete(x.id); }}>Löschen</button>}
+        {!isNew && <button className="btn danger" onClick={() => { if (confirm("Eintrag löschen?")) onDelete(x.id); }}>Löschen</button>}
       </div>
       {qrOpen && createPortal(<CodeScanWin title="Kassenbon-QR scannen" onClose={() => setQrOpen(false)} onResult={(code) => onQr(code)} />, document.querySelector(".app") || document.body)}
     </Win>
@@ -3594,7 +3500,7 @@ function VehicleWin({ init, onSave, onDelete, onClose }) {
       <div className="row gap fbbtns">
         <button className="btn primary" disabled={!(v.name || "").trim()} onClick={() => { const num = (k) => { const z = parseAmt(v[k]); return z > 0 ? z : null; };
           onSave({ ...v, id: v.id || uid(), name: v.name.trim(), startKm: Math.round(parseAmt(v.startKm) || 0), tank: num("tank"), battery: num("battery"), acKw: num("acKw"), dcKw: num("dcKw") }); }}>Speichern</button>
-        {init.id && <button className="btn danger" onClick={async () => { if ((await uiAsk("Fahrzeug samt allen Einträgen löschen?"))) onDelete(v.id); }}>Löschen</button>}
+        {init.id && <button className="btn danger" onClick={() => { if (confirm("Fahrzeug samt allen Einträgen löschen?")) onDelete(v.id); }}>Löschen</button>}
       </div>
     </Win>
   );
@@ -3671,8 +3577,8 @@ function CatPicker({ anchor, categories, cat, sub, onPick, onClose, ruleLabel, o
   const cur = cats.includes(hl) ? hl : cats[0];
   const subs = cur ? subsOf(cur).filter((x) => !nq || norm(cur).includes(nq) || norm(x).includes(nq)) : [];
   const pick = (c, sb) => { onPick(c, sb || null, rule); onClose(); };
-  const newCat = async () => { const n = ((await uiPrompt("Name der neuen Kategorie:", q.trim())) || "").trim(); if (!n) return; onAddCategory?.(n); setHl(n); setQ(""); };
-  const newSub = async () => { if (!cur) return; const n = ((await uiPrompt(`Neue Unterkategorie für „${cur}“:`, "")) || "").trim(); if (!n) return; SUBCAT_ADD?.(cur, n); pick(cur, n); };
+  const newCat = () => { const n = (prompt("Name der neuen Kategorie:", q.trim()) || "").trim(); if (!n) return; onAddCategory?.(n); setHl(n); setQ(""); };
+  const newSub = () => { if (!cur) return; const n = (prompt(`Neue Unterkategorie für „${cur}“:`, "") || "").trim(); if (!n) return; SUBCAT_ADD?.(cur, n); pick(cur, n); };
   const enter = (e) => { if (e.key !== "Enter") return; e.preventDefault(); const sHit = nq && cur && subsOf(cur).find((x) => norm(x).includes(nq)); if (sHit && !norm(cur).includes(nq)) pick(cur, sHit); else if (cur) pick(cur, null); };
   if (!pos) return null;
   return createPortal(<div ref={ref} className="catpick" role="dialog" aria-label="Kategorie wählen" style={{ left: pos.left, top: pos.top, width: W, maxHeight: pos.h }}>
@@ -3697,7 +3603,7 @@ function CatPicker({ anchor, categories, cat, sub, onPick, onClose, ruleLabel, o
 // v0.99.85: Unterkategorie wählen (mit „Neue Unterkategorie …“)
 function SubSelect({ cat, value, onChange, label = "Unterkategorie", bare = false }) {
   if (!cat || cat === "Umbuchung") return null;
-  const l = subsOf(cat), add = async () => { const n = ((await uiPrompt(`Neue Unterkategorie für „${cat}“:`)) || "").trim(); if (!n) return; SUBCAT_ADD?.(cat, n); onChange(n); };
+  const l = subsOf(cat), add = () => { const n = (prompt(`Neue Unterkategorie für „${cat}“:`) || "").trim(); if (!n) return; SUBCAT_ADD?.(cat, n); onChange(n); };
   const pm = <PickMenu click block btnClass="selbtn subselbtn" title={label} label={value || "– keine –"}
     items={[{ k: "__none", title: "– keine –", on: !value, run: () => onChange(null) }, ...[...new Set([...l, ...(value && !l.includes(value) ? [value] : [])])].map((x) => ({ k: x, title: x, on: x === value, run: () => onChange(x) })), { k: "__add", icon: "＋", title: "Neue Unterkategorie …", sub: `für „${cat}“`, run: add }]} />;
   return bare ? pm : <label className="subsel">{label}{pm}</label>;
@@ -3705,7 +3611,7 @@ function SubSelect({ cat, value, onChange, label = "Unterkategorie", bare = fals
 // v0.99.80: Währungsauswahl & Kurszeile (EZB-Kurs, eigener Kurs oder Euro-Betrag laut Kontoauszug)
 function CurSelect({ value, onChange, className = "" }) {
   const v = String(value || "EUR").toUpperCase(), list = CURRENCIES.includes(v) ? CURRENCIES : [v, ...CURRENCIES];
-  const other = async () => { const c = ((await uiPrompt("Währung als ISO-Code (z. B. MAD, VND):", "")) || "").trim().toUpperCase(); if (/^[A-Z]{3}$/.test(c)) onChange(c); };
+  const other = () => { const c = (prompt("Währung als ISO-Code (z. B. MAD, VND):", "") || "").trim().toUpperCase(); if (/^[A-Z]{3}$/.test(c)) onChange(c); };
   return <PickMenu click btnClass={("selbtn cursel " + className).trim()} title="Währung" label={v}
     items={[...list.map((c) => ({ k: c, title: c, sub: curName(c), on: c === v, run: () => c !== v && onChange(c) })), { k: "__other", title: "Andere Währung …", run: other }]} />;
 }
@@ -3902,7 +3808,7 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
   const [prevId, setPrevId] = useState(null), [winPrev, setWinPrev] = useState(null);   // v0.99.11: keine Sofortvorschau mehr, nur übers Auge
   const docOf = (x) => x.docId && docs.find((d) => d.id === x.docId && !d.deletedAt);
   const openEdit = (x) => setEdit({ ...x, liters: amtStr(x.liters), total: amtStr(x.total), price: x.price != null ? String(x.price).replace(".", ",") : "" });
-  const delEntry = async (x) => { if ((await uiAsk(`Eintrag „${x.type === "trip" ? `${x.from || "?"} → ${x.to}` : x.type === "fuel" ? (isElec(x.fuel) ? "Laden" : "Tanken") : x.cat}“ vom ${fmtDate(x.date)} löschen?`))) upd((o) => ({ entries: o.entries.filter((y) => y.id !== x.id) })); };
+  const delEntry = (x) => { if (confirm(`Eintrag „${x.type === "trip" ? `${x.from || "?"} → ${x.to}` : x.type === "fuel" ? (isElec(x.fuel) ? "Laden" : "Tanken") : x.cat}“ vom ${fmtDate(x.date)} löschen?`)) upd((o) => ({ entries: o.entries.filter((y) => y.id !== x.id) })); };
   const FbActs = ({ x }) => { const d = docOf(x); const st = (f) => (e) => { e.stopPropagation(); f(); }; return (
     <div className="dactions txacts" onClick={(e) => e.stopPropagation()}>
       <button title={d ? "Beleg ansehen" : "Kein Beleg angehängt"} aria-label="Vorschau" disabled={!d} onClick={st(() => d && setWinPrev(d))}><IcoEye /></button>
@@ -4166,22 +4072,6 @@ if (typeof window !== "undefined" && !window.__fdMenus) {
   document.addEventListener("pointerdown", (e) => { const d = e.target.closest?.("details.more"); closeAll(d); }, true);
   window.addEventListener("keydown", (e) => { if (e.key === "Escape" && document.querySelector("details.more[open]")) { e.stopPropagation(); closeAll(null); } }, true);
   document.addEventListener("click", (e) => { const b = e.target.closest?.("details.more .moremenu button"); if (b && !b.disabled) { const d = b.closest("details"); setTimeout(() => { if (d) d.open = false; }, 0); } });
-  // v1.0.3: „⋯“-Menüs schweben (fixed) über allem – werden nicht von Karten/Listen abgeschnitten; wenig Platz unten → nach oben öffnen
-  const placeMore = (d) => {
-    const m = d.querySelector(":scope > .moremenu"), s = d.querySelector(":scope > summary"); if (!m || !s) return;
-    if (m.style.position === "fixed" && !m.dataset.fdpos) return;   // Menü positioniert sich selbst
-    m.dataset.fdpos = "1"; Object.assign(m.style, { position: "fixed", right: "auto", bottom: "auto", top: "0px", left: "-9999px", maxHeight: "", overflowY: "auto", zIndex: "1000" });
-    const r = s.getBoundingClientRect(), mw = m.offsetWidth, mh = m.offsetHeight;
-    let cb = { left: 0, top: 0 };   // Vorfahre mit transform/filter verschiebt den Bezug von „fixed“
-    for (let n = d.parentElement; n && n !== document.body; n = n.parentElement) { const c = getComputedStyle(n); if (c.transform !== "none" || c.filter !== "none" || c.perspective !== "none" || /paint|layout|strict|content/.test(c.contain || "")) { const q = n.getBoundingClientRect(); cb = { left: q.left, top: q.top }; break; } }
-    const below = innerHeight - r.bottom - 10, above = r.top - 10;
-    let top, maxH; if (mh <= below || below >= above) { top = r.bottom + 6; maxH = below - 6; } else { const h = Math.min(mh, above - 6); top = r.top - 6 - h; maxH = above - 6; }
-    const left = Math.max(8, Math.min(r.right - mw, innerWidth - mw - 8));
-    Object.assign(m.style, { top: Math.round(top - cb.top) + "px", left: Math.round(left - cb.left) + "px", maxHeight: Math.max(120, Math.round(maxH)) + "px" });
-  };
-  document.addEventListener("toggle", (e) => { const d = e.target; if (d?.matches?.("details.more") && d.open) placeMore(d); }, true);
-  addEventListener("resize", () => closeAll(null));
-  addEventListener("scroll", (e) => { if (e.target?.closest?.(".moremenu")) return; document.querySelectorAll("details.more[open]").forEach(placeMore); }, true);
 }
 function ExportMenu({ items, label = "⬇︎ Export", className = "chip", title = "Exportieren" }) {
   const [busy, setBusy] = useState(false), [pos, setPos] = useState(null);
@@ -4348,11 +4238,11 @@ function FolderWatchSettings() {
     <p className="muted small">Hier geht's stattdessen über das Ablagefeld oder „Teilen → FinDocu“.</p></div>);
   const pick = async () => { setBusy("pick"); try { const f = await FWX.pickFolder(); if (!f) return; FW.set({ folder: f, perm: "granted", queue: [] });
       const files = await FWX.listFiles({ sub: c.sub });
-      const take = files.length && (await uiAsk(`Im Ordner „${f.name}“ liegen bereits ${files.length} Dateien${c.sub ? " (mit Unterordnern)" : ""}.\n\nOK = diese auch übernehmen (${c.mode === "auto" ? "werden eingelesen" : "kommen in die Prüfliste"})\nAbbrechen = nur neue Dateien ab jetzt`));
+      const take = files.length && confirm(`Im Ordner „${f.name}“ liegen bereits ${files.length} Dateien${c.sub ? " (mit Unterordnern)" : ""}.\n\nOK = diese auch übernehmen (${c.mode === "auto" ? "werden eingelesen" : "kommen in die Prüfliste"})\nAbbrechen = nur neue Dateien ab jetzt`);
       if (!take) await FWX.seenAdd(files.map((x) => x.key));
       setCfg({ on: true }); setTimeout(() => fwScan({ manual: true }), 50);
     } catch (e) { if (e.name !== "AbortError") alert("Ordner konnte nicht gewählt werden: " + e.message); } finally { setBusy(""); } };
-  const remove = async () => { if (!(await uiAsk("Überwachung beenden und Ordner entfernen? Deine Dateien im Ordner bleiben unverändert."))) return; await FWX.resetAll(); setCfg({ on: false }); FW.set({ folder: null, perm: "none", queue: [], total: null, last: null }); };
+  const remove = async () => { if (!confirm("Überwachung beenden und Ordner entfernen? Deine Dateien im Ordner bleiben unverändert.")) return; await FWX.resetAll(); setCfg({ on: false }); FW.set({ folder: null, perm: "none", queue: [], total: null, last: null }); };
   const q = st.queue || [], allSel = q.length && sel.length === q.length;
   const take = async (items) => { setBusy("imp"); try { const n = await fwImport(items); await FWX.queueDel(items.map((x) => x.key)); setSel([]); await fwRefresh(); FW.notify?.(`${n} Datei${n !== 1 ? "en" : ""} eingelesen`); } finally { setBusy(""); } };
   const drop = async (items) => { await FWX.queueDel(items.map((x) => x.key)); setSel([]); await fwRefresh(); };
@@ -4412,7 +4302,7 @@ function SettingsTransfer({ notify }) {
       <button className="btn" onClick={() => { const n = exportSettings(); notify?.(`${n} Einstellungen exportiert`); }}>⬇︎ Einstellungen exportieren</button>
       <button className="btn" onClick={() => ref.current?.click()}>⬆︎ Einstellungen importieren</button>
       <input ref={ref} type="file" accept="application/json,.json" hidden onChange={async (e) => { const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-        try { if (!(await uiAsk("Einstellungen aus der Datei übernehmen? Deine Daten bleiben unverändert, die App wird neu geladen."))) return; const n = await importSettings(f); notify?.(`${n} Einstellungen übernommen – App wird neu geladen`); setTimeout(() => location.reload(), 900); } catch (err) { alert("Import fehlgeschlagen: " + err.message); } }} />
+        try { if (!confirm("Einstellungen aus der Datei übernehmen? Deine Daten bleiben unverändert, die App wird neu geladen.")) return; const n = await importSettings(f); notify?.(`${n} Einstellungen übernommen – App wird neu geladen`); setTimeout(() => location.reload(), 900); } catch (err) { alert("Import fehlgeschlagen: " + err.message); } }} />
     </div>
   </section>);
 }
@@ -5151,7 +5041,7 @@ function ListBar({ q, setQ, placeholder, id, tabs, tab, setTab, lk, tokens = [],
   const applyV = (v) => { if (setTab && v.filter != null) setTab(v.filter); setQ?.(v.q || ""); lk?.setYr?.(v.yr || ""); lk?.setTagF?.(v.tagF || ""); if (v.sortBy && lk?.setSortBy) lk.setSortBy(v.sortBy, true); };
   const dirty = (tabs && tab !== t0) || (q || "").trim() || lk?.yr || lk?.tagF;
   const tabLabel = tabs?.find(([k]) => k === tab)?.[1];
-  const saveV = async () => { const n = (await uiPrompt("Name für den neuen Reiter:", [tab !== t0 && tabLabel, lk?.yr, lk?.tagF && "#" + lk.tagF, (q || "").trim() && "„" + q.trim() + "“"].filter(Boolean).join(" · "))); if (!n || !lk?.setViews) return;
+  const saveV = () => { const n = prompt("Name für den neuen Reiter:", [tab !== t0 && tabLabel, lk?.yr, lk?.tagF && "#" + lk.tagF, (q || "").trim() && "„" + q.trim() + "“"].filter(Boolean).join(" · ")); if (!n || !lk?.setViews) return;
     lk.setViews((l) => [...l, { id: uid(), n, filter: tab, q: (q || "").trim(), yr: lk.yr || "", tagF: lk.tagF || "", sortBy: lk.sortBy }]); };
   const reset = () => { if (setTab && t0 != null) setTab(t0); lk?.setYr?.(""); lk?.setTagF?.(""); tokens.filter(Boolean).forEach(([, clr]) => clr()); };
   const nBadge = tk.length + (tabs && tab !== t0 ? 1 : 0);
@@ -5181,7 +5071,7 @@ function ListBar({ q, setQ, placeholder, id, tabs, tab, setTab, lk, tokens = [],
       {lk?.sorts && <><h4 className="lbh">Sortierung</h4><div className="lbchips">{Object.entries(lk.sorts).map(([k, [t, sub]]) => <button key={k} title={sub} className={"chip" + (lk.sortBy === k ? " on" : "")} onClick={() => lk.setSortBy(k)}>{t}{lk.sortBy === k ? (lk.dir === -1 ? " ↑" : " ↓") : ""}</button>)}</div></>}
       {lk?.tags?.length > 0 && <><h4 className="lbh">Tags</h4><div className="lbchips">{lk.tags.map((t) => <button key={t} className={"chip" + (lk.tagF === t ? " on" : "")} onClick={() => lk.setTagF(lk.tagF === t ? "" : t)}>#{t}</button>)}</div></>}
       {views.length > 0 && <><h4 className="lbh">Gespeicherte Reiter</h4><div className="lbviews">{views.map((v) => <div key={v.id} className="lbvrow"><span className="grow">☆ {v.n}</span>
-        <button className="iconbtn" aria-label={"„" + v.n + "“ löschen"} onClick={async () => (await uiAsk(`Reiter „${v.n}“ löschen?`)) && lk.setViews((l) => l.filter((x) => x.id !== v.id))}>✕</button></div>)}</div></>}
+        <button className="iconbtn" aria-label={"„" + v.n + "“ löschen"} onClick={() => confirm(`Reiter „${v.n}“ löschen?`) && lk.setViews((l) => l.filter((x) => x.id !== v.id))}>✕</button></div>)}</div></>}
     </LbSheet>}
   </div>);
 }
@@ -5388,7 +5278,7 @@ function MobNavEditor({ nav, setNav, notify, only = null, showBar = true }) {
     {showBar && section("bar", "Leiste unten", `${L.bar.length}/${MOB_BAR_MAX} · „Mehr“ steht immer rechts`)}
     {MOB_HUBS.filter((h) => !only || only.includes(h)).map((h) => section(h, HUB_DEFS[h][1], h !== "hub:mehr" && !L.bar.includes(h) ? "nicht in der Leiste – erscheint unter „Mehr“" : ""))}
     {showBar && off.length > 0 && <div className="actions">{off.map((h) => <button key={h} className="btn sm" onClick={() => save(mobMove(L, h, "bar", notify))}>＋ {HUB_DEFS[h][1]} in die Leiste</button>)}</div>}
-    {showBar && <div className="actions"><button className="link" onClick={async () => (await uiAsk("Handy-Menü auf Standard zurücksetzen?")) && setNav((n) => { const { mob, ...r } = n; return r; })}>Zurücksetzen</button></div>}
+    {showBar && <div className="actions"><button className="link" onClick={() => confirm("Handy-Menü auf Standard zurücksetzen?") && setNav((n) => { const { mob, ...r } = n; return r; })}>Zurücksetzen</button></div>}
     {dnd.ghost}
   </div>);
 }
@@ -5668,7 +5558,7 @@ function DashGrid({ storeKey, widgets, migrate, els, editing = false, setEditing
               <input type="checkbox" checked={compact} onChange={(e) => setLayout((l) => ({ ...l, compact: e.target.checked }))} />Nach oben rücken</label>
             : <label className="densectl" title="Ein: kleine Widgets füllen Lücken automatisch. Aus: Reihenfolge bleibt strikt, Lücken bleiben frei.">
               <input type="checkbox" checked={dense} onChange={(e) => setLayout((l) => ({ ...l, dense: e.target.checked }))} />Lücken füllen</label>)}
-          <button className="link" onClick={async () => (await uiAsk(title + " auf Standard zurücksetzen?")) && setLayout(migrate(null))}>Zurücksetzen</button>
+          <button className="link" onClick={() => confirm(title + " auf Standard zurücksetzen?") && setLayout(migrate(null))}>Zurücksetzen</button>
           <button className="btn primary" onClick={() => setEditing(false)}>Fertig</button>
         </div>
       )}
@@ -5941,8 +5831,7 @@ function JournalPreview({ d, compact = false, onSwipe, onOpen }) {
     </div>
   );
 }
-function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFiles, busy }) {
-  const [showDrop, setShowDrop] = useLsState("jDrop", true);
+function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   const [jsPos] = useFlag("jStripPos", "c");   // v0.99.30: Leiste über dem Beleg – c = schwebend, b = eine Zeile
   const mobB = useMobileBeta(), slim = useMedia("(max-width:999px)"), mob = mobB || slim, [boxW, setBoxW] = useState(1400), narrow = boxW < 1180;
   const [mode, setMode] = useLsState("jMode", "journal");                       // journal | pruefen | monate
@@ -5995,7 +5884,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFi
   // Höhe: Spalten füllen den Bildschirm bis unten
   const boxRef = useRef(null), [boxH, setBoxH] = useState(null);
   useEffect(() => { if (mob) return; const f = () => { const r = boxRef.current?.getBoundingClientRect(); if (r) { setBoxH(Math.max(420, Math.round(innerHeight - r.top - 14))); setBoxW(Math.round(r.width)); } }; f(); addEventListener("resize", f); const t = setTimeout(f, 300);
-    const ro = boxRef.current ? new ResizeObserver(f) : null; ro?.observe(boxRef.current); return () => { removeEventListener("resize", f); clearTimeout(t); ro?.disconnect(); }; }, [mob, mode, showDrop]);
+    const ro = boxRef.current ? new ResizeObserver(f) : null; ro?.observe(boxRef.current); return () => { removeEventListener("resize", f); clearTimeout(t); ro?.disconnect(); }; }, [mob, mode]);
   const sum = list.reduce((s, d) => s + (jEur(d) || 0), 0);
   const senders = useMemo(() => { const m = {}; base.forEach((d) => { if (d.sender) m[d.sender] = (m[d.sender] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([s]) => s); }, [base]);
   const catCnt = useMemo(() => { const m = {}; base.forEach((d) => { m[d.category] = (m[d.category] || 0) + 1; }); return m; }, [base]);
@@ -6005,15 +5894,13 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFi
 
   const [fold, setFold] = useLsState("jFold", {});
   const sh = (k, l, n) => <button type="button" className={"jsh" + (fold[k] ? " shut" : "")} onClick={() => setFold({ ...fold, [k]: !fold[k] })} aria-expanded={!fold[k]}><span className="grow">{l}</span>{fold[k] && n > 0 && <span className="jcnt">{n}</span>}<span className="jchev">▾</span></button>;
-  const modeBar = (<>
+  const modeBar = (
     <div className="jmodes">
       <div className="seg">{[["journal", "📓 Journal"], ["pruefen", `✓ Prüfen${cnt("unbest") ? " (" + cnt("unbest") + ")" : ""}`], ["monate", "🗓 Monate"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); if (k === "pruefen") { const f = base.filter(jUnconf).sort((a, b) => jDate(b).localeCompare(jDate(a)))[0]; setCur(f?.id || null); if (mob && f) setPhoneOpen(true); } }}>{l}</button>)}</div>
       {mode !== "monate" && !mob && <SearchBox className="sbplain jsearch" icon={false} value={q} onChange={setQ} placeholder="Belege durchsuchen" />}
       {mode !== "monate" && !mob && jSort}
-      {onFiles && <button className={"chip jdropchip" + (showDrop ? " on" : "")} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥{mob ? "" : " Ablagefeld"}</button>}
     </div>
-    {onFiles && showDrop && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={busy} title="Belege, Rechnungen oder Ordner hierher ziehen" what="wird automatisch eingelesen und einsortiert" isOk={() => true} accept="" />}
-  </>);
+  );
   const sidebar = (
     <nav className={"jside" + (side ? " open" : "")}>
       {J_FILTERS.map(([k, ic, l]) => <button key={k} className={"jsi" + (filt === k && mode !== "pruefen" ? " on" : "")} onClick={() => { setFilt(k); if (mode === "pruefen") setMode("journal"); setSide(false); }}><span className="jic">{ic}</span><span className="grow">{l}</span>{k !== "alle" && cnt(k) > 0 && <span className="jcnt">{cnt(k)}</span>}</button>)}
@@ -6221,7 +6108,7 @@ const DocListRow = React.memo(function DocListRow({ d, pickMode, picked, prevOpe
   return (
     <div className="dwrap">
     <SwipeRow left={pickMode ? [] : [{ icon: <IcoEye />, label: "Vorschau", bg: "#0ea5e9", run: () => h.current.setWinPrev(d) }, { icon: "📤", label: "Teilen", bg: "#8b5cf6", run: () => shareDocs([d]) }]}
-      right={pickMode ? [] : [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: async () => (await uiAsk(`„${d.title}“ in den Papierkorb verschieben?`)) && h.current.trashDoc(d) }, { icon: "✎", label: "Bearbeiten", bg: "#3b82f6", run: () => h.current.onOpen(d.id) }]}>
+      right={pickMode ? [] : [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: () => confirm(`„${d.title}“ in den Papierkorb verschieben?`) && h.current.trashDoc(d) }, { icon: "✎", label: "Bearbeiten", bg: "#3b82f6", run: () => h.current.onOpen(d.id) }]}>
     <div className={"ditem" + (picked ? " picked" : "")} onClick={() => (pickMode ? h.current.togglePick(d.id) : h.current.onOpen(d.id))}>
       {pickMode && <span className={"pickbox inline" + (picked ? " on" : "")}>✓</span>}
       <Thumb d={d} />
@@ -6299,7 +6186,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
   const fState = JSON.stringify({ cat: cat || "", taxOnly, unpaid, month, area, scope });
   const setFState = (j) => { try { const o = JSON.parse(j); setCat?.(o.cat || ""); setTaxOnly(!!o.taxOnly); setUnpaid(!!o.unpaid); setMonth(o.month || ""); setArea?.(o.area || "alle"); setScope(o.scope || "alle"); } catch {} };
   const viewOn = (v) => v.filter === fState && (v.q || "") === q && (v.yr || "") === year && (v.tagF || "") === tag;
-  const saveView = async () => { const n = (await uiPrompt("Name der Ansicht:", [cat, taxOnly && "Steuer", unpaid && "Unbezahlt", month && MONTHS_DE[Number(month) - 1], year, tag && "#" + tag, q && "„" + q + "“"].filter(Boolean).join(" "))); if (!n) return; kit.setViews((v) => [...v, { id: uid(), n, filter: fState, q, yr: year, tagF: tag, sortBy: sort }]); };
+  const saveView = () => { const n = prompt("Name der Ansicht:", [cat, taxOnly && "Steuer", unpaid && "Unbezahlt", month && MONTHS_DE[Number(month) - 1], year, tag && "#" + tag, q && "„" + q + "“"].filter(Boolean).join(" ")); if (!n) return; kit.setViews((v) => [...v, { id: uid(), n, filter: fState, q, yr: year, tagF: tag, sortBy: sort }]); };
   const anyF = cat || taxOnly || unpaid || month || year || tag || q || area !== "alle" || scope !== "alle";
   const zipOf = async (sel, name) => { const l = sel.map((d) => ({ ...d, __folder: fileSafe(d.category || "Sonstiges").replace(/_/g, " ") }));
     const head = ["Datei", "Datum", "Titel", "Absender", "Kategorie", "Betrag €", "Steuerrelevant", "Tags"];
@@ -6333,7 +6220,7 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
     actions={[{ k: "pick", icon: "☑", title: pick ? "Auswahl beenden" : "Auswählen", sub: "mehrere exportieren, taggen, löschen", run: () => setPick(pick ? null : new Set()) },
       journalTab && { k: "journal", icon: "📓", title: journalTab.label, sub: "Belege prüfen, Monate, Vorschau", run: journalTab.open },
       deadlineTab && { k: "frist", icon: "⏰", title: deadlineTab.label, run: deadlineTab.open }, ...[...(onFiles ? [{ k: "drop", icon: "📥", title: "Ablagefeld", sub: "ein-/ausblenden", on: showDrop, run: () => setShowDrop(!showDrop) }] : []), { head: "Export" }, ...exp2pick(docExp.slice(1))]]} />;
-  const tagDocs = async (sel) => { const f = await kitTagPrompt(sel); if (!f || !saveDoc) return; for (const d of sel) await saveDoc({ ...d, tags: f(d) }); };
+  const tagDocs = async (sel) => { const f = kitTagPrompt(sel); if (!f || !saveDoc) return; for (const d of sel) await saveDoc({ ...d, tags: f(d) }); };
   const status = (d) => d.status === "processing" ? <span className="muted small">⏳ wird analysiert …</span> : d.status === "error" ? <span className="err">⚠️ {d.error}{reanalyze && <button className="retry" onClick={(e) => { e.stopPropagation(); reanalyze(d); }}>↻ Neu analysieren</button>}</span> : null;
 
   rowH.current = { onOpen, setWinPrev, trashDoc, togglePick, amt, status };
@@ -6399,12 +6286,12 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
       </FitScroll>
       {akteEdit && <AkteWin akte={akteEdit} categories={categories} years={years} onClose={() => setAkteEdit(null)}
         onSave={(a) => { setAkten(akten.some((x) => x.id === a.id) ? akten.map((x) => (x.id === a.id ? a : x)) : [...akten, a]); setAkteEdit(null); }}
-        onDelete={async (a) => { if (!(await uiAsk(`Akte „${a.name}“ löschen? Die Dokumente bleiben erhalten.`))) return; setAkten(akten.filter((x) => x.id !== a.id)); setAkteEdit(null); setAkteId(""); }} />}
+        onDelete={(a) => { if (!confirm(`Akte „${a.name}“ löschen? Die Dokumente bleiben erhalten.`)) return; setAkten(akten.filter((x) => x.id !== a.id)); setAkteEdit(null); setAkteId(""); }} />}
       <KitBulk kit={kit} shown={list} actions={[
         { icon: <IcoShare />, label: "Teilen", run: (sel) => shareDocs(sel) },
         { icon: "🗂", label: "ZIP", run: (sel) => zipOf(sel, `dokumente-auswahl-${isoToday()}.zip`) },
         saveDoc && { icon: "#", label: "Tag", run: tagDocs },
-        { icon: <IcoTrash />, label: "Papierkorb", run: async (sel) => { if ((await uiAsk(`${sel.length} Dokument${sel.length === 1 ? "" : "e"} in den Papierkorb verschieben?`))) { sel.forEach((d) => trashDoc(d)); setPick(null); } } }]} />
+        { icon: <IcoTrash />, label: "Papierkorb", run: (sel) => { if (confirm(`${sel.length} Dokument${sel.length === 1 ? "" : "e"} in den Papierkorb verschieben?`)) { sel.forEach((d) => trashDoc(d)); setPick(null); } } }]} />
     </>
   );
 }
@@ -6679,7 +6566,7 @@ function CalSyncSheet({ sync, setSync, items, token, onClose, notify, calName, w
     setBusy(false);
   }
   async function disable() {
-    if (!(await uiAsk("Kalender-Abo beenden? Apple Kalender zeigt die Fristen danach nicht mehr an."))) return;
+    if (!confirm("Kalender-Abo beenden? Apple Kalender zeigt die Fristen danach nicht mehr an.")) return;
     try { await fetch(`/api/cal?k=${sync.key}`, { method: "DELETE", headers: { "x-app-token": token } }); } catch {}
     setSync({ on: false, key: "", at: "" });
   }
@@ -6945,7 +6832,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
     { k: "ok", title: "✓ Bestätigt", sub: "läuft noch, zählt zu den Fixkosten", on: k === "ok", run: () => k !== "ok" && verify(x.r) },
     { k: "chk", title: "? Prüfen", sub: "erkannt, noch nicht bestätigt", on: k === "chk" || k === "inaktiv", run: () => (k === "ok" ? verify(x.r) : k === "end" ? endIt(x.r) : null) },
     { k: "end", title: "✕ Beendet", sub: "Vertrag beendet, zählt nicht mehr", on: k === "end", run: () => k !== "end" && endIt(x.r) },
-    setSubs && { k: "rm", title: "Kein Abo", sub: "aus der Liste entfernen", run: async () => (await uiAsk(`„${x.name}“ aus der Liste entfernen?`)) && remove(x.r) }].filter(Boolean); };
+    setSubs && { k: "rm", title: "Kein Abo", sub: "aus der Liste entfernen", run: () => confirm(`„${x.name}“ aus der Liste entfernen?`) && remove(x.r) }].filter(Boolean); };
   const stCtl = (x) => { const k = stKey(x), [ic, lab, cls] = ST_META[k];
     if (aboStyle === "haken") return <button className={"abock " + k} title={k === "ok" ? "Bestätigt – tippen hebt die Bestätigung auf" : k === "end" ? "Beendet – tippen aktiviert wieder" : "Noch nicht bestätigt – tippen zum Bestätigen"} aria-pressed={k === "ok"} onClick={() => (k === "end" ? endIt(x.r) : verify(x.r))}>{ic}</button>;
     if (aboStyle === "hakendd") return <PickMenu btnClass={"abodd " + k} label={<span className="abock in">{ic}</span>} title={"Status: " + lab} items={stItems(x)} />;
@@ -6972,7 +6859,7 @@ function Contracts({ docs, onOpen, me, notify, extra = [], subs, setSubs, txs = 
     monat: ["Kosten", "höchste pro Monat zuerst", (a, b) => b.month - a.month], name: ["Name", "A–Z", (a, b) => a.name.localeCompare(b.name, "de")], zuletzt: ["Zuletzt", "letzte Zahlung zuerst", (a, b) => (b.last || "").localeCompare(a.last || "")] } });
   const { pick, setPick, togglePick } = kit;
   const shown = kit.apply(items.filter(ctF[cf] || ctF.alle).filter((x) => !nq || norm(`${x.name} ${x.sub} ${x.category || ""} ${fkTags(x).join(" ")}`).includes(nq)));
-  const tagFk = async (xs) => { if (!setSubs) return; const f = await kitTagPrompt(xs, fkTags); if (!f) return; const t = { ...(subs?.tags || {}) }; xs.forEach((x) => { t[x.key] = f(x); }); setSubs({ ...subs, tags: t }); };
+  const tagFk = (xs) => { if (!setSubs) return; const f = kitTagPrompt(xs, fkTags); if (!f) return; const t = { ...(subs?.tags || {}) }; xs.forEach((x) => { t[x.key] = f(x); }); setSubs({ ...subs, tags: t }); };
   const fkHead = ["Name", "Art", "Kategorie", "Betrag €", "Intervall", "pro Monat €", "Zuletzt", "Status", "Tags"];
   const fkRow = (x) => [x.name, x.doc ? "Vertrag" : "aus Umsätzen", x.category || "", r2e(x.amount), x.int, r2e(x.month), x.last || "", x.label, fkTags(x).join(", ")];
   const fkExp = [{ label: "📊 Excel (.xlsx)", sub: `${shown.length} Einträge im aktuellen Filter`, run: () => downloadXlsx(`Fixkosten-${isoToday()}.xlsx`, [{ name: "Fixkosten", head: fkHead, rows: shown.map(fkRow) }]) },
@@ -7151,7 +7038,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
   const txSwipe = (t) => ({
     left: [{ icon: "✎", label: "Details", bg: "#3b82f6", run: () => setTxOpen(t) }],
     right: [
-      { icon: "🗑", label: "Löschen", bg: "#ef4444", run: async () => (await uiAsk(`Buchung „${t.counterparty || t.purpose || "Buchung"}“ (${fmtMoney(t.amount, t.currency)}) löschen?`)) && deleteTx(t) },
+      { icon: "🗑", label: "Löschen", bg: "#ef4444", run: () => confirm(`Buchung „${t.counterparty || t.purpose || "Buchung"}“ (${fmtMoney(t.amount, t.currency)}) löschen?`) && deleteTx(t) },
       t.docId ? { icon: "📎", label: "Beleg", bg: "#0ea5e9", run: () => onOpen(t.docId) } : t.kind !== "broker" && { icon: "📷", label: "Beleg", bg: "#0ea5e9", run: () => (scanReceiptFor ? scanReceiptFor(t.id) : attachNew(t.id, "scan")) }
     ]
   });
@@ -7163,9 +7050,9 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
         {d ? <button className="txmark m-doc" title={`Beleg: ${d.title || "öffnen"}`} aria-label="Beleg öffnen" onClick={st(() => onOpen(d.id))}>📎</button> : <span className="txmark" />}
       </span>}
       <button title="Buchung bearbeiten" aria-label="Bearbeiten" onClick={st(() => setTxOpen(t))}><IcoEdit /></button>
-      <button title={d ? "Beleg drucken" : "Buchungsbeleg drucken (kein Beleg angehängt)"} aria-label="Drucken" onClick={st(async () => d ? printDoc(d) : printBlobs([await txBelegPdf(t, accounts)], txBelegName(t)))}><IcoPrint /></button>
+      <button title={d ? "Beleg drucken" : "Buchungsbeleg drucken (kein Beleg angehängt)"} aria-label="Drucken" onClick={st(async () => d ? printDoc(d) : printPdf(await txBelegPdf(t, accounts), txBelegName(t)))}><IcoPrint /></button>
       <button title={d ? "Beleg teilen" : "Buchungsbeleg teilen (kein Beleg angehängt)"} aria-label="Teilen" onClick={st(async () => d ? shareDocs([d]) : sharePdf(await txBelegPdf(t, accounts), txBelegName(t) + ".pdf", txBelegName(t)))}><IcoShare /></button>
-      <button title="Buchung löschen" aria-label="Löschen" className="del" onClick={st(async () => (await uiAsk(`Buchung „${t.counterparty || t.purpose || "Buchung"}“ (${fmtMoney(t.amount, t.currency)}) löschen?`)) && deleteTx(t))}><IcoTrash /></button>
+      <button title="Buchung löschen" aria-label="Löschen" className="del" onClick={st(() => confirm(`Buchung „${t.counterparty || t.purpose || "Buchung"}“ (${fmtMoney(t.amount, t.currency)}) löschen?`) && deleteTx(t))}><IcoTrash /></button>
     </div>); };
   async function onPick(file) {
     if (!file) return;
@@ -7279,7 +7166,7 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
               {a && <button onClick={(e) => { e.currentTarget.closest("details").open = false; setEditAcc(a); }}>✎ Konto bearbeiten</button>}
               <button onClick={(e) => { e.currentTarget.closest("details").open = false; fileRef.current?.click(); }}>📄 Kontoauszug importieren</button>
               <button onClick={(e) => { e.currentTarget.closest("details").open = false; setLogoOpen(true); }}>✨ Firmenlogos</button>
-              {a && <button className="red" onClick={async () => (await uiAsk(`Konto „${a.name}“ samt Umsätzen löschen?`)) && (deleteAccount(a.id), backAcc())}>🗑 Konto löschen</button>}
+              {a && <button className="red" onClick={() => confirm(`Konto „${a.name}“ samt Umsätzen löschen?`) && (deleteAccount(a.id), backAcc())}>🗑 Konto löschen</button>}
             <MenuCancel /></div>
           </details>
         </div>
@@ -7692,11 +7579,11 @@ function KitFilters({ kit, all, filters, filter, setFilter, q = "", setQ, noYear
   const years = noYear ? [] : [...new Set(all.map((x) => String(dateOf(x) || "").slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort().reverse();
   const tags = noTags ? [] : [...new Set(all.flatMap(tagsOf))].sort((a, b) => a.localeCompare(b, "de"));
   const fl = filters?.find(([k]) => k === filter)?.[1];
-  const save = async () => { const n = (await uiPrompt("Name der Ansicht:", [fl !== "Alle" && fl, yr, tagF && "#" + tagF, q && "„" + q + "“"].filter(Boolean).join(" "))); if (!n) return; setViews((v) => [...v, { id: uid(), n, filter, q, yr, tagF, sortBy }]); };
+  const save = () => { const n = prompt("Name der Ansicht:", [fl !== "Alle" && fl, yr, tagF && "#" + tagF, q && "„" + q + "“"].filter(Boolean).join(" ")); if (!n) return; setViews((v) => [...v, { id: uid(), n, filter, q, yr, tagF, sortBy }]); };
   const on = (v) => (v.filter ?? filter) === filter && (v.q || "") === q && (v.yr || "") === yr && (v.tagF || "") === tagF;
   const applyV = (v) => { if (setFilter && v.filter != null) setFilter(v.filter); setQ?.(v.q || ""); setYr(v.yr || ""); setTagF(v.tagF || ""); setSortBy(v.sortBy || sortBy, true); };
   return (<>
-    {views.map((v) => <span key={v.id} className="ltview"><button className={"chip" + (on(v) ? " on" : "")} onClick={() => applyV(v)}>☆ {v.n}</button><button className="ltx" title="Ansicht löschen" aria-label="Ansicht löschen" onClick={async () => (await uiAsk(`Ansicht „${v.n}“ löschen?`)) && setViews((l) => l.filter((y) => y.id !== v.id))}>✕</button></span>)}
+    {views.map((v) => <span key={v.id} className="ltview"><button className={"chip" + (on(v) ? " on" : "")} onClick={() => applyV(v)}>☆ {v.n}</button><button className="ltx" title="Ansicht löschen" aria-label="Ansicht löschen" onClick={() => confirm(`Ansicht „${v.n}“ löschen?`) && setViews((l) => l.filter((y) => y.id !== v.id))}>✕</button></span>)}
     {filters?.map(([k, l, n]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l}{n != null && <small> ({n})</small>}</button>)}
     {children}
     <span className="grow" />
@@ -7718,8 +7605,8 @@ function KitBulk({ kit, shown, idOf = (x) => x.id, actions = [] }) {
     <button className="btn primary" onClick={() => setPick(null)}>Fertig</button>
   </div>);
 }
-const kitTagPrompt = async (items, tagsOf = (x) => x.tags || []) => { const one = items.length === 1 ? items[0] : null;
-  const v = (await uiPrompt(one ? "Tags (mit Komma getrennt):" : `Tag zu ${items.length} Einträgen hinzufügen:`, one ? tagsOf(one).join(", ") : "")); if (v == null) return null;
+const kitTagPrompt = (items, tagsOf = (x) => x.tags || []) => { const one = items.length === 1 ? items[0] : null;
+  const v = prompt(one ? "Tags (mit Komma getrennt):" : `Tag zu ${items.length} Einträgen hinzufügen:`, one ? tagsOf(one).join(", ") : ""); if (v == null) return null;
   const t = v.split(",").map((x) => x.trim().replace(/^#/, "")).filter(Boolean); return (x) => (one ? t : [...new Set([...tagsOf(x), ...t])]); };
 const KitPickBox = ({ on }) => <span className={"pickbox inline" + (on ? " on" : "")}>✓</span>;
 const KitTags = ({ tags }) => (tags || []).map((t) => <span key={t} className="label tag lttag">#{t}</span>);
@@ -8041,9 +7928,9 @@ function LogoWin({ txs, onClose }) {
       <div className="col" style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
         <button className="btn primary" disabled={!!prog || !open.length} onClick={() => run(open.slice(0, 300))}>Fehlende Logos laden ({Math.min(open.length, 300)}{open.length > 300 ? " von " + open.length : ""})</button>
         <button className="btn" disabled={!!prog || !missed} onClick={() => run(cands.filter((x) => !LOGOS[x.key] && miss[x.key]).slice(0, 300))}>Nicht gefundene erneut versuchen ({missed})</button>
-        <button className="btn" disabled={!!prog || !cands.length} onClick={async () => (await uiAsk(`Alle ${Math.min(cands.length, 300)} Logos neu laden?`)) && run(cands.slice(0, 300))}>Alle neu laden</button>
+        <button className="btn" disabled={!!prog || !cands.length} onClick={() => confirm(`Alle ${Math.min(cands.length, 300)} Logos neu laden?`) && run(cands.slice(0, 300))}>Alle neu laden</button>
         <label className="check"><input type="checkbox" checked={auto} onChange={(e) => { setAuto(e.target.checked); ls.set("autoLogos", e.target.checked); }} /> Für neue Empfänger automatisch laden (z. B. nach einem Kontoauszug-Import)</label>
-        {have > 0 && <button className="link red" disabled={!!prog} onClick={async () => { if (!(await uiAsk("Alle geladenen Firmenlogos entfernen?"))) return; for (const k of Object.keys(LOGOS)) await setLogo(k, null); ls.set("logoMiss", {}); }}>Alle Logos entfernen</button>}
+        {have > 0 && <button className="link red" disabled={!!prog} onClick={async () => { if (!confirm("Alle geladenen Firmenlogos entfernen?")) return; for (const k of Object.keys(LOGOS)) await setLogo(k, null); ls.set("logoMiss", {}); }}>Alle Logos entfernen</button>}
       </div>
     </Win>
   );
@@ -8076,9 +7963,9 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
   const si = txScopeInfo(t, acc, doc), pctBiz = bizPctOf(t, si.scope);
   const [prevDoc, setPrevDoc] = useState(null), [ctPrev, setCtPrev] = useState(false), [histOpen, setHistOpen] = useLsState("txHistOpen", false), [histN, setHistN] = useState(15), [swap, setSwap] = useState(false), [splitOpen, setSplitOpen] = useState(false), [split, setSplit] = useState(pctBiz);
   const [askOpen, setAskOpen] = useState(false), [askQ, setAskQ] = useState(t.ask?.q || ""), [askA, setAskA] = useState(t.ask?.a || "");
-  const unlinkInv = async () => {
-    if (!(await uiAsk(`Verknüpfung zu Rechnung ${linkedInv.number} lösen?`))) return;
-    if (linkedInv.paidTx === t.id) { const reopen = (await uiAsk(`Rechnung ${linkedInv.number} wieder auf „offen“ setzen?`));
+  const unlinkInv = () => {
+    if (!confirm(`Verknüpfung zu Rechnung ${linkedInv.number} lösen?`)) return;
+    if (linkedInv.paidTx === t.id) { const reopen = confirm(`Rechnung ${linkedInv.number} wieder auf „offen“ setzen?`);
       ls.set("invoices", ls.get("invoices", []).map((x) => (x.id === linkedInv.id ? { ...x, paidTx: undefined, paidTxCreated: undefined, ...(reopen ? { status: "offen", paidAt: undefined, paidAccount: undefined, payMethod: undefined } : {}) } : x))); }
     save({ ...t, invoiceId: undefined });
   };
@@ -8193,9 +8080,9 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
       )}
       {false && (
         <div className="tile txpick">
-          <PSelect value={cat} onChange={async (e) => {
+          <PSelect value={cat} onChange={(e) => {
             if (e.target.value !== "__new") return setCat(e.target.value);
-            const n = ((await uiPrompt("Name der neuen Kategorie:")) || "").trim(); if (!n) return;
+            const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return;
             addCategory?.(n); setExtraCats((x) => [...x, n]); setCat(n);
           }}>
             {[...new Set([...categories, ...extraCats, t.category])].map((c) => <option key={c}>{c}</option>)}
@@ -8256,7 +8143,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
               <button className="btn sm detprevbtn" onClick={() => setPrevDoc(doc)}><IcoEye /> <span>Vorschau</span></button>
               <button className={"btn sm" + (swap ? " on" : "")} onClick={() => setSwap(!swap)}>⇄ Tauschen</button>
               <button className="btn sm" onClick={() => onOpen(doc.id)}>Öffnen</button>
-              <button className="btn sm red" onClick={async () => (await uiAsk(`Beleg „${doc.title}“ von der Buchung lösen?\nDer Beleg bleibt unter Dokumente erhalten.`)) && linkTx(t.id, null)}>✕ Lösen</button>
+              <button className="btn sm red" onClick={() => confirm(`Beleg „${doc.title}“ von der Buchung lösen?\nDer Beleg bleibt unter Dokumente erhalten.`) && linkTx(t.id, null)}>✕ Lösen</button>
             </div>
             {swap && <div className="txswap"><small className="muted block">Neuen Beleg wählen – er ersetzt „{doc.title}“ (der alte bleibt unter Dokumente):</small>{belegOpts}</div>}
           </div>
@@ -8379,12 +8266,12 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
       </section>
 
       <section className="tile txcard">
-        <button className="txlinkrow red" onClick={async () => {
-          if (!(await uiAsk(`Alle manuellen Änderungen an Buchungen von „${t.counterparty || title}“ zurücksetzen?\n\nKategorie, Name, Zweck, Datum, Symbol und die Regel „Immer so“ werden auf den Bankimport zurückgesetzt.`))) return;
+        <button className="txlinkrow red" onClick={() => {
+          if (!confirm(`Alle manuellen Änderungen an Buchungen von „${t.counterparty || title}“ zurücksetzen?\n\nKategorie, Name, Zweck, Datum, Symbol und die Regel „Immer so“ werden auf den Bankimport zurückgesetzt.`)) return;
           setCpIcon(key, null); resetCp?.(key, t.counterparty); onClose();
         }}>Manuelle Änderungen zurücksetzen</button>
         <small className="muted block" style={{ padding: "0 4px 6px" }}>Entfernt alle manuellen Änderungen an den Buchungen dieses Empfängers.</small>
-        <button className="txlinkrow red" onClick={async () => (await uiAsk(t.manual ? "Buchung löschen?" : "Diese Buchung stammt aus einem Bankimport. Trotzdem löschen?\n(Beim nächsten Import desselben Zeitraums kann sie wieder erscheinen.)")) && (deleteTx(t), onClose())}>🗑 Buchung löschen</button>
+        <button className="txlinkrow red" onClick={() => confirm(t.manual ? "Buchung löschen?" : "Diese Buchung stammt aus einem Bankimport. Trotzdem löschen?\n(Beim nächsten Import desselben Zeitraums kann sie wieder erscheinen.)") && (deleteTx(t), onClose())}>🗑 Buchung löschen</button>
       </section>
     </Win>
   );
@@ -8732,7 +8619,7 @@ function StmtWin({ doc, txs, accounts, docs, saveDoc, updateTx, updateTxs, openT
   async function exportPdf(share) {
     setBusy(true);
     try { const b = await stmtMarkedPdf(doc, blobRef.current, txs, accounts, docs); const name = (doc.title || "Kontoauszug").replace(/[\\/:*?"<>|]/g, "-") + " markiert.pdf";
-      if (share === "print") { notify?.("Druck wird vorbereitet …"); await printBlobs([b], doc.title); } else share ? sharePdf(b, name, doc.title) : saveBlob(b, name); }
+      if (share === "print") { notify?.("Druck wird vorbereitet …"); await printPdf(b, doc.title, 1700, 200); } else share ? sharePdf(b, name, doc.title) : saveBlob(b, name); }
     catch (e) { notify?.("Export fehlgeschlagen: " + e.message); } finally { setBusy(false); }
   }
   async function withBelege() {
@@ -10482,7 +10369,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
                 <button className="link small" onClick={() => goCheck(x.m, "firma")}>Firmenbuchungen ({x.firma.length})</button>
                 <button className="link small" title={x.issues ? "Es sind noch Punkte offen – Paket kann trotzdem erstellt werden" : "Paket für diesen Monat erstellen"} onClick={() => sendMonth(x.m)}>📦 An Steuerberater senden</button>
                 {done[x.m] ? <button className="link small" onClick={() => setDone((d) => { const n = { ...d }; delete n[x.m]; return n; })}>Abschluss aufheben</button>
-                  : <button className="link small" onClick={async () => (!x.issues || (await uiAsk(`Im ${monthLabel(x.m)} sind noch ${x.issues} Punkte offen. Trotzdem als abgeschlossen markieren?`))) && setDone((d) => ({ ...d, [x.m]: todayISO() }))}>Als abgeschlossen markieren</button>}
+                  : <button className="link small" onClick={() => (!x.issues || confirm(`Im ${monthLabel(x.m)} sind noch ${x.issues} Punkte offen. Trotzdem als abgeschlossen markieren?`)) && setDone((d) => ({ ...d, [x.m]: todayISO() }))}>Als abgeschlossen markieren</button>}
               </div>
             </div>}
   </>); };
@@ -10573,7 +10460,7 @@ function StbPage({ txs, accounts, docs, saveDoc, updateTx, updateTxs, importTxs,
   const markedOf = async (d, o) => { const b = await db.getFile(d.id); if (!b) throw new Error("Originaldatei nicht gefunden"); return stmtMarkedPdf(d, b, txs, accounts, docs, o); };
   const stmtName = (d) => (d.title || "Kontoauszug").replace(/[\\/:*?"<>|]/g, "-") + " markiert.pdf";
   const prevStmt = async (d) => { setStmBusy(d.id + "v"); try { await openPdf(await markedOf(d), stmtName(d), (d.title || "Kontoauszug") + " · markiert", "", { stay: true }); } catch (e) { notify(e.message); } finally { setStmBusy(""); } };
-  const printStmt = async (d) => { setStmBusy(d.id + "p"); try { notify("Druck wird vorbereitet …"); await printBlobs([await markedOf(d)], d.title); } catch (e) { notify(e.message); } finally { setStmBusy(""); } };
+  const printStmt = async (d) => { setStmBusy(d.id + "p"); try { notify("Druck wird vorbereitet …"); await printPdf(await markedOf(d), d.title, 1700, 200); } catch (e) { notify(e.message); } finally { setStmBusy(""); } };
   async function printAll() {
     if (!stmtsF.length) return;
     setStmBusy("all");
@@ -10789,7 +10676,7 @@ function AskCard({ r, updateTx, openTx }) {
           ? <button className="btn sm" onClick={() => save({ q: q.trim() || r.t.ask.q, a: a.trim(), state: "geklärt", doneAt: todayISO() })}>✓ Geklärt</button>
           : <button className="btn sm" onClick={() => save({ state: "offen" })}>Wieder öffnen</button>}
         <span className="grow" />
-        <button className="link small red" onClick={async () => (await uiAsk("Frage entfernen?")) && updateTx({ ...r.t, ask: undefined })}>Entfernen</button>
+        <button className="link small red" onClick={() => confirm("Frage entfernen?") && updateTx({ ...r.t, ask: undefined })}>Entfernen</button>
       </div>
     </section>
   );
@@ -10923,7 +10810,7 @@ function Scanner({ onDone, onClose, initial = null }) {
     try { const src = await loadImage(file); setEdit({ src, url: src.toDataURL("image/jpeg", 0.75), corners: detectCorners(src), idx }); }
     catch (e) {
       // Bearbeitung nicht möglich (z. B. Speicher am Handy) → Foto unverändert übernehmen
-      if ((await uiAsk(`Das Foto konnte nicht zum Zuschneiden geladen werden (${e.message}).\n\nFoto unverändert als Beleg übernehmen?`))) onDone(file, { cash });
+      if (confirm(`Das Foto konnte nicht zum Zuschneiden geladen werden (${e.message}).\n\nFoto unverändert als Beleg übernehmen?`)) onDone(file, { cash });
     }
     finally { setBusy(""); }
   }
@@ -10942,7 +10829,7 @@ function Scanner({ onDone, onClose, initial = null }) {
       setEdit(null);
     } catch (e) {
       const raw = rawRef.current[edit.idx];
-      if (raw && (await uiAsk(`Entzerren fehlgeschlagen (${e.message}).\n\nFoto unverändert als Beleg übernehmen?`))) onDone(raw, { cash });
+      if (raw && confirm(`Entzerren fehlgeschlagen (${e.message}).\n\nFoto unverändert als Beleg übernehmen?`)) onDone(raw, { cash });
     } finally { setBusy(""); }
   }
   async function changeFilter(f) {
@@ -11140,9 +11027,9 @@ function CashForm({ init, accounts, categories, onSave, onScan, addCategory, com
         </label>
       </div>
       <label>Kategorie
-        <PSelect value={category} onChange={async (e) => {
+        <PSelect value={category} onChange={(e) => {
           if (e.target.value !== "__new") return setCategory(e.target.value);
-          const n = ((await uiPrompt("Name der neuen Kategorie:")) || "").trim(); if (!n) return;
+          const n = (prompt("Name der neuen Kategorie:") || "").trim(); if (!n) return;
           addCategory?.(n); setExtra((x) => [...x, n]); setCategory(n);
         }}>
           {cats.map((c) => <option key={c}>{c}</option>)}
@@ -11457,7 +11344,7 @@ async function retainGuard(items, kind = "doc") {
   const today = todayISO(), prot = items.filter((x) => x.end && x.end >= today);
   if (!prot.length) return true;
   const cfg = rtCfgGet(), mode = kind === "doc" ? cfg.docMode : cfg.dataMode;
-  if (!rtUi) return (await uiAsk(`${prot.length} Eintrag/Einträge sind noch aufbewahrungspflichtig. Trotzdem löschen?`));
+  if (!rtUi) return confirm(`${prot.length} Eintrag/Einträge sind noch aufbewahrungspflichtig. Trotzdem löschen?`);
   return rtUi({ items: prot, mode, word: kind === "doc" && prot.length === 1 ? "LÖSCHEN" : "ALLES LÖSCHEN", kind });
 }
 function RtGuardWin({ req, onDone }) {
@@ -11496,7 +11383,7 @@ function RtSettings({ docs = [], purgeMany, notify }) {
     <label>Schutz für Dokumente<PSelect value={cfg.docMode} onChange={(e) => set({ docMode: e.target.value })}>{RT_MODES.map(([k, l]) => <option key={k} value={k}>{l}{k === "word" ? " (LÖSCHEN)" : k === "pwword" ? " (LÖSCHEN)" : ""}</option>)}</PSelect></label>
     <label>Schutz für Buchungen, Rechnungen und Kassabuch<PSelect value={cfg.dataMode} onChange={(e) => set({ dataMode: e.target.value })}>{RT_MODES.map(([k, l]) => <option key={k} value={k}>{l}{k === "word" || k === "pwword" ? " (ALLES LÖSCHEN)" : ""}</option>)}</PSelect></label>
     <fieldset><legend>Löschschutz-Passwort</legend>
-      {pwOn ? <div className="row"><span className="grow">✓ Passwort gesetzt</span><button className="link red" onClick={async () => { if (!(await uiAsk("Löschschutz-Passwort entfernen?"))) return; localStorage.removeItem("rtPw"); setPwOn(false); notify?.("Passwort entfernt"); }}>Entfernen</button></div>
+      {pwOn ? <div className="row"><span className="grow">✓ Passwort gesetzt</span><button className="link red" onClick={() => { if (!confirm("Löschschutz-Passwort entfernen?")) return; localStorage.removeItem("rtPw"); setPwOn(false); notify?.("Passwort entfernt"); }}>Entfernen</button></div>
         : <><div className="grid2"><label>Passwort<input type="password" autoComplete="new-password" value={p1} onChange={(e) => setP1(e.target.value)} /></label><label>Wiederholen<input type="password" autoComplete="new-password" value={p2} onChange={(e) => setP2(e.target.value)} /></label></div>
           <button className="btn" disabled={!p1} onClick={savePw}>Passwort speichern</button></>}
       <small className="muted block">Wird nur als Prüfsumme auf diesem Gerät gespeichert und nicht ins Backup übernommen.</small>
@@ -11509,7 +11396,7 @@ function RtSettings({ docs = [], purgeMany, notify }) {
     </div>
     {showExp && exp.length > 0 && <div className="rtexp">
       <div className="row"><label className="check"><input type="checkbox" checked={sel.length === exp.length} onChange={(e) => setSel(e.target.checked ? exp.map((d) => d.id) : [])} /> Alle auswählen</label><span className="grow" />
-        <button className="btn danger sm" disabled={!sel.length} onClick={async () => { if (!(await uiAsk(`${sel.length} Dokument(e) mit abgelaufener Aufbewahrungsfrist endgültig löschen?`))) return; await purgeMany?.(sel); setSel([]); }}>Ausgewählte löschen ({sel.length})</button></div>
+        <button className="btn danger sm" disabled={!sel.length} onClick={async () => { if (!confirm(`${sel.length} Dokument(e) mit abgelaufener Aufbewahrungsfrist endgültig löschen?`)) return; await purgeMany?.(sel); setSel([]); }}>Ausgewählte löschen ({sel.length})</button></div>
       <ul className="rtlist">{exp.map((d) => <li key={d.id}><label className="check grow"><input type="checkbox" checked={sel.includes(d.id)} onChange={(e) => setSel((s) => (e.target.checked ? [...s, d.id] : s.filter((x) => x !== d.id)))} /> <span className="one">{d.title}</span></label><small className="muted">abgelaufen {fmtDate(rtDocEnd(d, cfg))}</small></li>)}</ul>
     </div>}
   </div>);
@@ -11872,7 +11759,7 @@ function AppLockSettings({ notify }) {
       <button className="btn" onClick={() => { try { sessionStorage.removeItem("findocuUnlocked"); } catch {} window.dispatchEvent(new Event("findocu-lock")); }}>🔒 Jetzt sperren</button>
       <button className="btn" onClick={() => { reset(); setMode("change"); }}>Passwort ändern</button>
     </div>}
-    <p className="muted small">Hinweis: Die Sperre schützt vor neugierigen Blicken auf diesem Gerät. Gespeichert wird nur ein Prüfwert (PBKDF2-SHA-256), nicht das Passwort. Passwort vergessen? {isMacApp ? <>Dann FinDocu beenden, im Finder den Ordner „Library/WebKit/at.findocu.app“ in deinem Benutzerordner löschen und ein Backup zurückspielen.</> : isWinApp ? <>Dann FinDocu beenden, den Ordner „%LOCALAPPDATA%\at.findocu.app“ löschen und ein Backup zurückspielen.</> : <>Dann die Website-Daten im Browser löschen und ein Backup zurückspielen.</>}</p>
+    <p className="muted small">Hinweis: Die Sperre schützt vor neugierigen Blicken auf diesem Gerät. Gespeichert wird nur ein Prüfwert (PBKDF2-SHA-256), nicht das Passwort. Passwort vergessen? Dann die Website-Daten im Browser löschen und ein Backup zurückspielen.</p>
   </>);
 }
 
@@ -12013,7 +11900,7 @@ function SyncSettings({ notify }) {
       else notify?.(r.uploaded ? "Änderungen hochgeladen" + (r.up ? ` (${r.up} Dateien)` : "") : "Alles aktuell");
     } catch (e) { setErr(e.message); setSyncCfg({ lastError: e.message, needsAuth: !!e.auth }); setBusy(""); }
   };
-  const off = async () => { if (!(await uiAsk("Synchronisierung auf diesem Gerät beenden?\n\nDeine Daten bleiben auf diesem Gerät und in der Cloud erhalten."))) return; await disconnect(); setCfg(syncCfg()); setStep(""); setDevs(null); notify?.("Synchronisierung beendet"); };
+  const off = async () => { if (!confirm("Synchronisierung auf diesem Gerät beenden?\n\nDeine Daten bleiben auf diesem Gerät und in der Cloud erhalten.")) return; await disconnect(); setCfg(syncCfg()); setStep(""); setDevs(null); notify?.("Synchronisierung beendet"); };
   const missing = (id) => id !== "mega" && conf && !conf[id];
   return (
     <section className="bkcard synccard">
@@ -12115,67 +12002,6 @@ async function abRun(mode, fn) { const d = await abDb(); return new Promise((res
 const abList = async () => ((await abRun("readonly", (st) => st.getAll())) || []).sort((a, b) => b.at.localeCompare(a.at));
 const AB_META = /^(lastAutoBackup|lastAutoCheck|lastAutoHash|lastExtBackup)$/;
 const abHash = (str) => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(36) + ":" + str.length; };
-/* ---------- v0.99.94: Backups als Dateien auf der Festplatte (Mac/Windows-App) ---------- */
-const DK_DEF = { on: true, files: true, keep: 10 };
-const dkCfg = () => ({ ...DK_DEF, ...ls.get("bkDiskCfg", {}) });
-async function dkDir() { const d = ls.get("bkDiskDir", ""); if (d) return d; const def = await native("bk_default_dir"); ls.set("bkDiskDir", def); return def; }
-async function diskBackup(reason, { store, txs, docs, at }) {
-  const c = dkCfg(), dir = await dkDir(), items = [];
-  for (const d of docs) { let file = null; if (c.files) { const b = await db.getFile(d.id).catch(() => null); if (b) file = await blobToBase64(b); } items.push({ doc: d, file }); }
-  const data = JSON.stringify({ version: 5, exported: at, auto: true, disk: true, withFiles: !!c.files, store, txs, items });
-  const l = new Date(at), p2 = (n) => String(n).padStart(2, "0");
-  const name = `findocu-auto-${l.getFullYear()}-${p2(l.getMonth() + 1)}-${p2(l.getDate())}_${p2(l.getHours())}-${p2(l.getMinutes())}-${p2(l.getSeconds())}${reason === "manuell" ? "-manuell" : ""}.json`;
-  await native("bk_write", { dir, name, data, keep: Math.max(1, +c.keep || 10) });
-  ls.set("bkDiskLast", at); localStorage.removeItem("bkDiskErr");
-  return name;
-}
-function DiskBackupCard({ notify, onRestore, ver }) {
-  const [cfg, setCfg0] = useLsState("bkDiskCfg", DK_DEF), c = { ...DK_DEF, ...cfg }, setCfg = (p) => setCfg0({ ...c, ...p });
-  const [dir, setDir] = useState(ls.get("bkDiskDir", "")), [list, setList] = useState(null), [busy, setBusy] = useState(""), [v, setV] = useState(0);
-  const load = async () => { try { const d = await dkDir(); setDir(d); setList(await native("bk_list", { dir: d })); } catch (e) { setList([]); } };
-  useEffect(() => { load(); }, [ver, v]);
-  const pick = async () => { try { const { open } = await import("@tauri-apps/plugin-dialog"); const p = await open({ directory: true, defaultPath: dir || undefined, title: "Ordner für FinDocu-Backups" }); if (!p || Array.isArray(p)) return; ls.set("bkDiskDir", p); localStorage.removeItem("bkDiskLast"); setV((x) => x + 1); notify("Backup-Ordner geändert – das nächste Backup landet dort"); } catch (e) { alert(e.message || e); } };
-  const now = async () => { setBusy("now"); try { await createAutoBackup("manuell"); setV((x) => x + 1); notify("Backup auf der Festplatte gespeichert"); } catch (e) { notify("Sicherung fehlgeschlagen: " + (e.message || e)); } finally { setBusy(""); } };
-  const restore = async (f) => { if (!(await uiAsk(`Stand vom ${fmtStamp(new Date(f.mtime).toISOString())} wiederherstellen?\nAktuelle Daten werden mit diesem Stand überschrieben.`))) return; setBusy(f.name);
-    try { await createAutoBackup("manuell").catch(() => {}); const txt = await native("bk_read", { dir, name: f.name }); onRestore(new File([txt], f.name, { type: "application/json" })); } catch (e) { notify("Wiederherstellen fehlgeschlagen: " + (e.message || e)); } finally { setBusy(""); } };
-  const err = ls.get("bkDiskErr", "");
-  return (<section className="bkcard">
-    <h4>💽 Backup-Ordner auf der Festplatte</h4>
-    <label className="switchrow"><span><b>Auto-Backups auch als Datei speichern</b></span><input type="checkbox" className="switch" checked={!!c.on} onChange={(e) => setCfg({ on: e.target.checked })} /></label>
-    {c.on && <>
-      <div className="fwfolder"><span className="fwico">📁</span><div className="grow" style={{ minWidth: 0 }}><b className="block one" title={dir}>{dir ? dir.split(/[\\/]/).filter(Boolean).slice(-2).join(" › ") : "…"}</b><small className="muted block one" title={dir}>{dir}</small></div>
-        <button className="btn sm" onClick={() => native("bk_reveal", { dir }).catch((e) => alert(e))}>{/Win/i.test(navigator.userAgent) ? "Im Explorer zeigen" : "Im Finder zeigen"}</button><button className="btn sm" onClick={pick}>Ändern …</button></div>
-      <label className="switchrow"><span><b>Original-Dateien mitsichern</b><small className="muted block">PDFs und Fotos – vollständiges Backup, braucht mehr Platz</small></span><input type="checkbox" className="switch" checked={!!c.files} onChange={(e) => setCfg({ files: e.target.checked })} /></label>
-      <label className="fwevery">Aufheben<PSelect value={String(c.keep)} onChange={(e) => setCfg({ keep: +e.target.value })}>{[3, 5, 10, 20, 30].map((n) => <option key={n} value={String(n)}>die letzten {n}</option>)}</PSelect></label>
-      <p className="muted small bkline">Gespeichert wird im Takt der automatischen Backups (oben) – nur wenn sich etwas geändert hat. Letztes: <b>{fmtStamp(ls.get("bkDiskLast", ""))}</b></p>
-      {err && <p className="red small">✕ Letzter Versuch fehlgeschlagen: {err}</p>}
-      <div className="actions"><button className={"btn bkpress" + (busy === "now" ? " on" : "")} disabled={!!busy} onClick={now}>{busy === "now" ? "⏳ Sichere …" : "💾 Jetzt auf Festplatte sichern"}</button></div>
-      {list && list.length > 0 && <div className="fwqueue">{list.map((f) => (<div key={f.name} className="fwqrow" style={{ cursor: "default" }}>
-        <span className="fwqn one"><b>{fmtStamp(new Date(f.mtime).toISOString())}</b><small className="muted block">{/manuell/.test(f.name) ? "manuell" : "automatisch"} · {fmtSize(f.size)}</small></span>
-        <button className="btn sm" disabled={!!busy} onClick={() => restore(f)}>{busy === f.name ? "…" : "Wiederherstellen"}</button>
-        <button className="iconbtn" title="Löschen" aria-label="Löschen" onClick={async () => { if (!(await uiAsk("Diese Sicherung von der Festplatte löschen?"))) return; await native("bk_delete", { dir, name: f.name }).catch((e) => alert(e)); setV((x) => x + 1); }}>🗑</button></div>))}</div>}
-      {list && !list.length && <p className="muted small">Noch keine Sicherung in diesem Ordner.</p>}
-      <p className="muted small">Die Dateien sind <b>nicht verschlüsselt</b> – wähle einen Ordner auf deinem Mac oder in deiner eigenen Cloud (z. B. iCloud Drive, dann liegt die Sicherung auch außerhalb des Macs). Für Weitergabe nutze das verschlüsselte Backup.</p>
-    </>}
-  </section>);
-}
-function DiskUsageCard({ docs, txs, ver }) {
-  const [info, setInfo] = useState(null), [err, setErr] = useState("");
-  useEffect(() => { (async () => { try { const dir = dkCfg().on ? await dkDir() : null; setInfo(await native("disk_info", { dir })); } catch (e) { setErr(e.message || String(e)); } })(); }, [docs, txs, ver]);
-  const gb = (n) => (n >= 1073741824 ? (n / 1073741824).toLocaleString("de-AT", { maximumFractionDigits: 1 }) + " GB" : fmtSize(n));
-  const used = info ? info.total - info.free : 0;
-  return (<section className="bkcard">
-    <h4>Speicherverbrauch (Festplatte)</h4>
-    {info ? <>
-      <div className="bkbar dkbar"><i style={{ width: Math.max(0.5, Math.min(100, ((used - info.data - info.backups) / info.total) * 100)) + "%" }} /><i className="dk-app" style={{ width: Math.max(0.5, ((info.data + info.backups) / info.total) * 100) + "%" }} /></div>
-      <p className="muted small bkline">FinDocu-Daten: <b>{gb(info.data)}</b>{dkCfg().on ? <> · Backups: <b>{gb(info.backups)}</b></> : null}</p>
-      <p className="muted small bkline">Laufwerk: <b>{gb(info.free)} frei</b> von {gb(info.total)}</p>
-      {info.free < 2147483648 && <p className="red small">Wenig freier Speicher – Backups und neue Dokumente könnten fehlschlagen.</p>}
-    </> : err ? <p className="red small">✕ {err}</p> : <p className="muted small">Lade …</p>}
-    <p className="muted small bkline">{docs} Dokumente · {txs} Umsätze</p>
-    <p className="muted small">Die Daten liegen auf dieser Festplatte im Benutzerordner (Library) und werden von Time Machine mitgesichert. Die App löscht sie nicht von selbst.</p>
-  </section>);
-}
 async function createAutoBackup(reason = "auto") {
   const docs = await db.allDocs(), txs = await db.allTx();
   const store = {}, cmp = {};
@@ -12183,13 +12009,12 @@ async function createAutoBackup(reason = "auto") {
   const at = new Date().toISOString();
   const body = JSON.stringify({ store: cmp, txs, docs }), hash = abHash(body);
   // automatische Sicherungen nur, wenn sich seit der letzten etwas geändert hat (sonst verdrängen 10 gleiche Kopien die älteren)
-  if (reason !== "manuell" && hash === ls.get("lastAutoHash", "") && (await abList()).length) { ls.set("lastAutoCheck", at); if (hasDisk && dkCfg().on && !ls.get("bkDiskLast", "")) await diskBackup(reason, { store, txs, docs, at }).catch(() => {}); return null; }
+  if (reason !== "manuell" && hash === ls.get("lastAutoHash", "") && (await abList()).length) { ls.set("lastAutoCheck", at); return null; }
   const data = JSON.stringify({ version: 5, exported: at, auto: true, store, txs, items: docs.map((d) => ({ doc: d, file: null })) });
   await abRun("readwrite", (st) => st.put({ id: uid(), at, reason, size: data.length, docs: docs.length, txs: txs.length, data }));
   const all = await abList();
   for (const x of all.slice(AB_MAX)) await abRun("readwrite", (st) => st.delete(x.id));
   ls.set("lastAutoBackup", at); ls.set("lastAutoCheck", at); ls.set("lastAutoHash", hash);
-  if (hasDisk && dkCfg().on) { try { await diskBackup(reason, { store, txs, docs, at }); } catch (e) { ls.set("bkDiskErr", e?.message || String(e)); } }
   dispatchEvent(new Event("findocu-autobak"));
   return at;
 }
@@ -12216,14 +12041,14 @@ function AutoBackupWin({ onRestore, onClose, notify }) {
   return (
     <Win id="autobak" onClose={onClose} small dirty={false}>
       <div className="panelhead"><b>📋 Auto-Backups</b><XBtn /></div>
-      <p className="muted small">Die letzten {AB_MAX} automatischen Sicherungen {hasDisk ? "in der App" : "in diesem Browser"}. Enthalten sind Dokument-Daten, Umsätze, Konten, Rechnungen, Kunden, Kassabuch, Lager und alle Einstellungen – die Original-Dateien (PDFs, Fotos) nur im externen Backup.</p>
+      <p className="muted small">Die letzten {AB_MAX} automatischen Sicherungen in diesem Browser. Enthalten sind Dokument-Daten, Umsätze, Konten, Rechnungen, Kunden, Kassabuch, Lager und alle Einstellungen – die Original-Dateien (PDFs, Fotos) nur im externen Backup.</p>
       {!list ? <p className="muted small">Lade …</p> : !list.length ? <MEmpty>Noch keine automatische Sicherung.</MEmpty> : list.map((b) => (
         <div key={b.id} className="frow abrow">
           <span className="caticon" style={{ width: 40, height: 40 }}><Glyph e={b.reason === "manuell" ? "💾" : "🔄"} /></span>
           <div className="grow"><b>{fmtStamp(b.at)}</b><small className="muted block">{b.reason === "manuell" ? "manuell" : "automatisch"} · {fmtSize(b.size)} · {b.docs} Dokumente · {b.txs} Umsätze</small></div>
           <button className="iconbtn" title="Herunterladen" aria-label="Herunterladen" onClick={() => download(new Blob([b.data], { type: "application/json" }), `findocu-autobackup-${b.at.slice(0, 16).replace(/[:T]/g, "-")}.json`)}>⬇︎</button>
-          <button className="btn sm" disabled={busy} onClick={async () => { if (!(await uiAsk(`Stand vom ${fmtStamp(b.at)} wiederherstellen?\nAktuelle Daten werden mit diesem Stand überschrieben.`))) return; setBusy(true); await createAutoBackup("manuell").catch(() => {}); onRestore(new File([b.data], "auto-backup.json", { type: "application/json" })); }}>Wiederherstellen</button>
-          <button className="iconbtn" title="Löschen" aria-label="Löschen" onClick={async () => { if (!(await uiAsk("Diese Sicherung löschen?"))) return; await abRun("readwrite", (st) => st.delete(b.id)); load(); notify?.("Sicherung gelöscht"); }}><IcoTrash /></button>
+          <button className="btn sm" disabled={busy} onClick={async () => { if (!confirm(`Stand vom ${fmtStamp(b.at)} wiederherstellen?\nAktuelle Daten werden mit diesem Stand überschrieben.`)) return; setBusy(true); await createAutoBackup("manuell").catch(() => {}); onRestore(new File([b.data], "auto-backup.json", { type: "application/json" })); }}>Wiederherstellen</button>
+          <button className="iconbtn" title="Löschen" aria-label="Löschen" onClick={async () => { if (!confirm("Diese Sicherung löschen?")) return; await abRun("readwrite", (st) => st.delete(b.id)); load(); notify?.("Sicherung gelöscht"); }}><IcoTrash /></button>
         </div>
       ))}
     </Win>
@@ -12315,10 +12140,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
       if (j.store) {
         for (const [k, v] of Object.entries(j.store)) if (!BACKUP_SKIP.test(k)) try { localStorage.setItem(k, v); } catch {}
         const ds = j.devSizes && typeof j.devSizes === "object" ? Object.entries(j.devSizes).filter(([k, v]) => DEV_SIZE_KEYS.includes(k) && typeof v === "string") : [];
-        // v0.99.102: nur fragen, wenn die Größen von einem ANDEREN Gerätetyp stammen und sich wirklich unterscheiden – vom selben Gerätetyp still übernehmen
-        const diff = ds.filter(([k, v]) => localStorage.getItem(k) !== v);
-        const same = !j.devFrom || j.devFrom === devLabel();
-        if (diff.length && (same || (await uiAsk(`Das Backup enthält Schrift- und Button-Größen vom ${j.devFrom}.\n\nAuch auf diesem Gerät (${devLabel()}) übernehmen?\n\nOK = übernehmen\nAbbrechen = Größen dieses Geräts behalten`)))) for (const [k, v] of diff) try { localStorage.setItem(k, v); } catch {}
+        if (ds.length && confirm(`Das Backup enthält Schrift- und Button-Größen${j.devFrom ? " vom " + j.devFrom : ""}.\n\nAuch auf diesem Gerät übernehmen?\nOK = übernehmen · Abbrechen = Größen dieses Geräts behalten`)) for (const [k, v] of ds) try { localStorage.setItem(k, v); } catch {}
         notify(`${n} Dokumente + Einstellungen, Rechnungen, Kunden importiert – App wird neu geladen`);
         setTimeout(() => location.reload(), 1200); return;
       }
@@ -12411,7 +12233,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
           {!!trash.length && <>
             <button className="btn" title="Alle wiederherstellen" onClick={async () => { for (const d of trash) await saveDoc({ ...d, deletedAt: null }); notify(`${trash.length} Dokument(e) wiederhergestellt`); }}>↺ Alle</button>
             <button className="btn danger trashall" title="Papierkorb leeren – alles endgültig löschen"
-              onClick={async () => { if (!(await uiAsk(`Papierkorb leeren? ${trash.length} Dokument(e) werden endgültig gelöscht.`))) return; await purgeMany(trash.map((d) => d.id)); }}>
+              onClick={async () => { if (!confirm(`Papierkorb leeren? ${trash.length} Dokument(e) werden endgültig gelöscht.`)) return; await purgeMany(trash.map((d) => d.id)); }}>
               <IcoTrash /> Leeren</button>
           </>}
         </div>
@@ -12421,7 +12243,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
               <div className="row1"><span>{d.title}</span>{(rtDocEnd(d) || "") >= todayISO() && <small className="muted">🔒 bis {fmtDate(rtDocEnd(d))}</small>}</div>
               <div className="actions" style={{ margin: "6px 0 0" }}>
                 <button className="btn" onClick={() => saveDoc({ ...d, deletedAt: null })}>Wiederherstellen</button>
-                <button className="btn danger" onClick={async () => (await uiAsk("Endgültig löschen?")) && purgeDoc(d.id)}>Endgültig löschen</button>
+                <button className="btn danger" onClick={() => confirm("Endgültig löschen?") && purgeDoc(d.id)}>Endgültig löschen</button>
               </div>
             </li>
           ))}
@@ -12452,13 +12274,12 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
           <p className="muted small bkline">Letztes Auto-Backup: <b>{fmtStamp(ls.get("lastAutoBackup", ""))}</b>{abIv === "aus" ? " (deaktiviert)" : ""}{abCount != null ? ` · ${abCount} von ${AB_MAX} gespeichert` : ""}</p>
           <p className="muted small bkline">Letztes externes Backup: <b>{fmtStamp(ls.get("lastExtBackup", ""))}</b>{(() => { const l = ls.get("lastExtBackup", ""); const d = l ? Math.floor((Date.now() - new Date(l)) / 864e5) : null; return d == null ? <span className="red"> – bitte bald sichern</span> : d > 30 ? <span className="red"> – vor {d} Tagen</span> : null; })()}</p>
           <div className="actions">
-            <button className={"btn bkpress" + (abBusy ? " on" : "")} disabled={abBusy} onClick={async () => { setAbBusy(true); try { await createAutoBackup("manuell"); notify(hasDisk ? (dkCfg().on ? "Sicherung in der App und im Backup-Ordner erstellt" : "Sicherung in der App erstellt") : "Sicherung im Browser erstellt"); } catch (e) { notify("Sicherung fehlgeschlagen: " + e.message); } finally { setAbBusy(false); } }}>{abBusy ? "⏳ Sichere …" : "💾 Jetzt sichern"}</button>
+            <button className={"btn bkpress" + (abBusy ? " on" : "")} disabled={abBusy} onClick={async () => { setAbBusy(true); try { await createAutoBackup("manuell"); notify("Sicherung im Browser erstellt"); } catch (e) { notify("Sicherung fehlgeschlagen: " + e.message); } finally { setAbBusy(false); } }}>{abBusy ? "⏳ Sichere …" : "💾 Jetzt sichern"}</button>
             <button className="btn" onClick={() => setAbOpen(true)}>📋 Auto-Backups verwalten</button>
           </div>
-          <p className="muted small">{hasDisk ? <>Auto-Backups werden in der App gespeichert (rotierend max. {AB_MAX} Stück) und – wenn unten eingeschaltet – zusätzlich als Datei im Backup-Ordner auf der Festplatte, dort auf Wunsch mit allen PDFs und Fotos.</> : <>Auto-Backups werden im Browser gespeichert (rotierend max. {AB_MAX} Stück). Das schützt vor versehentlichem Datenverlust in FinDocu, aber nicht vor dem Löschen der Website-Daten oder einem Geräteverlust – erstelle daher zusätzlich regelmäßig externe Backups. Die Original-Dateien (PDFs, Fotos) sind nur im externen Backup enthalten.</>}</p>
+          <p className="muted small">Auto-Backups werden im Browser gespeichert (rotierend max. {AB_MAX} Stück). Das schützt vor versehentlichem Datenverlust in FinDocu, aber nicht vor dem Löschen der Website-Daten oder einem Geräteverlust – erstelle daher zusätzlich regelmäßig externe Backups. Die Original-Dateien (PDFs, Fotos) sind nur im externen Backup enthalten.</p>
         </section>
-        {hasDisk && <DiskBackupCard notify={notify} ver={abVer} onRestore={(f) => importBackup(f)} />}
-        {hasDisk ? <DiskUsageCard docs={docs.length} txs={txs.length} ver={abVer} /> : <section className="bkcard">
+        <section className="bkcard">
           <h4>Speicherverbrauch (Browser)</h4>
           {quota ? <>
             <div className="bkbar"><i style={{ width: Math.max(1, Math.min(100, (quota.usage / quota.quota) * 100)) + "%" }} /></div>
@@ -12467,7 +12288,7 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
           <p className="muted small bkline">{docs.length} Dokumente · {txs.length} Umsätze</p>
           <p className="muted small bkline">Dauerhafter Speicher: {persist ? <b className="ok">✓ aktiv – der Browser löscht die Daten nicht von selbst</b> : <><b>nicht aktiv</b> <button className="link" onClick={async () => { const ok = await navigator.storage?.persist?.(); setPersist(!!ok); notify(ok ? "Dauerhafter Speicher aktiviert" : "Der Browser hat dauerhaften Speicher abgelehnt – am iPhone hilft „Zum Home-Bildschirm“"); }}>aktivieren</button></>}</p>
           <p className="muted small">Dokumente, Dateien und Umsätze liegen in IndexedDB, Einstellungen und Listen (Rechnungen, Kunden, Kassabuch …) im localStorage – beides nur in diesem Browser auf diesem Gerät.</p>
-        </section>}
+        </section>
         <SettingsTransfer notify={notify} />
         <WipeAll docs={docs.length} txs={txs.length} />
         {bkOpen && <Win id="bksave" onClose={() => setBkOpen(false)} small dirty={!!(bkPw || bkPw2)}>
@@ -13019,7 +12840,7 @@ async function buildInvoicePdf(inv, co, remind = null, design = invDesign()) {
 async function downloadEInvoice(inv, co, kind) {
   co = { ...CO_DEFAULT, ...co }; const EI = await import("./einvoice.js");
   const miss = [!(co.uid || co.taxNo) && "UID oder Steuernummer", !(co.street && co.zip && co.city) && "Firmenanschrift", !co.iban && "IBAN", kind !== "ebi" && !co.email && "E-Mail", kind !== "ebi" && !co.phone && "Telefon", kind !== "ebi" && !inv.customer?.email && "E-Mail des Kunden"].filter(Boolean);
-  if (miss.length && !(await uiAsk(`Für die E-Rechnung fehlt noch: ${miss.join(", ")} (Firmendaten bzw. Kunde).\nDie E-Rechnung wird trotzdem erstellt, kann aber vom Empfänger abgelehnt werden. Fortfahren?`))) return;
+  if (miss.length && !confirm(`Für die E-Rechnung fehlt noch: ${miss.join(", ")} (Firmendaten bzw. Kunde).\nDie E-Rechnung wird trotzdem erstellt, kann aber vom Empfänger abgelehnt werden. Fortfahren?`)) return;
   const xml = kind === "ebi" ? EI.buildEbInterface(inv, co, { kuNote: KU_NOTE }) : EI.buildCII(inv, co, { kuNote: KU_NOTE, xrechnung: true });
   download(new Blob([xml], { type: "application/xml" }), `${invFileName(inv).replace(/\.pdf$/i, "")}_${kind === "ebi" ? "ebInterface" : "XRechnung"}.xml`);
 }
@@ -13207,9 +13028,9 @@ function UnitSelect({ value, onChange, className = "" }) {
   const [units, setUnits] = useUnits();
   const list = units.includes(value) || !value ? units : [...units, value];
   return (
-    <PSelect className={className} value={value} onChange={async (e) => {
+    <PSelect className={className} value={value} onChange={(e) => {
       if (e.target.value !== "__new") return onChange(e.target.value);
-      const n = ((await uiPrompt("Neue Einheit, z. B. „Paket“, „Lfm“, „Liter“:")) || "").trim(); if (!n) return;
+      const n = (prompt("Neue Einheit, z. B. „Paket“, „Lfm“, „Liter“:") || "").trim(); if (!n) return;
       if (!units.some((u) => u.toLowerCase() === n.toLowerCase())) setUnits([...units, n]);
       onChange(units.find((u) => u.toLowerCase() === n.toLowerCase()) || n);
     }}>
@@ -13228,7 +13049,7 @@ function UnitsEditor() {
       <div className="chips">{units.map((u) => <span key={u} className="chip unitchip">{u}<button title="Entfernen" onClick={() => units.length > 1 && setUnits(units.filter((x) => x !== u))}>×</button></span>)}</div>
       <div className="libadd"><input value={nn} placeholder="Neue Einheit, z. B. Lfm, Paket, Liter" onChange={(e) => setNn(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
         <button className="btn sm" disabled={!nn.trim()} onClick={add}>Hinzufügen</button>
-        <button className="link small" onClick={async () => (await uiAsk("Einheiten auf Standard zurücksetzen?")) && setUnits(UNITS)}>Standard</button></div>
+        <button className="link small" onClick={() => confirm("Einheiten auf Standard zurücksetzen?") && setUnits(UNITS)}>Standard</button></div>
     </div>
   );
 }
@@ -13246,7 +13067,7 @@ function InvoiceFieldsEditor() {
             <Handle onDown={(e) => dnd.start(e, { kind: "ifld", list: "f", index: i, label: f.label })} />
             <EditText className="grow" value={f.label} onSave={(v) => v && patch(f.id, { label: v })} />
             <PSelect className="chip" value={f.scope} onChange={(e) => patch(f.id, { scope: e.target.value })}><option value="rechnung">Rechnung</option><option value="position">Position</option></PSelect>
-            <button className="iconbtn" title="Löschen" onClick={async () => (await uiAsk(`Feld „${f.label}“ löschen? Bereits eingetragene Werte werden nicht mehr gedruckt.`)) && setFields((l) => l.filter((x) => x.id !== f.id))}>🗑</button>
+            <button className="iconbtn" title="Löschen" onClick={() => confirm(`Feld „${f.label}“ löschen? Bereits eingetragene Werte werden nicht mehr gedruckt.`) && setFields((l) => l.filter((x) => x.id !== f.id))}>🗑</button>
           </div>
         </React.Fragment>
       ))}
@@ -13598,14 +13419,14 @@ function StatusMenu({ x, s, book, onPay, onUnpay, onPatch }) {
         <button className={s === "offen" ? "cur" : ""} onClick={async () => { if (s === "bezahlt") await onUnpay(x); onPatch(x.id, { status: "offen", overdue: false }); }}>Offen</button>
         <button className={s === "überfällig" ? "cur" : ""} onClick={async () => { if (s === "bezahlt") await onUnpay(x); onPatch(x.id, { status: "offen", overdue: true }); }}>Überfällig</button>
         {s === "bezahlt" && !x.paidTx && book?.accounts?.length > 0 && <button onClick={() => onPay(x)}>🔗 Buchung zuordnen</button>}
-        {s !== "storniert" ? <button className="red" onClick={async () => (await uiAsk(`Rechnung ${x.number} stornieren? Sie bleibt im Verlauf, zählt aber nicht mehr zum Umsatz.`)) && onPatch(x.id, { status: "storniert" })}>Stornieren</button>
+        {s !== "storniert" ? <button className="red" onClick={() => confirm(`Rechnung ${x.number} stornieren? Sie bleibt im Verlauf, zählt aber nicht mehr zum Umsatz.`) && onPatch(x.id, { status: "storniert" })}>Stornieren</button>
           : <button className="cur">Storniert</button>}
       <MenuCancel /></div>
     </details>
   );
 }
 const unpayInv = async (x, book, patch) => {
-  if (x.paidTx && book) { const created = x.paidTxCreated; await book.unlink(x.paidTx, created ? (await uiAsk("Die dabei angelegte Buchung ebenfalls löschen?")) : false); }
+  if (x.paidTx && book) { const created = x.paidTxCreated; await book.unlink(x.paidTx, created ? confirm("Die dabei angelegte Buchung ebenfalls löschen?") : false); }
   patch(x.id, { status: "offen", paidAt: null, paidTx: null, paidTxCreated: false, paidAccount: null, payMethod: null });
 };
 
@@ -13621,7 +13442,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
   useEffect(() => { const id = ls.get("invOpenReq", null); if (!id) return; ls.set("invOpenReq", null); const x = list.find((i) => i.id === id); if (x) setEdit(x); }, []);
   const [payFor2, setPayFor2] = useState(null);
   const unpay = async (x) => {
-    if (x.paidTx && book) { const created = x.paidTxCreated; if (created ? (await uiAsk("Die dabei angelegte Buchung ebenfalls löschen?")) : true) await book.unlink(x.paidTx, created); else await book.unlink(x.paidTx, false); }
+    if (x.paidTx && book) { const created = x.paidTxCreated; if (created ? confirm("Die dabei angelegte Buchung ebenfalls löschen?") : true) await book.unlink(x.paidTx, created); else await book.unlink(x.paidTx, false); }
     patch(x.id, { status: "offen", paidAt: null, paidTx: null, paidTxCreated: false, paidAccount: null, payMethod: null });
   };
   const [filter, setFilter] = useState("alle"), [q, setQ] = useState("");
@@ -13726,19 +13547,19 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
           { label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) },
           { label: "📮 Offene Posten CSV", run: () => downloadCsv(`Offene-Posten-${isoToday()}.csv`, OP_HEAD, openList(list).map(opRow)) },
           { label: `🗂 Rechnungen ${year} als PDF (ZIP)`, run: async () => { const l = list.filter((x) => x.kind === "rechnung" && x.number && invState(x) !== "entwurf" && (x.date || "").startsWith(year)); const files = []; for (const x of l) files.push({ name: invFileName(x), data: await buildInvoicePdf(x, co) }); saveBlob(await zipBlob(files), `Rechnungen-${year}.zip`); } }];
-  const editTags = async (ids) => { const one = ids.length === 1 ? list.find((x) => x.id === ids[0]) : null;
-    const v = (await uiPrompt(one ? "Tags (mit Komma getrennt):" : `Tag zu ${ids.length} Einträgen hinzufügen:`, one ? (one.tags || []).join(", ") : "")); if (v == null) return;
+  const editTags = (ids) => { const one = ids.length === 1 ? list.find((x) => x.id === ids[0]) : null;
+    const v = prompt(one ? "Tags (mit Komma getrennt):" : `Tag zu ${ids.length} Einträgen hinzufügen:`, one ? (one.tags || []).join(", ") : ""); if (v == null) return;
     const t = v.split(",").map((x) => x.trim()).filter(Boolean);
     setList((l) => l.map((x) => (ids.includes(x.id) ? { ...x, tags: one ? t : [...new Set([...(x.tags || []), ...t])] } : x))); };
-  const printInv = async (xs) => { notify?.("Druck wird vorbereitet …"); const bl = []; for (const x of xs) bl.push(await buildInvoicePdf(x, co)); await printBlobs(bl, xs.length === 1 ? invFileName(xs[0]) : `${xs.length} Rechnungen`); };
+  const printInv = async (xs) => { notify?.("Druck wird vorbereitet …"); const bs = []; for (const x of xs) bs.push(await buildInvoicePdf(x, co)); await printPdf(bs, xs.length === 1 ? invFileName(xs[0]) : `${xs.length} Rechnungen`); };
   const picked = () => list.filter((x) => pick?.has(x.id));
-  const saveView = async () => { const n = (await uiPrompt("Name der Ansicht:", [FILTERS.find(([k]) => k === filter)?.[1], yr, tagF && "#" + tagF, q && "„" + q + "“"].filter((x) => x && x !== "Alle").join(" "))); if (!n) return; setViews((v) => [...v, { id: uid(), n, filter, q, yr, tagF, sortBy }]); };
+  const saveView = () => { const n = prompt("Name der Ansicht:", [FILTERS.find(([k]) => k === filter)?.[1], yr, tagF && "#" + tagF, q && "„" + q + "“"].filter((x) => x && x !== "Alle").join(" ")); if (!n) return; setViews((v) => [...v, { id: uid(), n, filter, q, yr, tagF, sortBy }]); };
   const applyView = (v) => { setFilter(v.filter); setQ(v.q || ""); setYr(v.yr || ""); setTagF(v.tagF || ""); setSortBy(v.sortBy || "datum", true); };
   const viewOn = (v) => v.filter === filter && (v.q || "") === q && (v.yr || "") === yr && (v.tagF || "") === tagF;
   const ltMore = [{ head: "Bereiche" }, setTab && { k: "kunden", icon: "👥", title: "Kunden", run: () => setTab("kunden") }, { k: "artikel", icon: "📦", title: "Artikel", run: () => (setTab ? setTab("artikel") : setMdOpen(true)) }, setTab && { k: "mahn", icon: "📮", title: "Mahnungen", run: () => setTab("mahnungen") }, { k: "firma", icon: "🏢", title: "Firmendaten", run: () => setCoOpen(true) },
     { head: "Export" }, ...expItems.filter((e) => !e.head).map((e, i) => ({ k: "e" + i, title: e.label, sub: e.sub, run: e.run }))].filter(Boolean);
   const ltFilterRow = (<>
-    {views.map((v) => <span key={v.id} className="ltview"><button className={"chip" + (viewOn(v) ? " on" : "")} onClick={() => applyView(v)}>☆ {v.n}</button><button className="ltx" title="Ansicht löschen" aria-label="Ansicht löschen" onClick={async () => (await uiAsk(`Ansicht „${v.n}“ löschen?`)) && setViews((l) => l.filter((y) => y.id !== v.id))}>✕</button></span>)}
+    {views.map((v) => <span key={v.id} className="ltview"><button className={"chip" + (viewOn(v) ? " on" : "")} onClick={() => applyView(v)}>☆ {v.n}</button><button className="ltx" title="Ansicht löschen" aria-label="Ansicht löschen" onClick={() => confirm(`Ansicht „${v.n}“ löschen?`) && setViews((l) => l.filter((y) => y.id !== v.id))}>✕</button></span>)}
     {FILTERS.map(([k, l]) => <button key={k} className={"chip" + (filter === k ? " on" : "")} onClick={() => setFilter(k)}>{l} <small>({cnt(k)})</small></button>)}
     <span className="grow" />
     <PickMenu icon="📅" label={yr || "Alle Jahre"} title="Jahr" items={[{ k: "", title: "Alle Jahre", on: !yr, run: () => setYr("") }, ...years.map((y) => ({ k: y, title: y, on: yr === y, run: () => setYr(y) }))]} />
@@ -13831,7 +13652,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
               <div className="grow"><b>{t.name}</b><small className="muted block">{t.interval} · {fmtInv(t.inv)} · nächster Entwurf {fmtDate(t.next)}{t.active ? "" : " · pausiert"}</small></div>
               <PSelect className="chip" value={t.interval} onChange={(e) => setTemplates((l) => l.map((x) => (x.id === t.id ? { ...x, interval: e.target.value } : x)))}>{Object.keys(INTERVALS).map((k) => <option key={k}>{k}</option>)}</PSelect>
               <button className="btn sm" onClick={() => setTemplates((l) => l.map((x) => (x.id === t.id ? { ...x, active: !x.active } : x)))}>{t.active ? "Pausieren" : "Fortsetzen"}</button>
-              <button className="iconbtn" title="Löschen" onClick={async () => (await uiAsk("Wiederkehrende Rechnung löschen? Bereits erstellte Rechnungen bleiben.")) && setTemplates((l) => l.filter((x) => x.id !== t.id))}>🗑</button>
+              <button className="iconbtn" title="Löschen" onClick={() => confirm("Wiederkehrende Rechnung löschen? Bereits erstellte Rechnungen bleiben.") && setTemplates((l) => l.filter((x) => x.id !== t.id))}>🗑</button>
             </div>
           ))}
         </section>
@@ -13871,7 +13692,7 @@ function InvoicesPage({ me, txs = [], notify, onArchive, setTab, req = 0, book }
                       {s !== "entwurf" && onArchive && <button onClick={async () => { await onArchive(await buildInvoicePdf(x, co), invFileName(x), x); }}>In Dokumente ablegen</button>}
                       {s !== "entwurf" && x.kind === "rechnung" && x.number && <button onClick={(e) => { e.currentTarget.closest("details").open = false; downloadEInvoice(x, co, "xr"); }}>⬇︎ E-Rechnung XRechnung (XML)</button>}
                       {s !== "entwurf" && x.kind === "rechnung" && x.number && <button onClick={(e) => { e.currentTarget.closest("details").open = false; downloadEInvoice(x, co, "ebi"); }}>⬇︎ E-Rechnung ebInterface (XML)</button>}
-                      {s === "entwurf" && <button className="red" onClick={async () => (await uiAsk("Entwurf löschen?")) && setList((l) => l.filter((y) => y.id !== x.id))}>Entwurf löschen</button>}
+                      {s === "entwurf" && <button className="red" onClick={() => confirm("Entwurf löschen?") && setList((l) => l.filter((y) => y.id !== x.id))}>Entwurf löschen</button>}
                     <MenuCancel /></div>
                   </details>
                 </div>
@@ -13952,10 +13773,10 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
           <label>Bezeichnung<input value={c.name || ""} placeholder="z. B. Internet Zuhause" onChange={(e) => set({ name: e.target.value })} /></label>
           <label>Anbieter<input value={c.provider || ""} placeholder="z. B. Magenta, A1, Drei" onChange={(e) => set({ provider: e.target.value })} /></label>
         </div>
-        <label>Art<PSelect value={c.cat || "Sonstiges"} onChange={async (e) => {
+        <label>Art<PSelect value={c.cat || "Sonstiges"} onChange={(e) => {
           if (e.target.value !== "__new") return set({ cat: e.target.value });
-          const n = ((await uiPrompt("Neue Vertragsart, z. B. „Strom PV“, „Kfz-Versicherung“:")) || "").trim(); if (!n) return;
-          const em = ((await uiPrompt("Symbol (Emoji) für „" + n + "“:", "📄")) || "📄").trim().slice(0, 4);
+          const n = (prompt("Neue Vertragsart, z. B. „Strom PV“, „Kfz-Versicherung“:") || "").trim(); if (!n) return;
+          const em = (prompt("Symbol (Emoji) für „" + n + "“:", "📄") || "📄").trim().slice(0, 4);
           ls.set("ctCats", { ...ls.get("ctCats", {}), [n]: em }); set({ cat: n });
         }}>{Object.entries(ctCats()).map(([k, i]) => <option key={k} value={k}>{i} {k}</option>)}<option value="__new">＋ Neue Art …</option></PSelect></label>
         <div className="grid2">
@@ -13999,7 +13820,7 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
         </PSelect>
       </fieldset>
       <label>Notiz<textarea rows={2} value={c.note || ""} onChange={(e) => set({ note: e.target.value })} /></label>
-      {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={async () => (await uiAsk(`Vertrag „${c.name}“ löschen?`)) && (onDelete(c), onClose())}>Vertrag löschen</button>}
+      {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={() => confirm(`Vertrag „${c.name}“ löschen?`) && (onDelete(c), onClose())}>Vertrag löschen</button>}
       {letter && createPortal(
         <Win id="ctletter" onClose={() => setLetter(false)} dirty={false}>
           <div className="panelhead"><b>Kündigung</b><XBtn /></div>
@@ -14041,7 +13862,7 @@ function ContractsPage({ docs, me, onOpen, onFiles, docBusy, notify = () => {} }
   const newCtRef = useRef(null);
   const ctHead = ["Vertrag", "Anbieter", "Kategorie", "Bereich", "Betrag €", "Intervall", "pro Monat €", "Kundennr.", "Beginn", "Ende", "Kündigen bis", "Status", "Tags"];
   const ctRow = ({ c, d }) => [c.name || "", c.provider || "", c.cat || "", c.scope === "firma" ? "Firma" : "privat", r2e(c.amount), c.interval || "monatlich", r2e(monthly(c)), c.customerNo || "", c.start || "", d.end || "", d.cancelBy || "", c.cancelledAt ? "gekündigt" : c.inactive ? "inaktiv" : "aktiv", (c.tags || []).join(", ")];
-  const tagCts = async (cs) => { const f = await kitTagPrompt(cs); if (!f) return; const ids = new Set(cs.map((c) => c.id)); setList((l) => l.map((x) => (ids.has(x.id) ? { ...x, tags: f(x) } : x))); };
+  const tagCts = (cs) => { const f = kitTagPrompt(cs); if (!f) return; const ids = new Set(cs.map((c) => c.id)); setList((l) => l.map((x) => (ids.has(x.id) ? { ...x, tags: f(x) } : x))); };
   const sum = (sc) => counting.filter((c) => sc === "alle" || (c.scope || "privat") === sc).reduce((s, c) => s + monthly(c), 0);
   const soon = counting.filter(inScope).map((c) => ({ c, d: ctDates(c) })).filter(({ c, d }) => !c.cancelledAt && !d.open && d.cancelBy && daysUntil(d.cancelBy) >= 0 && daysUntil(d.cancelBy) <= 60);
   const docCands = docs.filter((d) => d.contract && !list.some((c) => (c.docIds || []).includes(d.id)));
@@ -14198,7 +14019,7 @@ function ContactTypeSettings() {
             <button className="ki catki" title="Symbol & Textfarbe" style={{ background: (t.color || "#888") + "22", color: t.color }} onClick={() => setStyleId(styleId === t.id ? null : t.id)}><TypeGlyph t={t} /></button>
             <EditText className="grow" inputClass="catname" value={t.name} validate={(v) => (!v ? "leer" : v !== t.name && types.some((x) => x.name.toLowerCase() === v.toLowerCase()) ? "doppelt" : undefined)} onSave={(v) => rename(t, v)} />
             <small className="muted cnt">{count(t)}</small>
-            <button className="iconbtn" title="Löschen" onClick={async () => { if (types.length <= 1) return; if (!(await uiAsk(`Kategorie „${t.name}“ löschen?${count(t) ? ` ${count(t)} Kontakt(e) wandern nach „${types.find((x) => x.id !== t.id).name}“.` : ""}`))) return;
+            <button className="iconbtn" title="Löschen" onClick={() => { if (types.length <= 1) return; if (!confirm(`Kategorie „${t.name}“ löschen?${count(t) ? ` ${count(t)} Kontakt(e) wandern nach „${types.find((x) => x.id !== t.id).name}“.` : ""}`)) return;
               const to = types.find((x) => x.id !== t.id).name; setList((l) => l.map((c) => ((c.type || "Kunde") === t.name ? { ...c, type: to } : c))); setTypes((l) => l.filter((x) => x.id !== t.id)); }}>🗑</button>
           </div>
           {styleId === t.id && <div className="catstylebox">
@@ -14277,7 +14098,7 @@ function ContactEditor({ c: init, onSave, onDelete, onClose }) {
         <div className="grid2">{f("iban", "IBAN")}{f("birthday", "Geburtstag", "", "date")}</div>
       </fieldset>
       <label>Notiz<textarea rows={3} value={c.note || ""} onChange={(e) => set({ note: e.target.value })} /></label>
-      {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={async () => (await uiAsk(`Kontakt „${c.name}“ löschen?`)) && (onDelete(c), onClose())}>Kontakt löschen</button>}
+      {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={() => confirm(`Kontakt „${c.name}“ löschen?`) && (onDelete(c), onClose())}>Kontakt löschen</button>}
     </Win>
   );
 }
@@ -14831,7 +14652,7 @@ function OwnDesignCards({ D, set, co, setCo }) {
   const upLogo = async (file) => { setBusy("logo"); try { const logo = await readLogoFile(file); setCo((c) => ({ ...CO_DEFAULT, ...c, logo })); } catch { alert("Das Logo konnte nicht gelesen werden. Bitte PNG, JPG, WebP oder SVG verwenden."); } setBusy(""); };
   const upLh = async (file) => { setBusy("lh"); try { const x = await readLetterhead(file); ls.set(LH_KEY, x); if (ls.get(LH_KEY, null)?.data !== x.data) throw new Error("Speicher voll");
       set({ useLH: true }); lhEvt(); } catch (e) { alert("Das Briefpapier konnte nicht übernommen werden" + (/quota|voll/i.test(e.message || "") ? " – die Datei ist zu groß. Bitte eine kleinere PDF oder ein Bild verwenden." : ". Bitte eine PDF oder ein Bild (PNG/JPG) im A4-Format verwenden.")); } setBusy(""); };
-  const delLh = async () => { if (!(await uiAsk("Eigenes Briefpapier entfernen?"))) return; localStorage.removeItem(LH_KEY); ACT.dirty = true; lhEvt(); };
+  const delLh = () => { if (!confirm("Eigenes Briefpapier entfernen?")) return; localStorage.removeItem(LH_KEY); ACT.dirty = true; lhEvt(); };
   const drop = (fn) => ({ onDragOver: (e) => e.preventDefault(), onDrop: (e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) fn(f); } });
   const seg = (k, opts) => <div className="seg">{opts.map(([v, l]) => <button key={v} className={(D[k] ?? opts[0][0]) === v ? "on" : ""} onClick={() => set({ [k]: v })}>{l}</button>)}</div>;
   return (<div className="owndesign">
@@ -14903,7 +14724,7 @@ function InvoiceDesignSettings() {
         {!D.showKU && <p className="warn small">Als Kleinunternehmer ist der Hinweis auf die Steuerbefreiung auf der Rechnung Pflicht.</p>}
         <div className="actions">
           <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(SAMPLE_INV(), co, null, D), "Muster-Rechnung.pdf")}>Groß ansehen</button>
-          <button className="link" onClick={async () => (await uiAsk("Design auf Standard (Klassisch) zurücksetzen?")) && setD({})}>Zurücksetzen</button>
+          <button className="link" onClick={() => confirm("Design auf Standard (Klassisch) zurücksetzen?") && setD({})}>Zurücksetzen</button>
         </div>
       </div>
       <PdfPreview build={() => buildInvoicePdf(SAMPLE_INV(), co, null, D)} deps={[JSON.stringify(D), lhVer, co.logo]} />
@@ -14938,7 +14759,7 @@ function DunningSettings() {
           <label>Text<textarea rows={4} value={l.text} onChange={(e) => setL(i, { text: e.target.value })} /></label>
           <div className="actions">
             <button className="btn sm" onClick={async () => { const [inv, r] = sample(i); openPdf(await buildInvoicePdf(inv, co, r), l.title + " Muster.pdf"); }}>Vorschau</button>
-            {dn.levels.length > 1 && <button className="link red" onClick={async () => (await uiAsk(`Stufe „${l.title}“ entfernen?`)) && set({ levels: dn.levels.filter((_, k) => k !== i) })}>Stufe entfernen</button>}
+            {dn.levels.length > 1 && <button className="link red" onClick={() => confirm(`Stufe „${l.title}“ entfernen?`) && set({ levels: dn.levels.filter((_, k) => k !== i) })}>Stufe entfernen</button>}
           </div>
         </>}
       </fieldset>
@@ -14946,7 +14767,7 @@ function DunningSettings() {
     <label>Schlusssatz<textarea rows={2} value={dn.closing} onChange={(e) => set({ closing: e.target.value })} /></label>
     <div className="actions">
       {dn.levels.length < 6 && <button className="btn" onClick={() => { set({ levels: [...dn.levels, { id: "l" + uid(), title: `${dn.levels.length}. Mahnung`, days: 10, fee: 10, text: DUN_TEXT[2] }] }); setOpen(dn.levels.length); }}>＋ Stufe</button>}
-      <button className="link" onClick={async () => (await uiAsk("Mahnwesen auf Standard zurücksetzen?")) && setRaw({})}>Zurücksetzen</button>
+      <button className="link" onClick={() => confirm("Mahnwesen auf Standard zurücksetzen?") && setRaw({})}>Zurücksetzen</button>
     </div>
   </>);
 }
@@ -14971,7 +14792,7 @@ function CodeScanWin({ onResult, onClose, title = "Code scannen", multi = false 
         const r = new BrowserMultiFormatReader();
         const c = await r.decodeFromConstraints({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } } }, vid.current, (res) => { if (res && !dead) finish(res.getText(), BarcodeFormat[res.getBarcodeFormat()]); });
         if (dead) c.stop(); else ctl.current = c;
-      } catch (e) { if (!dead) setErr(/Permission|NotAllowed/i.test(e.name + e.message) ? "Kamera-Zugriff verweigert – " + permWhere("Kamera") + " oder ein Foto wählen." : "Kamera nicht verfügbar – Foto wählen oder Code eintippen."); }
+      } catch (e) { if (!dead) setErr(/Permission|NotAllowed/i.test(e.name + e.message) ? "Kamera-Zugriff verweigert – in den Browser-Einstellungen erlauben oder ein Foto wählen." : "Kamera nicht verfügbar – Foto wählen oder Code eintippen."); }
     })();
     return () => { dead = true; try { ctl.current?.stop(); } catch {} };
   }, []);
@@ -15066,9 +14887,9 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
       <label>Bezeichnung<input value={a.text || ""} placeholder="z. B. Elektroinstallation, LED-Panel 60x60" onChange={(e) => set({ text: e.target.value })} /></label>
       <div className="grid2">
         <label>Artikelnummer<input value={a.number || ""} onChange={(e) => set({ number: e.target.value })} /></label>
-        <label>Gruppe<PSelect value={a.group || ""} onChange={async (e) => {
+        <label>Gruppe<PSelect value={a.group || ""} onChange={(e) => {
           if (e.target.value !== "__new") return set({ group: e.target.value });
-          const n = ((await uiPrompt("Neue Artikelgruppe:")) || "").trim(); if (!n) return;
+          const n = (prompt("Neue Artikelgruppe:") || "").trim(); if (!n) return;
           if (!C.groups.includes(n)) ls.set("articleCfg", { ...ls.get("articleCfg", {}), groups: [...C.groups, n] }); set({ group: n });
         }}><option value="">– keine –</option>{[...new Set([...C.groups, a.group].filter(Boolean))].map((g) => <option key={g}>{g}</option>)}<option value="__new">＋ Neue Gruppe …</option></PSelect></label>
       </div>
@@ -15101,7 +14922,7 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
       </div>
       <label>Interne Notiz<textarea rows={2} value={a.note || ""} onChange={(e) => set({ note: e.target.value })} /></label>
       <label className="check"><input type="checkbox" checked={a.inactive !== true} onChange={(e) => set({ inactive: !e.target.checked })} /> Aktiv (in Rechnungen vorschlagen)</label>
-      {init.text && <button className="link red" style={{ marginTop: 12 }} onClick={async () => (await uiAsk(`Artikel „${a.text}“ löschen?`)) && (onDelete(a), onClose())}>Artikel löschen</button>}
+      {init.text && <button className="link red" style={{ marginTop: 12 }} onClick={() => confirm(`Artikel „${a.text}“ löschen?`) && (onDelete(a), onClose())}>Artikel löschen</button>}
       {scan && createPortal(<CodeScanWin title="Artikel scannen" onClose={() => setScan(false)} onResult={(code, fmt) => { setScan(false); runLookup(code, fmt); }} />, document.querySelector(".app") || document.body)}
     </Win>
   );
@@ -15300,7 +15121,7 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
         <label>Datum<input type="date" value={a.soldAt} max={todayISO()} onChange={(ev) => set({ soldAt: ev.target.value })} /></label>
         <label>Verkaufspreis €<input inputMode="decimal" value={a.soldPrice ?? ""} onChange={(ev) => set({ soldPrice: ev.target.value })} /></label>
       </div>}
-      {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={async () => (await uiAsk(`„${a.name}“ wirklich löschen?`)) && (onDelete(a), onClose())}>Gerät löschen</button>}
+      {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={() => confirm(`„${a.name}“ wirklich löschen?`) && (onDelete(a), onClose())}>Gerät löschen</button>}
     </Win>
   );
 }
@@ -15686,7 +15507,7 @@ function CamWin({ onShot, onFallback, onClose }) {
       if (dead) return stream.getTracks().forEach((t) => t.stop());
       if (vid.current) { vid.current.srcObject = stream; await vid.current.play().catch(() => {}); }
       setDevs((await navigator.mediaDevices.enumerateDevices()).filter((x) => x.kind === "videoinput"));
-    } catch (x) { setErr(x?.name === "NotAllowedError" ? "Kein Zugriff auf die Kamera – bitte " + permWhere("Kamera") + "." : x?.name === "NotFoundError" || x?.name === "OverconstrainedError" ? "Keine Kamera gefunden." : (x?.message || "Kamera nicht verfügbar")); } })();
+    } catch (x) { setErr(x?.name === "NotAllowedError" ? "Kein Zugriff auf die Kamera – bitte in den System-/Browser-Einstellungen erlauben." : x?.name === "NotFoundError" || x?.name === "OverconstrainedError" ? "Keine Kamera gefunden." : (x?.message || "Kamera nicht verfügbar")); } })();
     return () => { dead = true; stream?.getTracks().forEach((t) => t.stop()); }; }, [dev]);
   const shot = () => { const v = vid.current; if (!v?.videoWidth) return; const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext("2d").drawImage(v, 0, 0);
     c.toBlob((b) => b && onShot(new File([b], `Beleg-${todayISO()}.jpg`, { type: "image/jpeg" })), "image/jpeg", 0.92); };
@@ -15754,13 +15575,13 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
   const [kbStyle] = useLsState("kbBelegStyle", "icons"), [kbCam, setKbCam] = useState(null), [kbPaste, setKbPaste] = useState(null), [kbDrop, setKbDrop] = useState(null);
   const kbFileFor = (e) => { setKbFor(e); kbFile.current?.click(); };
   const kbScanOld = (e) => onScan?.((file, o) => kbAttach(e, file, { ...(o || {}), scanned: true }));
-  const kbEigen = async (e) => { const g = (await uiPrompt(`Eigenbeleg für ${kbNo(e)} („${e.text}“, ${fmtMoney(e.amount)})\nGrund, warum der Originalbeleg fehlt:`, e.kind === "ein" ? "Barverkauf ohne Rechnung" : "Beleg verloren / nicht ausgestellt")); if (g == null) return;
+  const kbEigen = async (e) => { const g = prompt(`Eigenbeleg für ${kbNo(e)} („${e.text}“, ${fmtMoney(e.amount)})\nGrund, warum der Originalbeleg fehlt:`, e.kind === "ein" ? "Barverkauf ohne Rechnung" : "Beleg verloren / nicht ausgestellt"); if (g == null) return;
     const blob = await kbEigenbelegPdf(e, kasse, g); const id = await onUpload?.(new File([blob], `Eigenbeleg-${kbNo(e).replace("/", "-")}.pdf`, { type: "application/pdf" }), {});
     if (id) { setEntries((l) => l.map((x) => (x.id === e.id ? { ...x, docId: id, eigen: true } : x))); notify?.(`Eigenbeleg für ${kbNo(e)} erstellt`); } };
   const kbActs = (e) => { const d = e.docId && docs.find((x) => x.id === e.docId), sug = d ? [] : kbMatches(e, docs);
     return <KbActs e={e} d={d} style={kbStyle} n={sug.length} a={{ open: (id) => onOpen?.(id), attach: () => kbFileFor(e), cam: () => setKbCam(e), suggest: () => setKbPick({ e, sug }), pick: () => setKbPick({ e, sug }), paste: () => setKbPaste(e), eigen: () => kbEigen(e),
-      ref: async () => { const v = (await uiPrompt(`Belegnummer oder Ablageort für ${kbNo(e)}:`, e.beleg || "")); if (v != null) setEntries((l) => l.map((x) => (x.id === e.id ? { ...x, beleg: v.trim() } : x))); },
-      detach: async () => (await uiAsk(`Beleg von ${kbNo(e)} lösen? Das Dokument bleibt in „Dokumente“.`)) && kbSetDoc(e, null) }} />; };
+      ref: () => { const v = prompt(`Belegnummer oder Ablageort für ${kbNo(e)}:`, e.beleg || ""); if (v != null) setEntries((l) => l.map((x) => (x.id === e.id ? { ...x, beleg: v.trim() } : x))); },
+      detach: () => confirm(`Beleg von ${kbNo(e)} lösen? Das Dokument bleibt in „Dokumente“.`) && kbSetDoc(e, null) }} />; };
   const kbDnD = (e) => e.stornoOf ? {} : { onDragOver: (ev) => { if ([...(ev.dataTransfer?.types || [])].includes("Files")) { ev.preventDefault(); ev.stopPropagation(); setKbDrop(e.id); } }, onDragLeave: () => setKbDrop((x) => (x === e.id ? null : x)),
     onDrop: (ev) => { const f = ev.dataTransfer?.files?.[0]; if (!f) return; ev.preventDefault(); ev.stopPropagation(); setKbDrop(null); kbAttach(e, f); } };
   const kbModals = (<>
@@ -15784,8 +15605,8 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
   const opening = first ? kbBalAt(entries, kasse, first, true) : Number(kasse.start) || 0;
   const perLabel = per === "alle" ? "gesamt" : per.length === 4 ? per : monthLabel(per);
   const newEntry = (kind) => setForm({ id: uid(), kind, amount: "", date: todayISO(), text: "", cat: KB_CATS[kind][0], vat: null, beleg: "", docId: null, eigen: false });
-  const doStorno = async (e) => {
-    if (!(await uiAsk(`Buchung ${kbNo(e)} („${e.text}“, ${fmtMoney(e.amount)}) stornieren?\nEs wird eine Gegenbuchung mit heutigem Datum erstellt.`))) return;
+  const doStorno = (e) => {
+    if (!confirm(`Buchung ${kbNo(e)} („${e.text}“, ${fmtMoney(e.amount)}) stornieren?\nEs wird eine Gegenbuchung mit heutigem Datum erstellt.`)) return;
     const date = todayISO();
     const s = { id: uid(), kasse: kasse.id, kind: e.kind === "ein" ? "aus" : "ein", amount: e.amount, date, text: `Storno ${kbNo(e)}: ${e.text}`, cat: e.cat, vat: e.vat, beleg: e.beleg, docId: e.docId, eigen: e.eigen, stornoOf: e.id, no: kbNextNo(entries, kasse, date), created: new Date().toISOString() };
     const { neg } = kbRun([...entries, s], kasse);
@@ -15815,7 +15636,7 @@ function KassaPage({ docs, onOpen, onUpload, onScan, notify }) {
     note: (c.note ? "Anmerkung: " + c.note + "\n" : "") + "\n\n______________________________   Unterschrift" }));
   const countName = (c) => `Kassensturz ${kasse.name} ${fmtDate(c.date)}`;
   const countShow = async (c) => openPdf(await countBlob(c), `kassensturz-${c.date}.pdf`, countName(c));
-  const countPrint = async (c) => { notify?.("Druck wird vorbereitet …"); await printBlobs([await countBlob(c)], countName(c)); };
+  const countPrint = async (c) => { notify?.("Druck wird vorbereitet …"); await printPdf(await countBlob(c), countName(c)); };
   const perStat = (pre) => { const l = mine.filter((e) => pre === "alle" || e.date.startsWith(pre)); const i = l.filter((e) => e.kind === "ein").reduce((t, e) => t + e.amount, 0), o = l.filter((e) => e.kind === "aus").reduce((t, e) => t + e.amount, 0);
     return l.length ? `${l.length} Buchung${l.length === 1 ? "" : "en"} · +${fmtMoney(i)} / −${fmtMoney(o)}` : "keine Buchungen"; };
   const perSel = <PickMenu icon="📅" label={per === "alle" ? "Alle" : per.length === 4 ? "Jahr " + per : perLabel} title="Zeitraum" wide items={[{ head: "Monat" }, ...months.map((m) => ({ k: m, title: monthLabel(m), sub: perStat(m), on: per === m, run: () => setPer(m) })),
@@ -16002,8 +15823,8 @@ function CountWin({ count, arts, moves, onChange, onFinish, onDelete, onClose })
   const diffs = scope.filter((a) => L[a.id] != null && L[a.id] !== "" && Number(L[a.id]) !== stockAt(a, moves, count.date));
   return (
     <Win id="invcount" onClose={onClose} dirty={false}>
-      <div className="panelhead"><b>📋 {count.name}</b><button className="btn primary" disabled={!done} onClick={async () => {
-        if ((await uiAsk(`Inventur abschließen?\n${done} von ${scope.length} Artikeln gezählt, ${diffs.length} Differenz${diffs.length === 1 ? "" : "en"} werden zum ${fmtDate(count.date)} gebucht.${done < scope.length ? `\n${scope.length - done} ungezählte Artikel bleiben unverändert.` : ""}`))) onFinish(count);
+      <div className="panelhead"><b>📋 {count.name}</b><button className="btn primary" disabled={!done} onClick={() => {
+        if (confirm(`Inventur abschließen?\n${done} von ${scope.length} Artikeln gezählt, ${diffs.length} Differenz${diffs.length === 1 ? "" : "en"} werden zum ${fmtDate(count.date)} gebucht.${done < scope.length ? `\n${scope.length - done} ungezählte Artikel bleiben unverändert.` : ""}`)) onFinish(count);
       }}>Abschließen</button><XBtn /></div>
       <div className="grid2">
         <label>Stichtag<input type="date" value={count.date} max={todayISO()} onChange={(e) => onChange({ ...count, date: e.target.value })} /></label>
@@ -16030,7 +15851,7 @@ function CountWin({ count, arts, moves, onChange, onFinish, onDelete, onClose })
         ); })}
         {!shown.length && <MEmpty>{scope.length ? "Alle Artikel gezählt 🎉" : "Keine Lagerartikel in diesem Bereich – im Artikel „Lagerartikel“ aktivieren."}</MEmpty>}
       </div>
-      <button className="link red small" style={{ marginTop: 10 }} onClick={async () => (await uiAsk("Diese offene Inventur verwerfen?")) && (onDelete(count), onClose())}>Inventur verwerfen</button>
+      <button className="link red small" style={{ marginTop: 10 }} onClick={() => confirm("Diese offene Inventur verwerfen?") && (onDelete(count), onClose())}>Inventur verwerfen</button>
       {scan && createPortal(<CodeScanWin multi title="Scan-Zählung (jeder Scan +1)" onClose={() => setScan(false)} onResult={(code) => {
         const a = scope.find((x) => x.ean && x.ean === code);
         if (!a) { setLast(`Code ${code} ist keinem Artikel zugeordnet.`); return; }
@@ -16142,7 +15963,7 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
     setCnt(null); setView("inventur"); notify?.(`Inventur abgeschlossen · ${mvNew.length} Differenzen gebucht`);
   };
   const invPdf = async (c) => saveBlob(await invBlob(c), `inventur-${c.date}.pdf`);
-  const invPrint = async (c) => { notify?.("Druck wird vorbereitet …"); await printBlobs([await invBlob(c)], `Inventurliste – ${c.name}`); };
+  const invPrint = async (c) => { notify?.("Druck wird vorbereitet …"); await printPdf(await invBlob(c), `Inventurliste – ${c.name}`); };
   const invShow = async (c) => openPdf(await invBlob(c), `inventur-${c.date}.pdf`, `Inventurliste – ${c.name}`);
   const invBlob = async (c) => { const L = c.snapshot || []; const tot = kbR2(L.reduce((s, l) => s + l.ist * l.ek, 0));
     return await tablePdf({ title: `Inventurliste – ${c.name}`, subtitle: `Stichtag ${fmtDate(c.date)} · ${({ ...CO_DEFAULT, ...ls.get("company", {}) }).name || ""} · Bewertung zu Einstandspreisen (netto)`, landscape: true,
@@ -16185,12 +16006,12 @@ function InventoryPage({ setTab, notify, docs, onOpen, onScan, onUpload }) {
   const body = view === "bewegungen" ? (
     mob ? mGroup(moveList, (m) => m.date).map(([d, l]) => <React.Fragment key={d}><MHead>{fmtDate(d)}</MHead>{l.map((m) => { const a = arts.find((x) => x.id === m.art); return (
       <MItem key={m.id} icon={<MIco e={MV_TYPES[m.type]?.[1] || "•"} />} title={a.text} sub={[MV_TYPES[m.type]?.[0], m.note].filter(Boolean).join(" · ")} amount={(m.qty > 0 ? "+" : "") + fmtQty(m.qty)} amountCls={m.qty < 0 ? "neg" : "pos"} amountSub={a.unit || ""}
-        swipe={!m.derived ? { right: [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: async () => (await uiAsk("Bewegung löschen?")) && setMoves((x) => x.filter((y) => y.id !== m.id)) }] } : undefined} />); })}</React.Fragment>)
+        swipe={!m.derived ? { right: [{ icon: "🗑", label: "Löschen", bg: "#ef4444", run: () => confirm("Bewegung löschen?") && setMoves((x) => x.filter((y) => y.id !== m.id)) }] } : undefined} />); })}</React.Fragment>)
     : moveList.map((m) => { const a = arts.find((x) => x.id === m.art); return (
       <div key={m.id} className="frow"><span className="caticon" style={{ width: 36, height: 36 }}><Glyph e={MV_TYPES[m.type]?.[1]} /></span>
         <div className="grow"><b>{a.text}</b><small className="muted block">{fmtDate(m.date)} · {MV_TYPES[m.type]?.[0]}{m.note ? " · " + m.note : ""}</small></div>
         <b className={m.qty < 0 ? "neg" : "pos"}>{m.qty > 0 ? "+" : ""}{fmtQty(m.qty)} <small>{a.unit || ""}</small></b>
-        {!m.derived ? <button className="chip" title="Löschen" onClick={async () => (await uiAsk("Bewegung löschen?")) && setMoves((x) => x.filter((y) => y.id !== m.id))}>✕</button> : <span style={{ width: 34 }} />}</div>); })
+        {!m.derived ? <button className="chip" title="Löschen" onClick={() => confirm("Bewegung löschen?") && setMoves((x) => x.filter((y) => y.id !== m.id))}>✕</button> : <span style={{ width: 34 }} />}</div>); })
   ) : view === "inventur" ? (<>
     <div className="row"><button className="btn primary" onClick={() => setNewCnt({ loc: "", group: "" })}>＋ Neue Inventur</button><span className="muted small grow invhint">Stichtagsinventur oder permanente Teil-Inventur je Lagerort/Gruppe</span></div>
     {!counts.length && <MEmpty>Noch keine Inventur. Starte eine Zählung – am Handy auch per Strichcode-Scan.</MEmpty>}
@@ -16283,8 +16104,8 @@ function DunningPage({ setTab, book }) {
   const overS = mf === "verlauf" ? [] : kit.apply(over.filter((o) => mqHit(o.x) && (mf === "jetzt" ? o.ready : mf === "warten" ? !o.ready : true)));
   const histS = mf === "alle" || mf === "verlauf" ? kit.apply(history.filter(({ x, r }) => mqHit(x, r))) : [];
   const overV = useProgressiveAuto(overS.map((o) => ({ ...o, id: o.x.id }))), histV = useProgressiveAuto(histS.map((h) => ({ ...h, id: h.x.id + ":" + h.i })));
-  const tagInv = async (xs) => { const f = await kitTagPrompt(xs); if (!f) return; const ids = new Set(xs.map((x) => x.id)); setList((l) => l.map((y) => (ids.has(y.id) ? { ...y, tags: f(y) } : y))); };
-  const printInvs = async (items) => { const bl = []; for (const [x, i] of items) bl.push(await (i == null ? buildInvoicePdf(x, co) : pdfOf(x, i))); if (bl.length) await printBlobs(bl, items.length === 1 ? invFileName(items[0][0], items[0][1] == null ? undefined : items[0][0].reminders[items[0][1]]) : `${items.length} Belege`); };
+  const tagInv = (xs) => { const f = kitTagPrompt(xs); if (!f) return; const ids = new Set(xs.map((x) => x.id)); setList((l) => l.map((y) => (ids.has(y.id) ? { ...y, tags: f(y) } : y))); };
+  const printInvs = async (items) => { const bs = []; for (const [x, i] of items) bs.push(await (i == null ? buildInvoicePdf(x, co) : pdfOf(x, i))); if (bs.length) await printPdf(bs, items.length === 1 ? invFileName(items[0][0], items[0][1] == null ? undefined : items[0][0].reminders[items[0][1]]) : `${items.length} Belege`); };
   const mnHead = ["Kunde", "Rechnung", "Fällig", "Tage überfällig", "Letzte Stufe", "Betrag €", "Tags"];
   const mnRow = ({ x, last, since }) => [x.customer?.name || "", x.number, invDueEff(x), since, last ? remindName(last.level) : "", r2e(invEur(x)), (x.tags || []).join(", ")];
   const mnExp = [{ label: "📮 Offene Posten PDF", run: async () => saveBlob(await openItemsPdf(list), `Offene-Posten-${isoToday()}.pdf`) },
@@ -16388,7 +16209,7 @@ function DunningPage({ setTab, book }) {
               <button className="iconbtn" title="PDF ansehen / drucken" onClick={async () => openPdf(await pdfOf(x, i), invFileName(x, r))}><IcoEye /></button>
               <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printInvs([[x, i]])}><IcoPrint /></button>
               <button className="iconbtn" title="Teilen" onClick={async () => sharePdf(await pdfOf(x, i), invFileName(x, r), remindName(r.level) + " " + x.number, x.customer?.email)}><IcoShare /></button>
-              {i === x.reminders.length - 1 && s !== "bezahlt" && <button className="link small red" onClick={async () => (await uiAsk("Diese Mahnung aus dem Verlauf entfernen?")) && patch(x.id, { reminders: x.reminders.slice(0, -1) })}>Zurücknehmen</button>}
+              {i === x.reminders.length - 1 && s !== "bezahlt" && <button className="link small red" onClick={() => confirm("Diese Mahnung aus dem Verlauf entfernen?") && patch(x.id, { reminders: x.reminders.slice(0, -1) })}>Zurücknehmen</button>}
               {i === x.reminders.length - 1 && <StatusMenu x={x} s={s} book={book} onPay={setPayX} onUnpay={(y) => unpayInv(y, book, patch)} onPatch={patch} />}
             </div>
           </div>
@@ -19256,17 +19077,6 @@ button.txmark.m-doc{cursor:pointer}button.txmark.m-doc:hover{background:var(--ca
 .txrow.sc-firma:hover{background:color-mix(in srgb,var(--stc-firma) 12%,transparent)}
 nav .doctree .accitem .an{color:inherit!important}
 .splitbtn{display:inline-flex;align-items:stretch;gap:0}.splitbtn .splitarrow.on,.splitbtn .splitarrow.open{background:color-mix(in srgb,var(--acc) 14%,transparent)!important}.splitbtn>.splitmain{border-top-right-radius:0!important;border-bottom-right-radius:0!important;margin-right:0}.splitbtn .splitarrow{border-top-left-radius:0!important;border-bottom-left-radius:0!important;border-left:1px solid color-mix(in srgb,currentColor 30%,transparent)!important;padding-left:8px!important;padding-right:10px!important;height:100%}.splitbtn>.vehpick{display:inline-flex}
-.dkbar{display:flex}.dkbar>i{border-radius:0}.dkbar>i:first-child{background:#8885!important}.dkbar>i.dk-app{background:var(--acc)}
-html.tmac .tdrag{position:fixed;left:0;right:0;top:0;height:28px;z-index:60;-webkit-app-region:drag;background:var(--card);border-bottom:1px solid var(--line)}
-html.tmac nav.bottom:not(.mtabbar){top:29px;padding-top:14px}html.tmac .topactions{top:40px!important}html.tmac .split>.side{top:38px}html.tmac .designmod .pdfprev{top:44px}html.tmac .custdetail{top:40px;max-height:calc(100vh - 52px)}html.tmac .mday{top:86px}html.tmac .app{padding-top:max(54px,calc(env(safe-area-inset-top) + 42px))!important}
-.uidlg-bg{position:fixed;inset:0;z-index:10000;background:#0008;display:flex;align-items:center;justify-content:center;padding:20px}
-.uidlg{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 60px #0007;padding:20px 20px 16px;width:min(420px,100%)}
-.uidlg-msg{white-space:pre-wrap;line-height:1.45;font-size:15px}.uidlg-in{width:100%;box-sizing:border-box;margin-top:12px}
-.uidlg-btns{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
-#tprint{display:none}
-@media print{@page{margin:8mm}html.tprinting,html.tprinting body{background:#fff!important;height:auto!important;min-height:0!important;overflow:visible!important;padding:0!important;margin:0!important}
-html.tprinting body>*:not(#tprint){display:none!important}html.tprinting #tprint{display:block!important}
-html.tprinting #tprint img{display:block;width:100%;height:auto;page-break-after:always;break-after:page}html.tprinting #tprint img:last-child{page-break-after:auto;break-after:auto}}
 .fwfolder{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;margin:8px 0}.fwico{font-size:26px}
 .fwmode{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 2px}.fwevery{display:flex;align-items:center;gap:10px;margin:8px 0}.fwevery>.vehpick{width:auto}
 .fwqueue{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.fwqrow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}
@@ -19538,7 +19348,7 @@ html.dark .scpick.sc-firma .scpickbtn,:root[data-theme=dark] .scpick.sc-firma .s
 
 /* ======================= v0.99: Journal ======================= */
 .jpage-wrap{display:flex;flex-direction:column;gap:10px}
-.jmodes{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.jpage-wrap>.docdrop{margin:10px 0 4px;width:100%;max-width:none;box-sizing:border-box}.jmodes .jdropchip{margin-left:auto}.jmodes .seg button{white-space:nowrap}.jmodes .jsearch{flex:1;min-width:200px;max-width:420px}
+.jmodes{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.jmodes .seg button{white-space:nowrap}.jmodes .jsearch{flex:1;min-width:200px;max-width:420px}
 .jgrid{display:grid;grid-template-columns:230px 270px minmax(0,1fr) 310px;gap:10px;min-height:420px}
 .jgrid.pruef{grid-template-columns:270px minmax(0,1fr) 330px}
 .jgrid.nodet{grid-template-columns:230px 270px minmax(0,1fr)}
