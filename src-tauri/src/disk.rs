@@ -169,3 +169,36 @@ mod share_mac {
         std::mem::forget(picker); // bleibt geöffnet, solange das Menü sichtbar ist
     }
 }
+
+// ---------- v1.0.1: Drucken am Mac über PDFKit (WKWebView druckt dort leere Seiten) ----------
+#[tauri::command]
+pub fn print_pdf(window: tauri::WebviewWindow, path: String, title: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        window.run_on_main_thread(move || { let ok = unsafe { print_mac::print(&path, &title) }; let _ = tx.send(ok); }).map_err(|e| e.to_string())?;
+        // nicht auf das Ende des Drucks warten (der Dialog läuft modal im Haupt-Thread) – nur Startfehler melden
+        return match rx.recv_timeout(std::time::Duration::from_millis(300)) { Ok(false) => Err("PDF konnte nicht gedruckt werden".into()), _ => Ok(()) };
+    }
+    #[allow(unreachable_code)]
+    { let _ = (window, path, title); Err("Nur am Mac verfügbar".into()) }
+}
+
+#[cfg(target_os = "macos")]
+mod print_mac {
+    use objc2::{AllocAnyThread, MainThreadMarker};
+    use objc2_app_kit::NSPrintInfo;
+    use objc2_foundation::{NSString, NSURL};
+    use objc2_pdf_kit::{PDFDocument, PDFPrintScalingMode};
+    pub unsafe fn print(path: &str, title: &str) -> bool {
+        let Some(mtm) = MainThreadMarker::new() else { return false };
+        let url = NSURL::fileURLWithPath(&NSString::from_str(path));
+        let Some(doc) = PDFDocument::initWithURL(PDFDocument::alloc(), &url) else { return false };
+        let info = NSPrintInfo::sharedPrintInfo();
+        let Some(op) = doc.printOperationForPrintInfo_scalingMode_autoRotate(Some(&info), PDFPrintScalingMode::PageScaleDownToFit, true, mtm) else { return false };
+        op.setJobTitle(Some(&NSString::from_str(title)));
+        op.setShowsPrintPanel(true);
+        op.setShowsProgressPanel(true);
+        op.runOperation()
+    }
+}

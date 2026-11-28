@@ -31,7 +31,7 @@ pub fn run() {
             .plugin(tauri_plugin_window_state::Builder::default()
                 .with_state_flags(tauri_plugin_window_state::StateFlags::SIZE | tauri_plugin_window_state::StateFlags::POSITION | tauri_plugin_window_state::StateFlags::MAXIMIZED)
                 .build())
-            .invoke_handler(tauri::generate_handler![disk::bk_default_dir, disk::bk_write, disk::bk_list, disk::bk_read, disk::bk_delete, disk::bk_reveal, disk::disk_info, disk::reveal_file, disk::share_files]);
+            .invoke_handler(tauri::generate_handler![disk::bk_default_dir, disk::bk_write, disk::bk_list, disk::bk_read, disk::bk_delete, disk::bk_reveal, disk::disk_info, disk::reveal_file, disk::share_files, disk::print_pdf]);
     }
 
     builder

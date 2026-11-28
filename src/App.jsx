@@ -235,6 +235,25 @@ async function blobToImages(b, width = 1700, max = 60) {
 }
 async function printImages(srcs, title = "Dokument") {
   // v1.0.0 Mac/Windows-App: der Druck aus einem unsichtbaren Rahmen wird dort ignoriert → Seiten in eine eigene Druckansicht der App legen
+  // v1.0.1 Mac-App: WKWebView druckt leere Seiten → Seiten als PDF bauen und über den Mac-Druckdialog (PDFKit) drucken
+  if (isMacApp) {
+    try {
+      const { PDFDocument } = await import("pdf-lib"), pdf = await PDFDocument.create();
+      for (const u of srcs) {
+        const im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error("Bild nicht lesbar")); i.src = u; });
+        const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+        const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0);
+        const jpg = await pdf.embedJpg(await (await fetch(c.toDataURL("image/jpeg", 0.92))).arrayBuffer());
+        const W = 595.28, H = 841.89, m = 0, sc = Math.min((W - 2 * m) / jpg.width, (H - 2 * m) / jpg.height);
+        const pg = pdf.addPage([W, H]); pg.drawImage(jpg, { x: (W - jpg.width * sc) / 2, y: H - m - jpg.height * sc, width: jpg.width * sc, height: jpg.height * sc });
+      }
+      const name = String(title || "Dokument").replace(/\.(pdf|png|jpe?g|heic|heif|webp|gif|tiff?)$/i, "").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80) + ".pdf";
+      const [path] = await tempFiles([new File([await pdf.save()], name, { type: "application/pdf" })]);
+      await native("print_pdf", { path, title: String(title || "Dokument") });
+    } catch (e) { alert("Drucken nicht möglich: " + (e.message || e)); }
+    srcs.forEach((u) => u.startsWith("blob:") && setTimeout(() => URL.revokeObjectURL(u), 60000));
+    return;
+  }
   if (isTauri) {
     document.getElementById("tprint")?.remove();
     const root = document.createElement("div"); root.id = "tprint";

@@ -1,6 +1,6 @@
 [package]
 name = "findocu"
-version = "1.0.0"
+version = "1.0.1"
 description = "FinDocu – Finanzen & Dokumente"
 authors = ["Roli"]
 license = ""
@@ -45,4 +45,5 @@ strip = true
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSString", "NSURL", "NSArray", "NSGeometry"] }
-objc2-app-kit = { version = "0.3", features = ["NSSharingService", "NSView", "NSResponder"] }
+objc2-app-kit = { version = "0.3", features = ["NSSharingService", "NSView", "NSResponder", "NSPrintInfo", "NSPrintOperation"] }
+objc2-pdf-kit = { version = "0.3", features = ["PDFDocument", "objc2-app-kit"] }

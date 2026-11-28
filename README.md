@@ -2,6 +2,9 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.1 – Drucken am Mac: Seite nicht mehr leer
+- Mac-App: Der Druckdialog zeigte eine leere Seite (WKWebView druckt seinen Inhalt dort nicht). Jetzt werden die Seiten als PDF gebaut und über den Mac-Druckdialog (PDFKit, `print_pdf`) gedruckt – mit Vorschau, Druckerwahl, Kopien. Windows und Browser unverändert.
+
 ## v1.0.0 – Mac- und Windows-App rund
 - **Drucken** in der App: Seiten kommen in eine eigene Druckansicht, der System-Druckdialog öffnet sich (vorher passierte am Mac nichts).
 - **Teilen**: Mac-App öffnet das System-Teilen-Menü (AirDrop, Mail, Nachrichten, WhatsApp …) mit der Datei als Anhang (`share_files`, NSSharingServicePicker). Windows-App: E-Mail/WhatsApp/Telegram legen die Datei ohne Nachfrage in einen Zwischenordner, markieren sie im Explorer und öffnen das Programm; „Im Explorer zeigen“ und „Speichern unter …“.
