@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.22 – Verträge-Vorschau wie bei Dokumenten, einheitliche Listenschrift
+- Verträge: „Vorschau“ hängt die verknüpften Dokumente rechts an die Details an – in der rechten Spalte bzw. neben dem Popup; mehrere Dokumente als Reiter, mit Lupe/Hand/Maus-Zoom
+- Popups öffnen immer mittig; beim Ein-/Ausblenden der Vorschau wird das Fenster neu zentriert (auch bei Dokumenten)
+- Listen: Artikel, Lager, Kunden, Verträge und Besitz haben jetzt dieselbe Schriftgröße wie Rechnungen und folgen den Einstellungen „Listen-Titel“ und „Beträge in Listen“
+- Vorschau-Werkzeugleiste bricht in schmalen Fenstern um statt abgeschnitten zu werden; Kündigungsfrist-Feld überlappt nicht mehr
+
 ## v1.0.21 – Kassabuch: Abstand unter dem Kopf
 - Kassabuch-Buchung: Betrag sitzt 10 px weiter unter dem farbigen Kopf
 

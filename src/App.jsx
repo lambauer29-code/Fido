@@ -447,7 +447,7 @@ function DocPreview({ d, onOpen, getBlob, onPrint, onOriginal, noPrint }) {
 
 /* v1.0.6: Vorschau direkt neben dem Dokument-Dialog – mit Zoom (−/+, 100 %, Breite, Ganze Seite, Strg/⌘ + Mausrad) */
 const SP_A4 = 794, SP_MAXPAGES = 30, SP_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
-function SidePreview({ d, blob, onPrint, noPrint = false }) {
+function SidePreview({ d, blob, onPrint, noPrint = false, tabs = null }) {
   const [pages, setPages] = useState([]), [total, setTotal] = useState(0), [err, setErr] = useState(""), [ratio, setRatio] = useState(1.414);
   const [zoom, setZoom] = useState(() => ls.get("spZoom", "page"));   // "page" | "width" | Faktor (1 = 100 % = A4-Breite)
   const boxRef = useRef(null), [box, setBox] = useState({ w: 600, h: 700 });
@@ -537,6 +537,7 @@ function SidePreview({ d, blob, onPrint, noPrint = false }) {
         {!noPrint && <><span className="spsep" />
         <button className="btn sm" title="Drucken" aria-label="Drucken" onClick={onPrint}><IcoPrint /></button></>}
       </div>
+      {tabs}
       <div className={"spbox pv-" + mode} ref={boxRef} onMouseMove={lupeMove} onMouseLeave={() => { if (lupeRef.current) lupeRef.current.style.display = "none"; }} onPointerDown={handDown} onScroll={upMini}
         onDoubleClick={(e) => { if (mode === "lupe") return; if (zoom === 1) setZoom("page"); else zoomAt(1, e.clientX, e.clientY); }}>
         <div className="pvlupe" ref={lupeRef} aria-hidden="true" />
@@ -1959,6 +1960,12 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
     return () => { mo.disconnect(); cancelAnimationFrame(raf); };
   }, [wide]);
   useEffect(() => { const t = setTimeout(() => ls.set("win:" + id, rect), 150); return () => clearTimeout(t); }, [rect, id]);
+  // v1.0.22: Vorschau ein-/ausblenden → Fenster (mit bzw. ohne Vorschau) wieder mittig setzen
+  const hasExtra = !!extraW, extraFirst = useRef(true);
+  useEffect(() => {
+    if (extraFirst.current) { extraFirst.current = false; return; }
+    setRect((r) => { const total = r.w + (hasExtra ? extraRef.current || 0 : 0); return { ...r, x: Math.max(12, Math.round((innerWidth - Math.min(total, innerWidth - 24)) / 2)) }; });
+  }, [hasExtra]);
   useEffect(() => { const h = () => setRect((r) => clampRect(r)); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, []);
 
   if (!wide) { const full = /scanner|docprevwin|pdfviewwin|stmtwin|iconeditwin/.test(className); return (
@@ -12246,10 +12253,10 @@ const FS_CATS = [
   ["title", "Seitentitel", "header.top h1", "Dokumente", "fsx-title"],
   ["head", "Karten- & Bereichsüberschriften", ".tilehead b, .panelhead > b, .ssectitle, .docsubtitle, .setdrilltitle, .app h2, .subhead, .hubtile b, .akte b, .aktehead b", "Nächste Fristen", "fsx-head"],
   ["group", "Gruppen-Titel (GROSSBUCHSTABEN)", ".app h3, .foldersec, .setgrouph, .tbsethead, .mgrouphead, .side h4", "FINANZEN", "fsx-group"],
-  ["row", "Listen-Titel (Zeilen)", ".dtitle, .mtitle, .grow > b.one, .invname, .gbody > b, .folder > b, .setrow > .grow, .ditem .grow > b", "Rechnung Rexel Austria", "fsx-row"],
+  ["row", "Listen-Titel (Zeilen)", ".dtitle, .mtitle, .grow > b.one, .invname, .gbody > b, .folder > b, .setrow > .grow, .ditem .grow > b, .fitscroll .frow .grow > b, .astrow .astmain > b", "Rechnung Rexel Austria", "fsx-row"],
   ["hero", "Große Beträge (Kontostand, Saldo)", ".hero-v, b.big, .kbstat b, .rlkpis b", "€ 16.817,42", "fsx-hero"],
   ["kpi", "Kennzahlen-Kacheln", ".kpiv, .hero-row b, .aktekpis b, .kpi b, .tile > b, .cmpmain b", "€ 1.539,36", "fsx-kpi"],
-  ["num", "Beträge in Listen", ".amt, .invamt, .cdamt, .mamt, .mmoney, .jra b, .kbr .r, .accitem .ab:not(nav .ab), .invamt b", "−€ 59,33", "fsx-num"],
+  ["num", "Beträge in Listen", ".amt, .invamt, .cdamt, .mamt, .mmoney, .jra b, .kbr .r, .accitem .ab:not(nav .ab), .invamt b, .fitscroll .frow .right > b, .astrow .astamt > b", "−€ 59,33", "fsx-num"],
   ["text", "Text & Eingabefelder", ".app p, .app input, .app select, .app textarea, .win input, .win select, .win textarea", "Normaler Text in Beschreibungen", "fsx-text"],
   ["btn", "Buttons, Filter & Reiter", ".app .btn, .app .chip, .app .seg > button, .navback, .win .btn", "Steuerrelevant", "fsx-btn"],
   ["small", "Kleintext (Datum, Hinweise)", ".app small:not(.btn small):not(.chip small):not(.seg small), .win small", "Finanzamt · 08.07.2026", "fsx-small"],
@@ -14475,16 +14482,30 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
   const [letter, setLetter] = useState(false);
   const linked = docs.filter((x) => (c.docIds || []).includes(x.id));
   const [prevOpen, setPrevOpen] = useState(false);
+  // v1.0.22: Vorschau wie bei Dokumenten – am Computer rechts an die Details angehängt (Zustand gemerkt), mehrere Dokumente als Reiter
+  const wideDet = useMedia("(min-width:1000px)") && !IS_TABLET;
+  const [sideOpen, setSideOpen] = useState(() => !!ls.get("ctSidePrev", false));
+  const side = wideDet && sideOpen && linked.length > 0;
+  const toggleSide = () => setSideOpen((v) => { ls.set("ctSidePrev", !v); return !v; });
+  const [sideW, setSideW] = useState(() => ls.get("ctSidePrevW", 560));
+  useEffect(() => { const t = setTimeout(() => ls.set("ctSidePrevW", sideW), 200); return () => clearTimeout(t); }, [sideW]);
+  const [pvIdx, setPvIdx] = useState(0);
+  const pvDoc = linked[Math.min(pvIdx, linked.length - 1)] || null;
+  const pvTabs = linked.length > 1 && <div className="ctpvtabs">{linked.map((x, i) => <button key={x.id} className={"chip" + (x === pvDoc ? " on" : "")} title={x.title} onClick={() => setPvIdx(i)}>{x.fileName || x.title}</button>)}</div>;
   const cand = docs.filter((x) => !(c.docIds || []).includes(x.id)).slice(0, 300);
   return (
-    <Win dock="vertrag" tint={tintOf(c)} id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
+    <Win dock="vertrag" tint={tintOf(c)} id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)} className={side ? "detsplit" : ""} extraW={side ? sideW : 0} onExtraW={setSideW}>
+      <div className="detbody"><div className="detcol">
       <div className="panelhead"><b>{init.name ? c.name || "Vertrag" : "Neuer Vertrag"}</b>
-        {linked.length > 0 && <button className="btn detprevbtn" title="Dokumente ansehen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>}
+        {linked.length > 0 && (wideDet
+          ? <button className={"btn detprevbtn" + (side ? " on" : "")} title={side ? "Vorschau ausblenden" : "Vorschau daneben anzeigen"} aria-pressed={side} onClick={toggleSide}><IcoEye /> <span>Vorschau</span></button>
+          : <button className="btn detprevbtn" title="Dokumente ansehen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>)}
         <button className="btn primary" disabled={!c.name} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
-      {prevOpen && linked.length > 0 && createPortal(
-        <Win id="ctprev" onClose={() => setPrevOpen(false)} dirty={false} className="docprevwin">
+      <div className="detform">
+      {!side && prevOpen && pvDoc && createPortal(
+        <Win id="ctprev" onClose={() => setPrevOpen(false)} dirty={false} className="docprevwin" fitDoc={pvDoc}>
           <div className="panelhead"><b className="clamp">{c.name}{linked.length > 1 ? ` · ${linked.length} Dokumente` : ""}</b><XBtn /></div>
-          <div className="ctprevdocs">{linked.map((x) => <DocPreview key={x.id} d={x} onOpen={() => setPrevOpen(false)} />)}</div>
+          <SidePreview key={pvDoc.id} d={pvDoc} noPrint tabs={pvTabs} />
         </Win>, document.querySelector(".app") || document.body)}
       {init.name && (() => { const cd = ctDates(c); return <MHero icon="📑" sub={c.provider || "Vertrag"} title={c.name || "Vertrag"} value={c.amount ? fmtMoney(Number(String(c.amount).replace(",", ".")) || 0, c.currency || "EUR") : null}
         pills={[c.interval || "monatlich", cd.cancelBy && { label: "kündbar bis " + fmtDate(cd.cancelBy), cls: "st-open" }, c.cancelledAt && { label: "gekündigt", cls: "st-over" }]} />; })()}
@@ -14544,6 +14565,9 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
       </fieldset>
       <label>Notiz<textarea rows={2} value={c.note || ""} onChange={(e) => set({ note: e.target.value })} /></label>
       {init.name && <button className="link red" style={{ marginTop: 12 }} onClick={async () => (await uiAsk(`Vertrag „${c.name}“ löschen?`)) && (onDelete(c), onClose())}>Vertrag löschen</button>}
+      </div></div>
+      {side && pvDoc && <SidePreview key={pvDoc.id} d={pvDoc} tabs={pvTabs} onPrint={() => printDoc(pvDoc)} />}
+      </div>
       {letter && createPortal(
         <Win id="ctletter" onClose={() => setLetter(false)} dirty={false}>
           <div className="panelhead"><b>Kündigung</b><XBtn /></div>
@@ -17619,7 +17643,7 @@ html.docked.docknarrow .ditem .dcatcol,html.docked.docknarrow .ditem .dactions,h
 html.docked.docknarrow .ditem .grow,html.docked.docknarrow .invrow .invmain{min-width:0}
 /* v1.0.13: farbiger Kopf läuft über die angehängte Vorschau; Symbol im Kopf größer */
 .win.docked.tinted.detsplit .sideprev{background:transparent;border-left-color:color-mix(in srgb,var(--dockc) 22%,var(--line))}
-.win.docked.tinted.detsplit .spbar{background:transparent;border-bottom:0;min-height:var(--dockhead,0px);box-sizing:border-box;align-items:flex-start;padding-top:12px}
+.win.docked.tinted.detsplit .spbar{background:transparent;border-bottom:0;min-height:var(--dockhead,0px);box-sizing:border-box;align-items:flex-start;align-content:flex-start;padding-top:12px}
 .win.docked.tinted.detsplit .spbox{background:var(--card2)}
 html .txheroico .caticon.caticon.caticon,html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon{width:76px!important;height:76px!important;font-size:38px!important;border-radius:22px!important}
 html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon .gll{width:60%;height:60%}
@@ -19512,7 +19536,7 @@ html.setdrill-on header.top{min-height:0}
 
 @media (max-width:700px){header.top h1{overflow-wrap:break-word}header.top h1.longh1{font-size:30px!important;line-height:1.15!important}}
 
-.inrow{display:flex;gap:6px;align-items:stretch}.inrow>input{flex:1 1 56px;min-width:56px}.inrow>select,.inrow>.pselect{flex:0 1 auto;min-width:0}
+.inrow{display:flex;gap:6px;align-items:stretch}.inrow>input{flex:1 1 56px;min-width:56px}.inrow>select,.inrow>.pselect{flex:0 1 auto;min-width:0}.inrow>.vehpick{flex:0 1 auto;min-width:0;width:auto}.inrow>.vehpick>.selbtn{width:auto;min-width:110px}
 
 /* v0.91 Schriftgrößen */
 .fspreset{margin:6px 0 10px}.fspreset button{flex:1}
@@ -19834,6 +19858,8 @@ html.sty-kontrast .lbtab.on small,html.sty-kontrast .chip.on small,html.sty-kont
 .fitscroll b.invamt,.fitscroll .frow .right>b,.fitscroll .fbtlright b,.fitscroll .kbr span.r,.fitscroll .ctamt{font-size:17px!important;font-weight:500!important}
 .fitscroll .grow small.muted,.fitscroll small.muted.block,.fitscroll .ctsub,.fitscroll .kbr span.muted,.fitscroll .kbcdate,.fitscroll .fbtlright small,.fitscroll .contactrow small{font-size:16px!important}
 .fitscroll .right small,.fitscroll .invmain~* small,.fitscroll .ctlist .right small{font-size:13px!important}
+/* v1.0.22: alle Listen gleich wie Rechnungen – Titel und Beträge gleiche Grundgröße, %-Einstellung wirkt überall */
+@media (min-width:768px){html:is(.sty-graphit,.sty-sand,.sty-nacht,.sty-schiefer,.sty-salbei,.sty-papier) .fitscroll :is(.frow .grow>b,.contactrow .grow>b),html:is(.sty-graphit,.sty-sand,.sty-nacht,.sty-schiefer,.sty-salbei,.sty-papier) .astrow .astmain>b{font-size:15px!important}html:is(.sty-graphit,.sty-sand,.sty-nacht,.sty-schiefer,.sty-salbei,.sty-papier) .fitscroll .frow .right>b,html:is(.sty-graphit,.sty-sand,.sty-nacht,.sty-schiefer,.sty-salbei,.sty-papier) .fitscroll b.ctamt,html:is(.sty-graphit,.sty-sand,.sty-nacht,.sty-schiefer,.sty-salbei,.sty-papier) .astrow .astamt>b{font-size:17px!important}}
 
 /* ---------- v0.97: Firma/Privat, Kontoauszüge, Steuerberater ---------- */
 .fieldlbl{display:flex;flex-direction:column;gap:6px;margin:10px 0 4px;font-size:14px}
@@ -20234,12 +20260,13 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
 .win.detsplit .detcol{display:flex;flex-direction:column;flex:0 0 var(--formw,700px);min-width:0}
 .win.detsplit .detcol>.panelhead{padding-left:20px;padding-right:20px}
 .win.detsplit .detform{display:block;flex:1;min-height:0;overflow:auto;padding:0 20px 24px;overscroll-behavior:contain}
+.ctpvtabs{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line)}.ctpvtabs .chip{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .detprevbtn.on{border-color:var(--acc,currentColor);box-shadow:inset 0 0 0 1px var(--acc,currentColor)}
 .sideprev{flex:1;min-width:0;display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--card2)}
 .win.detsplit .rz-e{width:10px;right:-3px}
 .sideprev{container-type:inline-size}
-.spbar{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;overflow:hidden;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
-@container (max-width:500px){.spbar small,.spbar .spsep{display:none}.spbar{gap:4px;padding:8px}.spbar .sppct{min-width:54px}}
+.spbar{display:flex;align-items:center;gap:6px;row-gap:6px;flex-wrap:wrap;overflow:hidden;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
+@container (max-width:640px){.spbar small,.spbar .spsep{display:none}}@container (max-width:500px){.spbar small,.spbar .spsep{display:none}.spbar{gap:4px;padding:8px}.spbar .sppct{min-width:54px}}
 .spbar small{color:var(--mut);font-size:12px;white-space:nowrap}
 .spbar .btn{margin:0;white-space:nowrap;display:inline-flex;align-items:center}.spbar .btn svg{width:16px;height:16px}
 .spbar .btn.on{box-shadow:inset 0 0 0 1.5px var(--acc,currentColor)}
