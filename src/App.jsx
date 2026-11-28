@@ -338,7 +338,7 @@ function DocActions({ d, prevOpen, onPreview, onEdit, onTrash }) {
 }
 
 /* Ausklappbare Vorschau in der Dokumentliste */
-function DocPreview({ d, onOpen, getBlob, onPrint, onOriginal }) {
+function DocPreview({ d, onOpen, getBlob, onPrint, onOriginal, noPrint }) {
   const [pages, setPages] = useState([]), [total, setTotal] = useState(0), [want, setWant] = useState(3), [err, setErr] = useState("");
   const pdfRef = useRef(null);
   useEffect(() => {
@@ -370,7 +370,7 @@ function DocPreview({ d, onOpen, getBlob, onPrint, onOriginal }) {
           <div className="dprevbar float">
             <small>{total > 1 ? `${pages.length} von ${total} Seiten` : "1 Seite"}</small>
             {total > pages.length && pages.length >= want && <button className="btn sm" onClick={() => setWant(want + 5)}>Weitere Seiten</button>}
-            <button className="btn sm" onClick={() => (onPrint ? onPrint() : printDoc(d))} title="Drucken"><IcoPrint /></button>
+            {!noPrint && <button className="btn sm" onClick={() => (onPrint ? onPrint() : printDoc(d))} title="Drucken"><IcoPrint /></button>}
           </div>
           {pages.map((src, i) => <img key={i} src={src} alt={`Seite ${i + 1}`} loading="lazy" />)}
           {(!pages.length || pages.length < Math.min(want, total || 1)) && <div className="dpload">Seite wird geladen …</div>}
@@ -1588,11 +1588,14 @@ function useMedia(q) {
   return m;
 }
 let winZ = 60; // zuletzt angeklicktes Fenster liegt oben
-// v1.0.6: Fenster vorübergehend breiter (z. B. Dokument + Vorschau daneben), ohne die gemerkte Größe zu ändern
-function winBox(r, minW) {
-  if (!minW || r.w >= minW) return { left: r.x, top: r.y, width: r.w };
-  const w = Math.min(minW, innerWidth - 24);
-  return { left: Math.max(12, Math.min(r.x - Math.round((w - r.w) / 2), innerWidth - w - 12)), top: r.y, width: w };
+// v1.0.7: rechts angehängter Bereich (z. B. Vorschau neben dem Dokument). Der Dialog selbst bleibt an Ort und Größe,
+// nur wenn rechts kein Platz ist, rückt das Fenster nach links. --formw = Breite des eigentlichen Dialogs.
+const WIN_EXTRA_MIN = 360;
+function winBox(r, extra) {
+  if (!extra) return { left: r.x, top: r.y, width: r.w };
+  // erst die Vorschau an den Platz rechts anpassen (mind. 360 px) – das Fenster rückt nur nach links, wenn es gar nicht anders geht
+  const room = innerWidth - 12 - (r.x + r.w), e = Math.max(Math.min(extra, room), Math.min(WIN_EXTRA_MIN, extra)), w = r.w + e;
+  return { left: Math.max(12, Math.min(r.x, innerWidth - w - 12)), top: r.y, width: w, "--formw": r.w + "px" };
 }
 function clampRect(r) {
   const W = window.innerWidth, H = window.innerHeight;
@@ -1640,7 +1643,7 @@ function MHero({ icon, title, sub, value, valueCls = "", pills = [] }) {
    dirty: true/false erzwingt, undefined = automatisch (sobald im Fenster etwas eingegeben wurde) */
 let detailOpen = 0, sheetDepth = 0, sheetScrollY = 0, lastListY = 0;
 if (typeof window !== "undefined") addEventListener("scroll", () => { if (!sheetDepth) lastListY = scrollY; }, { passive: true });
-function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false, minW = 0 }) {
+function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false, extraW = 0, onExtraW }) {
   // v0.99.8: iPad bekommt dieselben Popups wie das iPhone (Karte von unten)
   const wide = useMedia("(min-width:768px)") && !IS_TABLET;
   useEdgeBack(() => reqRef.current?.(), !wide);
@@ -1782,11 +1785,15 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
     if (!e.target.closest(".panelhead") || e.target.closest("button,input,select,a,textarea,label")) return;
     track(e, (s, dx, dy) => ({ ...s, x: s.x + dx, y: s.y + dy }));
   };
+  const extraRef = useRef(extraW); extraRef.current = extraW;
+  const onExtraRef = useRef(onExtraW); onExtraRef.current = onExtraW;
   const edge = (dir) => (e) => {
     e.stopPropagation();
+    // v1.0.7: rechter Rand ändert die angehängte Vorschau, nicht den Dialog – ausgehend von ihrer sichtbaren Breite
+    const ex0 = extraRef.current ? Math.max(WIN_EXTRA_MIN, (rootRef.current?.offsetWidth || 0) - rect.w) : 0;
     track(e, (s, dx, dy) => {
       const r = { ...s };
-      if (dir.includes("e")) r.w = s.w + dx;
+      if (dir.includes("e")) { if (ex0 && onExtraRef.current) onExtraRef.current(Math.round(Math.max(WIN_EXTRA_MIN, Math.min(1600, ex0 + dx)))); else r.w = s.w + dx; }
       if (dir.includes("s")) r.h = s.h + dy;
       if (dir.includes("w")) { r.w = s.w - dx; r.x = s.x + dx; }
       if (dir.includes("n")) { r.h = s.h - dy; r.y = s.y + dy; }
@@ -1795,7 +1802,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   };
   return (
     <WinCtx.Provider value={requestClose}>
-    <div ref={rootRef} className={"win " + className + (small ? " small" : "") + (center ? " center" : "")} style={{ ...winBox(rect, minW), height: rect.h, zIndex: z }} onPointerDown={onHead} {...touchProps}>
+    <div ref={rootRef} className={"win " + className + (small ? " small" : "") + (center ? " center" : "")} style={{ ...winBox(rect, extraW), height: rect.h, zIndex: z }} onPointerDown={onHead} {...touchProps}>
       <div className="wininner">{guard}{children}</div>
       {["n", "e", "s", "w", "ne", "se", "sw", "nw"].map((d) => <span key={d} className={"rz rz-" + d} onPointerDown={edge(d)} />)}
       <span className="rzgrip" aria-hidden="true" />
@@ -4104,8 +4111,8 @@ function Fahrtenbuch({ accounts, onBook, notify, txs = [], docs = [], onScan, on
       </FitScroll>
       {winPrev && createPortal(
         <Win id="docprev" onClose={() => setWinPrev(null)} dirty={false} className="docprevwin">
-          <div className="panelhead"><b className="clamp">{winPrev.title}</b><XBtn /></div>
-          <DocPreview d={winPrev} onOpen={() => onOpen(winPrev.id)} />
+          <div className="panelhead"><b className="clamp">{winPrev.title}</b><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(winPrev)}><IcoPrint /></button><XBtn /></div>
+          <DocPreview d={winPrev} onOpen={() => onOpen(winPrev.id)} noPrint />
         </Win>, document.querySelector(".app") || document.body)}
       {edit && <FbEntryWin init={edit} vehicles={vehicles} accounts={accounts} txs={txs} docs={docs} onScan={onScan} onUpload={onUpload} onOpen={onOpen} lastKm={st.odo} fuelPrice={lastFuel?.price} onClose={() => setEdit(null)} onSave={(x) => { if (x.type === "trip") ls.set("fbPurpose", x.purpose); saveEntry(x); }}
         onDelete={(id) => { upd((o) => ({ entries: o.entries.filter((y) => y.id !== id) })); setEdit(null); }} />}
@@ -6436,9 +6443,10 @@ function DocList({ saveDoc, trashDoc, reanalyze, docs, categories, onOpen, area 
       {winPrev && createPortal(
         <Win id="docprev" onClose={() => setWinPrev(null)} dirty={false} className="docprevwin">
           <div className="panelhead"><b className="clamp">{winPrev.title}</b>
+            <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(winPrev)}><IcoPrint /></button>
             <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = winPrev.id; setWinPrev(null); onOpen(id); }}><IcoEdit /></button>
             <XBtn /></div>
-          <DocPreview d={winPrev} onOpen={() => onOpen(winPrev.id)} />
+          <DocPreview d={winPrev} onOpen={() => onOpen(winPrev.id)} noPrint />
         </Win>, document.querySelector(".app") || document.body)}
 
       {mode === "ordner" && !cat && !q.trim() ? (
@@ -6530,9 +6538,10 @@ function Deadlines({ docs: docsAll, onOpen: onEdit, saveDoc, calSync, setCalSync
       {prev && (
         <Win id="docprev" onClose={() => setPrev(null)} dirty={false} className="docprevwin">
           <div className="panelhead"><b className="clamp">{prev.title}</b>
+            <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(prev)}><IcoPrint /></button>
             <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = prev.id; setPrev(null); onEdit(id); }}><IcoEdit /></button>
             <XBtn /></div>
-          <DocPreview d={prev} onOpen={() => onEdit(prev.id)} />
+          <DocPreview d={prev} onOpen={() => onEdit(prev.id)} noPrint />
         </Win>
       )}
       {syncOpen && <CalSyncSheet sync={calSync} setSync={setCalSync} items={allItems.filter(([dl]) => !dl.done)} token={token} notify={notify} onClose={() => setSyncOpen(false)} />}
@@ -8428,9 +8437,10 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
       {prevDoc && createPortal(
         <Win id="docprev" onClose={() => setPrevDoc(null)} dirty={false} className="docprevwin">
           <div className="panelhead"><b className="clamp">{prevDoc.title}</b>
+            <button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(prevDoc)}><IcoPrint /></button>
             <button className="iconbtn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => { const id = prevDoc.id; setPrevDoc(null); onOpen(id); }}><IcoEdit /></button>
             <XBtn /></div>
-          <DocPreview key={prevDoc.id} d={prevDoc} onOpen={() => onOpen(prevDoc.id)} />
+          <DocPreview key={prevDoc.id} d={prevDoc} onOpen={() => onOpen(prevDoc.id)} noPrint />
         </Win>, document.querySelector(".app") || document.body)}
       <h3 className="txsec">Sonstiges</h3>
       <section className="tile txcard">
@@ -11297,6 +11307,8 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
   const [sideOpen, setSideOpen] = useState(() => !!ls.get("detSidePrev", false));
   const side = wideDet && sideOpen;
   const toggleSide = () => setSideOpen((v) => { ls.set("detSidePrev", !v); return !v; });
+  const [sideW, setSideW] = useState(() => ls.get("detSidePrevW", 560));
+  useEffect(() => { const t = setTimeout(() => ls.set("detSidePrevW", sideW), 200); return () => clearTimeout(t); }, [sideW]);
   const [newCat, setNewCat] = useState(false);
   const [lq, setLq] = useState("");
   const [url, setUrl] = useState(null);
@@ -11321,7 +11333,8 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
   const numIn = (v) => { const s = String(v).replace(",", "."); return s === "" ? null : Number(s); };
 
   return (
-    <Win id="detail" onClose={onClose} center dirty={dirty} className={side ? "detsplit" : ""} minW={side ? 1180 : 0}>
+    <Win id="detail" onClose={onClose} center dirty={dirty} className={side ? "detsplit" : ""} extraW={side ? sideW : 0} onExtraW={setSideW}>
+        <div className="detbody"><div className="detcol">
         <div className="panelhead">
           <b>Dokument</b>
           {wideDet
@@ -11330,7 +11343,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
           <button className="btn primary" disabled={!dirty} onClick={() => saveDoc(d)}>Speichern</button>
           <XBtn />
         </div>
-        <div className="detbody"><div className="detform">
+        <div className="detform">
 
         {url && (doc.mimeType.startsWith("image/")
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
@@ -11510,13 +11523,13 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
           <button className="btn danger" onClick={() => trashDoc(doc)}>🗑 Papierkorb</button>
         </div>
         <p className="muted small">{doc.fileName} · {(doc.size / 1024).toFixed(0)} KB · hinzugefügt {new Date(doc.createdAt).toLocaleString("de-AT")}</p>
-        </div>
+        </div></div>
         {side && <SidePreview d={doc} blob={blob} onPrint={() => (blob ? printBlobs([blob], d.title || doc.title) : printDoc(doc))} />}
         </div>
         {!side && prevOpen && createPortal(
           <Win id="docprev" onClose={() => setPrevOpen(false)} dirty={false} className="docprevwin">
-            <div className="panelhead"><b className="clamp">{doc.title}</b><XBtn /></div>
-            <DocPreview d={doc} onOpen={() => setPrevOpen(false)} />
+            <div className="panelhead"><b className="clamp">{doc.title}</b><button className="iconbtn" title="Drucken" aria-label="Drucken" onClick={() => printDoc(doc)}><IcoPrint /></button><XBtn /></div>
+            <DocPreview d={doc} onOpen={() => setPrevOpen(false)} noPrint />
           </Win>, document.querySelector(".app") || document.body)}
     </Win>
   );
@@ -19532,13 +19545,18 @@ html.cmp.cmp-zahl .fbcompact .fbstats,html .fbcompact .fbstats{display:grid!impo
 .dactions button.on{color:var(--acc)}
 .detprevbtn{display:inline-flex;align-items:center;gap:6px}.detprevbtn svg{width:18px;height:18px}
 /* v1.0.6: Dokument-Dialog mit Vorschau daneben */
-.detbody,.detform{display:contents}
-.win.detsplit .wininner{display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
-.win.detsplit .detbody{display:flex;flex:1;min-height:0;gap:18px;margin:0 -20px;border-top:1px solid var(--line)}
-.win.detsplit .detform{display:block;flex:0 0 min(520px,44%);overflow:auto;padding:8px 6px 24px 20px;overscroll-behavior:contain}
+.detbody,.detcol,.detform{display:contents}
+.win.detsplit .wininner{display:flex;overflow:hidden;padding:0}
+.win.detsplit .detbody{display:flex;flex:1;min-width:0;min-height:0}
+.win.detsplit .detcol{display:flex;flex-direction:column;flex:0 0 var(--formw,700px);min-width:0}
+.win.detsplit .detcol>.panelhead{padding-left:20px;padding-right:20px}
+.win.detsplit .detform{display:block;flex:1;min-height:0;overflow:auto;padding:0 20px 24px;overscroll-behavior:contain}
 .detprevbtn.on{border-color:var(--acc,currentColor);box-shadow:inset 0 0 0 1px var(--acc,currentColor)}
 .sideprev{flex:1;min-width:0;display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--card2)}
-.spbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
+.win.detsplit .rz-e{width:10px;right:-3px}
+.sideprev{container-type:inline-size}
+.spbar{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;overflow:hidden;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
+@container (max-width:500px){.spbar small,.spbar .spsep{display:none}.spbar{gap:4px;padding:8px}.spbar .sppct{min-width:54px}}
 .spbar small{color:var(--mut);font-size:12px;white-space:nowrap}
 .spbar .btn{margin:0;white-space:nowrap;display:inline-flex;align-items:center}.spbar .btn svg{width:16px;height:16px}
 .spbar .btn.on{box-shadow:inset 0 0 0 1.5px var(--acc,currentColor)}

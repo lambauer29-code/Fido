@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.7 – Vorschau hängt rechts an, Knöpfe bleiben stehen
+- Dokument-Dialog: Die Vorschau wird rechts angehängt – „Vorschau“, „Speichern“ und ✕ bleiben genau dort, wo sie ohne Vorschau sind (der Dialog selbst wird nicht mehr verbreitert oder verschoben); reicht der Platz rechts nicht, wird zuerst die Vorschau schmäler (mind. 360 px)
+- Rechter Rand ziehen ändert die Breite der Vorschau (wird gemerkt) – vorher hat sich das Fenster beim Ziehen nur verschoben; die anderen Ränder ändern den Dialog wie gewohnt
+- Vorschaufenster (Auge in Dokumentliste, Journal, Konten, Fristen, Dokument am Handy): Drucken sitzt jetzt oben neben „Bearbeiten“, unten bleibt nur die Seitenzahl
+- Schmale Vorschau: Leiste bleibt einzeilig (Seitenzahl ausgeblendet)
+
 ## v1.0.6 – Dokument-Vorschau direkt daneben, mit Zoom
 - Dokument-Dialog (Computer): „Vorschau“ öffnet das Dokument direkt rechts neben dem Formular statt in einem eigenen Fenster; der Dialog wird dafür breiter, ein zweiter Klick blendet die Vorschau wieder aus (wird gemerkt)
 - Zoom in der Vorschau: − / + (25 – 400 %), Klick auf die Prozentanzeige = 100 %, „Breite“, „Ganze Seite“, Strg/⌘ + Mausrad bzw. Trackpad; der Zoom wird gemerkt
