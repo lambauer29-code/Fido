@@ -6847,6 +6847,37 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
   const [upOpen, setUpOpen] = useState(false);
   const open = items.filter(([dl]) => !dl.done);
   const overdue = open.filter(([dl]) => dl.date < today), upcoming = open.filter(([dl]) => dl.date >= today);
+  // v1.0.8: „Bevorstehend“ – Schnellfilter (E), Mehrfachauswahl mit Aktionsleiste (A), Abhaken per Klick auf das Datum (B)
+  const [upSel, setUpSel] = useState(() => new Set()), [upF, setUpF] = useState("alle"), [upMove, setUpMove] = useState(false), [undo, setUndo] = useState(null);
+  const undoT = useRef(0);
+  const keyOf = (dl, doc) => doc.id + "|" + dl.id;
+  const upAll = [...overdue, ...upcoming], wkEnd = addDays(today, 7);
+  const UPF = { alle: () => true, over: ([dl]) => dl.date < today, woche: ([dl]) => dl.date >= today && dl.date <= wkEnd };
+  const upList = upAll.filter((it) => (UPF[upF] ? UPF[upF](it) : dlKindOf(it[1]) === upF));
+  const upKinds = DL_KINDS.filter(([k]) => upAll.some(([, doc]) => dlKindOf(doc) === k));
+  const selItems = upAll.filter(([dl, doc]) => upSel.has(keyOf(dl, doc)));
+  const allOn = upList.length > 0 && upList.every(([dl, doc]) => upSel.has(keyOf(dl, doc)));
+  const flip = (dl, doc) => setUpSel((s0) => { const s1 = new Set(s0), k = keyOf(dl, doc); s1.has(k) ? s1.delete(k) : s1.add(k); return s1; });
+  const applyTo = async (list, fn, text, { paid = false } = {}) => {
+    const byDoc = new Map();
+    for (const [dl, doc] of list) { if (!byDoc.has(doc.id)) byDoc.set(doc.id, { doc, ids: new Set(), pay: false }); const e = byDoc.get(doc.id); e.ids.add(dl.id); if (/zahl|fällig/i.test(dl.label)) e.pay = true; }
+    const snaps = [];
+    for (const { doc, ids, pay } of byDoc.values()) {
+      snaps.push(doc);
+      await saveDoc({ ...doc, deadlines: doc.deadlines.map((x) => (ids.has(x.id) ? fn(x) : x)), ...(paid && pay ? { paid: true } : {}) });
+    }
+    setUpSel(new Set()); setUpMove(false);
+    clearTimeout(undoT.current); setUndo({ text, snaps }); undoT.current = setTimeout(() => setUndo(null), 8000);
+  };
+  const doUndo = async () => { const u = undo; setUndo(null); clearTimeout(undoT.current); if (u) for (const d of u.snaps) await saveDoc(d); };
+  const markDone = (list) => applyTo(list, (x) => ({ ...x, done: true }), list.length === 1 ? `„${list[0][0].label}“ erledigt` : `${list.length} Fristen erledigt`, { paid: true });
+  const addMonth = (isoD, n) => { const d = new Date(isoD + "T12:00:00"), day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + n); d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); return iso(d); };
+  const moveSel = (how, label) => {
+    const list = selItems.filter(([, doc]) => !doc.isVirt), skip = selItems.length - list.length;
+    if (!list.length) return alert("Diese Fristen ergeben sich automatisch und lassen sich nicht verschieben.");
+    const base = (x) => (x.date < today ? today : x.date);   // überfällige ab heute
+    applyTo(list, (x) => ({ ...x, date: typeof how === "string" ? how : how(base(x)) }), `${list.length} verschoben ${label}` + (skip ? ` · ${skip} automatische übersprungen` : ""));
+  };
   return (
     <div className="cal">
       <div className="calsel top">
@@ -6864,13 +6895,20 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
       {upOpen && (
         <Win id="calupc" onClose={() => setUpOpen(false)} dirty={false} small defW={620} className="calupcwin">
           <div className="panelhead"><b>⏰ Bevorstehend</b><small className="muted grow" style={{ marginLeft: 8 }}>{overdue.length ? `${overdue.length} überfällig · ` : ""}{upcoming.length} offen</small><XBtn /></div>
+          <div className="upchips">
+            {[["alle", "Alle", upAll.length], ["over", "Überfällig", overdue.length], ["woche", "Diese Woche", upAll.filter(UPF.woche).length], ...upKinds.map(([k, i, l]) => [k, i + " " + l, upAll.filter(([, doc]) => dlKindOf(doc) === k).length])]
+              .filter(([k, , n]) => k === "alle" || n > 0).map(([k, l, n]) => <button key={k} className={"chip" + (upF === k ? " on" : "") + (k === "over" ? " warn" : "")} onClick={() => setUpF(k)}>{l} <b>{n}</b></button>)}
+          </div>
+          {upList.length > 0 && <label className="check upall"><input type="checkbox" checked={allOn} onChange={() => setUpSel((s0) => { const s1 = new Set(s0); upList.forEach(([dl, doc]) => (allOn ? s1.delete(keyOf(dl, doc)) : s1.add(keyOf(dl, doc)))); return s1; })} /> {allOn ? "Auswahl aufheben" : `Alle ${upList.length} auswählen`}<small className="muted"> · Tipp: aufs Datum klicken = erledigt</small></label>}
           <div className="calupclist">
-            {!overdue.length && !upcoming.length && <p className="muted small">Keine offenen Fristen 🎉</p>}
-            {[...overdue, ...upcoming].map(([dl, doc]) => {
-              const n = daysUntil(dl.date);
+            {!upAll.length && <p className="muted small">Keine offenen Fristen 🎉</p>}
+            {upAll.length > 0 && !upList.length && <p className="muted small">Keine Fristen für diesen Filter.</p>}
+            {upList.map(([dl, doc]) => {
+              const n = daysUntil(dl.date), on = upSel.has(keyOf(dl, doc));
               return (
-                <div key={dl.id} className={"frow calrow click k-" + dlKindOf(doc) + " " + tone(dl) + (dl.date === selDay ? " cur" : "")} onClick={() => pick(dl.date)}>
-                  <div className={"datebox" + (n < 0 ? " red" : n <= 7 ? " warn" : "")}><b>{new Date(dl.date + "T12:00").getDate()}</b><small>{new Date(dl.date + "T12:00").toLocaleDateString("de-AT", { month: "short" })}</small></div>
+                <div key={dl.id} className={"frow calrow click k-" + dlKindOf(doc) + " " + tone(dl) + (dl.date === selDay ? " cur" : "") + (on ? " sel" : "")} onClick={() => pick(dl.date)}>
+                  <input type="checkbox" className="upck" checked={on} onClick={(e) => e.stopPropagation()} onChange={() => flip(dl, doc)} aria-label={"Auswählen: " + dl.label} />
+                  <button type="button" className={"datebox tick" + (n < 0 ? " red" : n <= 7 ? " warn" : "")} title="Als erledigt abhaken" aria-label={"Erledigt: " + dl.label} onClick={(e) => { e.stopPropagation(); markDone([[dl, doc]]); }}><b>{new Date(dl.date + "T12:00").getDate()}</b><small>{new Date(dl.date + "T12:00").toLocaleDateString("de-AT", { month: "short" })}</small></button>
                   <div className="grow"><b>{dl.label}</b><small className="muted block">{doc.title}</small></div>
                   {payAmt(doc) != null && <b>{fmtMoney(payAmt(doc), doc.amount.currency)}</b>}
                   <small className={"muted nowrap" + (n < 0 ? " red" : "")}>{n === 0 ? "heute" : n < 0 ? `vor ${-n} T.` : `in ${n} T.`}</small>
@@ -6879,6 +6917,20 @@ function MonthCalendar({ items, onOpen, saveDoc, docs }) {
               );
             })}
           </div>
+          {selItems.length > 0 && <div className="upbar" role="toolbar" aria-label="Ausgewählte Fristen">
+            <b className="grow">{selItems.length} ausgewählt</b>
+            <button className="btn primary sm" onClick={() => markDone(selItems)}>✓ Erledigt</button>
+            <button className={"btn sm" + (upMove ? " on" : "")} onClick={() => setUpMove(!upMove)} aria-expanded={upMove}>Verschieben ▾</button>
+            <button className="btn sm" title="In den Kalender (.ics)" onClick={() => downloadIcs(selItems, "fristen")}>📅 Kalender</button>
+            <button className="iconbtn" title="Auswahl aufheben" aria-label="Auswahl aufheben" onClick={() => { setUpSel(new Set()); setUpMove(false); }}>✕</button>
+            {upMove && <div className="upmove">
+              <button className="btn sm" onClick={() => moveSel((d) => addDays(d, 7), "um 1 Woche")}>+1 Woche</button>
+              <button className="btn sm" onClick={() => moveSel((d) => addMonth(d, 1), "um 1 Monat")}>+1 Monat</button>
+              <label className="small">auf <input type="date" min={today} onChange={(e) => e.target.value && moveSel(e.target.value, "auf " + fmtDate(e.target.value))} /></label>
+              <small className="muted">Überfällige werden ab heute verschoben.</small>
+            </div>}
+          </div>}
+          {undo && <div className="upbar undo" role="status"><span className="grow">✓ {undo.text}</span><button className="btn sm" onClick={doUndo}>↺ Rückgängig</button></div>}
         </Win>
       )}
       <div className="calhead">
@@ -17316,6 +17368,17 @@ nav .acctree .accitem .ab{font-size:11.5px}
 .calupchead{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;color:var(--txt);font:inherit;padding:8px 4px;cursor:pointer;text-align:left}
 .calupchead .pchev{color:var(--mut)}
 .calupclist{max-height:340px;overflow:auto;padding:0 4px 6px}
+/* v1.0.8: Bevorstehend – Filter, Auswahl, Abhaken */
+.upchips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 8px}.upchips .chip b{font-weight:600;opacity:.75;margin-left:2px}
+.upall{margin:0 0 6px 12px;font-size:14px}.upall small{font-size:12px}
+.calupclist .calrow.sel{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.calrow .upck{width:18px;height:18px;margin:0 0 0 4px;flex-shrink:0}
+.datebox.tick{position:relative;border:0;font:inherit;cursor:pointer;color:inherit}
+.datebox.tick:hover>*,.datebox.tick:focus-visible>*{visibility:hidden}
+.datebox.tick:hover::after,.datebox.tick:focus-visible::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;font-size:22px;font-weight:700;color:#fff;background:#16a34a;border-radius:inherit}
+.upbar{position:sticky;bottom:0;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px -8px 0;padding:10px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);box-shadow:0 -6px 18px #0003}
+.upbar .btn{margin:0}.upbar.undo{background:color-mix(in srgb,#16a34a 18%,var(--card))}
+.upmove{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-top:4px}.upmove input[type=date]{width:auto;padding:5px 8px;font-size:13px}.upmove label{display:flex;align-items:center;gap:6px;margin:0}
 .calupclist .calrow{border-radius:12px;padding:6px 8px}.calupclist .calrow:hover{background:var(--card2)}
 .nowrap{white-space:nowrap}
 .calsel.top{display:block!important}.calsel.top>.frow{width:100%;box-sizing:border-box}.calupclist .calrow.cur{background:color-mix(in srgb,var(--acc) 14%,transparent)}
@@ -18214,7 +18277,7 @@ html,body{min-height:100%}
 .calupbtn b{margin-left:4px;background:var(--acc);color:#000;border-radius:999px;padding:0 7px;font-size:12px}
 .calupbtn.warn b{background:var(--red);color:#fff}
 @media (max-width:600px){.calhead{flex-wrap:wrap}.calhead .calupbtn{order:-1;flex:1 1 100%;justify-content:center;display:flex;align-items:center}}
-@media (max-width:600px){.calupcwin .calrow{display:grid;grid-template-columns:auto auto 1fr auto;grid-template-areas:"d t t btn" "d amt days btn";column-gap:10px;row-gap:2px;align-items:center}
+@media (max-width:600px){.calupcwin .calrow{display:grid;grid-template-columns:auto auto auto 1fr auto;grid-template-areas:"c d t t btn" "c d amt days btn";column-gap:10px;row-gap:2px;align-items:center}.calupcwin .calrow>.upck{grid-area:c}
 .calupcwin .calrow>.datebox{grid-area:d}.calupcwin .calrow>.grow{grid-area:t;min-width:0}.calupcwin .calrow>b{grid-area:amt;font-size:14px}
 .calupcwin .calrow>small.nowrap{grid-area:days;justify-self:start}.calupcwin .calrow>.iconbtn{grid-area:btn}}
 .calupcwin .calrow .datebox{width:46px;height:46px;padding:0;overflow:hidden}

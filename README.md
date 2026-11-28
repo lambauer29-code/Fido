@@ -12,6 +12,11 @@ Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags,
 - ＋-Menü passt sich dem Reiter an: oben die passenden Aktionen (z. B. Kunden: importieren, exportieren, neuer Kunde · Rechnungen: neue Rechnung, neues Angebot · Konten: Umsätze importieren, Buchung, Konto anlegen · Dokumente: Scannen, Datei), darunter alle übrigen
 - Neu: „Kunden exportieren“ als eigenes Fenster (vCard, Excel, PDF, CSV) – auch über das ＋-Menü
 - Fristen-Tagesansicht: Häkchen-Feld 2 px weiter rechts (berührt den farbigen Rand nicht mehr)
+- Fristen → „Bevorstehend“:
+  - Schnellfilter oben: Alle · Überfällig · Diese Woche · je Art (Steuer & SVS, Rechnungen, Monatsabschluss, Dokumente …) mit Anzahl
+  - Mehrfachauswahl (Häkchen je Zeile, „Alle auswählen“) mit Leiste: ✓ Erledigt · Verschieben (+1 Woche, +1 Monat, auf ein Datum – Überfällige ab heute) · 📅 Kalender (.ics)
+  - Klick aufs Datum hakt eine Frist sofort ab (beim Darüberfahren erscheint ✓); unten 8 Sekunden lang „Rückgängig“ – auch nach Sammelaktionen
+  - Zahlungsfristen als erledigt markieren setzt das Dokument auf „bezahlt“ (wie bisher beim Einzel-Häkchen); automatische Fristen (Steuer, SVS, Monatsabschluss) lassen sich abhaken, aber nicht verschieben
 
 ## v1.0.7 – Vorschau hängt rechts an, Knöpfe bleiben stehen
 - Dokument-Dialog: Die Vorschau wird rechts angehängt – „Vorschau“, „Speichern“ und ✕ bleiben genau dort, wo sie ohne Vorschau sind (der Dialog selbst wird nicht mehr verbreitert oder verschoben); reicht der Platz rechts nicht, wird zuerst die Vorschau schmäler (mind. 360 px)
