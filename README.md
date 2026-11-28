@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.15 – Spalte rechts pro Bereich einstellbar
+- Einstellungen → Darstellung → „In diesen Bereichen rechts öffnen“: für Konten, Dokumente, Rechnungen, Kunden, Verträge, Artikel, Besitz & Garantie und Kassabuch einzeln Spalte rechts oder Popup; „Alle an / Alle aus“
+- Farbauswahl für neue Einträge: alle Farbkreise exakt in einer Linie
+- Dokument: Finanzen / Verträge / Sonstiges als Auswahlmenü (Pille) mittig unter Privat/Firma – die breite Leiste entfällt; in der Spalte rechts sitzen beide im farbigen Kopf
+- „Ungespeicherte Änderungen“ erscheint als Leiste oben über dem Fenster – auch bei geöffneter Vorschau (vorher großer Block links)
+- Schmale Dokumentenliste neben Spalte + Vorschau: Titel bleiben sichtbar (Kategorie- und Aktionsspalte weichen nach verfügbarer Breite)
+
 ## v1.0.14 – Neue Buchungen und Dokumente markiert
 - Neu importierte bzw. hinzugefügte Buchungen (Konten) und Dokumente: Punkt vorne, Name fett, Plakette „NEU“ und Balken links – bis man den Eintrag öffnet
 - Über der Liste „X neue Buchungen / Dokumente“ mit „✓ Alle als gesehen markieren“

@@ -350,6 +350,15 @@ function ScopeSelect({ obj, onPick, def = "privat", small = false }) {
       items={[{ head: "Zuordnung" }, ...opts.map((o) => ({ k: o.id, icon: <i className="scdot" style={{ background: o.color }} />, title: `${o.icon} ${o.label}`, sub: o.fixed ? undefined : o.base === "firma" ? "zählt wie Firma" : "zählt wie Privat", on: o.id === cur.id, run: () => onPick(scopePatch(o)) }))]} />
   </span>;
 }
+// v1.0.15: Bereich eines Dokuments (Finanzen / Verträge / Sonstiges) als Auswahlmenü unter Privat/Firma
+const AREA_SUB = { finanzen: "Rechnungen, Belege, Bank", vertraege: "Versicherung, Miete, Abos", sonstiges: "alles andere" };
+function AreaSelect({ d, onPick }) {
+  const k = docArea(d), [i, l] = AREAS[k] || AREAS.sonstiges;
+  return <span className="scsel arsel" style={{ "--scc": "#e8c766" }} onClick={(e) => e.stopPropagation()}>
+    <PickMenu btnClass="scselbtn" icon={i} label={l} title="Bereich: Finanzen, Verträge oder Sonstiges"
+      items={[{ head: "Bereich" }, ...Object.entries(AREAS).map(([kk, [ii, ll]]) => ({ k: kk, icon: ii, title: ll, sub: AREA_SUB[kk], on: kk === k, run: () => onPick(kk) }))]} />
+  </span>;
+}
 function AreaSettings() {
   const [areas, setAreas] = useLsState("scopeAreas", []), [cols, setCols] = useLsState("stmtColors", {});
   const c = { ...STMT_COL_DEF, ...(cols || {}) }, list = Array.isArray(areas) ? areas : [];
@@ -1702,6 +1711,8 @@ let detailOpen = 0, sheetDepth = 0, sheetScrollY = 0, lastListY = 0;
 if (typeof window !== "undefined") addEventListener("scroll", () => { if (!sheetDepth) lastListY = scrollY; }, { passive: true });
 // v1.0.11: große Fenster – Details öffnen sich als Spalte rechts neben der Liste statt als Popup
 const DOCK_MIN_W = 1400, dockReg = new Map();
+// v1.0.15: pro Bereich einstellbar, ob die Details rechts aufgehen
+const DOCK_TABS = [["tx", "🏦", "Konten", "Buchungen – auch aus Journal und Steuerberater"], ["doc", "📄", "Dokumente", "Dokument bearbeiten, auch aus Fristen"], ["inv", "🧾", "Rechnungen", "Rechnung bearbeiten und neu anlegen"], ["kunde", "👥", "Kunden", "Kundendetail und Kontakt bearbeiten"], ["vertrag", "📑", "Verträge", "Vertrag bearbeiten"], ["artikel", "📦", "Artikel", "auch Lager & Inventur"], ["besitz", "🛡️", "Besitz & Garantie", "Gegenstand bearbeiten"], ["kassa", "📒", "Kassabuch", "Eintrag im Kassabuch"]];
 // Pfeil zur angeklickten Zeile: zuletzt angeklickte Listenzeile merken (vor allen Fenster-Handlern, daher hier beim Laden registriert)
 const DOCK_ROW_SEL = ".txrow,.ditem,.frow,.kbr,.invrow,.ctrow,.astrow,.jrow,.subrow,.contactrow,[data-dockrow]";
 let dockAnchor = null, dockAnchorPrev = null;
@@ -1711,9 +1722,12 @@ if (typeof document !== "undefined") document.addEventListener("pointerdown", (e
 function dockApply() {
   const html = document.documentElement, w = Math.max(0, ...dockReg.values());
   html.classList.toggle("docked", w > 0); if (w > 0) html.style.setProperty("--dockw", w + "px"); else html.style.removeProperty("--dockw");
+  // schmale Liste neben der Spalte: Kategorie- und Aktionsspalte der Zeilen ausblenden (nach verfügbarer Breite, nicht nach Fenstergröße)
+  const side = parseFloat(getComputedStyle(html).getPropertyValue("--side")) || 260;
+  html.classList.toggle("docknarrow", w > 0 && innerWidth - side - w - 110 < 760);
 }
 function DockSetting() {
-  const [on, setOn] = useLsState("dockDetails", true), [minW, setMinW] = useLsState("dockMinW", DOCK_MIN_W);
+  const [on, setOn] = useLsState("dockDetails", true), [minW, setMinW] = useLsState("dockMinW", DOCK_MIN_W), [tabs, setTabs] = useLsState("dockTabs", {});
   const [cur, setCur] = useState(innerWidth); useEffect(() => { const h = () => setCur(innerWidth); addEventListener("resize", h); return () => removeEventListener("resize", h); }, []);
   const mw = Number(minW) || DOCK_MIN_W, active = on !== false && cur >= mw;
   return <div className="docksetting">
@@ -1725,6 +1739,15 @@ function DockSetting() {
         <button type="button" className="chip" disabled={on === false} onClick={() => setMinW(Math.max(1000, Math.round(cur / 50) * 50))} title="Aktuelle Fensterbreite übernehmen">Jetzt ({cur})</button></div>
       <small className="muted block">Dein Fenster ist gerade {cur} px breit – die Spalte rechts ist damit {active ? "aktiv" : "aus (Popup)"}.</small>
     </div>
+    <div className={"docktabs" + (on === false ? " off" : "")}>
+      <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}><span style={{ flex: 1 }}>In diesen Bereichen rechts öffnen</span>
+        <button type="button" className="link small" disabled={on === false} onClick={() => setTabs({})}>Alle an</button>
+        <span className="muted">·</span>
+        <button type="button" className="link small" disabled={on === false} onClick={() => setTabs(Object.fromEntries(DOCK_TABS.map(([k]) => [k, false])))}>Alle aus</button></div>
+      {DOCK_TABS.map(([k, ic, n, sub]) => <label key={k} className="docktab"><span className="dtic">{ic}</span><span className="grow"><b>{n}</b><small className="muted block">{sub}</small></span>
+        <span className={"dtstate" + ((tabs || {})[k] !== false ? " on" : "")}>{(tabs || {})[k] !== false ? "Spalte rechts" : "Popup"}</span>
+        <input type="checkbox" className="switch" disabled={on === false} checked={(tabs || {})[k] !== false} onChange={(e) => setTabs({ ...(tabs || {}), [k]: e.target.checked })} /></label>)}
+    </div>
   </div>;
 }
 function Win({ id, onClose, children, className = "", defW, small = false, center = false, dirty, saveLabel = "Speichern", stay = false, extraW = 0, onExtraW, dock = false, tint = null }) {
@@ -1732,7 +1755,8 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
   const wide = useMedia("(min-width:768px)") && !IS_TABLET;
   const [dockPref] = useLsState("dockDetails", true), [dockMin] = useLsState("dockMinW", DOCK_MIN_W);
   const bigWin = useMedia(`(min-width:${Number(dockMin) || DOCK_MIN_W}px)`);
-  const docked = !!dock && wide && bigWin && dockPref !== false;
+  const [dockTabs] = useLsState("dockTabs", {});
+  const docked = !!dock && wide && bigWin && dockPref !== false && (dockTabs || {})[typeof dock === "string" ? dock : id] !== false;
   const dockedRef = useRef(docked); dockedRef.current = docked;
   useEdgeBack(() => reqRef.current?.(), !wide);
   // iPad: Liste rückt zur Seite, solange ein Detail rechts offen ist (Split View)
@@ -8507,7 +8531,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
   </>);
 
   if (edit) return (
-    <Win dock tint={tintOf(t)} id="tx" onClose={() => setEdit(null)} dirty small defW={520}>
+    <Win dock="tx" tint={tintOf(t)} id="tx" onClose={() => setEdit(null)} dirty small defW={520}>
       <div className="panelhead"><b>Buchung bearbeiten</b>
         <button className="btn primary" onClick={() => {
           const amt = parseAmt(edit.amount);
@@ -8525,7 +8549,7 @@ function TxSheet({ onSwitch, scanReceiptFor, receiptFor, t, txs = [], categories
   );
 
   return (
-    <Win dock tint={tintOf(t.scopeX ? t : si.scope)} id="tx" onClose={onClose} dirty={false} small defW={520} className="txdetail">
+    <Win dock="tx" tint={tintOf(t.scopeX ? t : si.scope)} id="tx" onClose={onClose} dirty={false} small defW={520} className="txdetail">
       <div className="panelhead"><span className="grow" /><button className="link" onClick={() => setEdit({ counterparty: t.counterparty || "", purpose: t.purpose || "", date: t.date, amount: String(t.amount).replace(".", ","), accountId: t.accountId })}>Bearbeiten</button><XBtn /></div>
       <div className="txhero">
         <div className="txheroico" onClick={() => setIcoOpen(!icoOpen)} title="Symbol ändern"><TxIcon t={t} size={84} /><span className="txpen">✎</span></div>
@@ -11615,7 +11639,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
   const numIn = (v) => { const s = String(v).replace(",", "."); return s === "" ? null : Number(s); };
 
   return (
-    <Win dock tint={tintOf(d)} id="detail" onClose={onClose} center dirty={dirty} className={side ? "detsplit" : ""} extraW={side ? sideW : 0} onExtraW={setSideW}>
+    <Win dock="doc" tint={tintOf(d)} id="detail" onClose={onClose} center dirty={dirty} className={side ? "detsplit" : ""} extraW={side ? sideW : 0} onExtraW={setSideW}>
         <div className="detbody"><div className="detcol">
         <div className="panelhead">
           <b>Dokument</b>
@@ -11630,10 +11654,7 @@ function Detail({ doc, categories, docGroups = [], addCategoryEx, onClose, saveD
         {url && (doc.mimeType.startsWith("image/")
           ? <img className="preview" src={url} alt="" onClick={() => window.open(url)} />
           : <div className="pdfbox"><Thumb d={doc} /><div className="grow"><b className="clamp">{doc.fileName || doc.title}</b></div></div>)}
-        <div data-dockhead=""><ScopeSelect obj={d} onPick={(p) => set({ ...p, scopeManual: true })} /></div>
-        <div className="seg areaseg" style={{ margin: "6px 0 10px" }}>
-          {Object.entries(AREAS).map(([k, [i, l]]) => <button key={k} className={docArea(d) === k ? "on" : ""} onClick={() => set({ areaManual: k })}>{i} {l}</button>)}
-        </div>
+        <div data-dockhead="" className="dochead2"><ScopeSelect obj={d} onPick={(p) => set({ ...p, scopeManual: true })} /><AreaSelect d={d} onPick={(k) => set({ areaManual: k })} /></div>
         <div className="labels" style={{ marginBottom: 4 }}><Label c={d.category} sub={d.subcategory} />{d.taxRelevant && <span className="label tax">Steuer</span>}{d.contract && <span className="label">Vertrag</span>}</div>
 
         {doc.status === "error" && <div className="err">Analyse fehlgeschlagen: {doc.error}</div>}
@@ -13717,7 +13738,7 @@ function InvoiceEditor({ inv: init, co, customers, articles, onSave, onClose, on
     onClose();
   };
   return (
-    <Win dock tint={tintOf("firma")} id="invedit" defW={760} onClose={onClose} dirty={!locked && JSON.stringify(inv) !== JSON.stringify(init)}>
+    <Win dock="inv" tint={tintOf("firma")} id="invedit" defW={760} onClose={onClose} dirty={!locked && JSON.stringify(inv) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{isA ? "Angebot" : "Rechnung"} {inv.number || "(Entwurf)"}</b>
         <button className="btn" onClick={async () => openPdf(await buildInvoicePdf(inv, co), invFileName(inv), "", inv.customer?.email)}>Vorschau</button>
         {!locked && <button className="btn primary" onClick={() => doSave(false)}>Speichern</button>}
@@ -14317,7 +14338,7 @@ function ContractEditor({ c: init, docs, onSave, onDelete, onClose, me }) {
   const [prevOpen, setPrevOpen] = useState(false);
   const cand = docs.filter((x) => !(c.docIds || []).includes(x.id)).slice(0, 300);
   return (
-    <Win dock tint={tintOf(c)} id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
+    <Win dock="vertrag" tint={tintOf(c)} id="ctedit" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name ? c.name || "Vertrag" : "Neuer Vertrag"}</b>
         {linked.length > 0 && <button className="btn detprevbtn" title="Dokumente ansehen" onClick={() => setPrevOpen(true)}><IcoEye /> <span>Vorschau</span></button>}
         <button className="btn primary" disabled={!c.name} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
@@ -14645,7 +14666,7 @@ function ContactEditor({ c: init, onSave, onDelete, onClose }) {
   const set = (p) => setC((x) => ({ ...x, ...p }));
   const f = (k, label, ph = "", type = "text") => <label>{label}<input type={type} value={c[k] || ""} placeholder={ph} onChange={(e) => set({ [k]: e.target.value })} /></label>;
   return (
-    <Win dock tint={tintOf("firma")} id="contact" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
+    <Win dock="kunde" tint={tintOf("firma")} id="contact" onClose={onClose} dirty={JSON.stringify(c) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name || "Neuer Kontakt"}</b><button className="btn primary" disabled={!c.name?.trim()} onClick={() => { onSave(c); onClose(); }}>Speichern</button><XBtn /></div>
       <div className="typepick">{types.map((t) => <button key={t.id} className={"chip" + ((c.type || types[0]?.name) === t.name ? " on" : "")} style={(c.type || types[0]?.name) === t.name ? undefined : { color: t.color }} onClick={() => set({ type: t.name })}><TypeGlyph t={t} /> {t.name}</button>)}</div>
       <ContactLogo c={c} set={set} />
@@ -14923,7 +14944,7 @@ function ContactsPage({ setTab, req = 0, busy, setBusy = () => {} }) {
       </section>
       </FitScroll>
       </div></div>)}
-      {!mob && selC && createPortal(<Win dock tint={tintOf("firma")} id="custdet" onClose={() => setSelId(null)} dirty={false} className="custwin" defW={720}>
+      {!mob && selC && createPortal(<Win dock="kunde" tint={tintOf("firma")} id="custdet" onClose={() => setSelId(null)} dirty={false} className="custwin" defW={720}>
         <div className="panelhead"><b>Kundendatei</b><XBtn /></div>
         <div className="custwinbody">{detail}</div>
       </Win>, document.querySelector(".app") || document.body)}
@@ -15509,7 +15530,7 @@ function ArticleEditor({ a: init, onSave, onDelete, onClose }) {
   const posFields = fields.filter((f) => f.scope === "position");
   const C = artCfg();
   return (
-    <Win dock tint={tintOf("firma")} id="artedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
+    <Win dock="artikel" tint={tintOf("firma")} id="artedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.text || "Neuer Artikel"}</b><button className="btn primary" disabled={!a.text?.trim()} onClick={doSave}>Speichern</button><XBtn /></div>
       <div className="scanrow">
         <label className="grow">EAN / Strichcode<input value={a.ean || ""} inputMode="numeric" placeholder="scannen oder eintippen" onChange={(e) => set({ ean: e.target.value })} /></label>
@@ -15704,7 +15725,7 @@ function AssetEditor({ a: init, docs, onScan, onUpload, onOpenDoc, onSave, onDel
   const w = astWarr(a), e = astExtra(a), end = astEndAll(a);
   const cats = [...new Set([...Object.keys(ASSET_CATS), a.cat].filter(Boolean))];
   return (
-    <Win dock tint={tintOf(a)} id="astedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
+    <Win dock="besitz" tint={tintOf(a)} id="astedit" onClose={onClose} dirty={JSON.stringify(a) !== JSON.stringify(init)}>
       <div className="panelhead"><b>{init.name || "Neues Gerät"}</b><button className="btn primary" disabled={!a.name?.trim()} onClick={() => { onSave({ ...a, price: a.price === "" || a.price == null ? "" : Number(String(a.price).replace(",", ".")) || 0 }); onClose(); }}>Speichern</button><XBtn /></div>
       {init.name && <MHero icon="🛡️" sub={[a.brand, a.cat].filter(Boolean).join(" · ") || "Gerät"} title={a.name || init.name} value={a.price !== "" && a.price != null ? fmtMoney(Number(String(a.price).replace(",", ".")) || 0, a.currency || "EUR") : null}
         pills={[a.date && "gekauft " + fmtDate(a.date), astEndAll(a) && { label: (astEndAll(a) < todayISO() ? "Garantie abgelaufen " : "Garantie bis ") + fmtDate(astEndAll(a)), cls: astEndAll(a) < todayISO() ? "st-draft" : "st-paid" }]} />}
@@ -16032,7 +16053,7 @@ function KassaDetailWin({ e, kasse, saldo, entries, docs, onOpen, onStorno, onCl
   const doc = docs?.find((d) => d.id === e.docId);
   const Row = ({ l, v }) => v ? <div className="kbrow"><small className="muted">{l}</small><span>{v}</span></div> : null;
   return (
-    <Win dock tint={tintOf("firma")} id="kbdetail" onClose={onClose} small dirty={false}>
+    <Win dock="kassa" tint={tintOf("firma")} id="kbdetail" onClose={onClose} small dirty={false}>
       <div className="panelhead"><b>Buchung {kbNo(e)}</b><XBtn /></div>
       <div className="kbhero"><span className={e.kind === "ein" ? "pos" : "neg"}>{e.kind === "ein" ? "+" : "−"}{fmtMoney(e.amount)}</span><small className="muted">{e.text}</small>
         {e.stornoBy && <span className="stpill st-over">storniert</span>}{e.stornoOf && <span className="stpill st-draft">Storno</span>}</div>
@@ -17448,8 +17469,8 @@ html .win.docked.docked>.wininner{border-radius:18px}
 .win.docked.tinted .dockarr.inhead i{background:linear-gradient(180deg,color-mix(in srgb,var(--dockc) 30%,transparent),color-mix(in srgb,var(--dockc) 9%,transparent)) 0 calc(-1px - var(--ay,0px))/100% var(--dockhead,0px) no-repeat,var(--bg)}
 html.docked .app{padding-right:calc(var(--dockw) + 54px)!important}
 html.docked .topactions{right:calc(var(--dockw) + 50px)}
-@media (max-width:1799px){html.docked .ditem .dcatcol,html.docked .ditem .dactions,html.docked .invrow .invacts,html.docked .ctrow .ctacts{display:none!important}
-  html.docked .ditem .grow,html.docked .invrow .invmain{min-width:0}}
+html.docked.docknarrow .ditem .dcatcol,html.docked.docknarrow .ditem .dactions,html.docked.docknarrow .invrow .invacts,html.docked.docknarrow .ctrow .ctacts{display:none!important}
+html.docked.docknarrow .ditem .grow,html.docked.docknarrow .invrow .invmain{min-width:0}
 /* v1.0.13: farbiger Kopf läuft über die angehängte Vorschau; Symbol im Kopf größer */
 .win.docked.tinted.detsplit .sideprev{background:transparent;border-left-color:color-mix(in srgb,var(--dockc) 22%,var(--line))}
 .win.docked.tinted.detsplit .spbar{background:transparent;border-bottom:0;min-height:var(--dockhead,0px);box-sizing:border-box;align-items:flex-start;padding-top:12px}
@@ -17474,6 +17495,17 @@ html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon .gll{widt
 .nmrow>i:first-child{position:absolute;left:7px;top:50%;margin-top:-4.5px}
 .nmrow.isnew{box-shadow:inset 3px 0 0 var(--newc);background:color-mix(in srgb,var(--newc) 7%,transparent)}.nmrow.isnew b{font-weight:700}
 .nmic{width:30px;height:30px;border-radius:8px;background:var(--card2);display:flex;align-items:center;justify-content:center}.nmamt{font-weight:500!important;font-variant-numeric:tabular-nums}
+.docktabs{display:flex;flex-direction:column;gap:2px;padding:2px 0 12px}.docktabs.off{opacity:.45}
+.docktab{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:10px;cursor:pointer}.docktab:hover{background:color-mix(in srgb,var(--txt) 5%,transparent)}
+.docktab .dtic{width:32px;height:32px;border-radius:9px;background:var(--card2);display:flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+.docktab .grow{flex:1;min-width:0}.dtstate{font-size:11.5px;color:var(--mut);white-space:nowrap}.dtstate.on{color:var(--acc)}
+.nmsw{box-sizing:border-box!important;margin:0!important;flex:none;vertical-align:middle}
+.nmcustom{line-height:1}
+.dochead2{display:flex;flex-direction:column;align-items:center;gap:8px;margin:8px 0 12px}.dochead2>.scsel{margin:0}
+/* v1.0.15: „Ungespeicherte Änderungen“ als Leiste oben – auch wenn die Vorschau daneben offen ist */
+.win.detsplit>.wininner{position:relative}
+.win.detsplit>.wininner>.winguard{position:absolute;top:10px;left:12px;right:auto;width:calc(var(--formw,700px) - 24px);box-sizing:border-box;margin:0;box-shadow:0 10px 28px rgba(0,0,0,.45)}
+@media (min-width:768px){.win .winguard{flex-wrap:nowrap}.win .winguard>b:first-child{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.win .winguard .grow{display:none}.win .winguard .btn{flex:0 0 auto;white-space:nowrap}}
 .docksetting .dockminw{display:flex;flex-direction:column;gap:6px;padding:4px 0 10px}.docksetting .dockminw.off{opacity:.45}
 .docksetting .dockminw input[type=range]{width:100%;accent-color:var(--acc)}.docksetting .dockminchips{gap:6px;flex-wrap:wrap}
 /* v1.0.10: Seitenleiste – Anzahlen (Dokumente) und Kontostände in einer Flucht unter den Gruppen-Pfeilen, Anzahlen als Plakette */
