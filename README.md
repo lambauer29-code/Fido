@@ -2,6 +2,10 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.17 – Update-Suche einstellbar
+- Einstellungen → Verbindung → „Automatisch suchen“: nur beim App-Start, alle 5 / 10 / 15 / 30 Minuten, stündlich, alle 6 Stunden (Standard), täglich oder nie automatisch
+- Nach Ruhezustand oder längerer Pause wird beim Zurückkehren ins Fenster sofort nachgeholt, wenn das Intervall abgelaufen ist; Anzeige „Zuletzt gesucht“
+
 ## v1.0.16 – Standard-Einstellungen für neue Installationen
 - Frische Installation startet mit Rolis Einstellungen (Design Gold/Graphit/Lora, Seitenleiste mit Privat/Firma/Sicherung, Spalten, Startseite, Sortierungen, Schriftgrößen …); bestehende Geräte bleiben unverändert
 - Einstellungs-Export enthält jetzt auch die Cloud-Dienst-Symbole sowie Spalte rechts, Markierung neuer Einträge und eigene Bereiche

@@ -4660,7 +4660,7 @@ function FolderWatchSettings() {
 }
 // v0.99.90: Einstellungen (Optik & Struktur) ohne Daten exportieren/importieren
 // v1.0.16: + Cloud-Dienst-Symbole (provIcons) und die neuen Darstellungs-Einstellungen (Spalte rechts, Markierung neuer Einträge, Bereiche)
-const SET_EXTRA = /^(stmtColors|nav|contactTypes|ctCats|itemCats|units|provIcons|dockDetails|dockMinW|dockTabs|newMarks|newMarkColor|navDlBadge|scopeAreas)$|^dock:/;
+const SET_EXTRA = /^(stmtColors|nav|contactTypes|ctCats|itemCats|units|provIcons|dockDetails|dockMinW|dockTabs|newMarks|newMarkColor|navDlBadge|scopeAreas|updEvery)$|^dock:/;
 const settingsKeyOk = (k) => (WIPE_KEEP.test(k) || SET_EXTRA.test(k)) && !/^win:/.test(k);
 function settingsSnapshot() {
   const store = {};
@@ -12290,16 +12290,33 @@ async function bkKey(pw, salt, iter) {
 let updState = { update: null, pct: null, dismissed: false, err: "" };
 const updSubs = new Set();
 const setUpd = (p) => { updState = { ...updState, ...p }; updSubs.forEach((f) => f(updState)); };
+// v1.0.17: wie oft automatisch nach Updates gesucht wird – einstellbar wie beim Auto-Backup
+const UPD_INTERVALS = [["start", "Nur beim App-Start", "einmal kurz nach dem Öffnen"], ["5min", "Alle 5 Minuten", ""], ["10min", "Alle 10 Minuten", ""], ["15min", "Alle 15 Minuten", ""], ["30min", "Alle 30 Minuten", ""],
+  ["stuendlich", "Stündlich", ""], ["6std", "Alle 6 Stunden", "Standard"], ["taeglich", "Täglich", "einmal pro Tag"], ["aus", "Nie automatisch", "nur über „Nach Updates suchen“"]];
+const UPD_MS = { "5min": 5 * 60e3, "10min": 10 * 60e3, "15min": 15 * 60e3, "30min": 30 * 60e3, stuendlich: 3600e3, "6std": 6 * 3600e3, taeglich: 24 * 3600e3 };
+let updLast = 0, updTimer = null, updStarted = false;
+const updEvery = () => ls.get("updEvery", "6std");
+function updSchedule() {
+  if (!canUpdate) return; clearInterval(updTimer); updTimer = null;
+  const ms = UPD_MS[updEvery()]; if (!ms) return;
+  updTimer = setInterval(() => { if (Date.now() - updLast >= ms) runUpdateCheck(); }, Math.min(60e3, ms));
+}
+function updStart() {
+  if (!canUpdate || updStarted) return; updStarted = true;
+  if (updEvery() !== "aus") setTimeout(runUpdateCheck, 6000);
+  updSchedule();
+  // nach Ruhezustand / längerer Pause: beim Zurückkehren ins Fenster nachholen, wenn das Intervall abgelaufen ist
+  addEventListener("focus", () => { const ms = UPD_MS[updEvery()]; if (ms && Date.now() - updLast >= ms) runUpdateCheck(); });
+}
 async function runUpdateCheck() {
+  updLast = Date.now();
   try { const u = await checkUpdate(); setUpd({ update: u || null, err: "", checked: new Date().toISOString() }); return u; }
   catch (e) { setUpd({ err: e.message || String(e) }); return null; }
 }
 function useAppUpdate() {
   const [st, setSt] = useState(updState);
   useEffect(() => {
-    updSubs.add(setSt);
-    let iv;
-    if (canUpdate) { const t = setTimeout(runUpdateCheck, 6000); iv = setInterval(runUpdateCheck, 6 * 3600e3); return () => { updSubs.delete(setSt); clearTimeout(t); clearInterval(iv); }; }
+    updSubs.add(setSt); updStart();
     return () => updSubs.delete(setSt);
   }, []);
   const install = async () => { if (!updState.update) return; try { setUpd({ pct: 0 }); await installUpdate(updState.update, (p) => setUpd({ pct: p ?? 0 })); } catch (e) { setUpd({ pct: null, err: "Update fehlgeschlagen: " + (e.message || e) }); alert("Update fehlgeschlagen: " + (e.message || e)); } };
@@ -12307,6 +12324,7 @@ function useAppUpdate() {
 }
 function AppUpdateCard() {
   const u = useAppUpdate(), [ver, setVer] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
+  const [every, setEvery] = useLsState("updEvery", "6std");
   useEffect(() => { appVersion().then((v) => setVer(v || "")); }, []);
   if (!canUpdate) return null;
   const check = async () => { setBusy(true); setMsg(""); const r = await runUpdateCheck(); setBusy(false); setMsg(r ? "" : updState.err ? "" : "Du hast die neueste Version."); };
@@ -12318,7 +12336,10 @@ function AppUpdateCard() {
       {u.update ? <button className="btn primary" disabled={u.pct != null} onClick={u.install}>{u.pct != null ? `Installiere … ${u.pct}%` : "Jetzt aktualisieren"}</button>
         : <button className="btn" disabled={busy} onClick={check}>{busy ? "Suche …" : "Nach Updates suchen"}</button>}
     </div>
-    <small className="muted block">Die App sucht beim Start und alle 6 Stunden selbst nach Updates.</small>
+    <div className="updevery"><span>Automatisch suchen</span>
+      <PickMenu click icon="🔄" label={UPD_INTERVALS.find(([k]) => k === every)?.[1] || "Alle 6 Stunden"} title="Wie oft nach Updates suchen"
+        items={UPD_INTERVALS.map(([k, l, sub]) => ({ k, title: l, sub, on: every === k, run: () => { setEvery(k); ls.set("updEvery", k); updSchedule(); } }))} /></div>
+    <small className="muted block">{every === "aus" ? "Automatische Suche ist aus – nur über „Nach Updates suchen“." : every === "start" ? "Die App sucht nur kurz nach dem Start nach Updates." : `Die App sucht beim Start und ${((l) => l.charAt(0).toLowerCase() + l.slice(1))(UPD_INTERVALS.find(([k]) => k === every)?.[1] || "")} selbst nach Updates – nach Ruhezustand sofort beim Zurückkehren.`}{u.checked ? ` Zuletzt gesucht: ${new Date(u.checked).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" })}.` : ""}</small>
   </div>);
 }
 /* ---------- Cloud-Synchronisierung: Hintergrund + Einstellungen (v0.84) ---------- */
@@ -17507,6 +17528,7 @@ html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon .gll{widt
 .win.detsplit>.wininner{position:relative}
 .win.detsplit>.wininner>.winguard{position:absolute;top:10px;left:12px;right:auto;width:calc(var(--formw,700px) - 24px);box-sizing:border-box;margin:0;box-shadow:0 10px 28px rgba(0,0,0,.45)}
 @media (min-width:768px){.win .winguard{flex-wrap:nowrap}.win .winguard>b:first-child{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.win .winguard .grow{display:none}.win .winguard .btn{flex:0 0 auto;white-space:nowrap}}
+.updevery{display:flex;align-items:center;gap:10px;margin:8px 0 4px}.updevery>span{flex:1}
 .docksetting .dockminw{display:flex;flex-direction:column;gap:6px;padding:4px 0 10px}.docksetting .dockminw.off{opacity:.45}
 .docksetting .dockminw input[type=range]{width:100%;accent-color:var(--acc)}.docksetting .dockminchips{gap:6px;flex-wrap:wrap}
 /* v1.0.10: Seitenleiste – Anzahlen (Dokumente) und Kontostände in einer Flucht unter den Gruppen-Pfeilen, Anzahlen als Plakette */
