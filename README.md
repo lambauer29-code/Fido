@@ -2,6 +2,13 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v0.99.97 – Drag & Drop in der Mac-App, Ablagefeld im Journal
+- Mac/Windows-App: Dateien und Ordner lassen sich wieder in alle Ablagefelder ziehen (`dragDropEnabled: false` in tauri.conf.json – Tauri hatte das Ablegen abgefangen).
+- Journal: eigenes Ablagefeld (ein-/ausblendbar über „📥 Ablagefeld“), liest alles wie die Universal-Ablage ein (Belege, Rechnungen, E-Rechnungen, Kontoauszüge).
+
+## v0.99.96 – Backup-Texte in der App
+- In der Mac/Windows-App heißt es bei Auto-Backups nicht mehr „im Browser“, sondern „in der App“ bzw. „in der App und im Backup-Ordner“ (Meldung, Hinweistext, Auto-Backup-Liste).
+
 ## v0.99.95 – Persönliche Standard-Einstellungen
 - `src/defaults.json` enthält Rolis Design- und Struktur-Einstellungen (dunkles Design „Graphit/Gold“, Schrift Lora, Schrift- und Buttongrößen, Reiter mit Gruppen Privat/Firma/Sicherung, Dokumentgruppen, Unterkategorien, Spalten der Kontobuchungen, Startseiten-Layout). Greifen nur beim ersten Start auf einem neuen Gerät/Browser – bestehende Einstellungen bleiben unverändert. Keine persönlichen Daten enthalten.
 

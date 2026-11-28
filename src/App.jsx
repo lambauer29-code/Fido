@@ -2544,7 +2544,7 @@ function AppMain() {
           cat={docCat} setCat={setDocCat} docGroups={nav.docGroups} toggleDocGroup={toggleDocGroup}
           deadlineTab={nav.tabs.some((t) => t.key === "deadlines") ? { label: tabLabel(nav, "deadlines"), open: () => setTab("deadlines") } : null}
           journalTab={{ label: tabLabel(nav, "journal") || "Journal", open: () => setTab("journal") }} />}
-        {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify} />}
+        {tab === "journal" && <JournalPage docs={active} txs={txs} categories={categories} saveDoc={saveDoc} onOpen={setOpenId} notify={notify} onFiles={smartImport} busy={!!(docBusy || accBusy)} />}
         {dupQ[0] && <DupWin key={dupQ[0].name + (dupQ[0].existing?.id || "")} req={dupQ[0]} onDone={(v) => { dupQ[0].res(v); setDupQ((q) => q.slice(1)); }} />}
         {dlPop?.kind === "virt" && (() => { const d = fixDocs.find((x) => x.id === dlPop.id); return d ? <DlVirtWin d={d} onClose={() => setDlPop(null)} onGo={dlGo} onToggle={(x) => saveDl({ ...d, deadlines: d.deadlines.map((y) => (y.id === x.id ? { ...y, done: !y.done } : y)) })} /> : null; })()}
         {dlPop?.kind === "ct" && <ContractEditor c={dlPop.c} docs={active} me={me} onSave={(c) => upList("contractList", c)} onDelete={(c) => upList("contractList", c, true)} onClose={() => setDlPop(null)} />}
@@ -5821,7 +5821,8 @@ function JournalPreview({ d, compact = false, onSwipe, onOpen }) {
     </div>
   );
 }
-function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
+function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify, onFiles, busy }) {
+  const [showDrop, setShowDrop] = useLsState("jDrop", true);
   const [jsPos] = useFlag("jStripPos", "c");   // v0.99.30: Leiste über dem Beleg – c = schwebend, b = eine Zeile
   const mobB = useMobileBeta(), slim = useMedia("(max-width:999px)"), mob = mobB || slim, [boxW, setBoxW] = useState(1400), narrow = boxW < 1180;
   const [mode, setMode] = useLsState("jMode", "journal");                       // journal | pruefen | monate
@@ -5874,7 +5875,7 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
   // Höhe: Spalten füllen den Bildschirm bis unten
   const boxRef = useRef(null), [boxH, setBoxH] = useState(null);
   useEffect(() => { if (mob) return; const f = () => { const r = boxRef.current?.getBoundingClientRect(); if (r) { setBoxH(Math.max(420, Math.round(innerHeight - r.top - 14))); setBoxW(Math.round(r.width)); } }; f(); addEventListener("resize", f); const t = setTimeout(f, 300);
-    const ro = boxRef.current ? new ResizeObserver(f) : null; ro?.observe(boxRef.current); return () => { removeEventListener("resize", f); clearTimeout(t); ro?.disconnect(); }; }, [mob, mode]);
+    const ro = boxRef.current ? new ResizeObserver(f) : null; ro?.observe(boxRef.current); return () => { removeEventListener("resize", f); clearTimeout(t); ro?.disconnect(); }; }, [mob, mode, showDrop]);
   const sum = list.reduce((s, d) => s + (jEur(d) || 0), 0);
   const senders = useMemo(() => { const m = {}; base.forEach((d) => { if (d.sender) m[d.sender] = (m[d.sender] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([s]) => s); }, [base]);
   const catCnt = useMemo(() => { const m = {}; base.forEach((d) => { m[d.category] = (m[d.category] || 0) + 1; }); return m; }, [base]);
@@ -5884,13 +5885,15 @@ function JournalPage({ docs, txs = [], categories, saveDoc, onOpen, notify }) {
 
   const [fold, setFold] = useLsState("jFold", {});
   const sh = (k, l, n) => <button type="button" className={"jsh" + (fold[k] ? " shut" : "")} onClick={() => setFold({ ...fold, [k]: !fold[k] })} aria-expanded={!fold[k]}><span className="grow">{l}</span>{fold[k] && n > 0 && <span className="jcnt">{n}</span>}<span className="jchev">▾</span></button>;
-  const modeBar = (
+  const modeBar = (<>
     <div className="jmodes">
       <div className="seg">{[["journal", "📓 Journal"], ["pruefen", `✓ Prüfen${cnt("unbest") ? " (" + cnt("unbest") + ")" : ""}`], ["monate", "🗓 Monate"]].map(([k, l]) => <button key={k} className={mode === k ? "on" : ""} onClick={() => { setMode(k); if (k === "pruefen") { const f = base.filter(jUnconf).sort((a, b) => jDate(b).localeCompare(jDate(a)))[0]; setCur(f?.id || null); if (mob && f) setPhoneOpen(true); } }}>{l}</button>)}</div>
       {mode !== "monate" && !mob && <SearchBox className="sbplain jsearch" icon={false} value={q} onChange={setQ} placeholder="Belege durchsuchen" />}
       {mode !== "monate" && !mob && jSort}
+      {onFiles && <button className={"chip jdropchip" + (showDrop ? " on" : "")} title="Ablagefeld ein-/ausblenden" onClick={() => setShowDrop(!showDrop)}>📥{mob ? "" : " Ablagefeld"}</button>}
     </div>
-  );
+    {onFiles && showDrop && <DropField onFiles={onFiles} onHide={() => setShowDrop(false)} busy={busy} title="Belege, Rechnungen oder Ordner hierher ziehen" what="wird automatisch eingelesen und einsortiert" isOk={() => true} accept="" />}
+  </>);
   const sidebar = (
     <nav className={"jside" + (side ? " open" : "")}>
       {J_FILTERS.map(([k, ic, l]) => <button key={k} className={"jsi" + (filt === k && mode !== "pruefen" ? " on" : "")} onClick={() => { setFilt(k); if (mode === "pruefen") setMode("journal"); setSide(false); }}><span className="jic">{ic}</span><span className="grow">{l}</span>{k !== "alle" && cnt(k) > 0 && <span className="jcnt">{cnt(k)}</span>}</button>)}
@@ -12093,7 +12096,7 @@ function AutoBackupWin({ onRestore, onClose, notify }) {
   return (
     <Win id="autobak" onClose={onClose} small dirty={false}>
       <div className="panelhead"><b>📋 Auto-Backups</b><XBtn /></div>
-      <p className="muted small">Die letzten {AB_MAX} automatischen Sicherungen in diesem Browser. Enthalten sind Dokument-Daten, Umsätze, Konten, Rechnungen, Kunden, Kassabuch, Lager und alle Einstellungen – die Original-Dateien (PDFs, Fotos) nur im externen Backup.</p>
+      <p className="muted small">Die letzten {AB_MAX} automatischen Sicherungen {hasDisk ? "in der App" : "in diesem Browser"}. Enthalten sind Dokument-Daten, Umsätze, Konten, Rechnungen, Kunden, Kassabuch, Lager und alle Einstellungen – die Original-Dateien (PDFs, Fotos) nur im externen Backup.</p>
       {!list ? <p className="muted small">Lade …</p> : !list.length ? <MEmpty>Noch keine automatische Sicherung.</MEmpty> : list.map((b) => (
         <div key={b.id} className="frow abrow">
           <span className="caticon" style={{ width: 40, height: 40 }}><Glyph e={b.reason === "manuell" ? "💾" : "🔄"} /></span>
@@ -12326,10 +12329,10 @@ function Settings({ only = "", theme, design, setDesign, themeMode, setThemeMode
           <p className="muted small bkline">Letztes Auto-Backup: <b>{fmtStamp(ls.get("lastAutoBackup", ""))}</b>{abIv === "aus" ? " (deaktiviert)" : ""}{abCount != null ? ` · ${abCount} von ${AB_MAX} gespeichert` : ""}</p>
           <p className="muted small bkline">Letztes externes Backup: <b>{fmtStamp(ls.get("lastExtBackup", ""))}</b>{(() => { const l = ls.get("lastExtBackup", ""); const d = l ? Math.floor((Date.now() - new Date(l)) / 864e5) : null; return d == null ? <span className="red"> – bitte bald sichern</span> : d > 30 ? <span className="red"> – vor {d} Tagen</span> : null; })()}</p>
           <div className="actions">
-            <button className={"btn bkpress" + (abBusy ? " on" : "")} disabled={abBusy} onClick={async () => { setAbBusy(true); try { await createAutoBackup("manuell"); notify("Sicherung im Browser erstellt"); } catch (e) { notify("Sicherung fehlgeschlagen: " + e.message); } finally { setAbBusy(false); } }}>{abBusy ? "⏳ Sichere …" : "💾 Jetzt sichern"}</button>
+            <button className={"btn bkpress" + (abBusy ? " on" : "")} disabled={abBusy} onClick={async () => { setAbBusy(true); try { await createAutoBackup("manuell"); notify(hasDisk ? (dkCfg().on ? "Sicherung in der App und im Backup-Ordner erstellt" : "Sicherung in der App erstellt") : "Sicherung im Browser erstellt"); } catch (e) { notify("Sicherung fehlgeschlagen: " + e.message); } finally { setAbBusy(false); } }}>{abBusy ? "⏳ Sichere …" : "💾 Jetzt sichern"}</button>
             <button className="btn" onClick={() => setAbOpen(true)}>📋 Auto-Backups verwalten</button>
           </div>
-          <p className="muted small">{hasDisk ? "Auto-Backups werden in der App gespeichert" : "Auto-Backups werden im Browser gespeichert"} (rotierend max. {AB_MAX} Stück). Das schützt vor versehentlichem Datenverlust in FinDocu, aber nicht vor dem Löschen der Website-Daten oder einem Geräteverlust – erstelle daher zusätzlich regelmäßig externe Backups. Die Original-Dateien (PDFs, Fotos) sind nur im externen Backup enthalten.</p>
+          <p className="muted small">{hasDisk ? <>Auto-Backups werden in der App gespeichert (rotierend max. {AB_MAX} Stück) und – wenn unten eingeschaltet – zusätzlich als Datei im Backup-Ordner auf der Festplatte, dort auf Wunsch mit allen PDFs und Fotos.</> : <>Auto-Backups werden im Browser gespeichert (rotierend max. {AB_MAX} Stück). Das schützt vor versehentlichem Datenverlust in FinDocu, aber nicht vor dem Löschen der Website-Daten oder einem Geräteverlust – erstelle daher zusätzlich regelmäßig externe Backups. Die Original-Dateien (PDFs, Fotos) sind nur im externen Backup enthalten.</>}</p>
         </section>
         {hasDisk && <DiskBackupCard notify={notify} ver={abVer} onRestore={(f) => importBackup(f)} />}
         {hasDisk ? <DiskUsageCard docs={docs.length} txs={txs.length} ver={abVer} /> : <section className="bkcard">
@@ -19402,7 +19405,7 @@ html.dark .scpick.sc-firma .scpickbtn,:root[data-theme=dark] .scpick.sc-firma .s
 
 /* ======================= v0.99: Journal ======================= */
 .jpage-wrap{display:flex;flex-direction:column;gap:10px}
-.jmodes{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.jmodes .seg button{white-space:nowrap}.jmodes .jsearch{flex:1;min-width:200px;max-width:420px}
+.jmodes{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.jpage-wrap>.docdrop{margin:10px 0 4px;width:100%;max-width:none;box-sizing:border-box}.jmodes .jdropchip{margin-left:auto}.jmodes .seg button{white-space:nowrap}.jmodes .jsearch{flex:1;min-width:200px;max-width:420px}
 .jgrid{display:grid;grid-template-columns:230px 270px minmax(0,1fr) 310px;gap:10px;min-height:420px}
 .jgrid.pruef{grid-template-columns:270px minmax(0,1fr) 330px}
 .jgrid.nodet{grid-template-columns:230px 270px minmax(0,1fr)}
