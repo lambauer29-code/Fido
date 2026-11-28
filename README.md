@@ -2,6 +2,12 @@
 
 Dokumente (PDF/Fotos) hochladen → Claude sortiert in Kategorien, vergibt Tags, liest Absender, Datum, **Beträge** (Brutto/Netto/USt) und **Fristen** aus und liefert den Volltext für die Suche.
 
+## v1.0.13 – Spalte rechts bleibt beim Kontowechsel, Kopf über der Vorschau, größeres Symbol
+- Kontowechsel in der Seitenleiste: war die Spalte rechts offen, bleibt sie offen und zeigt die neueste Buchung des neuen Kontos (Pfeil zeigt auf deren Zeile); war sie zu, bleibt sie zu
+- Dokument mit geöffneter Vorschau: der farbige Kopf läuft über die Vorschau weiter, die Werkzeugleiste sitzt darin; ohne Vorschau wie bisher
+- Symbol im Kopf einer Buchung deutlich größer (76 px)
+- Farbiger Kopf mit runden Ecken oben und unten
+
 ## v1.0.12 – Spalte rechts als Karte mit farbigem Kopf, „Bereich“ als eigene Spalte
 - Spalte rechts als schwebende Karte mit runden Ecken; oben ein Band in der Farbe des Bereichs (Privat, Firma, eigene Bereiche), darin mittig Symbol, Name, Privat/Firma und darunter die Kategorie
 - Pfeil am Kartenrand zeigt auf die angeklickte Zeile und wandert beim Scrollen mit; Ziehleiste zwischen Liste und Karte (Griff weicht dem Pfeil aus)

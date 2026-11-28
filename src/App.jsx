@@ -1757,6 +1757,8 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
       const el = rootRef.current; if (!el || el.contains(e.target) || stayRef.current) return;
       if (e.target.closest?.(".win,.sheet,.topactions,.fabmenu,.fabmenu-bg,.toast,.dndghost,.sharepop,.sidetip,.pickmenu,.sugmenu,.catpick")) return;
       // Spalte rechts: Liste bleibt bedienbar – nur der Wechsel in einen anderen Bereich schließt; bei ungespeicherten Änderungen erst nachfragen
+      // v1.0.13: Wechsel des Kontos / der Kategorie in der Seitenleiste lässt die Spalte offen
+      if (dockedRef.current && e.target.closest?.("nav .subnav .accitem") && !e.target.closest?.(".aeye") && !dirtyRef.current) return;
       if (dockedRef.current && !e.target.closest?.("nav") && !dirtyRef.current) return;
       if (dockedRef.current && dirtyRef.current) { e.stopPropagation(); e.preventDefault(); dockAnchor = dockAnchorPrev; }   // Zeile darf nicht wechseln, bevor gespeichert/verworfen ist
       if (dirtyRef.current) blockRef.current = true; // Klick nicht weiterreichen, sonst gehen Eingaben verloren
@@ -1805,10 +1807,12 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
       raf = requestAnimationFrame(tick);
       const el = rootRef.current, arr = arrRef.current, inner = innerRef.current; if (!el || !arr || !inner) return;
       if (dockAnchor && dockAnchor !== anchor && dockAnchor.isConnected) anchor = dockAnchor;
+      if (!anchor || !anchor.isConnected || !anchor.getBoundingClientRect().height) { const c = document.querySelector(".app .txrow.cur,.app .cur[data-dockrow]"); if (c) anchor = c; }
       // Kopfbereich: Element mit data-dockhead, sonst .txhero, sonst der Fensterkopf
       const hd = inner.querySelector("[data-dockhead],.txhero") || inner.querySelector(".panelhead");
       const ir = inner.getBoundingClientRect();
       let hb = 0; if (hd) { const hr = hd.getBoundingClientRect(), nx = hd.nextElementSibling?.getBoundingClientRect(); hb = nx && nx.height && nx.top > hr.bottom ? (hr.bottom + nx.top) / 2 : hr.bottom + 14; }
+      const fsc = inner.querySelector(":scope .detform"); if (fsc && getComputedStyle(fsc).overflowY === "auto") hb += fsc.scrollTop;   // Vorschau offen: Kopf bleibt gleich hoch
       const headH = hd ? Math.round(hb - ir.top + inner.scrollTop) : 0;
       const wr = el.getBoundingClientRect();
       let y = null;
@@ -1941,7 +1945,7 @@ function Win({ id, onClose, children, className = "", defW, small = false, cente
       <div ref={rootRef} className={"win docked " + className + (small ? " small" : "") + (tint ? " tinted" : "")} style={{ width: total, zIndex: z, ...(extraW ? { "--formw": form + "px" } : {}), ...(tint ? { "--dockc": tint } : {}) }} onPointerDown={() => z !== winZ && setZ(++winZ)} {...touchProps}>
         <div className="dockgrip" ref={gripRef} onPointerDown={dockDrag} onDoubleClick={() => { setDockW(null); ls.set("dock:" + id, null); }} title="Ziehen: Breite ändern · Doppelklick: Standardbreite"><i /></div>
         <div className="dockarr" ref={arrRef} aria-hidden="true"><i /></div>
-        <div className="wininner" ref={innerRef}>{guard}{children}</div>
+        <div className="wininner" ref={innerRef}>{tint && <div className="dockband" aria-hidden="true" />}{guard}{children}</div>
       </div>
       </WinCtx.Provider>
     );
@@ -7444,6 +7448,11 @@ function Accounts({ goTab, resetCp, scanReceiptFor, receiptFor, busy, setBusy = 
       .sort((a, b) => txDir * (TX_SORTS[txS] || TX_SORTS.datum)[2](a, b));
   }, [scoped, q, month, coll, txS, txDir]);
   const txFlat = !(txS === "datum" && txDir === 1);
+  // v1.0.13: Kontowechsel – war die Spalte rechts offen, bleibt sie offen und zeigt die neueste Buchung des neuen Kontos
+  const txOpenRef = useRef(null); txOpenRef.current = txOpen;
+  const prevSelKey = useRef(selKey);
+  useEffect(() => { if (prevSelKey.current === selKey) return; prevSelKey.current = selKey; const o = txOpenRef.current; if (!o) return;
+    if (!list.some((x) => x.id === o.id)) setTxOpen(list[0] || null); }, [selKey]);
   const bank = list.filter((t) => t.kind !== "broker" && t.category !== "Umbuchung" && !(cashAccs.length && t.category === "Bargeld"));
   const inc = bank.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const out = bank.filter((t) => t.amount < 0).reduce((s, t) => s - t.amount, 0);
@@ -17383,7 +17392,9 @@ body.rz-active,body.rz-active *{cursor:nwse-resize!important;user-select:none!im
 /* v1.0.11/12: Details als Spalte rechts neben der Liste – schwebende Karte, farbiger Kopf, Pfeil zur Zeile, Ziehleiste */
 html .win.docked.docked{top:12px!important;right:12px!important;bottom:12px!important;left:auto!important;height:auto!important;max-height:none!important;border-radius:18px!important;border:1px solid color-mix(in srgb,var(--txt) 14%,transparent)!important;box-shadow:0 14px 36px rgba(0,0,0,.45)!important;overflow:visible;animation:dockin .16s ease-out}
 html .win.docked.docked>.wininner{border-radius:18px}
-.win.docked.tinted>.wininner{background:linear-gradient(color-mix(in srgb,var(--dockc) 38%,transparent),color-mix(in srgb,var(--dockc) 38%,transparent)) 0 var(--dockhead,0px)/100% 1px no-repeat local,linear-gradient(180deg,color-mix(in srgb,var(--dockc) 30%,transparent),color-mix(in srgb,var(--dockc) 7%,transparent)) 0 0/100% var(--dockhead,0px) no-repeat local,var(--bg)}
+/* v1.0.13: farbiger Kopf als eigenes Band mit runden Ecken oben und unten */
+.win.docked.tinted>.wininner{position:relative;isolation:isolate;background:var(--bg)}
+.dockband{position:absolute;left:0;right:0;top:0;height:var(--dockhead,0px);z-index:-1;pointer-events:none;border-radius:17px;background:linear-gradient(180deg,color-mix(in srgb,var(--dockc) 30%,transparent),color-mix(in srgb,var(--dockc) 9%,transparent)),var(--bg);box-shadow:inset 0 -1px 0 color-mix(in srgb,var(--dockc) 38%,transparent)}
 .win.docked .panelhead{cursor:default;background:transparent!important}
 .win.docked .txhero{display:flex;flex-direction:column;align-items:center}
 .win.docked .txhero>.txscope{display:contents}.win.docked .txhero>.txscope>:first-child{order:2}.win.docked .txhero>.txcat{order:3;margin-top:8px}.win.docked .txhero>.txscope>small{order:4;margin-top:6px}
@@ -17395,11 +17406,18 @@ html .win.docked.docked>.wininner{border-radius:18px}
 .dockgrip:hover i,body.win-moving .dockgrip i{background:var(--acc)}.dockgrip:hover::before{border-color:var(--acc)}
 .dockarr{position:absolute;left:-12px;top:0;width:13px;height:24px;z-index:6;background:color-mix(in srgb,var(--txt) 14%,transparent);clip-path:polygon(0 50%,100% 0,100% 100%);pointer-events:none;transition:top .12s ease-out}
 .dockarr i{position:absolute;left:1.5px;top:1px;right:-1px;bottom:1px;clip-path:polygon(0 50%,100% 0,100% 100%);background:var(--bg)}
-.win.docked.tinted .dockarr.inhead i{background:linear-gradient(180deg,color-mix(in srgb,var(--dockc) 30%,transparent),color-mix(in srgb,var(--dockc) 7%,transparent)) 0 calc(-1px - var(--ay,0px))/100% var(--dockhead,0px) no-repeat,var(--bg)}
+.win.docked.tinted .dockarr.inhead i{background:linear-gradient(180deg,color-mix(in srgb,var(--dockc) 30%,transparent),color-mix(in srgb,var(--dockc) 9%,transparent)) 0 calc(-1px - var(--ay,0px))/100% var(--dockhead,0px) no-repeat,var(--bg)}
 html.docked .app{padding-right:calc(var(--dockw) + 54px)!important}
 html.docked .topactions{right:calc(var(--dockw) + 50px)}
 @media (max-width:1799px){html.docked .ditem .dcatcol,html.docked .ditem .dactions,html.docked .invrow .invacts,html.docked .ctrow .ctacts{display:none!important}
   html.docked .ditem .grow,html.docked .invrow .invmain{min-width:0}}
+/* v1.0.13: farbiger Kopf läuft über die angehängte Vorschau; Symbol im Kopf größer */
+.win.docked.tinted.detsplit .sideprev{background:transparent;border-left-color:color-mix(in srgb,var(--dockc) 22%,var(--line))}
+.win.docked.tinted.detsplit .spbar{background:transparent;border-bottom:0;min-height:var(--dockhead,0px);box-sizing:border-box;align-items:flex-start;padding-top:12px}
+.win.docked.tinted.detsplit .spbox{background:var(--card2)}
+html .txheroico .caticon.caticon.caticon,html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon{width:76px!important;height:76px!important;font-size:38px!important;border-radius:22px!important}
+html[class*="ics-"][class*="ics-"] .txheroico .caticon.caticon.caticon .gll{width:60%;height:60%}
+.txheroico .txpen{transform:scale(1.15)}
 .docksetting .dockminw{display:flex;flex-direction:column;gap:6px;padding:4px 0 10px}.docksetting .dockminw.off{opacity:.45}
 .docksetting .dockminw input[type=range]{width:100%;accent-color:var(--acc)}.docksetting .dockminchips{gap:6px;flex-wrap:wrap}
 /* v1.0.10: Seitenleiste – Anzahlen (Dokumente) und Kontostände in einer Flucht unter den Gruppen-Pfeilen, Anzahlen als Plakette */
